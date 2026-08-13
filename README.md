@@ -37,7 +37,7 @@ zashiki is **not** another "run a bunch of agents in parallel" tool. Those alrea
 
 > Best-effort as of 2026-08; competitors evolve fast. Corrections via issue/PR are welcome — that's the point of an honest table. zashiki deliberately loses the "isolation" and "setup" columns: it specializes in *observability of the sessions you already run*, not in running them.
 
-──────── (README above this line is what decides a star — keep it tight) ────────
+---
 
 ## Architecture (overview)
 
