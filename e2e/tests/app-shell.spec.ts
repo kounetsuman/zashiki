@@ -10,7 +10,7 @@ test.describe("App shell startup and the token gate", () => {
     page,
   }) => {
     await page.goto("/");
-    await expect(page.getByText("トークンがありません")).toBeVisible();
+    await expect(page.getByText("No token found")).toBeVisible();
     await expect(page.getByRole("heading", { name: "zashiki" })).toBeVisible();
   });
 
@@ -21,7 +21,7 @@ test.describe("App shell startup and the token gate", () => {
     await gotoApp(page);
     await expect(page.getByText("SESSION LIST")).toBeVisible();
     await expect(
-      page.getByRole("radiogroup", { name: "パネル切替" }),
+      page.getByRole("radiogroup", { name: "Switch panel" }),
     ).toBeVisible();
     await expect(page.locator('[data-panel="conversation"]')).toBeVisible();
   });
@@ -31,7 +31,7 @@ test.describe("App shell startup and the token gate", () => {
     page,
   }) => {
     await gotoApp(page);
-    await expect(page.getByText("セッションがありません")).toBeVisible();
+    await expect(page.getByText("No sessions")).toBeVisible();
   });
 
   // Story: the accepted token is not left in the URL (history / bookmarks) (source of truth: packages/client/src/lib/token.test.ts)

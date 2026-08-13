@@ -25,7 +25,7 @@ test.describe("Session list (SESSION LIST)", () => {
     }) => {
       await gotoApp(page);
       await expect(
-        page.getByRole("button", { name: `${org} に新規セッション` }),
+        page.getByRole("button", { name: `New session in ${org}` }),
       ).toBeVisible();
     });
   }
