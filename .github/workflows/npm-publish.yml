@@ -18,6 +18,11 @@ on:
         required: true
         type: string
 
+# Least privilege: publishing authenticates via secrets.NPM_TOKEN, so GITHUB_TOKEN only needs
+# read access for checkout.
+permissions:
+  contents: read
+
 jobs:
   npm-publish:
     # Building the darwin binaries and verify:npm-pack (real server startup check) need a macOS runner.
