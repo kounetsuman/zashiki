@@ -1,12 +1,12 @@
 name: npm publish
 
-# vX.Y.Z tag の push で npm パッケージ（zashiki + @zashiki/server-darwin-{arm64,x64}）を publish する。
-# repo 上の version は 0.0.0 プレースホルダー（誤 publish 防止）で固定し、実 version は tag から
-# CI 内でのみ注入する（release.yml の dmg 配布と同一方針）。prepublishOnly ガードは 0.0.0 を拒否
-# するので、注入前・ローカルの誤 publish は落ちる。
+# Publish the npm packages (zashiki + @zashiki/server-darwin-{arm64,x64}) on a vX.Y.Z tag push.
+# The repo version stays pinned to the 0.0.0 placeholder (guards against accidental publish); the real
+# version is injected from the tag inside CI only (same approach as release.yml's dmg distribution).
+# The prepublishOnly guard refuses 0.0.0, so a pre-injection or local publish fails fast.
 #
-# 事前準備（人手・一度きり）:
-#   - npm の Automation トークンを secrets.NPM_TOKEN に登録する（@zashiki scope の publish 権限が必要）。
+# One-time manual setup:
+#   - Register an npm Automation token as secrets.NPM_TOKEN (needs publish rights to the @zashiki scope).
 on:
   push:
     tags:
@@ -14,13 +14,13 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "publish する tag（vX.Y.Z 形式）。既存 tag を指定して再実行する用途"
+        description: "Tag to publish (vX.Y.Z). Use to re-run against an existing tag."
         required: true
         type: string
 
 jobs:
   npm-publish:
-    # darwin バイナリのビルドと verify:npm-pack（実サーバ起動疎通）に macOS ランナーが要る。
+    # Building the darwin binaries and verify:npm-pack (real server startup check) need a macOS runner.
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,8 +54,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # 3 パッケージへ同一 version を注入する。cli の optionalDependencies は workspace:* なので、
-      # pnpm publish 時に「そのとき解決される workspace 版 = この version」へ書き換わる。
+      # Inject the same version into all three packages. The cli's optionalDependencies use workspace:*,
+      # so pnpm publish rewrites them to the workspace version resolved at that point (= this version).
       - name: Inject version from tag
         run: |
           for pkg in packages/cli packages/server-darwin-arm64 packages/server-darwin-x64; do
@@ -63,15 +63,15 @@ jobs:
             mv "$pkg/package.json.tmp" "$pkg/package.json"
           done
 
-      # client dist の同梱 + arm64 バイナリ配置 + tarball 展開 → 実 CLI 起動疎通までを gate する。
+      # Bundle the client dist, place the arm64 binary, extract the tarball, and gate on real CLI startup connectivity.
       - name: Verify npm pack (arm64 connectivity)
         run: pnpm verify:npm-pack
 
       - name: Build x64 server binary (cross)
         run: node scripts/build-npm-server-binary.mjs darwin-x64
 
-      # 依存の解決順: consumer が zashiki を入れた時 optionalDependency を取得できるよう、
-      # プラットフォームパッケージを先に publish してから cli を publish する。
+      # Resolution order: publish the platform packages first, then the cli, so a consumer installing
+      # zashiki can fetch the optionalDependency.
       - name: Publish @zashiki/server-darwin-arm64
         run: pnpm --filter @zashiki/server-darwin-arm64 publish --no-git-checks
         env:
