@@ -1,0 +1,325 @@
+//! Pure functions behind the Claude Code hooks endpoint `POST /api/hooks/event` (ported from the TS `hooks-routes.ts`).
+//!
+//! Asynchronous fetching (refresh / listWorkWindows / ps snapshot) is done by the REST handler; here we
+//! keep only **window resolution ([`resolve_window`])** and **delivery decisions ([`notify_delivery`] / [`decide`])**
+//! as pure functions (the equivalent of Node's `createHooksRoutes` options, separated into a testable form).
+//! The canonical source of behavior is the `tests` module at the end.
+
+use std::sync::Arc;
+
+use zashiki_core::process_tree::{build_process_maps, find_sid_in_tree, parse_ps_snapshot};
+
+use crate::protocol::{HookEventRequest, HookKind, NotifyKind};
+use crate::status_poller::WorkWindow;
+
+/// Notification destination (ZK_NOTIFY; defaults to web). TS `NotifyMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum NotifyMode {
+    #[default]
+    Web,
+    Macos,
+    Both,
+    Off,
+}
+
+impl NotifyMode {
+    /// Interpret the ZK_NOTIFY string (unknown or empty defaults to web; TS's `?? "web"`).
+    pub fn from_str_or_default(s: &str) -> NotifyMode {
+        match s {
+            "macos" => NotifyMode::Macos,
+            "both" => NotifyMode::Both,
+            "off" => NotifyMode::Off,
+            _ => NotifyMode::Web,
+        }
+    }
+}
+
+/// Delivery targets (TS `NotifyDelivery`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotifyDelivery {
+    /// notify push over the control WS.
+    pub push: bool,
+    /// macOS notification via terminal-notifier.
+    pub mac: bool,
+}
+
+/// Decide delivery targets from ZK_NOTIFY and the number of connected browsers (TS `notifyDelivery`).
+/// web falls back to macOS only when there are 0 browser connections. macos never pushes over the WS.
+pub fn notify_delivery(mode: NotifyMode, client_count: usize) -> NotifyDelivery {
+    match mode {
+        NotifyMode::Off => NotifyDelivery { push: false, mac: false },
+        NotifyMode::Web => NotifyDelivery {
+            push: true,
+            mac: client_count == 0,
+        },
+        NotifyMode::Macos => NotifyDelivery { push: false, mac: true },
+        NotifyMode::Both => NotifyDelivery { push: true, mac: true },
+    }
+}
+
+/// A resolved window (TS `ResolvedWindow`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedWindow {
+    pub window_id: String,
+    pub name: String,
+}
+
+/// Map a hook event (sid / cwd) to a work window (TS `resolveWindow`).
+/// The primary key is the sid (via process-tree traversal); the fallback is an exact match on the pane cwd.
+pub fn resolve_window(
+    req: &HookEventRequest,
+    windows: &[WorkWindow],
+    ps_output: &str,
+) -> Option<ResolvedWindow> {
+    let sid = req
+        .sid
+        .as_deref()
+        .map(|s| s.to_lowercase())
+        .filter(|s| !s.is_empty());
+    if let Some(sid) = sid {
+        let maps = build_process_maps(&parse_ps_snapshot(ps_output));
+        for win in windows {
+            for pane in &win.panes {
+                if find_sid_in_tree(pane.pid, &maps).as_deref() == Some(sid.as_str()) {
+                    return Some(ResolvedWindow {
+                        window_id: win.window_id.clone(),
+                        name: win.name.clone(),
+                    });
+                }
+            }
+        }
+    }
+    if let Some(cwd) = req.cwd.as_deref().filter(|c| !c.is_empty()) {
+        for win in windows {
+            if win.panes.iter().any(|p| p.current_path == cwd) {
+                return Some(ResolvedWindow {
+                    window_id: win.window_id.clone(),
+                    name: win.name.clone(),
+                });
+            }
+        }
+    }
+    None
+}
+
+/// Contents of a macOS notification (TS `MacNotification`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MacNotification {
+    pub kind: NotifyKind,
+    /// Material for the notification title (window name = repo name).
+    pub title: String,
+    /// Body (e.g. the session's summary title; empty string if absent).
+    pub message: String,
+}
+
+/// Executor for macOS notifications (terminal-notifier by default; swapped out in tests; fire-and-forget).
+pub type MacNotify = Arc<dyn Fn(MacNotification) + Send + Sync>;
+
+/// The plan of side effects to run for a hook event (output of the pure function [`decide`]).
+/// Given the results of the asynchronous fetches, the delivery decision completes synchronously and the handler only executes the plan.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HookActions {
+    /// Whether the event was mapped to a work window (response `matched`).
+    pub matched: bool,
+    /// Trigger to refetch the git panel (PostToolUse).
+    pub git_dirty: bool,
+    /// Accumulate into NOTIFICATION (kind, window name). None when off.
+    pub record: Option<(NotifyKind, String)>,
+    /// notify push over the control WS (kind, windowId, title).
+    pub push: Option<(NotifyKind, String, String)>,
+    /// macOS notification.
+    pub mac: Option<MacNotification>,
+}
+
+fn notify_kind_of(kind: HookKind) -> Option<NotifyKind> {
+    match kind {
+        HookKind::Waiting => Some(NotifyKind::Waiting),
+        HookKind::Done => Some(NotifyKind::Done),
+        _ => None,
+    }
+}
+
+/// Decide the side-effect plan from the hook kind, resolution result, and delivery settings (the decision part of TS `handleEvent`).
+/// `snap_title` is the "current title of the resolved window" used for the mac notification body (empty string if absent).
+pub fn decide(
+    kind: HookKind,
+    resolved: Option<&ResolvedWindow>,
+    mode: NotifyMode,
+    client_count: usize,
+    snap_title: Option<String>,
+) -> HookActions {
+    if kind == HookKind::Tool {
+        return HookActions {
+            git_dirty: true,
+            ..Default::default()
+        };
+    }
+    let (Some(nk), Some(win)) = (notify_kind_of(kind), resolved) else {
+        return HookActions::default();
+    };
+    let mut actions = HookActions {
+        matched: true,
+        ..Default::default()
+    };
+    // Independently of delivery (web/mac), always accumulate when matched (only off skips accumulation).
+    if mode != NotifyMode::Off {
+        actions.record = Some((nk, win.name.clone()));
+    }
+    let delivery = notify_delivery(mode, client_count);
+    if delivery.push {
+        actions.push = Some((nk, win.window_id.clone(), win.name.clone()));
+    }
+    if delivery.mac {
+        actions.mac = Some(MacNotification {
+            kind: nk,
+            title: win.name.clone(),
+            message: snap_title.unwrap_or_default(),
+        });
+    }
+    actions
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::status_poller::WorkWindowPane;
+
+    fn pane(pid: i64, cwd: &str) -> WorkWindowPane {
+        WorkWindowPane {
+            pane_id: "%0".to_string(),
+            active: true,
+            pid,
+            left: 0,
+            in_mode: false,
+            current_path: cwd.to_string(),
+        }
+    }
+
+    fn window(id: &str, name: &str, panes: Vec<WorkWindowPane>) -> WorkWindow {
+        WorkWindow {
+            window_id: id.to_string(),
+            name: name.to_string(),
+            active: true,
+            panes,
+        }
+    }
+
+    fn req(kind: HookKind, sid: Option<&str>, cwd: Option<&str>) -> HookEventRequest {
+        HookEventRequest {
+            kind,
+            sid: sid.map(String::from),
+            cwd: cwd.map(String::from),
+        }
+    }
+
+    #[test]
+    fn delivery_web_falls_back_to_mac_only_when_no_clients() {
+        assert_eq!(
+            notify_delivery(NotifyMode::Web, 1),
+            NotifyDelivery { push: true, mac: false }
+        );
+        assert_eq!(
+            notify_delivery(NotifyMode::Web, 0),
+            NotifyDelivery { push: true, mac: true }
+        );
+        assert_eq!(
+            notify_delivery(NotifyMode::Macos, 3),
+            NotifyDelivery { push: false, mac: true }
+        );
+        assert_eq!(
+            notify_delivery(NotifyMode::Both, 3),
+            NotifyDelivery { push: true, mac: true }
+        );
+        assert_eq!(
+            notify_delivery(NotifyMode::Off, 0),
+            NotifyDelivery { push: false, mac: false }
+        );
+    }
+
+    #[test]
+    fn resolve_by_cwd_when_no_sid() {
+        let windows = vec![
+            window("@1", "repo-a", vec![pane(100, "/repos/a")]),
+            window("@2", "repo-b", vec![pane(200, "/repos/b")]),
+        ];
+        let got = resolve_window(&req(HookKind::Waiting, None, Some("/repos/b")), &windows, "");
+        assert_eq!(got.unwrap().window_id, "@2");
+    }
+
+    #[test]
+    fn resolve_by_sid_via_process_tree() {
+        let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
+        let windows = vec![window("@1", "repo-a", vec![pane(4242, "/repos/a")])];
+        // ps snapshot in which a child of pid 4242 is running claude --session-id <sid>.
+        let ps = format!("4242 1 -zsh\n5000 4242 claude --session-id {sid}\n");
+        let got = resolve_window(&req(HookKind::Done, Some(&sid.to_uppercase()), None), &windows, &ps);
+        assert_eq!(got.unwrap().name, "repo-a");
+    }
+
+    #[test]
+    fn resolve_returns_none_when_unmatched() {
+        let windows = vec![window("@1", "repo-a", vec![pane(100, "/repos/a")])];
+        assert!(resolve_window(&req(HookKind::Waiting, None, Some("/nope")), &windows, "").is_none());
+        assert!(resolve_window(&req(HookKind::Waiting, None, None), &windows, "").is_none());
+    }
+
+    #[test]
+    fn decide_tool_only_marks_git_dirty() {
+        let a = decide(HookKind::Tool, None, NotifyMode::Web, 0, None);
+        assert!(a.git_dirty && !a.matched && a.record.is_none() && a.push.is_none());
+    }
+
+    #[test]
+    fn decide_prompt_does_nothing() {
+        let a = decide(HookKind::Prompt, None, NotifyMode::Web, 0, None);
+        assert_eq!(a, HookActions::default());
+    }
+
+    #[test]
+    fn decide_unresolved_waiting_is_not_matched() {
+        let a = decide(HookKind::Waiting, None, NotifyMode::Web, 0, None);
+        assert!(!a.matched && a.record.is_none() && a.push.is_none() && a.mac.is_none());
+    }
+
+    #[test]
+    fn decide_matched_web_pushes_and_records() {
+        let win = ResolvedWindow {
+            window_id: "@1".to_string(),
+            name: "repo-a".to_string(),
+        };
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, 2, Some("題名".to_string()));
+        assert!(a.matched);
+        assert_eq!(a.record, Some((NotifyKind::Waiting, "repo-a".to_string())));
+        assert_eq!(a.push, Some((NotifyKind::Waiting, "@1".to_string(), "repo-a".to_string())));
+        // web with clientCount>0 does not fire a mac notification.
+        assert!(a.mac.is_none());
+    }
+
+    #[test]
+    fn decide_matched_web_no_clients_also_macs_with_snap_title() {
+        let win = ResolvedWindow {
+            window_id: "@1".to_string(),
+            name: "repo-a".to_string(),
+        };
+        let a = decide(HookKind::Done, Some(&win), NotifyMode::Web, 0, Some("題名".to_string()));
+        assert_eq!(
+            a.mac,
+            Some(MacNotification {
+                kind: NotifyKind::Done,
+                title: "repo-a".to_string(),
+                message: "題名".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn decide_off_matched_but_no_record_no_delivery() {
+        let win = ResolvedWindow {
+            window_id: "@1".to_string(),
+            name: "repo-a".to_string(),
+        };
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Off, 0, None);
+        assert!(a.matched);
+        assert!(a.record.is_none() && a.push.is_none() && a.mac.is_none());
+    }
+}

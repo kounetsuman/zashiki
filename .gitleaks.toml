@@ -1,0 +1,11 @@
+# gitleaks 設定: デフォルトルールを継承しつつ誤検知を抑制する。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "誤検知の抑制（lockfile / テスト fixtures など）"
+paths = [
+  '''pnpm-lock\.yaml''',
+  '''(^|/)fixtures?/''',
+  '''\.gitleaksignore''',
+]

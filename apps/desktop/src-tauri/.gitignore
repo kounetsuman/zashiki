@@ -1,0 +1,6 @@
+/target/
+/gen/
+
+# build:app（scripts/build-app.sh）が配置する同梱物のステージング先。生成物なのでコミットしない。
+/binaries/
+/client-dist/

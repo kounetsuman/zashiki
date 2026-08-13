@@ -1,0 +1,2054 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  /* アプリは固定シェル（ページスクロール無し）。内側スクロール領域の余白/見出しで
+   * ホイールしてもドキュメントへ連鎖してラバーバンドで全体が揺れないよう封じる（issue #263）。 */
+  overscroll-behavior: none;
+}
+
+body {
+  background: #141414;
+  color: #ddd;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Hiragino Sans", sans-serif;
+  font-size: 13px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* 使用量上限（limit）到達の控えめ警告（issue #301）。フッタ status-bar 内に置く。
+ * 到達 0 件では描画されない。 */
+.limit-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #ff6b6b;
+  font-variant-numeric: tabular-nums;
+}
+
+.limit-indicator-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ---- セッション一覧パネル（side-column 最上部・高さ 50% 固定） ---- */
+
+/* 最上部固定（issue #152）。下端ボーダーで下の選択パネルと区切る
+ * （explorer/git は自前ボーダーを持たないため SESSION LIST 側で引く）。 */
+.session-list {
+  flex: none;
+  height: 50%;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #333;
+  outline: none;
+}
+
+/* 他パネル（.panel-tree 等）同様ヘッダを固定し、スクロールは内側容器に持たせる（issue #263）。
+ * overscroll-behavior:contain で余白/タブ見出しのホイールが親へ連鎖しないよう封じる。 */
+.session-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 0;
+}
+
+/* 下段パネルを閉じた時は SESSION LIST が side-column を占有する（issue #188）。 */
+.session-list-full {
+  height: 100%;
+}
+
+.session-empty-guide {
+  padding: 4px 8px;
+  color: #999;
+  line-height: 1.6;
+}
+
+.session-empty-guide code {
+  color: #7aa2f7;
+}
+
+.session-empty-guide pre {
+  margin: 4px 0;
+  padding: 6px 8px;
+  background: #1b1b1b;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #bbb;
+  overflow-x: auto;
+}
+
+/* ---- インライン確認（クローズ。native ダイアログ非依存。issue #46） ---- */
+
+.session-row-confirm {
+  display: flex;
+  gap: 4px;
+  flex: none;
+  padding-right: 6px;
+}
+
+.session-confirm-ok,
+.session-confirm-cancel {
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.session-confirm-ok {
+  color: #e06c75;
+  border-color: #6a3a3a;
+}
+
+.session-confirm-ok:hover {
+  background: #3a2020;
+  color: #ff8088;
+}
+
+.session-confirm-cancel {
+  color: #999;
+}
+
+.session-confirm-cancel:hover {
+  background: #2a2a2a;
+  color: #ddd;
+}
+
+.session-org-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.session-org-toggle {
+  background: transparent;
+  border: none;
+  /* 既定は白（パネル文字色）。org 色は repos.conf 併記時に inline style で上書き（issue #107）。 */
+  color: #ddd;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+  text-align: left;
+  flex: 1;
+}
+
+/* ↑↓ のフォーカス枠（org 見出し行。セッション行の .session-row-focused と同じ内側ボーダー。issue #179）。 */
+.session-org-toggle.session-org-focused {
+  box-shadow: inset 0 0 0 1px #61afef;
+}
+
+/* org ヘッダ右端の可視新規ボタン（+。常時表示。issue #137）。
+ * 行✕（.session-row-close）と同型: flex:none + 控えめ既定色、hover で立ち上げ。
+ * ✕（赤系）と役割で色分けし、新規は緑系に立ち上げる。 */
+.session-org-new {
+  flex: none;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #666;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 8px;
+}
+
+.session-org-new:hover {
+  background: #1f2a1f;
+  color: #98c379;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+}
+
+/* 各行右端の可視クローズボタン（ゴミ箱アイコン。確認なし即クローズ。issue #119, #202）。
+ * 既定は控えめ、hover で赤系に立ち上げる（確認 OK ボタンと同系色）。 */
+.session-row-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #666;
+  cursor: pointer;
+  font: inherit;
+  padding: 2px 6px;
+}
+
+.session-row-close:hover {
+  background: #3a2020;
+  color: #ff8088;
+}
+
+.session-row-close .material-symbols-outlined {
+  font-size: 16px;
+  line-height: 1;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+}
+
+/* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .panel-row。
+ * explorer に揃え、選択・アクティブとも border 無しの行全体薄ハイライト。 */
+.session-row-main {
+  padding: 2px 8px;
+  flex: 1;
+  min-width: 0;
+  /* ダブルクリック展開（#136）時の単語選択ノイズを抑止。 */
+  user-select: none;
+}
+
+/* アクティブ窓（`>` 廃止・#88）: 薄いハイライト。hover(.panel-row-hover:hover)
+ * より優先させるため .session-row-main で詳細度を上げる。選択（下の
+ * aria-current）は属性セレクタでさらに強く、確実に上書きする。 */
+.session-row-main.session-row-active,
+.session-row-main.session-row-active:hover {
+  background: #20242b;
+}
+
+/* 選択は hover・アクティブより優先（explorer の .panel-row-selected と同規約）。
+ * アクティブと同詳細度だが後ろに置くことで後勝ちさせ、選択色で上書きする。 */
+.session-row-main[aria-current="true"],
+.session-row-main[aria-current="true"]:hover {
+  background: #2c313a;
+  color: #fff;
+}
+
+/* ↑↓ のフォーカス枠（選択＝背景ハイライトと区別できるよう内側ボーダーで示す）。 */
+.session-row-main.session-row-focused {
+  box-shadow: inset 0 0 0 1px #61afef;
+}
+
+/* 右クリック Rename のインライン編集行（タブの .tab-title-input と同規約。issue #318）。 */
+.session-row-editing {
+  gap: 4px;
+}
+
+.session-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+  border: 1px solid #4a6da7;
+  border-radius: 3px;
+  background: #1e1e1e;
+  color: #eee;
+  font: inherit;
+}
+
+/* ---- 右クリックコンテキストメニュー（org→新規 / 行→閉じる。issue #73） ---- */
+
+.session-context-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.session-context-menu {
+  position: fixed;
+  min-width: 140px;
+  max-width: 100vw;
+  max-height: 100vh;
+  padding: 4px;
+  overflow-y: auto;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.session-context-item {
+  display: block;
+  width: 100%;
+  padding: 4px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #ddd;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.session-context-item:hover:not(:disabled) {
+  background: #2a2a2a;
+}
+
+.session-context-item:disabled {
+  color: #666;
+  cursor: default;
+}
+
+/* resume コマンドのコピー完了トースト（issue #218）。中央下に短時間出す。 */
+.copy-toast {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 8px 16px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  color: #ddd;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.session-title {
+  color: #777;
+}
+
+/* 状態アイコンは Material Symbols Outlined（footer と共通。issue #157）。
+ * タイトル文字と縦位置を揃えるため inline-flex + 文字サイズ基準の一辺。 */
+.state.material-symbols-outlined {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+  font-size: 14px;
+  line-height: 1;
+  vertical-align: middle;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+}
+
+/* 状態色: 入力待 黄 / 実行中 既定 / 完了 緑 / 起動中 青 / claude無 灰 / 新規 薄灰 */
+
+.state-waiting_input {
+  color: #e5c07b;
+}
+
+.state-starting {
+  color: #61afef;
+}
+
+.state-fresh {
+  color: #6b7280;
+}
+
+.state-running {
+  color: #ddd;
+}
+
+.state-idle {
+  color: #98c379;
+}
+
+.state-no_claude {
+  color: #777;
+}
+
+.state-unknown {
+  color: #777;
+}
+
+/* サブエージェント実行中: hourglass に robot_2 バッジを重畳（issue #161）。
+ * 外側 .state は位置基準・寸法だけ持ち、実グリフ 2 枚に font を効かせる。 */
+.state-running_bg_agent {
+  color: #ddd;
+}
+
+.state.state-stack {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+  vertical-align: middle;
+}
+
+.state-stack-glyph {
+  font-size: 14px;
+  line-height: 1;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+}
+
+.state-bg-agent-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  font-size: 9px;
+  color: #7aa2f7;
+  /* 下地の hourglass と混ざらないよう暗色の縁取りで小バッジを浮かせる。 */
+  text-shadow:
+    0 0 1px #141414,
+    0 0 1px #141414,
+    0 0 2px #141414;
+}
+
+/* running_bg_agent 行の「実行中サブエージェント総数」(+N)（issue #191）。
+ * bg エージェントバッジと同系色で、タイトルより控えめに添える。 */
+.session-bg-count {
+  margin-left: 2px;
+  font-size: 11px;
+  color: #7aa2f7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 常駐バックグラウンドシェル（issue #229）: 主状態に重ねる左下バッジ。
+ * robot_2（右下・青）と系統を分け緑で、主状態と直交して同時表示できる。 */
+.state-shell-badge {
+  position: absolute;
+  left: -3px;
+  bottom: -3px;
+  font-size: 9px;
+  color: #9ece6a;
+  text-shadow:
+    0 0 1px #141414,
+    0 0 1px #141414,
+    0 0 2px #141414;
+}
+
+/* 使用量上限到達（issue #301）: 主状態に重ねる右上バッジ。警告色（赤）で
+ * bg-agent（右下・青）/ shell（左下・緑）と位置・色を分け、同時表示できる。 */
+.state-limited-badge {
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  font-size: 9px;
+  color: #ff6b6b;
+  text-shadow:
+    0 0 1px #141414,
+    0 0 1px #141414,
+    0 0 2px #141414;
+}
+
+/* 常駐バックグラウンドシェル数 (+Nsh)。シェルバッジと同系の緑で控えめに添える。 */
+.session-shell-count {
+  margin-left: 2px;
+  font-size: 11px;
+  color: #9ece6a;
+  font-variant-numeric: tabular-nums;
+}
+
+.main-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.side-column {
+  display: flex;
+  flex-direction: column;
+  width: 320px;
+  flex: none;
+  min-height: 0;
+  border-left: 1px solid #333;
+  background: #181818;
+}
+
+/* ---- フッタのパネル切替アイコン群（issue #133。単一選択切替） ---- */
+
+/* status-bar 内で右端寄せ（margin-left:auto）。既存の notify/debug（左）に触れない。 */
+.footer-panel-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.footer-panel-tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #6f6f6f;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* 通知の未読件数バッジ（アイコン右上に重畳）。 */
+.footer-panel-badge {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  min-width: 12px;
+  height: 12px;
+  padding: 0 3px;
+  border-radius: 6px;
+  background: #e06c75;
+  color: #fff;
+  font-size: 9px;
+  line-height: 12px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.footer-panel-tab:hover {
+  color: #ddd;
+  background: #2a2a2a;
+}
+
+/* 選択中パネルのアイコンに色を付ける（下ボーダー + 文字色。issue #133） */
+.footer-panel-tab.is-active {
+  color: #ddd;
+  border-bottom-color: #4a6da7;
+}
+
+/* フッタ切替アイコンの Material Symbols（issue #90）。 */
+.footer-panel-tab .material-symbols-outlined {
+  font-size: 16px;
+  line-height: 1;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+}
+
+/* ---- 非アクティブパネルの薄いオーバーレイ（issue #92） ---- */
+
+/* pointer-events:none でクリック等を阻害しない。クリックでフォーカスが入れば
+ * アクティブになりオーバーレイは消える。position:relative は ::after の基準。 */
+.panel-inactive {
+  position: relative;
+}
+
+.panel-inactive::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.conversation {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- メインエリア上部の統合タブ列（issue #149） ---- */
+
+.tab-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex: none;
+  min-width: 0;
+  overflow-x: auto;
+  background: #171717;
+  border-bottom: 1px solid #333;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  max-width: 220px;
+  border-right: 1px solid #2a2a2a;
+  border-top: 2px solid transparent;
+  background: #232323;
+  color: #9a9a9a;
+}
+
+.tab:hover {
+  background: #2a2a2a;
+}
+
+/* ドラッグ&ドロップ並べ替え（issue #232）。掴んでいるタブは薄く、ドロップ先は左端に挿入位置バーを出す。 */
+.tab[draggable="true"] {
+  cursor: grab;
+}
+
+.tab.tab-dragging {
+  opacity: 0.4;
+}
+
+.tab.tab-drag-over {
+  box-shadow: inset 2px 0 0 0 #4a6da7;
+}
+
+/* 選択中タブ（VSCode 風。上ボーダー + 明るい背景/文字）。 */
+.tab.tab-active {
+  background: #1e1e1e;
+  color: #fff;
+  border-top-color: #4a6da7;
+}
+
+.tab-main {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 6px 4px 8px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* タブ先頭の org 色ドット（issue #166）。org 名はドットの title で確認できる。 */
+.tab-org-dot {
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 8px;
+  border-radius: 50%;
+}
+
+/* タブのダブルクリック rename の入力欄（issue #166）。 */
+.tab-title-input {
+  min-width: 0;
+  margin: 2px 4px 2px 6px;
+  padding: 0 4px;
+  border: 1px solid #4a6da7;
+  border-radius: 3px;
+  background: #1e1e1e;
+  color: #eee;
+  font: inherit;
+}
+
+.tab-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-main .material-symbols-outlined {
+  font-size: 15px;
+  line-height: 1;
+  flex: none;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+}
+
+.tab-close {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #8a8a8a;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tab-close:hover {
+  background: #444;
+  color: #fff;
+}
+
+/* ---- ファイルビューア（issue #62 / #320。閲覧専用） ---- */
+
+/* editor タブ active の間、会話本体にオーバーレイ表示（TerminalView を隠さずに
+ * 被せる。xterm の fit/focus を壊さないため display:none にしない）。 */
+.editor-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #1e1e1e;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 28px;
+  padding: 0 8px;
+  border-bottom: 1px solid #333;
+  background: #181818;
+}
+
+.editor-path {
+  flex: 1;
+  min-width: 0;
+  color: #bbb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-copy {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #ccc;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.editor-toggle {
+  flex: none;
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #ccc;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.editor-copy:hover,
+.editor-toggle:hover {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.editor-toggle.is-active {
+  border-color: #4a6da7;
+  color: #fff;
+}
+
+.editor-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* CodeMirror ホスト（親いっぱいに広げ、スクロールは CM 内部に委ねる）。 */
+.editor-cm,
+.editor-cm .cm-editor {
+  position: absolute;
+  inset: 0;
+}
+
+.editor-preview {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 12px 16px;
+  color: #ddd;
+  line-height: 1.6;
+}
+
+.editor-preview pre {
+  background: #171717;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 8px;
+  overflow-x: auto;
+}
+
+.editor-preview code {
+  background: #171717;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.editor-message {
+  padding: 12px 16px;
+  color: #999;
+}
+
+.editor-error {
+  color: #e06c75;
+}
+
+.error-dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 0 12px 10px;
+}
+
+/* ヘッダ下の本体（ターミナル + 空状態オーバーレイの基準）。 */
+.conversation-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+
+/* org 帰属を示す色ドット（issue #166）。テキストの代わりに org 色の丸を出す。
+ * タブ・explorer・search で共用。org 名は title/aria-label に持たせる。 */
+.org-dot {
+  flex: none;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+/* セッション 0 件時に会話パネルへ被せる空状態（issue #46） */
+.empty-conversation {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #141414;
+  text-align: center;
+}
+
+.empty-conversation-mark {
+  font-size: 40px;
+  line-height: 1;
+  color: #3a5a8a;
+  margin-bottom: 14px;
+}
+
+.empty-conversation-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #ccc;
+}
+
+.empty-conversation-hint {
+  margin: 0 auto;
+  max-width: 30em;
+  line-height: 1.9;
+  color: #888;
+}
+
+.empty-key {
+  padding: 0 5px;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #9db4d8;
+  background: #1e1e1e;
+}
+
+.terminal-view {
+  flex: 1;
+  /* min-width:0 が無いと flex 既定の min-width:auto で xterm の描画幅未満に
+     縮まず、FitAddon+ResizeObserver の resize ループで側パネルを画面外へ
+     押し出す（issue #44）。overflow:hidden で余剰幅を min-content に含めない。 */
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 4px;
+  background: #141414;
+}
+
+.terminal-view .xterm {
+  height: 100%;
+}
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 3px 8px;
+  background: #1f1f1f;
+  border-top: 1px solid #333;
+  color: #888;
+  flex: none;
+}
+
+/* エラーダイアログ（issue #79。非モーダル・オーバーレイ無しで前面へ） */
+
+.error-dialog {
+  position: fixed;
+  right: 16px;
+  bottom: 48px;
+  z-index: 20;
+  max-width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 96px);
+  display: flex;
+  flex-direction: column;
+  background: #2a1f21;
+  border: 1px solid #e06c75;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  color: #f2c9cd;
+}
+
+.error-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid #4a3134;
+}
+
+.error-dialog-title {
+  color: #e06c75;
+  font-weight: 600;
+}
+
+.error-dialog-close {
+  background: transparent;
+  border: none;
+  color: #e06c75;
+  cursor: pointer;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.error-dialog-close:hover {
+  color: #ff8b93;
+}
+
+.error-dialog-body {
+  margin: 0;
+  padding: 10px 12px 12px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+
+/* フッタの異常最小表示（issue #56。異常時のみ出す） */
+.status-error {
+  color: #e06c75;
+}
+
+/* デバッグパネル（issue #56。オーバーレイ・既定 off） */
+
+.debug-panel {
+  position: fixed;
+  right: 8px;
+  bottom: 34px;
+  width: 340px;
+  max-height: 70vh;
+  overflow: auto;
+  background: #101418;
+  border: 1px solid #2b3138;
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  color: #cbd3da;
+  font-size: 12px;
+  z-index: 50;
+  padding: 8px 10px;
+}
+
+.debug-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.debug-panel-head button {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.debug-panel-head button:hover {
+  color: #eee;
+}
+
+.debug-section {
+  border-top: 1px solid #232a31;
+  padding-top: 6px;
+  margin-top: 6px;
+}
+
+.debug-section h4 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  color: #7f8b96;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.debug-section dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1px 8px;
+  margin: 0;
+}
+
+.debug-section dt {
+  color: #7f8b96;
+}
+
+.debug-section dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.debug-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.debug-list li {
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.debug-log {
+  max-height: 140px;
+  overflow: auto;
+}
+
+.debug-empty {
+  margin: 0;
+  color: #5c6670;
+}
+
+.debug-note {
+  margin: 0 0 4px;
+  color: #7f8b96;
+  font-size: 11px;
+}
+
+/* git パネル（色規約） */
+
+.git-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * 全パネル共通ツリー行スタイル（issue #85）。explorer / git / session の
+ * ツリー行の装飾（色・hover・選択ハイライト・シェブロン色）をここへ寄せる。
+ * レイアウト（block/flex/インデント）と機能差（code バッジ・stage ボタン・
+ * 状態アイコン等）は各パネル固有クラスに残す。装飾専用に絞ることで、単一
+ * クラス同士の詳細度同点による上書き崩れ（display/width/flex の後勝ち）を避ける。
+ */
+.panel-tree {
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.panel-row {
+  background: transparent;
+  border: none;
+  color: #ddd;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panel-row-hover:hover {
+  background: #242424;
+}
+
+/* 選択は hover より優先（選択行を hover しても選択色を維持。VSCode 相当）。 */
+.panel-row-selected,
+.panel-row-selected:hover {
+  background: #2c313a;
+}
+
+.panel-arrow {
+  color: #888;
+}
+
+/* パネル共通の空表示（issue #186）。文言はパネルごとに変え、デザインはここに一本化。 */
+.panel-empty {
+  padding: 8px;
+  color: #888;
+  font-size: 12px;
+}
+
+/* 全パネル共通ヘッダ（issue #86。会話パネル #91 でも流用）。 */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid #333;
+  color: #888;
+  flex: none;
+}
+
+.panel-title {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.panel-header button {
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #888;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 6px;
+}
+
+.session-list-add {
+  display: inline-flex;
+  align-items: center;
+}
+
+.session-list-add .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.panel-header button:hover {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+/* パネルヘッダ更新ボタンの 3 状態（RefreshButton。issue #165）。 */
+.panel-refresh-error {
+  color: #e5c07b;
+}
+
+.panel-refresh-error:hover {
+  color: #e5c07b;
+}
+
+.panel-refresh-alert {
+  font-size: 12px;
+}
+
+/* 取得中の回転スピナー。keyframe（git-spin）は .loading-spinner と共通。 */
+.panel-refresh-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  vertical-align: -1px;
+  border: 2px solid #444;
+  border-top-color: #ccc;
+  border-radius: 50%;
+  animation: git-spin 0.8s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel-refresh-spinner {
+    animation: none;
+  }
+}
+
+.git-commit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 8px 6px 24px;
+}
+
+.git-commit-message {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #ddd;
+  font: inherit;
+  padding: 4px 6px;
+  resize: vertical;
+  min-height: 1.6em;
+}
+
+.git-commit-message:focus {
+  outline: none;
+  border-color: #007acc;
+}
+
+.git-commit-button {
+  background: #0e639c;
+  border: none;
+  border-radius: 3px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 8px;
+}
+
+.git-commit-button:hover:not(:disabled) {
+  background: #1177bb;
+}
+
+.git-commit-button:disabled {
+  background: #333;
+  color: #777;
+  cursor: default;
+}
+
+.git-error {
+  color: #e06c75;
+  padding: 4px 8px;
+  word-break: break-all;
+}
+
+/* 取得中の共通ロード中UI（VIEWER #320 / SOURCE CONTROL #138 で共用）。 */
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  color: #888;
+}
+
+.loading-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #444;
+  border-top-color: #888;
+  border-radius: 50%;
+  animation: git-spin 0.8s linear infinite;
+}
+
+@keyframes git-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-text {
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+  }
+}
+
+/* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .panel-row。 */
+.git-row {
+  padding: 2px 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.git-indent {
+  margin-left: 12px;
+}
+
+/* 行全体（トグル button + action）を包む flex に hover ハイライトを乗せ、
+ * explorer の「行全体に薄いハイライト」に揃える（button だけでなく行全体）。 */
+.git-repo-line {
+  display: flex;
+  align-items: center;
+}
+
+.git-repo-line:hover,
+.git-file-row:hover {
+  background: #242424;
+}
+
+/* stage(+)/unstage(−)/copy は常に右端に表示する（issue #89）。 */
+.git-row-actions {
+  position: relative;
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding-right: 6px;
+}
+
+/* コピー成功を知らせる「copied!」ポップアップ。コピーボタンのすぐ下に出す（issue #89）。 */
+.git-copied-popup {
+  position: absolute;
+  top: 100%;
+  right: 6px;
+  margin-top: 2px;
+  padding: 1px 6px;
+  font-size: 10px;
+  line-height: 1.4;
+  background: #2c313a;
+  color: #98c379;
+  border: 1px solid #444;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.git-row-actions button {
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #bbb;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 4px;
+}
+
+.git-row-actions button:hover {
+  background: #333;
+  color: #fff;
+}
+
+.git-branch {
+  color: #d19a66; /* ブランチ名=オレンジ */
+}
+
+.git-count-staged {
+  color: #e06c75; /* ●staged数=赤 */
+  margin-left: 4px;
+}
+
+.git-count-changed {
+  color: #98c379; /* +changed数=緑 */
+  margin-left: 4px;
+}
+
+.git-section-header {
+  padding: 1px 8px 1px 24px;
+  font-size: 11px;
+}
+
+.git-section-staged {
+  color: #98c379; /* STAGED=緑 */
+}
+
+.git-section-changed {
+  color: #e06c75; /* CHANGED=赤 */
+}
+
+.git-file-row {
+  display: flex;
+  align-items: center;
+  padding-left: 32px;
+}
+
+.git-code {
+  flex: none;
+  width: 18px;
+  color: #888;
+}
+
+.git-code-added {
+  color: #98c379; /* A=緑 */
+}
+
+.git-code-modified {
+  color: #e5c07b; /* M=黄 */
+}
+
+.git-code-deleted {
+  color: #e06c75; /* D=赤 */
+}
+
+.git-code-renamed {
+  color: #56b6c2; /* R=シアン */
+}
+
+.git-code-untracked {
+  color: #61afef; /* ??=青 */
+}
+
+/* レイアウトのみ。装飾は .panel-row。行 hover は .git-file-row 側に乗る。 */
+.git-file-name {
+  padding: 2px 4px;
+  flex: 1;
+  min-width: 0;
+  direction: rtl; /* 長パスは先頭側を省略しファイル名を常時表示 */
+}
+
+/* search パネル（VSCode SEARCH 相当。issue #59） */
+
+/* SESSION LIST 50% 固定（#152）の下で残り 50% を埋める。旧 45% だと下端に
+ * 5% の空白が残るため 50% に合わせる。 */
+.search-panel {
+  flex: 1;
+  min-height: 0;
+  max-height: 50%;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #333;
+}
+
+.search-input-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  flex: none;
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #ddd;
+  font: inherit;
+  padding: 3px 6px;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #4a7;
+}
+
+.search-options {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+
+.search-option {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #888;
+  cursor: pointer;
+  font: inherit;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.search-option:hover {
+  color: #fff;
+}
+
+.search-option[data-active="true"] {
+  color: #fff;
+  border-color: #4a7;
+  background: #2a3a30;
+}
+
+.search-error {
+  color: #e06c75;
+  padding: 4px 8px;
+  word-break: break-all;
+  flex: none;
+}
+
+.search-summary {
+  color: #888;
+  padding: 2px 8px;
+  flex: none;
+}
+
+.search-tree {
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.search-file-row,
+.search-match-row {
+  background: transparent;
+  border: none;
+  color: #ddd;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.search-file-row:hover,
+.search-match-row:not(:disabled):hover {
+  background: #242424;
+}
+
+.search-match-row:disabled {
+  cursor: default;
+}
+
+.search-arrow {
+  color: #888;
+}
+
+.search-file-name {
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-file-org {
+  color: #666;
+  font-size: 0.85em;
+}
+
+.search-file-count {
+  color: #888;
+  margin-left: auto;
+}
+
+.search-match-row {
+  padding-left: 24px;
+}
+
+.search-match-line {
+  color: #666;
+  min-width: 3ch;
+  text-align: right;
+}
+
+.search-match-text {
+  color: #bbb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.token-missing {
+  padding: 32px;
+}
+
+/* 起動時などの致命的エラーの全面フォールバック（issue #173） */
+.app-crash {
+  padding: 32px;
+  max-width: 720px;
+}
+
+.app-crash-message {
+  color: #e06c75;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.app-crash-reload,
+.terminal-error-retry {
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+/* 端末ペイン局所のエラーフォールバック（他 UI は生かす。issue #173） */
+.terminal-error {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.terminal-error-title {
+  color: #e06c75;
+}
+
+.terminal-error-message {
+  color: #999;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* explorer パネル（issue #60。git パネルと視覚を揃える） */
+.explorer-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.explorer-error {
+  color: #e06c75;
+  padding: 2px 8px;
+  word-break: break-all;
+}
+
+/* レイアウト（block/幅/インデント基準 padding）のみ。装飾は .panel-row。 */
+.explorer-row {
+  display: block;
+  width: 100%;
+  padding: 2px 8px;
+}
+
+.explorer-file::before {
+  content: "•";
+  color: #666;
+  margin-right: 4px;
+}
+
+.explorer-truncated {
+  color: #888;
+  font-style: italic;
+  padding: 2px 8px;
+}
+
+/* ---- ヘルプパネル（issue #118） ---- */
+
+.help-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #333;
+}
+
+.settings-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #333;
+}
+
+.settings-body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-label {
+  font-size: 11px;
+  color: #999;
+}
+
+.settings-select {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #ddd;
+  font: inherit;
+  padding: 3px 6px;
+}
+
+.settings-select:focus {
+  outline: none;
+  border-color: #4a7;
+}
+
+.settings-save {
+  align-self: flex-start;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #ddd;
+  font: inherit;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.settings-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-save:not(:disabled):hover {
+  border-color: #4a7;
+}
+
+/* fieldset for the terminal font-size group: strip the default border/padding so it matches the
+ * other settings fields (the fieldset/legend pair is used for the group label semantics). */
+.font-size-field {
+  border: none;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+.font-size-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.font-size-button {
+  background: #2a2a2a;
+  border: 1px solid #444;
+  color: #ddd;
+  font: inherit;
+  min-width: 32px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.font-size-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.font-size-button:not(:disabled):hover {
+  border-color: #4a7;
+}
+
+.font-size-value {
+  min-width: 42px;
+  text-align: center;
+  color: #ddd;
+  font-variant-numeric: tabular-nums;
+}
+
+.font-size-reset {
+  background: none;
+  border: none;
+  color: #999;
+  font: inherit;
+  padding: 4px 6px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.font-size-reset:not(:disabled):hover {
+  color: #ddd;
+}
+
+.font-size-reset:disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
+}
+
+.help-input-row {
+  display: flex;
+  padding: 6px 8px;
+  flex: none;
+}
+
+.help-input {
+  flex: 1;
+  min-width: 0;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #ddd;
+  font: inherit;
+  padding: 3px 6px;
+}
+
+.help-input:focus {
+  outline: none;
+  border-color: #4a7;
+}
+
+.help-categories {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.help-category-title {
+  margin: 0;
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #888;
+  border-top: 1px solid #2a2a2a;
+}
+
+.help-category:first-child .help-category-title {
+  border-top: none;
+}
+
+.help-topics {
+  padding: 2px 0 4px;
+}
+
+.help-topic-header {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #ddd;
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 8px;
+  text-align: left;
+}
+
+.help-topic-header:hover {
+  background: #222;
+}
+
+.help-arrow {
+  color: #888;
+}
+
+.help-topic-body {
+  padding: 2px 12px 8px;
+  color: #ccc;
+}
+
+.help-md-h1 {
+  font-size: 13px;
+  margin: 8px 0 4px;
+}
+
+.help-md-h2 {
+  font-size: 12px;
+  color: #bbb;
+  margin: 6px 0 3px;
+}
+
+.help-md-p {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.help-md-ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.help-md-pre {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  padding: 6px 8px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.help-md-code,
+.help-md-pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.help-md-code {
+  background: #2a2a2a;
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+/* ---- NOTIFICATION パネル（issue #177） ---- */
+
+.notification-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* 未読/既読タブ（ヘッダとスクロールの間・固定）。 */
+.notification-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #262626;
+}
+
+.notification-tab {
+  padding: 3px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #9aa0a6;
+  font-size: 11px;
+  cursor: pointer;
+}
+.notification-tab:hover {
+  color: #ddd;
+}
+.notification-tab.is-active {
+  background: #2a2f3a;
+  color: #ddd;
+}
+
+/* 他パネル（.panel-tree 等）同様、スクロールは内側容器に持たせヘッダを固定する。 */
+.notification-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.notification-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notification-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #262626;
+  border-left: 2px solid transparent;
+  cursor: default;
+}
+
+/* 既読は淡く表示する。 */
+.notification-read {
+  opacity: 0.55;
+}
+
+.notification-item .notification-icon {
+  font-size: 16px;
+  line-height: 18px;
+  color: #7aa2f7;
+}
+
+.notification-warn {
+  border-left-color: #e5c07b;
+}
+.notification-warn .notification-icon {
+  color: #e5c07b;
+}
+.notification-error {
+  border-left-color: #e06c75;
+}
+.notification-error .notification-icon {
+  color: #e06c75;
+}
+
+.notification-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.notification-title {
+  font-size: 12px;
+  color: #ddd;
+}
+
+.notification-body {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #9aa0a6;
+  word-break: break-word;
+}
+
+.notification-time {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: #6b7280;
+}
+
+.notification-dismiss {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #6f6f6f;
+  cursor: pointer;
+  line-height: 1;
+}
+.notification-dismiss:hover {
+  color: #ddd;
+}
+.notification-dismiss .material-symbols-outlined {
+  font-size: 16px;
+}
+
+/* ---- トースト（issue #177） ---- */
+
+.toaster {
+  position: fixed;
+  right: 12px;
+  bottom: 32px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 340px;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 3px solid #4a6da7;
+  background: #1f1f1f;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.toast .toast-icon {
+  font-size: 18px;
+  line-height: 20px;
+  color: #7aa2f7;
+}
+
+.toast-warn {
+  border-left-color: #e5c07b;
+}
+.toast-warn .toast-icon {
+  color: #e5c07b;
+}
+.toast-error {
+  border-left-color: #e06c75;
+}
+.toast-error .toast-icon {
+  color: #e06c75;
+}
+
+.toast-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-title {
+  font-size: 12px;
+  color: #eee;
+}
+
+.toast-body {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #9aa0a6;
+  word-break: break-word;
+}
+
+.toast-close {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #6f6f6f;
+  cursor: pointer;
+  line-height: 1;
+}
+.toast-close:hover {
+  color: #ddd;
+}
+.toast-close .material-symbols-outlined {
+  font-size: 16px;
+}

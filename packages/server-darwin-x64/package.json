@@ -1,0 +1,21 @@
+{
+  "name": "@zashiki/server-darwin-x64",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "zashiki-server バイナリ（macOS x64）。zashiki の optionalDependency として配布する。",
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/zashiki-server"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "prepublishOnly": "node -e \"console.error('publish は後続 issue（release CI 整備）で解禁する。#338 のスコープ外。'); process.exit(1)\""
+  }
+}

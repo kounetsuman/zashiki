@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# コンタミ防止 pre-push: push 対象コミット群を gitleaks で走査。秘密情報を検知したら push 中止。
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+ZERO=0000000000000000000000000000000000000000
+fail=0
+
+command -v gitleaks >/dev/null 2>&1 || { echo "⚠️  gitleaks 未インストール。pre-push スキャンをスキップ。" >&2; exit 0; }
+
+# stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue          # ブランチ削除は対象外
+  if [ "$remote_sha" = "$ZERO" ]; then
+    logopts="$local_sha --not --remotes"          # 新規ブランチ: まだ push してないコミットのみ
+  else
+    logopts="$remote_sha..$local_sha"             # 既存ブランチ: 差分のみ
+  fi
+  if ! gitleaks git --log-opts="$logopts" --redact --no-banner -l error .; then
+    echo "🚫 pre-push: push 対象コミットに秘密情報の疑い ($logopts)。push 中止。" >&2
+    fail=1
+  fi
+done
+
+[ "$fail" -eq 0 ] || exit 1

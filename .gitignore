@@ -1,0 +1,22 @@
+node_modules/
+dist/
+coverage/
+.vite/
+*.log
+.DS_Store
+
+# Playwright（e2e）
+test-results/
+playwright-report/
+.playwright/
+.env
+.env.local
+
+# コンタミ防止スキャンのローカル専用設定（コミット禁止）
+.githooks/deny-terms.local.txt
+.gitleaks.local.toml
+
+# npm 配布パッケージのビルド成果物（build/release で生成・コミットしない）
+packages/cli/client-dist/
+packages/server-darwin-arm64/bin/zashiki-server
+packages/server-darwin-x64/bin/zashiki-server

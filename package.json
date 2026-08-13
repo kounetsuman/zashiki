@@ -1,0 +1,26 @@
+{
+  "name": "zashiki-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
+    "postinstall": "node scripts/fix-node-pty-permissions.mjs",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "e2e": "pnpm -F @zashiki/e2e run e2e",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "verify:npm-pack": "node scripts/verify-npm-pack.mjs",
+    "uninstall:app": "bash scripts/uninstall.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.5",
+    "typescript": "^5.8.0"
+  }
+}

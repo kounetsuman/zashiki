@@ -1,0 +1,32 @@
+[package]
+name = "zashiki-desktop"
+version = "0.0.0"
+description = "zashiki Tauri シェル（sidecar server 起動 + トークン注入）"
+edition = "2021"
+publish = false
+license = "MIT"
+
+# tauri.conf の mainBinaryName は build 時のみ有効で、dev 実行時の Dock ツールチップには
+# cargo のバイナリ名が出る。dev でも "Zashiki" にするためここでバイナリ名を指定する。
+[[bin]]
+name = "Zashiki"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# webview-data-url: ローディング/エラーページを data: URL で表示するため（issue #38）
+# devtools: 配布（release）ビルドでも WebView の web inspector を有効化可能にするため（issue #310）。
+#   debug ビルドは feature 無しでも有効なので、release で効かせるためだけに付ける。
+tauri = { version = "2", features = ["webview-data-url", "devtools"] }
+# config.json（~/.zashiki/config.json）の debug フラグ読み取り用（issue #310）。server と同じ設定ファイル。
+serde_json = "1"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+# SIGTERM/SIGINT を graceful exit（RunEvent::Exit 経由の sidecar 掃除）に変換する（issue #38 実測: SIGTERM では Exit が発火せず owned server が孤児化した）
+signal-hook = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

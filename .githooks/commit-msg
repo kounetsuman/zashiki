@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# コンタミ防止 commit-msg: コミットメッセージ本文の秘密情報/社内固有語/PII を検知したら中止。
+set -euo pipefail
+MSG_FILE="$1"
+ROOT="$(git rev-parse --show-toplevel)"
+fail=0
+
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks stdin --no-banner --redact -l error < "$MSG_FILE"; then
+    echo "🚫 commit-msg: メッセージに秘密情報の疑い。" >&2
+    fail=1
+  fi
+fi
+
+DENY="$ROOT/.githooks/deny-terms.local.txt"
+if [ -s "$DENY" ]; then
+  PAT="$(grep -vE '^[[:space:]]*(#|$)' "$DENY" || true)"
+  if [ -n "$PAT" ] && grep -nEi -f <(printf '%s\n' "$PAT") "$MSG_FILE" >/dev/null 2>&1; then
+    echo "🚫 commit-msg: 社内固有語/PII denylist にヒット。" >&2
+    fail=1
+  fi
+fi
+
+[ "$fail" -eq 0 ] || exit 1

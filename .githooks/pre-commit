@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# コンタミ防止 pre-commit: staged 差分の秘密情報(gitleaks)＋社内固有語/PII(denylist)を検知したらコミット中止。
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+fail=0
+
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks git --staged --redact --no-banner -l error; then
+    echo "🚫 pre-commit: staged に秘密情報の疑い。コミット中止。" >&2
+    fail=1
+  fi
+else
+  echo "⚠️  gitleaks 未インストール。秘密情報スキャンをスキップ (brew install gitleaks)。" >&2
+fi
+
+# 社内固有語/PII denylist（ローカル専用・任意・.gitignore 済み。1行1正規表現）
+DENY="$ROOT/.githooks/deny-terms.local.txt"
+if [ -s "$DENY" ]; then
+  PAT="$(grep -vE '^[[:space:]]*(#|$)' "$DENY" || true)"
+  if [ -n "$PAT" ]; then
+    HITS="$(git diff --cached -U0 --no-color | grep -E '^\+' | grep -nEi -f <(printf '%s\n' "$PAT") || true)"
+    if [ -n "$HITS" ]; then
+      echo "🚫 pre-commit: 社内固有語/PII denylist にヒット:" >&2
+      echo "$HITS" >&2
+      fail=1
+    fi
+  fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo "→ 誤検知なら該当行に 'gitleaks:allow'、または .gitleaksignore / denylist を調整。" >&2
+  exit 1
+fi

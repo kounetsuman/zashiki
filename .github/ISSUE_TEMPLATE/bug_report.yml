@@ -1,0 +1,54 @@
+name: バグ報告
+description: 不具合を報告する
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        報告ありがとうございます。重複を避けるため、既存の Issue（closed 含む）を先に検索してください。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 何が起きたかを 1〜2 行で
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 再現手順
+      description: 手順を順番に記載してください
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する挙動
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      value: |
+        - OS:
+        - zashiki のバージョン / コミット:
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 補足
+      description: ログ・スクリーンショット等があれば
+    validations:
+      required: false

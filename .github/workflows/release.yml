@@ -1,0 +1,78 @@
+name: Release
+
+# vX.Y.Z tag の push で macOS 配布物（Zashiki.dmg）を draft Release として公開する。
+# 準備段（client dist / server binary の同梱物配置）は scripts/build-app.sh を single source
+# として再利用し、tauri build 本体は tauri-action に委ねる（二重管理を避ける）。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "リリースする tag（vX.Y.Z 形式）。既存 tag を指定して再実行する用途"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve and validate tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::invalid tag format: $TAG (expected vX.Y.Z)"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/zashiki-server
+            apps/desktop/src-tauri
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # .app の CFBundleVersion は tauri.conf.json の version が支配するため、tag から注入する
+      # （リポジトリ上の 0.0.0 は誤 publish 防止のプレースホルダー。書き換えは CI 内に閉じる）。
+      - name: Inject version from tag
+        run: |
+          jq --arg v "${{ steps.tag.outputs.version }}" '.version = $v' \
+            apps/desktop/src-tauri/tauri.conf.json > tauri.conf.tmp
+          mv tauri.conf.tmp apps/desktop/src-tauri/tauri.conf.json
+
+      - name: Prepare bundle payload (client dist + server binary)
+        run: bash scripts/build-app.sh --prepare-only
+
+      - name: Build app & publish draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          # .app ディレクトリは Release アセットにできないため dmg で配布する（.app は dmg に内包）。
+          args: --config src-tauri/tauri.bundle.conf.json --bundles dmg
+          tagName: ${{ steps.tag.outputs.tag }}
+          releaseName: "Zashiki ${{ steps.tag.outputs.tag }}"
+          releaseDraft: true
+          prerelease: false
+          uploadUpdaterJson: false

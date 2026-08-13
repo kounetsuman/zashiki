@@ -1,0 +1,36 @@
+{
+  "name": "zashiki",
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "Claude Code のセッションを一望する Web コックピット（CLI）。zashiki-server を起動しブラウザで開く。",
+  "type": "module",
+  "bin": {
+    "zashiki": "bin/zashiki.mjs"
+  },
+  "files": [
+    "bin",
+    "src/launcher.mjs",
+    "src/lib.mjs",
+    "client-dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "optionalDependencies": {
+    "@zashiki/server-darwin-arm64": "workspace:*",
+    "@zashiki/server-darwin-x64": "workspace:*"
+  },
+  "devDependencies": {
+    "@zashiki/client": "workspace:*",
+    "vitest": "^3.2.0"
+  },
+  "scripts": {
+    "build": "node scripts/copy-client-dist.mjs",
+    "prepack": "node scripts/copy-client-dist.mjs",
+    "test": "vitest run",
+    "prepublishOnly": "node -e \"console.error('publish は後続 issue（release CI 整備）で解禁する。#338 のスコープ外。'); process.exit(1)\""
+  }
+}

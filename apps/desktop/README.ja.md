@@ -1,0 +1,193 @@
+[English](./README.md) | **日本語**
+
+# @zashiki/desktop
+
+Tauri 2.x のデスクトップシェル。起動時に Rust server（`zashiki-server`）を sidecar として
+管理し、`~/.zashiki/token` を読んで WebView の初期 URL に `?token=` で注入する
+（client の既存 sessionStorage 機構をそのまま利用。トークン検証は
+[`crates/README.md`](../../crates/README.ja.md) を参照）。
+
+## 前提
+
+- Rust stable（`rustup` で導入。`rustc --version` が通ること）
+- Node 22 / pnpm（リポジトリ共通）
+
+## 起動（開発）
+
+```sh
+pnpm install
+pnpm -F @zashiki/desktop dev   # = tauri dev
+```
+
+### デモモード（画面録画用）
+
+```sh
+pnpm -F @zashiki/desktop dev:demo
+```
+
+`dev:demo`（`scripts/dev-demo.mjs`）は、使い捨ての隔離サンドボックスに対して `tauri dev`
+を起動し、**real Claude 抜き**で org コックピットを手で触って録画できるようにする。色分けした
+複数 org と状態付きセッション（running / waiting_input / idle / no_claude、タイトル付き）を自動生成し、
+実ユーザーデータ（`~/.zashiki` / `~/.claude`）には一切触れない（temp は終了時に削除）。dev と同じ
+ポート 8790 を使うため、既存の server は先に停止すること（8790 が使用中なら起動を拒否する）。
+出力される `demo-spec.json` を編集し `--config <path>`（または `ZASHIKI_DEMO_CONFIG`）で再実行すると
+状態・タイトルを変更できる。これは開発専用で、公開 `zashiki` CLI には**含めない**。
+
+`tauri dev` が `beforeDevCommand` で Rust server の `cargo build` と Vite dev サーバ（:5173、
+`VITE_ZK_SERVER=http://127.0.0.1:8790`）を立ち上げ、シェルが以下を行う:
+
+1. ウィンドウを即時表示（内蔵ローディングページ。起動処理はバックグラウンド）
+2. `http://127.0.0.1:8790/healthz` で server 稼働確認
+3. 未稼働なら `zashiki-server` バイナリを専用プロセスグループで spawn
+   （`ZK_PORT` / `ZK_TOKEN_FILE` を渡す。server が起動時に token を生成・書込）
+4. `~/.zashiki/token` を読み、実リクエストで受理を確認（古い token の検出。
+   検証は `/api/` 配下への 401/403 判定 — `GET /` は静的配信でトークン検証を通らない）
+5. 準備できたら WebView を `http://localhost:5173/?token=…` へ遷移
+
+起動に失敗した場合はウィンドウにエラーページ（対処方法つき）を表示し、
+詳細はターミナルの stderr（`[zashiki-shell +N.Ns]` の経過ログ）に出る。
+setup から Err は返さない（Tauri v2 は setup の Err を内部 panic にするため
+`did_finish_launching` 内で unwind できず SIGABRT になる）。
+
+シェル終了時（ウィンドウを閉じる / SIGTERM / Ctrl-C いずれも）、**自分が spawn した
+server のみ**プロセスグループへ SIGTERM → 猶予 5s → SIGKILL で落とす（既存 server への
+相乗り時は殺さない）。tmux は独立プロセスなのでセッションは残る。
+
+### 環境変数
+
+| 変数 | 既定 | 用途 |
+|---|---|---|
+| `ZK_PORT` | 8790 | server ポート（healthz / spawn / 本番初期 URL に使用） |
+| `ZK_TOKEN_FILE` | `~/.zashiki/token` | トークンファイルの場所（server が生成・書込／sidecar が読む・検証時の隔離用） |
+| `ZK_SERVER_BIN` | 実行体と同ディレクトリの `zashiki-server`、無ければ `crates/zashiki-server/target/{release,debug}/zashiki-server` | spawn する Rust server バイナリ |
+| `ZK_CLIENT_DIST` | 配布 .app: 実行体から `../Resources/client-dist`（同梱物）／dev: `packages/client/dist` | server に静的配信させる client dist。sidecar は実在するときだけ spawn 時に渡す（dev は Vite:5173 を開くため未生成でも無害） |
+| `ZK_SHELL_URL` | dev: `http://localhost:5173` / build: `http://127.0.0.1:8790` | WebView の初期 URL ベース |
+| `ZK_CONFIG` | `~/.zashiki/config.json` | デバッグモードを読む設定ファイル（server と共有。下記「デバッグモード」参照） |
+
+## デバッグモード（WebView devtools）
+
+`~/.zashiki/config.json` の `debug` を `true` にして起動すると、WebView の devtools
+（web inspector）が有効になり、ウィンドウを右クリック →「要素の詳細を表示（Inspect Element）」で
+開ける（macOS。F12 は WKWebView では既定バインドされないため右クリックから開く）。
+
+```json
+{ "debug": true }
+```
+
+- この `debug` は server が読む同じフラグで、client 側のデバッグパネルと連動する
+  （一つの「デバッグモード」で両方が有効になる）。設定ファイルの場所は `ZK_CONFIG` で差し替え可能。
+- 起動時に一度読む（設定を変えたら再起動が必要）。不在・破損・型不一致は `false`（devtools 無効）へ倒す。
+- **dev（`tauri dev`）は開発体験のため常に devtools 有効**。設定で出し分けるのは
+  `tauri build` で作るビルド（配布 .app・`tauri build --debug` 含む）。dev 判定は初期 URL と同じ
+  `tauri::is_dev()` に揃えているため、`--debug` ビルドでも config で正しくゲートされる。
+  `tauri build` 産で有効化するため tauri の `devtools` feature を付けている（macOS では
+  private API を使うため App Store 配布時は非対応。本アプリは未署名配布のため実害はない）。
+- 仕様の正本は `src/sidecar.rs` の `parse_debug_flag` / `devtools_enabled`（cargo test）。
+
+## ビルド
+
+### 配布ビルド（1つに閉じた .app）
+
+```sh
+pnpm -F @zashiki/desktop build:app
+```
+
+`build:app`（`scripts/build-app.sh`）が次を一気通貫で行い、`/Applications` に置いて
+開発ツリー非依存で動く `Zashiki.app` を作る:
+
+1. `@zashiki/shared` と `@zashiki/client` をビルド（client は同一 origin の server が配信するため
+   `VITE_ZK_SERVER` は付けない＝`window.location.origin` 相対で接続する）
+2. `zashiki-server` を release ビルド
+3. sidecar 同梱物を `src-tauri/` へ配置（生成物なので gitignore 済み）:
+   - server → `src-tauri/binaries/zashiki-server-<target-triple>`（`externalBin` 命名規則。
+     `.app` では `Contents/MacOS/zashiki-server` になり、sidecar の兄弟探索と一致）
+   - client dist → `src-tauri/client-dist/`（`bundle.resources` で `Contents/Resources/client-dist/` へ）
+4. `tauri build`（`target/release/bundle/macos/Zashiki.app`）
+
+起動時、sidecar は同梱 `zashiki-server` を spawn し、`ZK_CLIENT_DIST` を
+`Contents/Resources/client-dist` へ向ける（server がそれを静的配信し、WebView は
+`http://127.0.0.1:8790` を開く）。ルート `pnpm build` には連結しない（CI 負荷回避）。
+
+CI では `vX.Y.Z` tag の push で [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
+が同じ `build-app.sh`（`--prepare-only`）で同梱物を配置し、`tauri build`（`--bundles dmg`）本体を
+tauri-action に委ねて draft Release へ `Zashiki.dmg` を公開する（macOS のみ・未署名）。
+
+### 開発ツリー依存のシェルビルド
+
+```sh
+pnpm -F @zashiki/desktop build:shell            # = tauri build（同梱なし）
+pnpm -F @zashiki/desktop tauri build --debug --bundles app   # CI/検証相当
+```
+
+> `build:shell` は sidecar 同梱物をステージしないため、生成される `.app` は
+> **開発ツリーからの起動を前提**とする（`sidecar.rs` の `default_server_bin` /
+> `default_client_dist` がリポジトリ相対の出力にフォールバックするため、`/Applications` へ
+> 単体で置いても動かない）。単体で完結させたい場合は `build:app` を使う。
+
+Rust 単体テスト（ヘルスチェック判定・トークン読み・URL 組み立て・同梱物パス解決）:
+
+```sh
+pnpm -F @zashiki/desktop test:rust   # = cargo test
+```
+
+## 手動スモーク手順（shell smoke は自動化せず手動）
+
+実 tmux / 実 `~/.zashiki` に触るので人間が実施する。
+
+1. `pnpm build && pnpm -F @zashiki/desktop dev` でシェルを起動する
+2. ウィンドウにターミナル UI が表示される（トークン入力を求められないこと =
+   トークン注入が効いている）
+3. セッション一覧から窓を開き、ターミナルにキー入力が通ることを確認する
+4. シェルのウィンドウを閉じて終了する
+5. daemon（launchd）運用時は、シェル終了後も `launchctl list io.github.kounetsuman.zashiki` で
+   server が生き、`curl -s http://127.0.0.1:8790/healthz` が 200 のまま（claude が死なない）
+6. server を先に手で起動（`cargo run --manifest-path crates/zashiki-server/Cargo.toml`）→
+   シェル起動 → シェル終了 → `curl -s http://127.0.0.1:8790/healthz` が 200 のまま
+   （相乗り時は server を殺さないこと）
+7. **配布 .app 完結スモーク**: `pnpm -F @zashiki/desktop build:app` でビルドし、
+   `target/release/bundle/macos/Zashiki.app` を `/Applications` へコピーする。
+   開発ツリーの外（例: `cd /` してから `open /Applications/Zashiki.app`）で起動し、
+   sidecar が同梱 `zashiki-server` を spawn → ウィンドウにターミナル UI が表示される
+   （同梱 client dist の静的配信が効いていること）。同梱物の配置は
+   `Contents/MacOS/zashiki-server` と `Contents/Resources/client-dist/index.html` で確認できる。
+
+## アンインストール
+
+リポジトリルートから実行する（スクリプト本体は `scripts/uninstall.sh`）:
+
+```sh
+pnpm uninstall:app                            # ドライラン（既定・何も消さない）
+pnpm uninstall:app -- --yes                   # アプリ・ビルド生成物・~/Library 配下を削除
+pnpm uninstall:app -- --yes --purge-user-data # 上記 + ~/.zashiki も削除
+```
+
+- **既定はドライラン**。削除対象（`/Applications/Zashiki.app`、`target/release/bundle/`、
+  `dist/Zashiki.app`、`~/Library` 配下の `io.github.kounetsuman.zashiki` 関連）を表示するだけで
+  何も消さない。実削除には `--yes` が必須。
+- **ユーザーデータ `~/.zashiki/`（`repos.conf` / `saves/` / `token`）は
+  `--purge-user-data` を付けた時だけ**削除する（既定は保護）。
+- launchd daemon（LaunchAgent `io.github.kounetsuman.zashiki`）は `--yes` 時に unload + plist 削除する。
+
+## 既知の制約
+
+- **配布 .app は未署名**: `build:app` が作る `.app` は署名・notarization 未対応のため、
+  初回起動時に Gatekeeper の警告が出る（右クリック→開く等が必要）。署名/notarization は後続で対応予定。
+- **client dist を配信しない既存 server への相乗り**: 配布 .app は `http://127.0.0.1:8790`
+  （server の `/`）を開く。8790 に別の server が既に稼働していると相乗りするが、その server が
+  `ZK_CLIENT_DIST` 付きで起動していない（例: `tauri dev` / dist なしの `cargo run`）と `/` を
+  配信できない。この場合は**真っ白ではなく対処つきエラーページ**を表示する（`start()` が
+  `/` の配信可否を probe し、未配信なら「開発用サーバを終了して起動し直す」旨を返す）。
+  対処: 8790 を占有する開発用サーバを終了してから Zashiki.app を起動し直す。配布 .app 同士・
+  未起動状態からの起動では自分が spawn する server に client dist を渡すため問題は起きない。
+- **`build:shell` 単体では配布不可**: 同梱物をステージしないため、リポジトリ内の cargo 出力
+  （`crates/zashiki-server/target/{release,debug}/zashiki-server`）と `packages/client/dist` に
+  フォールバックする（開発マシン前提）。単体で完結させるには `build:app` を使う。
+- **シェルを kill -9 した場合**、spawn 済み server は孤児として残る（graceful
+  shutdown は通常終了・SIGTERM/SIGINT 時のみ）。次回シェル起動時は healthz で検出して
+  相乗りするため二重起動にはならない。手で落とす場合は
+  `pkill -f 'server/dist/index.js'`。
+- **`tauri dev` は `ZK_PORT=8790` 前提**: `beforeDevCommand` の
+  `VITE_ZK_SERVER=http://127.0.0.1:8790` が固定のため、dev でポートを変える場合は
+  tauri.conf.json 側も合わせる必要がある（build では `ZK_PORT` に追従する）。
+- GUI 起動しない環境での green 定義は `cargo check` / `cargo test` /
+  `tauri build --debug` まで（GUI 実確認は上記手動スモーク）。

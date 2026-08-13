@@ -1,0 +1,4 @@
+# zashiki は Discussions を使わず Issues 一本で運用する方針のため、
+# 空の Issue を禁止し、テンプレ（バグ報告 / 機能提案）経由の起票のみ許可する。
+# Discussions を有効化していないので contact_links は設けない。
+blank_issues_enabled: false

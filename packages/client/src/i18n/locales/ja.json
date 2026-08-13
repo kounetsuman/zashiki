@@ -1,0 +1,186 @@
+{
+  "common": {
+    "close": "閉じる",
+    "cancel": "取消",
+    "retry": "再試行",
+    "refresh": "更新",
+    "loading": "読み込み中…",
+    "copyAbsPath": "絶対パスをコピー",
+    "cannotResume": "claude 未起動のため resume できません"
+  },
+  "boot": {
+    "tokenMissing": "トークンがありません。サーバ起動時に表示される<code>?token=…</code> 付き URL から開き直してください。",
+    "crashMessage": "予期しないエラーで画面を表示できませんでした。",
+    "reload": "再読み込み"
+  },
+  "errorDialog": {
+    "label": "エラー",
+    "title": "⚠ エラー",
+    "outdatedServer": "サーバーがリクエストを拒否しました。稼働中の zashiki サーバーが古い可能性があります。再起動または更新してください（サーバーを再ビルドし、デーモンを再インストール）。"
+  },
+  "terminal": {
+    "renderError": "ターミナルの描画でエラーが発生しました",
+    "connectionProblem": "接続に問題があります（{{detail}}）"
+  },
+  "emptyConversation": {
+    "title": "セッションがありません",
+    "hint": "右の一覧で組織の <plus>＋</plus> を押して新規セッションを作成してください。<br />前回のセッションは起動時に自動で復元されます。"
+  },
+  "noTabOpen": {
+    "title": "タブが開かれていません",
+    "hint": "右の SESSION LIST でセッションをダブルクリックすると タブとして開きます。"
+  },
+  "toast": {
+    "resumeCopied": "resume コマンドをコピーしました",
+    "pathCopied": "パスをコピーしました"
+  },
+  "sessionList": {
+    "ariaLabel": "セッション一覧",
+    "refreshLabel": "一覧を更新",
+    "refreshNotConnected": "未接続です（接続を待って再試行してください）",
+    "refreshTimeout": "更新がタイムアウトしました",
+    "limitReached": "使用量上限に達しています",
+    "addOrg": "組織を追加",
+    "orgToggleTitle": "{{org}}（クリックで折畳・+ で新規セッション・Ctrl-N）",
+    "newSessionInOrg": "{{org}} に新規セッション",
+    "newSession": "新規セッション",
+    "editTitleLabel": "セッションのタイトルを編集",
+    "openHint": "ダブルクリックで開く（Enter でも可）",
+    "subagentCountTitle": "実行中サブエージェント総数（入れ子含む）",
+    "shellCountTitle": "常駐バックグラウンドシェル数",
+    "closeRow": "{{name}} を閉じる",
+    "closeRowConfirm": "{{name}} を閉じる（確定）",
+    "cancelClose": "クローズを取消",
+    "cannotRename": "claude 未起動のため改名できません",
+    "reposConf": {
+      "notConfigured": "リポジトリが設定されていません。",
+      "create": "<code>~/.zashiki/repos.conf</code> を作成してください（1行1パス）:",
+      "exampleComment": "# 各行 = 対象パス。行末に #RRGGBB を書くと org に色が付く（省略時は白）",
+      "afterCreate": "作成すると、新しい組織はすぐに一覧へ表示されます。",
+      "seeHelp": "詳しい使い方は NAVIGATION の「ヘルプ」（Ctrl+Alt+H）を参照してください。"
+    }
+  },
+  "tabBar": {
+    "ariaLabel": "開いているタブ",
+    "editTitleLabel": "タブのタイトルを編集",
+    "closeTab": "{{label}} のタブを閉じる",
+    "closeTabTitle": "タブを閉じる（セッションは終了しません）"
+  },
+  "notification": {
+    "unread": "未読",
+    "read": "既読",
+    "emptyUnread": "未読の通知はありません",
+    "emptyRead": "既読の通知はありません",
+    "markReadHint": "ダブルクリックで既読",
+    "dismiss": "通知を消す",
+    "waiting": "⏳ 応答待ち",
+    "done": "✅ 完了"
+  },
+  "search": {
+    "ariaLabel": "検索",
+    "matchCase": "大文字と小文字を区別",
+    "wholeWord": "単語単位で一致",
+    "regex": "正規表現を使用",
+    "noResults": "結果なし",
+    "summary": "{{matches}} 件（{{files}} ファイル）",
+    "andMore": " 以上"
+  },
+  "git": {
+    "stageAll": "すべてステージ（git add .）",
+    "unstageAll": "すべてアンステージ（git reset .）",
+    "noChanges": "変更なし"
+  },
+  "editor": {
+    "viewerLabel": "ビューア {{path}}",
+    "copyPathLabel": "パスをコピー",
+    "code": "コード",
+    "preview": "プレビュー",
+    "openFailed": "開けませんでした: {{error}}",
+    "readTimeout": "読み込みがタイムアウトしました"
+  },
+  "explorer": {
+    "truncated": "一部のみ表示（多数のエントリ）"
+  },
+  "help": {
+    "search": "ヘルプを検索",
+    "noResults": "該当するヘルプがありません",
+    "category": {
+      "config": "設定ファイル",
+      "general": "全般",
+      "subpanel": "サブパネル",
+      "mainpanel": "メインパネル",
+      "other": "その他"
+    }
+  },
+  "footer": {
+    "panelSwitch": "パネル切替",
+    "unreadBadge": "{{label}}（未読 {{count}}）",
+    "shortcutTitle": "{{label}}（Ctrl+Alt+{{key}}）"
+  },
+  "panel": {
+    "explorer": "エクスプローラー",
+    "search": "検索",
+    "git": "ソース管理",
+    "notification": "通知",
+    "help": "ヘルプ",
+    "settings": "設定"
+  },
+  "settings": {
+    "language": "表示言語",
+    "languageOption": {
+      "ja": "日本語",
+      "en": "English"
+    },
+    "save": "保存",
+    "fontSize": "ターミナルの文字サイズ",
+    "fontSizeDecrease": "文字を小さく",
+    "fontSizeIncrease": "文字を大きく",
+    "fontSizeReset": "リセット",
+    "orgSection": "組織",
+    "addOrg": "組織を追加"
+  },
+  "addOrg": {
+    "title": "組織を追加",
+    "pathLabel": "ディレクトリのパス",
+    "pathPlaceholder": "/Users/you/workspace/your-org",
+    "hint": "ディレクトリの絶対パスを入力してください。末尾のフォルダ名が組織名になります。",
+    "submit": "追加",
+    "cancel": "キャンセル",
+    "adding": "追加中…",
+    "added": "{{org}} を追加しました",
+    "valid": "追加できます: {{org}}",
+    "currentTitle": "登録済みの組織",
+    "currentEmpty": "まだ組織が登録されていません。",
+    "colOrg": "組織名",
+    "colPath": "絶対パス",
+    "errorGeneric": "組織を追加できませんでした。",
+    "error": {
+      "no_conf": "repos.conf が設定されていません。",
+      "invalid_body": "リクエストが不正です。",
+      "path_empty": "ディレクトリのパスを入力してください。",
+      "color_invalid": "色は #rgb または #rrggbb 形式で指定してください。",
+      "path_unresolved": "パスを解決できませんでした。",
+      "not_a_directory": "そのパスは存在するディレクトリではありません。",
+      "no_dir_name": "パスの末尾にフォルダ名がありません。",
+      "duplicate": "このパスは既に登録されています。",
+      "io": "repos.conf を書き込めませんでした。"
+    }
+  },
+  "limit": {
+    "title": "{{count}} セッションが Claude Code の使用量上限に達しています",
+    "text": "{{count}} セッションが上限"
+  },
+  "debug": {
+    "panelLabel": "デバッグ情報",
+    "close": "デバッグを閉じる",
+    "reconnectAttempt": "再接続 attempt",
+    "lastCloseCode": "最終 close code",
+    "stateSync": "state.sync（窓構成 / ポーラー）",
+    "noSessions": "セッションなし",
+    "eventLog": "イベントログ（notify / git.dirty / reconnect）",
+    "eventLogNote": "hook のうち UserPromptSubmit は client に届きません。窓解決に失敗した notify・無情報の git.dirty も欠落します（server 側のみ観測可）。",
+    "noEventsYet": "まだ受信なし",
+    "protocolTail": "control プロトコル tail",
+    "noProtocolYet": "まだ送受信なし"
+  }
+}

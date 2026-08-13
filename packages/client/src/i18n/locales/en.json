@@ -1,0 +1,186 @@
+{
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "refresh": "Refresh",
+    "loading": "Loading…",
+    "copyAbsPath": "Copy absolute path",
+    "cannotResume": "claude is not running, so resume is unavailable"
+  },
+  "boot": {
+    "tokenMissing": "No token found. Reopen from the URL with <code>?token=…</code> shown when the server started.",
+    "crashMessage": "An unexpected error prevented the screen from rendering.",
+    "reload": "Reload"
+  },
+  "errorDialog": {
+    "label": "Error",
+    "title": "⚠ Error",
+    "outdatedServer": "The server rejected the request. The running zashiki server may be outdated—restart or update it (rebuild the server and reinstall the daemon)."
+  },
+  "terminal": {
+    "renderError": "An error occurred while rendering the terminal",
+    "connectionProblem": "Connection problem ({{detail}})"
+  },
+  "emptyConversation": {
+    "title": "No sessions",
+    "hint": "Press <plus>＋</plus> for an organization in the list on the right to create a new session.<br />The previous session is restored automatically on startup."
+  },
+  "noTabOpen": {
+    "title": "No tabs open",
+    "hint": "Double-click a session in the SESSION LIST on the right to open it as a tab."
+  },
+  "toast": {
+    "resumeCopied": "Copied the resume command",
+    "pathCopied": "Copied the path"
+  },
+  "sessionList": {
+    "ariaLabel": "Session list",
+    "refreshLabel": "Refresh list",
+    "refreshNotConnected": "Not connected (wait for the connection and retry)",
+    "refreshTimeout": "Refresh timed out",
+    "limitReached": "Usage limit reached",
+    "addOrg": "Add org",
+    "orgToggleTitle": "{{org}} (click to fold / + for new session / Ctrl-N)",
+    "newSessionInOrg": "New session in {{org}}",
+    "newSession": "New session",
+    "editTitleLabel": "Edit session title",
+    "openHint": "Double-click to open (or press Enter)",
+    "subagentCountTitle": "Total running subagents (including nested)",
+    "shellCountTitle": "Resident background shells",
+    "closeRow": "Close {{name}}",
+    "closeRowConfirm": "Close {{name}} (confirm)",
+    "cancelClose": "Cancel close",
+    "cannotRename": "claude is not running, so renaming is unavailable",
+    "reposConf": {
+      "notConfigured": "No repositories configured.",
+      "create": "Create <code>~/.zashiki/repos.conf</code> (one path per line):",
+      "exampleComment": "# Each line = a target path. Append #RRGGBB to color the org (white if omitted)",
+      "afterCreate": "After creating it, the new org appears in the list right away.",
+      "seeHelp": "For details, see \"Help\" in NAVIGATION (Ctrl+Alt+H)."
+    }
+  },
+  "tabBar": {
+    "ariaLabel": "Open tabs",
+    "editTitleLabel": "Edit tab title",
+    "closeTab": "Close the {{label}} tab",
+    "closeTabTitle": "Close tab (the session keeps running)"
+  },
+  "notification": {
+    "unread": "Unread",
+    "read": "Read",
+    "emptyUnread": "No unread notifications",
+    "emptyRead": "No read notifications",
+    "markReadHint": "Double-click to mark as read",
+    "dismiss": "Dismiss notification",
+    "waiting": "⏳ Awaiting response",
+    "done": "✅ Done"
+  },
+  "search": {
+    "ariaLabel": "Search",
+    "matchCase": "Match case",
+    "wholeWord": "Match whole word",
+    "regex": "Use regular expression",
+    "noResults": "No results",
+    "summary": "{{matches}} matches ({{files}} files)",
+    "andMore": " or more"
+  },
+  "git": {
+    "stageAll": "Stage all (git add .)",
+    "unstageAll": "Unstage all (git reset .)",
+    "noChanges": "No changes"
+  },
+  "editor": {
+    "viewerLabel": "Viewer {{path}}",
+    "copyPathLabel": "Copy path",
+    "code": "Code",
+    "preview": "Preview",
+    "openFailed": "Could not open: {{error}}",
+    "readTimeout": "Reading timed out"
+  },
+  "explorer": {
+    "truncated": "Showing partial results (too many entries)"
+  },
+  "help": {
+    "search": "Search help",
+    "noResults": "No matching help",
+    "category": {
+      "config": "Configuration",
+      "general": "General",
+      "subpanel": "Sub-panels",
+      "mainpanel": "Main panel",
+      "other": "Other"
+    }
+  },
+  "footer": {
+    "panelSwitch": "Switch panel",
+    "unreadBadge": "{{label}} ({{count}} unread)",
+    "shortcutTitle": "{{label}} (Ctrl+Alt+{{key}})"
+  },
+  "panel": {
+    "explorer": "Explorer",
+    "search": "Search",
+    "git": "Source Control",
+    "notification": "Notifications",
+    "help": "Help",
+    "settings": "Settings"
+  },
+  "settings": {
+    "language": "Display language",
+    "languageOption": {
+      "ja": "日本語",
+      "en": "English"
+    },
+    "save": "Save",
+    "fontSize": "Terminal font size",
+    "fontSizeDecrease": "Decrease font size",
+    "fontSizeIncrease": "Increase font size",
+    "fontSizeReset": "Reset",
+    "orgSection": "Organizations",
+    "addOrg": "Add org"
+  },
+  "addOrg": {
+    "title": "Add org",
+    "pathLabel": "Directory path",
+    "pathPlaceholder": "/Users/you/workspace/your-org",
+    "hint": "Enter the absolute path of a directory. Its final name becomes the org.",
+    "submit": "Add",
+    "cancel": "Cancel",
+    "adding": "Adding…",
+    "added": "Added {{org}}",
+    "valid": "Ready to add: {{org}}",
+    "currentTitle": "Registered orgs",
+    "currentEmpty": "No orgs are registered yet.",
+    "colOrg": "Org",
+    "colPath": "Path",
+    "errorGeneric": "Could not add the org.",
+    "error": {
+      "no_conf": "repos.conf is not configured.",
+      "invalid_body": "The request was invalid.",
+      "path_empty": "Enter a directory path.",
+      "color_invalid": "Color must be a #rgb or #rrggbb token.",
+      "path_unresolved": "The path could not be resolved.",
+      "not_a_directory": "That path is not an existing directory.",
+      "no_dir_name": "The path has no final directory name.",
+      "duplicate": "This path is already registered.",
+      "io": "Could not write repos.conf."
+    }
+  },
+  "limit": {
+    "title": "{{count}} sessions have reached the Claude Code usage limit",
+    "text": "{{count}} sessions at limit"
+  },
+  "debug": {
+    "panelLabel": "Debug info",
+    "close": "Close debug",
+    "reconnectAttempt": "reconnect attempt",
+    "lastCloseCode": "last close code",
+    "stateSync": "state.sync (windows / poller)",
+    "noSessions": "No sessions",
+    "eventLog": "Event log (notify / git.dirty / reconnect)",
+    "eventLogNote": "UserPromptSubmit hooks are not delivered to the client. notify with unresolved windows and git.dirty without info are also dropped (observable only on the server).",
+    "noEventsYet": "No events yet",
+    "protocolTail": "control protocol tail",
+    "noProtocolYet": "No messages yet"
+  }
+}
