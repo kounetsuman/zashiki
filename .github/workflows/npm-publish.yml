@@ -1,0 +1,93 @@
+name: npm publish
+
+# Publish the npm packages (zashiki + @zashiki/server-darwin-{arm64,x64}) on a vX.Y.Z tag push.
+# The repo version stays pinned to the 0.0.0 placeholder (guards against accidental publish); the real
+# version is injected from the tag inside CI only (same approach as release.yml's dmg distribution).
+# The prepublishOnly guard refuses 0.0.0, so a pre-injection or local publish fails fast.
+#
+# One-time manual setup:
+#   - Register an npm Automation token as secrets.NPM_TOKEN (needs publish rights to the @zashiki scope).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (vX.Y.Z). Use to re-run against an existing tag."
+        required: true
+        type: string
+
+# Least privilege: publishing authenticates via secrets.NPM_TOKEN, so GITHUB_TOKEN only needs
+# read access for checkout.
+permissions:
+  contents: read
+
+jobs:
+  npm-publish:
+    # Building the darwin binaries and verify:npm-pack (real server startup check) need a macOS runner.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve and validate tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::invalid tag format: $TAG (expected vX.Y.Z)"
+            exit 1
+          fi
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/zashiki-server
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Inject the same version into all three packages. The cli's optionalDependencies use workspace:*,
+      # so pnpm publish rewrites them to the workspace version resolved at that point (= this version).
+      - name: Inject version from tag
+        run: |
+          for pkg in packages/cli packages/server-darwin-arm64 packages/server-darwin-x64; do
+            jq --arg v "${{ steps.tag.outputs.version }}" '.version = $v' "$pkg/package.json" > "$pkg/package.json.tmp"
+            mv "$pkg/package.json.tmp" "$pkg/package.json"
+          done
+
+      # Bundle the client dist, place the arm64 binary, extract the tarball, and gate on real CLI startup connectivity.
+      - name: Verify npm pack (arm64 connectivity)
+        run: pnpm verify:npm-pack
+
+      - name: Build x64 server binary (cross)
+        run: node scripts/build-npm-server-binary.mjs darwin-x64
+
+      # Resolution order: publish the platform packages first, then the cli, so a consumer installing
+      # zashiki can fetch the optionalDependency.
+      - name: Publish @zashiki/server-darwin-arm64
+        run: pnpm --filter @zashiki/server-darwin-arm64 publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish @zashiki/server-darwin-x64
+        run: pnpm --filter @zashiki/server-darwin-x64 publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish zashiki (cli)
+        run: pnpm --filter zashiki publish --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

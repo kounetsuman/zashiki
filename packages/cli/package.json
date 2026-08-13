@@ -31,6 +31,6 @@
     "build": "node scripts/copy-client-dist.mjs",
     "prepack": "node scripts/copy-client-dist.mjs",
     "test": "vitest run",
-    "prepublishOnly": "node -e \"console.error('publish は後続 issue（release CI 整備）で解禁する。#338 のスコープ外。'); process.exit(1)\""
+    "prepublishOnly": "node -e \"if(require('./package.json').version==='0.0.0'){console.error('refuse to publish placeholder version 0.0.0 — publish is driven by the vX.Y.Z tag (release CI injects the real version).');process.exit(1)}\""
   }
 }
