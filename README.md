@@ -4,9 +4,11 @@
 
 zashiki is an AI cockpit that orchestrates Claude Code on one screen, with best-in-class UI/UX.
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
-![GitHub stars](https://img.shields.io/github/stars/kounetsuman/zashiki?style=social)
+[![CI](https://github.com/kounetsuman/zashiki/actions/workflows/ci.yml/badge.svg)](https://github.com/kounetsuman/zashiki/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa)](https://github.com/sponsors/kounetsuman)
+[![GitHub stars](https://img.shields.io/github/stars/kounetsuman/zashiki?style=social)](https://github.com/kounetsuman/zashiki/stargazers)
 
 ![zashiki demo](assets/demo.gif)
 
@@ -123,6 +125,10 @@ Bug reports, feature proposals, and Pull Requests are welcome.
 - Code of conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - Security reports: [SECURITY.md](SECURITY.md)
 - Third-party license notices: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+
+## Sponsor
+
+If zashiki is useful to you, please consider [sponsoring on GitHub Sponsors](https://github.com/sponsors/kounetsuman) ❤ — it directly funds maintenance and new features.
 
 ## License
 

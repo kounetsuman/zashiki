@@ -4,9 +4,11 @@
 
 zashiki は Claude Code のオーケストレーションを、最高の UI/UX と共に 1 画面で捌く AI コックピット。
 
-![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
-![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
-![GitHub stars](https://img.shields.io/github/stars/kounetsuman/zashiki?style=social)
+[![CI](https://github.com/kounetsuman/zashiki/actions/workflows/ci.yml/badge.svg)](https://github.com/kounetsuman/zashiki/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Platform: macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ea4aaa)](https://github.com/sponsors/kounetsuman)
+[![GitHub stars](https://img.shields.io/github/stars/kounetsuman/zashiki?style=social)](https://github.com/kounetsuman/zashiki/stargazers)
 
 ![zashiki のデモ](assets/demo.gif)
 
@@ -123,6 +125,10 @@ pnpm uninstall:app -- --yes --purge-user-data # 上記 + ~/.zashiki（repos.conf
 - 行動規範: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 - セキュリティ報告: [SECURITY.md](SECURITY.md)
 - サードパーティライセンス表記: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+
+## スポンサー
+
+zashiki が役に立ったら、[GitHub Sponsors での支援](https://github.com/sponsors/kounetsuman) ❤ をご検討ください。メンテナンスと新機能開発の資金になります。
 
 ## ライセンス
 
