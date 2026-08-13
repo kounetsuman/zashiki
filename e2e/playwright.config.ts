@@ -24,6 +24,9 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",
+    // The UI locale is auto-detected from the browser language (ja* -> ja, otherwise en).
+    // Pin it so the asserted strings match regardless of the host environment.
+    locale: "en-US",
   },
   projects: [
     {

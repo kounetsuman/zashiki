@@ -20,7 +20,7 @@ const org = E2E_MUTABLE_ORG;
 async function closeAllRows(
   page: import("@playwright/test").Page,
 ): Promise<void> {
-  const closeButtons = page.getByRole("button", { name: `${org} を閉じる` });
+  const closeButtons = page.getByRole("button", { name: `Close ${org}` });
   for (
     let n = await closeButtons.count();
     n > 0;
@@ -45,14 +45,14 @@ test.describe("Creating a new session from the SESSION LIST", () => {
       page.getByRole("button", { name: new RegExp(`${org} \\(0\\)`) }),
     ).toBeVisible();
 
-    await page.getByRole("button", { name: `${org} に新規セッション` }).click();
+    await page.getByRole("button", { name: `New session in ${org}` }).click();
 
     // The heading count becomes (1) and one session row for the org appears.
     await expect(
       page.getByRole("button", { name: new RegExp(`${org} \\(1\\)`) }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: `${org} を閉じる` }),
+      page.getByRole("button", { name: `Close ${org}` }),
     ).toHaveCount(1);
   });
 
@@ -66,13 +66,13 @@ test.describe("Creating a new session from the SESSION LIST", () => {
     await expect(header).toBeVisible();
 
     await header.click({ button: "right" });
-    await page.getByRole("menuitem", { name: "新規セッション" }).click();
+    await page.getByRole("menuitem", { name: "New session" }).click();
 
     await expect(
       page.getByRole("button", { name: new RegExp(`${org} \\(1\\)`) }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: `${org} を閉じる` }),
+      page.getByRole("button", { name: `Close ${org}` }),
     ).toHaveCount(1);
   });
 
@@ -89,7 +89,7 @@ test.describe("Creating a new session from the SESSION LIST", () => {
       page.getByRole("button", { name: new RegExp(`${org} \\(0\\)`) }),
     ).toBeVisible();
 
-    await page.getByRole("button", { name: `${org} に新規セッション` }).click();
+    await page.getByRole("button", { name: `New session in ${org}` }).click();
     await expect(
       page.getByRole("button", { name: new RegExp(`${org} \\(1\\)`) }),
     ).toBeVisible();
@@ -107,7 +107,7 @@ test.describe("Creating a new session from the SESSION LIST", () => {
     await expect(terminal).toContainText(marker, { timeout: 10_000 });
 
     // Under owned, if term.select hits tmux, an internal error shows in a dialog. Assert it does not.
-    await expect(page.getByRole("alertdialog", { name: "エラー" })).toHaveCount(
+    await expect(page.getByRole("alertdialog", { name: "Error" })).toHaveCount(
       0,
     );
   });

@@ -12,7 +12,7 @@ export function appUrl(token: string = E2E_TOKEN): string {
  */
 export async function gotoApp(page: Page): Promise<void> {
   await page.goto(appUrl());
-  await expect(page.getByText("セッションがありません")).toBeVisible();
+  await expect(page.getByText("No sessions")).toBeVisible();
 }
 
 export { expect, test };

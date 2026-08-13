@@ -10,15 +10,15 @@ import { expect, gotoApp, test } from "../harness/app.js";
 // The default selection (explorer) is covered by the "initial display" test, so the
 // switching loop only iterates over the non-default panels.
 const SWITCHABLE_PANELS = [
-  { label: "検索", panel: "search" },
-  { label: "ソース管理", panel: "git" },
-  { label: "通知", panel: "notification" },
-  { label: "ヘルプ", panel: "help" },
+  { label: "Search", panel: "search" },
+  { label: "Source Control", panel: "git" },
+  { label: "Notifications", panel: "notification" },
+  { label: "Help", panel: "help" },
 ] as const;
 
 function panelTab(page: Page, label: string) {
   return page
-    .getByRole("radiogroup", { name: "パネル切替" })
+    .getByRole("radiogroup", { name: "Switch panel" })
     .getByRole("radio", { name: label });
 }
 
@@ -28,7 +28,7 @@ test.describe("Footer panel switching", () => {
     page,
   }) => {
     await gotoApp(page);
-    await expect(panelTab(page, "エクスプローラー")).toHaveAttribute(
+    await expect(panelTab(page, "Explorer")).toHaveAttribute(
       "aria-checked",
       "true",
     );
@@ -54,8 +54,8 @@ test.describe("Footer panel switching", () => {
   test("re-clicking the currently shown panel closes it", async ({ page }) => {
     await gotoApp(page);
     await expect(page.locator('[data-panel="explorer"]')).toBeVisible();
-    await panelTab(page, "エクスプローラー").click();
-    await expect(panelTab(page, "エクスプローラー")).toHaveAttribute(
+    await panelTab(page, "Explorer").click();
+    await expect(panelTab(page, "Explorer")).toHaveAttribute(
       "aria-checked",
       "false",
     );
