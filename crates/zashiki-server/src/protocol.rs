@@ -117,6 +117,24 @@ pub struct HookEventResponse {
     pub matched: bool,
 }
 
+/// Request for `POST /api/focus` (TS `focusRequestSchema`). Resolved like a hook event (sid then cwd).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct FocusRequest {
+    #[serde(default)]
+    pub sid: Option<String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+}
+
+/// Response for `POST /api/focus` (TS `focusResponseSchema`). `window_id` is present only when resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FocusResponse {
+    pub resolved: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_id: Option<String>,
+}
+
 /// In-app notification level (TS `notificationLevelSchema` in `notifications.ts`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -172,6 +190,9 @@ pub enum ServerMessage {
         window_id: String,
         title: String,
     },
+    /// Selects a window without a notification (TS `selectSchema`). Broadcast on POST /api/focus.
+    #[serde(rename = "select", rename_all = "camelCase")]
+    Select { window_id: String },
     #[serde(rename = "error")]
     Error { code: String, message: String },
     /// Distribution of live-applied settings (to all control connections right after connecting and
@@ -338,6 +359,12 @@ mod tests {
                 },
             ),
             (
+                r#"{"t":"select","windowId":"@1"}"#,
+                ServerMessage::Select {
+                    window_id: "@1".into(),
+                },
+            ),
+            (
                 r#"{"t":"error","code":"unknown_org","message":"no"}"#,
                 ServerMessage::Error {
                     code: "unknown_org".into(),
@@ -348,6 +375,39 @@ mod tests {
             assert_eq!(to_json(&msg), json);
             assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
         }
+    }
+
+    #[test]
+    fn focus_response_omits_window_id_when_unresolved() {
+        assert_eq!(
+            to_json(&FocusResponse {
+                resolved: true,
+                window_id: Some("@1".into()),
+            }),
+            r#"{"resolved":true,"windowId":"@1"}"#
+        );
+        assert_eq!(
+            to_json(&FocusResponse {
+                resolved: false,
+                window_id: None,
+            }),
+            r#"{"resolved":false}"#
+        );
+    }
+
+    #[test]
+    fn focus_request_defaults_absent_fields_to_none() {
+        assert_eq!(
+            serde_json::from_str::<FocusRequest>(r#"{"sid":"abc"}"#).unwrap(),
+            FocusRequest {
+                sid: Some("abc".into()),
+                cwd: None,
+            }
+        );
+        assert_eq!(
+            serde_json::from_str::<FocusRequest>(r#"{}"#).unwrap(),
+            FocusRequest { sid: None, cwd: None }
+        );
     }
 
     #[test]

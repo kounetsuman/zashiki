@@ -240,6 +240,16 @@ export const notifySchema = z.object({
   title: z.string(),
 });
 
+/**
+ * Selects (brings to the front) a window without showing a notification. Unlike
+ * `notify`, this drives selection directly — it is broadcast when an external caller
+ * (e.g. a clicked desktop notification, via POST /api/focus) asks to focus a session.
+ */
+export const selectSchema = z.object({
+  t: z.literal("select"),
+  windowId: windowIdSchema,
+});
+
 export const errorMessageSchema = z.object({
   t: z.literal("error"),
   code: z.string(),
@@ -276,12 +286,14 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   termReconnectSchema,
   gitDirtySchema,
   notifySchema,
+  selectSchema,
   errorMessageSchema,
   configSyncSchema,
   notificationsSyncSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+export type SelectMessage = z.infer<typeof selectSchema>;
 export type ErrorMessage = z.infer<typeof errorMessageSchema>;
 export type StateSyncMessage = z.infer<typeof stateSyncSchema>;
 export type NotifyMessage = z.infer<typeof notifySchema>;
@@ -320,6 +332,31 @@ export const hookEventResponseSchema = z.object({
 });
 
 export type HookEventResponse = z.infer<typeof hookEventResponseSchema>;
+
+// ---- notification click → server（POST /api/focus）----
+
+/**
+ * Request a session be brought to the front, resolving the window the same way hook
+ * events do (sid first, cwd as fallback). Sent when a native desktop notification is
+ * clicked, so the originating session can be selected in an already-open app.
+ */
+export const focusRequestSchema = z.object({
+  /** Claude Code's session_id (sid; the primary key for window resolution). */
+  sid: z.string().max(256).optional(),
+  /** The cwd of the session (fallback key when resolution by sid fails). */
+  cwd: z.string().max(4096).optional(),
+});
+
+export type FocusRequest = z.infer<typeof focusRequestSchema>;
+
+export const focusResponseSchema = z.object({
+  /** Whether the request mapped to a live window (a `select` was broadcast only then). */
+  resolved: z.boolean(),
+  /** The resolved window id (absent when unresolved); lets the caller decide how to raise the app. */
+  windowId: windowIdSchema.optional(),
+});
+
+export type FocusResponse = z.infer<typeof focusResponseSchema>;
 
 // ---- REST（save / restore）----
 

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   clientMessageSchema,
+  focusRequestSchema,
+  focusResponseSchema,
   resumeCommand,
   serverMessageSchema,
   sessionInfoSchema,
@@ -185,6 +187,8 @@ describe("serverMessageSchema", () => {
     [{ t: "git.dirty" }],
     [{ t: "notify", kind: "waiting", windowId: "@1", title: "x" }],
     [{ t: "notify", kind: "done", windowId: "@2", title: "" }],
+    [{ t: "select", windowId: "@3" }],
+    [{ t: "select", windowId: "0954e103-14ff-4406-bc6c-325449ef07ba" }],
     [{ t: "error", code: "work_not_found", message: "work session not found" }],
     [{ t: "config.sync", notifySound: true, debug: false, language: "ja" }],
     [{ t: "config.sync", notifySound: false, debug: true, language: null }],
@@ -209,12 +213,40 @@ describe("serverMessageSchema", () => {
 
   it.each([
     [{ t: "notify", kind: "other", windowId: "@1", title: "x" }],
+    [{ t: "select" }], // windowId missing
+    [{ t: "select", windowId: "work:1" }], // invalid windowId format
     [{ t: "term.open", termId: "abc", cols: 80, rows: 24 }], // client→server message
     [{ t: "error", code: "x" }], // message missing
     [{ t: "config.sync", notifySound: true }], // debug missing
     [{ t: "config.sync", notifySound: "yes", debug: false }], // wrong type
   ])("rejects: %j", (msg) => {
     expect(serverMessageSchema.safeParse(msg).success).toBe(false);
+  });
+});
+
+describe("focus request/response (POST /api/focus)", () => {
+  it("accepts a focus request with sid and/or cwd, and an empty one", () => {
+    expect(focusRequestSchema.safeParse({ sid: "abc" }).success).toBe(true);
+    expect(focusRequestSchema.safeParse({ cwd: "/repos/a" }).success).toBe(
+      true,
+    );
+    expect(focusRequestSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("accepts a resolved response carrying the windowId and an unresolved one", () => {
+    expect(
+      focusResponseSchema.parse({ resolved: true, windowId: "@1" }),
+    ).toEqual({ resolved: true, windowId: "@1" });
+    expect(focusResponseSchema.parse({ resolved: false })).toEqual({
+      resolved: false,
+    });
+  });
+
+  it("rejects a response with a malformed windowId", () => {
+    expect(
+      focusResponseSchema.safeParse({ resolved: true, windowId: "work:1" })
+        .success,
+    ).toBe(false);
   });
 });
 
