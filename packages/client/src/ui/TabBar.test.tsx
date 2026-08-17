@@ -523,7 +523,7 @@ describe("TabBar", () => {
     );
     fireEvent.contextMenu(screen.getByRole("tab"));
     const item = screen.getByRole("menuitem", {
-      name: "Copy session (resume)",
+      name: "セッションをコピー（resume）",
     });
     expect((item as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(item);
@@ -545,7 +545,7 @@ describe("TabBar", () => {
     );
     fireEvent.contextMenu(screen.getByRole("tab"));
     const item = screen.getByRole("menuitem", {
-      name: "Copy session (resume)",
+      name: "セッションをコピー（resume）",
     });
     expect((item as HTMLButtonElement).disabled).toBe(true);
   });
@@ -590,7 +590,7 @@ describe("TabBar", () => {
       screen.getByText("二番目").closest(".tab") as Element,
     );
     fireEvent.click(
-      screen.getByRole("menuitem", { name: "Copy session (resume)" }),
+      screen.getByRole("menuitem", { name: "セッションをコピー（resume）" }),
     );
     expect(onCopyResume).toHaveBeenCalledWith("@2");
   });
