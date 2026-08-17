@@ -17,7 +17,7 @@ const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
 export interface EditorPanelProps {
   buffer: EditorBuffer;
   onTogglePreview(): void;
-  /** The ⧉ at the header's left edge copies the file's absolute path. */
+  /** The copy button at the header's left edge copies the file's absolute path. */
   onCopyPath(): void;
   inactive?: boolean;
 }
@@ -121,7 +121,9 @@ export function EditorPanel({
           title={t("common.copyAbsPath")}
           onClick={onCopyPath}
         >
-          ⧉
+          <span className="material-symbols-outlined" aria-hidden="true">
+            content_copy
+          </span>
         </button>
         <span className="editor-path" title={buffer.relPath}>
           {buffer.relPath}

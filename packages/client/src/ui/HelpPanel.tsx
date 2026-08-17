@@ -89,7 +89,12 @@ export function HelpPanel({
                           aria-controls={bodyId}
                           onClick={() => toggle(t.id)}
                         >
-                          <span className="help-arrow">{open ? "▼" : "▶"}</span>{" "}
+                          <span
+                            className="help-arrow material-symbols-outlined"
+                            aria-hidden="true"
+                          >
+                            {open ? "expand_more" : "chevron_right"}
+                          </span>{" "}
                           <span className="help-topic-title">{t.title}</span>
                         </button>
                         {open && (

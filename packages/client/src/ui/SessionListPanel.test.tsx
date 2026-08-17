@@ -71,15 +71,15 @@ function renderPanel(
 afterEach(cleanup);
 
 describe("SessionListPanel: org collapsible group display", () => {
-  it("groups by org under a ▼ org (count) header", () => {
+  it("groups by org under an org (count) header", () => {
     renderPanel();
-    expect(screen.getByText("▼ kilo (2)")).toBeTruthy();
-    expect(screen.getByText("▼ charlie (1)")).toBeTruthy();
+    expect(screen.getByText("kilo (2)")).toBeTruthy();
+    expect(screen.getByText("charlie (1)")).toBeTruthy();
   });
 
   it("always shows an org with 0 sessions as (0) too (all orgs from repos.conf)", () => {
     renderPanel();
-    expect(screen.getByText("▼ delta (0)")).toBeTruthy();
+    expect(screen.getByText("delta (0)")).toBeTruthy();
   });
 
   it("shows sessions from an org not in orgs as a detected group", () => {
@@ -88,16 +88,19 @@ describe("SessionListPanel: org collapsible group display", () => {
         { ...sessions[0], org: "scratch", windowId: "@9" } as SessionInfo,
       ],
     });
-    expect(screen.getByText("▼ scratch (1)")).toBeTruthy();
+    expect(screen.getByText("scratch (1)")).toBeTruthy();
   });
 
-  it("collapses (▶) on clicking the org header, hiding the session rows", () => {
+  it("collapses on clicking the org header, hiding the session rows", () => {
     renderPanel();
-    fireEvent.click(screen.getByText("▼ kilo (2)"));
-    expect(screen.getByText("▶ kilo (2)")).toBeTruthy();
+    const header = () => screen.getByRole("button", { name: "kilo (2)" });
+    expect(header().getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByText("kilo (2)"));
+    expect(header().getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("issue #5 を実装して")).toBeNull();
     // Clicking again returns to expanded
-    fireEvent.click(screen.getByText("▶ kilo (2)"));
+    fireEvent.click(screen.getByText("kilo (2)"));
+    expect(header().getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
   });
 });
@@ -105,14 +108,14 @@ describe("SessionListPanel: org collapsible group display", () => {
 describe("SessionListPanel: org header color", () => {
   it("colors the org header via auto-coloring even without orgColors", () => {
     renderPanel();
-    const header = screen.getByText("▼ kilo (2)") as HTMLElement;
+    const header = screen.getByRole("button", { name: "kilo (2)" });
     expect(header.style.color).not.toBe("");
   });
 
   it("prefers an explicit repos.conf color over auto-coloring", () => {
     renderPanel({ orgColors: { charlie: "#98c379" } });
-    const charlie = screen.getByText("▼ charlie (1)") as HTMLElement;
-    const kilo = screen.getByText("▼ kilo (2)") as HTMLElement;
+    const charlie = screen.getByRole("button", { name: "charlie (1)" });
+    const kilo = screen.getByRole("button", { name: "kilo (2)" });
     expect(charlie.style.color).toBe("rgb(152, 195, 121)");
     // An org with no explicit color is always colored via auto-coloring too
     expect(kilo.style.color).not.toBe("");
@@ -138,7 +141,7 @@ describe("SessionListPanel: repos.conf not-configured guidance", () => {
   it("does not show the guidance when a detected session's org exists even if orgs is empty", () => {
     renderPanel({ sessions: [sessions[0] as SessionInfo], orgs: [] });
     expect(screen.queryByText("~/.zashiki/repos.conf")).toBeNull();
-    expect(screen.getByText("▼ kilo (1)")).toBeTruthy();
+    expect(screen.getByText("kilo (1)")).toBeTruthy();
   });
 
   it("does not show the guidance even with 0 orgs when control is disconnected (avoids confusion with a connection issue)", () => {
@@ -527,13 +530,13 @@ describe("SessionListPanel: right-click menu", () => {
 
   it("clicking the + on the org header does not propagate to the collapse toggle (does not change the collapse state)", () => {
     renderPanel();
-    // Precondition: kilo is expanded (▼) and its session rows are visible
+    // Precondition: kilo is expanded and its session rows are visible
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "kilo に新規セッション" }),
     );
     // Stays expanded after pressing + (not accidentally collapsed)
-    expect(screen.getByText("▼ kilo (2)")).toBeTruthy();
+    expect(screen.getByText("kilo (2)")).toBeTruthy();
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
   });
 
@@ -578,7 +581,7 @@ describe("SessionListPanel: right-click menu", () => {
 
   it("right-clicking the org header and choosing 'New session' calls onNew(org)", () => {
     const props = renderPanel();
-    fireEvent.contextMenu(screen.getByText("▼ charlie (1)"));
+    fireEvent.contextMenu(screen.getByText("charlie (1)"));
     fireEvent.click(screen.getByRole("menuitem", { name: "新規セッション" }));
     expect(props.onNew).toHaveBeenCalledWith("charlie");
   });
@@ -618,14 +621,14 @@ describe("SessionListPanel: right-click menu", () => {
 
   it("closes the menu after choosing a menu item", () => {
     renderPanel();
-    fireEvent.contextMenu(screen.getByText("▼ charlie (1)"));
+    fireEvent.contextMenu(screen.getByText("charlie (1)"));
     fireEvent.click(screen.getByRole("menuitem", { name: "新規セッション" }));
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
   it("closes the menu on a background click", () => {
     renderPanel();
-    fireEvent.contextMenu(screen.getByText("▼ charlie (1)"));
+    fireEvent.contextMenu(screen.getByText("charlie (1)"));
     expect(
       screen.getByRole("menuitem", { name: "新規セッション" }),
     ).toBeTruthy();
@@ -724,10 +727,10 @@ describe("SessionListPanel: operations", () => {
     fireEvent.click(btn);
     expect(props.onRefresh).toHaveBeenCalled();
     expect(btn.getAttribute("aria-busy")).toBeNull();
-    expect(btn.textContent).toBe("↻");
+    expect(btn.textContent).toBe("refresh");
   });
 
-  it("shows a spinner (aria-busy) while fetching and ↻ on resolution when onRefresh returns a Promise", async () => {
+  it("shows a spinner (aria-busy) while fetching and the refresh icon on resolution when onRefresh returns a Promise", async () => {
     let resolve: (() => void) | undefined;
     const onRefresh = () =>
       new Promise<void>((r) => {
@@ -742,10 +745,10 @@ describe("SessionListPanel: operations", () => {
       resolve?.();
     });
     expect(btn.getAttribute("aria-busy")).toBeNull();
-    expect(btn.textContent).toBe("↻");
+    expect(btn.textContent).toBe("refresh");
   });
 
-  it("shows ⚠ in the header with the error in title when onRefresh rejects", async () => {
+  it("shows the warning icon in the header with the error in title when onRefresh rejects", async () => {
     let reject: ((e: unknown) => void) | undefined;
     const onRefresh = () =>
       new Promise<void>((_resolve, r) => {
@@ -757,7 +760,7 @@ describe("SessionListPanel: operations", () => {
     await act(async () => {
       reject?.(new Error("未接続です"));
     });
-    expect(btn.textContent).toContain("⚠");
+    expect(btn.textContent).toContain("warning");
     expect(btn.getAttribute("title")).toContain("未接続です");
   });
 
@@ -808,27 +811,26 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
     screen.getByRole("button", {
       name: new RegExp(`${name}(?! を閉じる)`),
     }) as HTMLElement;
-  const orgHeader = (label: string) => screen.getByText(label) as HTMLElement;
+  const orgHeader = (label: string) =>
+    screen.getByRole("button", { name: label }) as HTMLElement;
 
   it("the first ↓ move puts the focus ring on the first org header (does not switch the terminal)", () => {
     const props = renderPanel();
     fireEvent.keyDown(panel(), { key: "ArrowDown" });
-    expect(orgHeader("▼ kilo (2)").className).toContain("session-org-focused");
+    expect(orgHeader("kilo (2)").className).toContain("session-org-focused");
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it("↓ moves flatly and continuously across org headers and their rows (org→@1→@2→org(charlie)→@3)", () => {
     renderPanel();
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
-    expect(orgHeader("▼ kilo (2)").className).toContain("session-org-focused");
+    expect(orgHeader("kilo (2)").className).toContain("session-org-focused");
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1
     expect(rowFor("zashiki").className).toContain("session-row-focused");
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @2
     expect(rowFor("tango").className).toContain("session-row-focused");
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org charlie
-    expect(orgHeader("▼ charlie (1)").className).toContain(
-      "session-org-focused",
-    );
+    expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @3
     expect(rowFor("charlie-app").className).toContain("session-row-focused");
   });
@@ -847,14 +849,14 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
     fireEvent.keyDown(panel(), { key: "Enter" }); // collapse
-    expect(screen.getByText("▶ kilo (2)")).toBeTruthy();
+    expect(orgHeader("kilo (2)").getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("issue #5 を実装して")).toBeNull();
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it("expands a collapsed org header on Enter while it is focused", () => {
     renderPanel();
-    fireEvent.click(screen.getByText("▼ kilo (2)")); // collapse (clicking also moves focused to the org)
+    fireEvent.click(screen.getByText("kilo (2)")); // collapse (clicking also moves focused to the org)
     expect(screen.queryByText("issue #5 を実装して")).toBeNull();
     fireEvent.keyDown(panel(), { key: "Enter" }); // expand the already-focused org
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
@@ -862,10 +864,8 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
 
   it("puts the focus ring (session-org-focused) on clicking the org header", () => {
     renderPanel();
-    fireEvent.click(screen.getByText("▼ charlie (1)")); // collapse (▶) + focus ring
-    expect(orgHeader("▶ charlie (1)").className).toContain(
-      "session-org-focused",
-    );
+    fireEvent.click(screen.getByText("charlie (1)")); // collapse + focus ring
+    expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
   });
 
   it("does not toggle on the aside side for an Enter arriving directly on the org header button (delegated to the native click to prevent a double toggle)", () => {
@@ -873,50 +873,44 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // focused=org kilo (expanded)
     // Simulate the real DOM focus being on the org button, and send Enter with the button as target.
     // If the aside handles it, it opens together with the native click and immediately closes, so the aside skips it.
-    fireEvent.keyDown(orgHeader("▼ kilo (2)"), { key: "Enter" });
-    // The aside doesn't perform the collapse (delegated to the native button click path) = stays ▼.
-    expect(screen.getByText("▼ kilo (2)")).toBeTruthy();
+    fireEvent.keyDown(orgHeader("kilo (2)"), { key: "Enter" });
+    // The aside doesn't perform the collapse (delegated to the native button click path) = stays expanded.
+    expect(orgHeader("kilo (2)").getAttribute("aria-expanded")).toBe("true");
   });
 
   it("adds aria-expanded (expansion state) to the org header", () => {
     renderPanel();
-    expect(orgHeader("▼ kilo (2)").getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(screen.getByText("▼ kilo (2)"));
-    expect(orgHeader("▶ kilo (2)").getAttribute("aria-expanded")).toBe("false");
+    expect(orgHeader("kilo (2)").getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(screen.getByText("kilo (2)"));
+    expect(orgHeader("kilo (2)").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("anchors ↑↓ at the selected row when no focus is set (moves to the row after the selected one)", () => {
     renderPanel({ selectedWindowId: SID2 });
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // next after @2 = org charlie
-    expect(orgHeader("▼ charlie (1)").className).toContain(
-      "session-org-focused",
-    );
+    expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
   });
 
   it("anchors ↑↓ at the org header when the selected row is inside a collapsed org with no focus (does not jump to the list edge)", () => {
     renderPanel({ selectedWindowId: SID2 });
-    fireEvent.click(screen.getByText("▼ kilo (2)")); // collapse @2's org (focused=org kilo)
+    fireEvent.click(screen.getByText("kilo (2)")); // collapse @2's org (focused=org kilo)
     fireEvent.doubleClick(rowFor("charlie-app")); // select(@3): reset focused=null (the selected prop stays @2)
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // anchor=org kilo -> next org charlie
-    expect(orgHeader("▼ charlie (1)").className).toContain(
-      "session-org-focused",
-    );
+    expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
   });
 
   it("↑ at the top stays at the top (the first org header); clamps at the edge", () => {
     renderPanel();
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
     fireEvent.keyDown(panel(), { key: "ArrowUp" }); // stays at the top
-    expect(orgHeader("▼ kilo (2)").className).toContain("session-org-focused");
+    expect(orgHeader("kilo (2)").className).toContain("session-org-focused");
   });
 
   it("excludes rows under a collapsed org from focus movement (the header remains)", () => {
     renderPanel();
-    fireEvent.click(screen.getByText("▼ kilo (2)")); // collapse @1/@2, focused=org kilo
+    fireEvent.click(screen.getByText("kilo (2)")); // collapse @1/@2, focused=org kilo
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // skip the child rows to the next org charlie
-    expect(orgHeader("▼ charlie (1)").className).toContain(
-      "session-org-focused",
-    );
+    expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @3
     expect(rowFor("charlie-app").className).toContain("session-row-focused");
   });
@@ -932,7 +926,7 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @2
-    fireEvent.click(screen.getByText("▼ kilo (2)")); // collapse -> @2 invisible, focused moves to the org
+    fireEvent.click(screen.getByText("kilo (2)")); // collapse -> @2 invisible, focused moves to the org
     fireEvent.keyDown(panel(), { key: "Enter" }); // expands the org, not selects @2
     expect(props.onSelect).not.toHaveBeenCalled();
   });
@@ -964,7 +958,7 @@ describe("SessionListPanel: empty state", () => {
     renderPanel({ sessions: [], orgs: ["kilo"] });
     expect(screen.queryByText("セッションがありません")).toBeNull();
     // Show org headers (the right-click entry point for new sessions) as before
-    expect(screen.getByText("▼ kilo (0)")).toBeTruthy();
+    expect(screen.getByText("kilo (0)")).toBeTruthy();
   });
 });
 

@@ -206,7 +206,9 @@ export function GitPanel({
             title={t("common.copyAbsPath")}
             onClick={() => copy(`${repo.path}/${file.path}`, rowKey)}
           >
-            ⧉
+            <span className="material-symbols-outlined" aria-hidden="true">
+              content_copy
+            </span>
           </button>
           {staged ? (
             <button
@@ -215,7 +217,9 @@ export function GitPanel({
               title="Unstage"
               onClick={() => run(api.unstage(repo.path, file.path))}
             >
-              −
+              <span className="material-symbols-outlined" aria-hidden="true">
+                remove
+              </span>
             </button>
           ) : (
             <button
@@ -224,7 +228,9 @@ export function GitPanel({
               title="Stage"
               onClick={() => run(api.stage(repo.path, file.path))}
             >
-              +
+              <span className="material-symbols-outlined" aria-hidden="true">
+                add
+              </span>
             </button>
           )}
           {copiedKey === rowKey && (
@@ -258,7 +264,10 @@ export function GitPanel({
           disabled={!canCommit}
           onClick={() => commit(repo)}
         >
-          ✓ Commit
+          <span className="material-symbols-outlined" aria-hidden="true">
+            check
+          </span>{" "}
+          Commit
         </button>
       </div>
     );
@@ -277,7 +286,12 @@ export function GitPanel({
             className="panel-row git-row git-repo-row"
             onClick={() => toggle(repo.path)}
           >
-            <span className="panel-arrow">{exp ? "▼" : "▶"}</span>{" "}
+            <span
+              className="panel-arrow material-symbols-outlined"
+              aria-hidden="true"
+            >
+              {exp ? "expand_more" : "chevron_right"}
+            </span>{" "}
             <span className="git-repo-name">{repo.repo}</span>{" "}
             <span className="git-branch">{repo.branch}</span>{" "}
             {repo.staged.length > 0 && (
@@ -294,7 +308,9 @@ export function GitPanel({
               title={t("git.stageAll")}
               onClick={() => run(api.stageAll(repo.path))}
             >
-              +
+              <span className="material-symbols-outlined" aria-hidden="true">
+                add
+              </span>
             </button>
             <button
               type="button"
@@ -302,7 +318,9 @@ export function GitPanel({
               title={t("git.unstageAll")}
               onClick={() => run(api.unstageAll(repo.path))}
             >
-              −
+              <span className="material-symbols-outlined" aria-hidden="true">
+                remove
+              </span>
             </button>
           </span>
         </div>
@@ -339,7 +357,12 @@ export function GitPanel({
           className="panel-row panel-row-hover git-row git-org-row"
           onClick={() => toggle(key)}
         >
-          <span className="panel-arrow">{exp ? "▼" : "▶"}</span>{" "}
+          <span
+            className="panel-arrow material-symbols-outlined"
+            aria-hidden="true"
+          >
+            {exp ? "expand_more" : "chevron_right"}
+          </span>{" "}
           <span
             className="git-org-name"
             style={{ color: resolveOrgColor(g.org, orgColors) }}
@@ -353,7 +376,7 @@ export function GitPanel({
     );
   };
 
-  // Prioritize the spinner while fetching; show ⚠ if an error remains after settling.
+  // Prioritize the spinner while fetching; show the warning icon if an error remains after settling.
   const refreshState: RefreshState = refreshing
     ? "loading"
     : error !== null

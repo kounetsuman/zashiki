@@ -11,8 +11,8 @@ export interface RefreshButtonProps {
 
 /**
  * Refresh button in the panel header (shared by SESSION LIST / SOURCE CONTROL).
- * Three states: normal `↻`, a spinner while fetching, and `⚠` on error with the
- * error content shown as a tooltip on hover.
+ * Three states: normal `refresh`, a spinner while fetching, and `warning` on error
+ * with the error content shown as a tooltip on hover.
  * The aria-label does not change with state (keeping the operation's identity stable);
  * the error content is carried in the title.
  */
@@ -35,11 +35,16 @@ export function RefreshButton({
       {state === "loading" ? (
         <span className="panel-refresh-spinner" aria-hidden="true" />
       ) : state === "error" ? (
-        <span className="panel-refresh-alert" aria-hidden="true">
-          ⚠
+        <span
+          className="panel-refresh-alert material-symbols-outlined"
+          aria-hidden="true"
+        >
+          warning
         </span>
       ) : (
-        "↻"
+        <span className="material-symbols-outlined" aria-hidden="true">
+          refresh
+        </span>
       )}
     </button>
   );
