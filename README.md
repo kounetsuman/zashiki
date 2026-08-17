@@ -16,7 +16,15 @@ zashiki is an AI cockpit that orchestrates Claude Code on one screen, with best-
 
 ## Quick Start
 
-Grab the macOS `Zashiki_*.dmg` from [Releases](https://github.com/kounetsuman/zashiki/releases), open it, and drag `Zashiki.app` into `/Applications`. Launch Zashiki and every Claude Code session shows up in one window.
+Homebrew (Apple Silicon):
+
+```sh
+brew install --cask kounetsuman/tap/zashiki
+```
+
+Or grab the macOS `Zashiki_*.dmg` from [Releases](https://github.com/kounetsuman/zashiki/releases), open it, and drag `Zashiki.app` into `/Applications`.
+
+Launch Zashiki and every Claude Code session shows up in one window.
 
 > **Unsigned**: on first launch, right-click → "Open" to get past Gatekeeper.
 

@@ -16,7 +16,15 @@ zashiki は Claude Code のオーケストレーションを、最高の UI/UX �
 
 ## Quick Start
 
-[Releases](https://github.com/kounetsuman/zashiki/releases) から macOS 向け `Zashiki_*.dmg` を入手し、開いて `Zashiki.app` を `/Applications` にドラッグします。Zashiki を起動すると、Claude Code の各セッションが 1 つのウィンドウに集約されます。
+Homebrew（Apple Silicon）:
+
+```sh
+brew install --cask kounetsuman/tap/zashiki
+```
+
+もしくは [Releases](https://github.com/kounetsuman/zashiki/releases) から macOS 向け `Zashiki_*.dmg` を入手し、開いて `Zashiki.app` を `/Applications` にドラッグします。
+
+Zashiki を起動すると、Claude Code の各セッションが 1 つのウィンドウに集約されます。
 
 > **未署名**: 初回起動は右クリック →「開く」で Gatekeeper を回避してください。
 
