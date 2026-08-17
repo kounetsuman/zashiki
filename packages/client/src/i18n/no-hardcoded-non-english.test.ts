@@ -4,13 +4,17 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
-// Mechanically guards against gaps in moving UI text into resources. Fails if Japanese is
-// hardcoded in strings/templates/JSX text under src (= it should be extracted to ja.json and
-// go through t()/Trans). Comments and JSDoc are out of scope since they do not appear as
-// string nodes in the AST (Japanese comments for developers are allowed).
-
-// Hiragana, katakana, CJK unified ideographs (including extension A), 々〆, half-width kana.
-const JAPANESE = /[぀-ヿ㐀-䶿一-鿿々〆ｦ-ﾟ]/;
+// Mechanically guards against gaps in moving UI text into resources. Fails if any non-English
+// letter is hardcoded in strings/templates/JSX text under src (= it should be extracted to a
+// locale resource and go through t()/Trans). Catches text left in a contributor's own language
+// (Japanese, Korean, Cyrillic, accented Latin, ...), not just Japanese. Comments and JSDoc are
+// out of scope since they do not appear as string nodes in the AST (non-English comments for
+// developers are allowed).
+//
+// Only letters (\p{L}) are matched, not symbols: Unicode icon glyphs (× ◍ ↻ ⚠ ▼ ▶ ⧉ − ✓ ✕ ●)
+// are still hardcoded as UI icons pending migration to Material Symbols (#9). Once that lands,
+// this can be tightened to also reject stray symbol glyphs in JSX text.
+const NON_ENGLISH_LETTER = /(?![a-zA-Z])\p{L}/u;
 
 const SRC_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -46,14 +50,14 @@ interface Violation {
   text: string;
 }
 
-/** Looks only at string, template, and JSX text nodes to catch hardcoded Japanese. */
+/** Looks only at string, template, and JSX text nodes to catch hardcoded non-English text. */
 function findViolations(file: string): Violation[] {
   const source = readFileSync(file, "utf8");
   const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
   const violations: Violation[] = [];
 
   const report = (node: ts.Node, raw: string): void => {
-    if (!JAPANESE.test(raw)) return;
+    if (!NON_ENGLISH_LETTER.test(raw)) return;
     const { line } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
     violations.push({
       file: file.slice(SRC_ROOT.length + 1),
@@ -80,15 +84,16 @@ function findViolations(file: string): Violation[] {
   return violations;
 }
 
-describe("no hardcoded Japanese remains in UI text", () => {
-  it("no Japanese is hardcoded in strings/JSX under src (excluding tests and locales)", () => {
+describe("no hardcoded non-English text remains in UI", () => {
+  it("no non-English letters are hardcoded in strings/JSX under src (excluding tests and locales)", () => {
     const files = collectSourceFiles(SRC_ROOT);
     const violations = files.flatMap(findViolations);
     const message = violations
-      .map((v) => `  ${v.file}:${v.line}  「${v.text}」`)
+      .map((v) => `  ${v.file}:${v.line}  "${v.text}"`)
       .join("\n");
-    expect(violations, `日本語ハードコードが残っています:\n${message}`).toEqual(
-      [],
-    );
+    expect(
+      violations,
+      `Hardcoded non-English text remains (extract to a locale resource):\n${message}`,
+    ).toEqual([]);
   });
 });

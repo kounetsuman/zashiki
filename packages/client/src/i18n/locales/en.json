@@ -6,7 +6,8 @@
     "refresh": "Refresh",
     "loading": "Loading…",
     "copyAbsPath": "Copy absolute path",
-    "cannotResume": "claude is not running, so resume is unavailable"
+    "cannotResume": "claude is not running, so resume is unavailable",
+    "copyResume": "Copy session (resume)"
   },
   "boot": {
     "tokenMissing": "No token found. Reopen from the URL with <code>?token=…</code> shown when the server started.",
@@ -52,6 +53,8 @@
     "closeRowConfirm": "Close {{name}} (confirm)",
     "cancelClose": "Cancel close",
     "cannotRename": "this session cannot be renamed yet",
+    "rename": "Rename",
+    "delete": "Delete",
     "reposConf": {
       "notConfigured": "No repositories configured.",
       "create": "Create <code>~/.zashiki/repos.conf</code> (one path per line):",

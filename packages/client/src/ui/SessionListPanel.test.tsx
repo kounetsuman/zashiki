@@ -588,7 +588,7 @@ describe("SessionListPanel: right-click menu", () => {
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
-    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "削除" })).toBeTruthy();
     expect(
       screen.queryByRole("menuitem", { name: "新規セッション" }),
     ).toBeNull();
@@ -599,7 +599,7 @@ describe("SessionListPanel: right-click menu", () => {
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
     expect(props.onClose).toHaveBeenCalledWith(SID2);
     // Does not show the confirmation bar
     expect(
@@ -612,7 +612,7 @@ describe("SessionListPanel: right-click menu", () => {
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
@@ -647,7 +647,7 @@ describe("SessionListPanel: right-click menu", () => {
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
     const item = screen.getByRole("menuitem", {
-      name: "Copy session (resume)",
+      name: "セッションをコピー（resume）",
     });
     expect((item as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(item);
@@ -665,7 +665,7 @@ describe("SessionListPanel: right-click menu", () => {
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
     const item = screen.getByRole("menuitem", {
-      name: "Copy session (resume)",
+      name: "セッションをコピー（resume）",
     });
     expect((item as HTMLButtonElement).disabled).toBe(true);
   });
@@ -676,9 +676,9 @@ describe("SessionListPanel: right-click menu", () => {
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
     expect(
-      screen.queryByRole("menuitem", { name: "Copy session (resume)" }),
+      screen.queryByRole("menuitem", { name: "セッションをコピー（resume）" }),
     ).toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "削除" })).toBeTruthy();
   });
 
   it("clears the confirmation state when the target session disappears while the confirmation bar (Ctrl-X) is shown", () => {
@@ -996,19 +996,19 @@ describe("SessionListPanel: Rename", () => {
   it("shows 'Rename' in the row right-click menu when onRename is provided", () => {
     renderPanel({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
-    expect(screen.getByRole("menuitem", { name: "Rename" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "名前を変更" })).toBeTruthy();
   });
 
   it("does not show 'Rename' when onRename is not provided (backward compatibility)", () => {
     renderPanel();
     fireEvent.contextMenu(rowFor("tango"));
-    expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "名前を変更" })).toBeNull();
   });
 
   it("choosing 'Rename' shows an input prefilled with the current title, and Enter after changing the value calls onRename(windowId, name, value)", () => {
     const props = renderPanel({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("zashiki"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     const input = renameInput();
     expect(input.value).toBe("issue #5 を実装して");
     fireEvent.change(input, { target: { value: "新しいタイトル" } });
@@ -1028,7 +1028,7 @@ describe("SessionListPanel: Rename", () => {
       },
     });
     fireEvent.contextMenu(rowFor("手で付けた名前"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     expect(renameInput().value).toBe("手で付けた名前");
     fireEvent.change(renameInput(), { target: { value: "別名" } });
     fireEvent.keyDown(renameInput(), { key: "Enter" });
@@ -1041,14 +1041,14 @@ describe("SessionListPanel: Rename", () => {
       sessions: [{ ...sessions[1], title: null } as SessionInfo],
     });
     fireEvent.contextMenu(rowFor("tango"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     expect(renameInput().value).toBe("tango");
   });
 
   it("cancels on Escape (does not call onRename; the input disappears)", () => {
     const props = renderPanel({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     fireEvent.change(renameInput(), { target: { value: "捨てる名前" } });
     fireEvent.keyDown(renameInput(), { key: "Escape" });
     expect(props.onRename).not.toHaveBeenCalled();
@@ -1060,7 +1060,7 @@ describe("SessionListPanel: Rename", () => {
   it("commits on blur", () => {
     const props = renderPanel({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     fireEvent.change(renameInput(), { target: { value: "確定名" } });
     fireEvent.blur(renameInput());
     expect(props.onRename).toHaveBeenCalledWith(SID2, "tango", "確定名");
@@ -1069,7 +1069,7 @@ describe("SessionListPanel: Rename", () => {
   it("closes the menu after choosing 'Rename'", () => {
     renderPanel({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
@@ -1079,7 +1079,7 @@ describe("SessionListPanel: Rename", () => {
       sessions: [{ ...sessions[1], windowId: "shell:0:tango" } as SessionInfo],
     });
     fireEvent.contextMenu(rowFor("tango"));
-    const item = screen.getByRole("menuitem", { name: "Rename" });
+    const item = screen.getByRole("menuitem", { name: "名前を変更" });
     expect((item as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -1095,7 +1095,7 @@ describe("SessionListPanel: Rename", () => {
       ],
     });
     fireEvent.contextMenu(rowFor("tango"));
-    const item = screen.getByRole("menuitem", { name: "Rename" });
+    const item = screen.getByRole("menuitem", { name: "名前を変更" });
     expect((item as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(item);
     fireEvent.change(renameInput(), { target: { value: "終了後に改名" } });
@@ -1106,7 +1106,7 @@ describe("SessionListPanel: Rename", () => {
   it("does not propagate Enter during editing to row selection (onSelect)", () => {
     const props = renderPanel({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     fireEvent.change(renameInput(), { target: { value: "名前" } });
     fireEvent.keyDown(renameInput(), { key: "Enter" });
     expect(props.onSelect).not.toHaveBeenCalled();
@@ -1125,7 +1125,7 @@ describe("SessionListPanel: Rename", () => {
     };
     const { rerender } = render(<SessionListPanel {...props} />);
     fireEvent.contextMenu(rowFor("tango"));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     expect(
       screen.getByRole("textbox", { name: "セッションのタイトルを編集" }),
     ).toBeTruthy();

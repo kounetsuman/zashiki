@@ -770,7 +770,7 @@ export function SessionListPanel({
                           closeMenu();
                         }}
                       >
-                        Rename
+                        {t("sessionList.rename")}
                       </button>
                     );
                   })()}
@@ -793,7 +793,7 @@ export function SessionListPanel({
                           closeMenu();
                         }}
                       >
-                        Copy session (resume)
+                        {t("common.copyResume")}
                       </button>
                     );
                   })()}
@@ -806,7 +806,7 @@ export function SessionListPanel({
                     closeMenu();
                   }}
                 >
-                  Delete
+                  {t("sessionList.delete")}
                 </button>
               </>
             )}

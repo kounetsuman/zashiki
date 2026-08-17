@@ -6,7 +6,8 @@
     "refresh": "更新",
     "loading": "読み込み中…",
     "copyAbsPath": "絶対パスをコピー",
-    "cannotResume": "claude 未起動のため resume できません"
+    "cannotResume": "claude 未起動のため resume できません",
+    "copyResume": "セッションをコピー（resume）"
   },
   "boot": {
     "tokenMissing": "トークンがありません。サーバ起動時に表示される<code>?token=…</code> 付き URL から開き直してください。",
@@ -52,6 +53,8 @@
     "closeRowConfirm": "{{name}} を閉じる（確定）",
     "cancelClose": "クローズを取消",
     "cannotRename": "このセッションはまだリネームできません",
+    "rename": "名前を変更",
+    "delete": "削除",
     "reposConf": {
       "notConfigured": "リポジトリが設定されていません。",
       "create": "<code>~/.zashiki/repos.conf</code> を作成してください（1行1パス）:",
