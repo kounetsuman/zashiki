@@ -91,7 +91,8 @@
   "git": {
     "stageAll": "Stage all (git add .)",
     "unstageAll": "Unstage all (git reset .)",
-    "noChanges": "No changes"
+    "noChanges": "No changes",
+    "skipped": "Skipped {{count}} repo(s) with an unreadable status"
   },
   "editor": {
     "viewerLabel": "Viewer {{path}}",

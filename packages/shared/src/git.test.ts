@@ -4,6 +4,8 @@ import {
   isSafeRepoRelativePath,
   isValidCommitMessage,
   parseGitStatus,
+  parseGitStatusResponse,
+  type RepoStatus,
 } from "./git.js";
 
 describe("parseGitStatus (porcelain v1 -> staged/changed classification)", () => {
@@ -196,5 +198,61 @@ describe("isValidCommitMessage (rejects empty commit messages)", () => {
     expect(isValidCommitMessage("")).toBe(false);
     expect(isValidCommitMessage("   ")).toBe(false);
     expect(isValidCommitMessage("\n\t ")).toBe(false);
+  });
+});
+
+describe("parseGitStatusResponse (per-repo fault isolation)", () => {
+  const good = (over: Partial<RepoStatus> = {}): RepoStatus => ({
+    org: "org1",
+    repo: "repo-a",
+    path: "/ws/org1/repo-a",
+    branch: "main",
+    staged: [],
+    changed: [],
+    ...over,
+  });
+
+  it("keeps every repo and reports no skips when all are valid", () => {
+    const result = parseGitStatusResponse({
+      repos: [good({ repo: "a" }), good({ repo: "b" })],
+    });
+    expect(result.repos.map((r) => r.repo)).toEqual(["a", "b"]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("drops only the malformed repo (empty branch) and keeps the rest", () => {
+    const result = parseGitStatusResponse({
+      repos: [
+        good({ repo: "a" }),
+        { ...good({ repo: "bad", path: "/ws/org1/bad" }), branch: "" },
+        good({ repo: "c" }),
+      ],
+    });
+    expect(result.repos.map((r) => r.repo)).toEqual(["a", "c"]);
+    expect(result.skipped).toEqual([
+      { index: 1, repo: "bad", path: "/ws/org1/bad" },
+    ]);
+  });
+
+  it("still identifies a skipped repo by any string repo/path it happens to carry", () => {
+    const result = parseGitStatusResponse({
+      repos: [{ repo: "half", path: "/ws/half" }],
+    });
+    expect(result.repos).toEqual([]);
+    expect(result.skipped).toEqual([
+      { index: 0, repo: "half", path: "/ws/half" },
+    ]);
+  });
+
+  it("records the index even when the skipped entry carries no usable identity", () => {
+    const result = parseGitStatusResponse({ repos: [42] });
+    expect(result.repos).toEqual([]);
+    expect(result.skipped).toEqual([{ index: 0 }]);
+  });
+
+  it("throws only when the envelope itself is not { repos: [...] }", () => {
+    expect(() => parseGitStatusResponse({})).toThrow();
+    expect(() => parseGitStatusResponse({ repos: "nope" })).toThrow();
+    expect(() => parseGitStatusResponse(null)).toThrow();
   });
 });

@@ -1227,6 +1227,12 @@ body {
   word-break: break-all;
 }
 
+.git-warning {
+  color: #d19a66;
+  padding: 4px 8px;
+  word-break: break-all;
+}
+
 /* 取得中の共通ロード中UI（VIEWER #320 / SOURCE CONTROL #138 で共用）。 */
 .loading {
   display: flex;

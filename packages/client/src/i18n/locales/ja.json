@@ -91,7 +91,8 @@
   "git": {
     "stageAll": "すべてステージ（git add .）",
     "unstageAll": "すべてアンステージ（git reset .）",
-    "noChanges": "変更なし"
+    "noChanges": "変更なし",
+    "skipped": "状態を読み取れないリポジトリを {{count}} 件スキップしました"
   },
   "editor": {
     "viewerLabel": "ビューア {{path}}",

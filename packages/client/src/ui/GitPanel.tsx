@@ -3,6 +3,7 @@ import {
   isValidCommitMessage,
   type RepoStatus,
   resolveOrgColor,
+  type SkippedRepo,
 } from "@zashiki/shared";
 import {
   type KeyboardEvent,
@@ -79,6 +80,8 @@ export function GitPanel({
 }: GitPanelProps) {
   const { t } = useTranslation();
   const [repos, setRepos] = useState<RepoStatus[]>([]);
+  // Repos dropped by per-repo validation; surfaced as a non-fatal notice so one bad repo can't blank the panel.
+  const [skipped, setSkipped] = useState<SkippedRepo[]>([]);
   const [error, setError] = useState<string | null>(null);
   // true only while the initial status fetch is in progress. It becomes true
   // only as the initial value, so refetches do not flicker the loading UI.
@@ -102,6 +105,7 @@ export function GitPanel({
       const res = await api.status();
       if (gen !== generation.current) return;
       setRepos(res.repos);
+      setSkipped(res.skipped ?? []);
       setError(null);
     } catch (err) {
       if (gen === generation.current) setError(String(err));
@@ -395,9 +399,15 @@ export function GitPanel({
       </PanelHeader>
       {error !== null && <div className="git-error">{error}</div>}
       {error === null && loading && <Loading />}
-      {error === null && !loading && repos.length === 0 && (
-        <PanelEmpty>{t("git.noChanges")}</PanelEmpty>
+      {error === null && !loading && skipped.length > 0 && (
+        <div className="git-warning" role="status">
+          {t("git.skipped", { count: skipped.length })}
+        </div>
       )}
+      {error === null &&
+        !loading &&
+        repos.length === 0 &&
+        skipped.length === 0 && <PanelEmpty>{t("git.noChanges")}</PanelEmpty>}
       {error === null && !loading && repos.length > 0 && (
         <div className="panel-tree">{groupByOrg(repos).map(orgBlock)}</div>
       )}

@@ -1,13 +1,10 @@
-import {
-  type GitStatusResponse,
-  gitStatusResponseSchema,
-} from "@zashiki/shared";
+import { type GitStatusResult, parseGitStatusResponse } from "@zashiki/shared";
 
 import { authHeaders } from "../lib/token.js";
 
 /** The REST the git panel calls. Tests inject a fake. */
 export interface GitApi {
-  status(): Promise<GitStatusResponse>;
+  status(): Promise<GitStatusResult>;
   stage(repoPath: string, file: string): Promise<void>;
   unstage(repoPath: string, file: string): Promise<void>;
   stageAll(repoPath: string): Promise<void>;
@@ -45,7 +42,7 @@ export function createGitApi(
         headers: authHeaders(token),
       });
       if (!res.ok) throw new Error(`/api/git/status: ${await errorOf(res)}`);
-      return gitStatusResponseSchema.parse(await res.json());
+      return parseGitStatusResponse(await res.json());
     },
     stage: (repoPath, file) => post("/api/git/stage", { repoPath, file }),
     unstage: (repoPath, file) => post("/api/git/unstage", { repoPath, file }),

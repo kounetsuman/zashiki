@@ -181,10 +181,24 @@ pub async fn commit(path: &Path, message: &str) -> Result<(), GitError> {
     }
 }
 
+/// The current branch, or the short SHA when HEAD is detached (`git branch --show-current` prints
+/// nothing there). Keeps `branch` non-empty for a valid-but-headless repo so the client can show it.
+async fn resolve_branch(path: &Path) -> String {
+    let current = git_output(path, &["branch", "--show-current"]).await;
+    let current = current.trim();
+    if !current.is_empty() {
+        return current.to_string();
+    }
+    git_output(path, &["rev-parse", "--short", "HEAD"])
+        .await
+        .trim()
+        .to_string()
+}
+
 async fn build_repo_status(r: ScannedRepo) -> RepoStatus {
     let path = Path::new(&r.path);
     let (branch, raw) = tokio::join!(
-        git_output(path, &["branch", "--show-current"]),
+        resolve_branch(path),
         git_output(path, &["status", "--porcelain=v1"]),
     );
     let parsed = zashiki_core::git::parse_git_status(&raw);
@@ -192,7 +206,7 @@ async fn build_repo_status(r: ScannedRepo) -> RepoStatus {
         org: r.org,
         repo: r.repo,
         path: r.path,
-        branch: branch.trim().to_string(),
+        branch,
         staged: parsed.staged.into_iter().map(Into::into).collect(),
         changed: parsed.changed.into_iter().map(Into::into).collect(),
     }
@@ -440,5 +454,35 @@ mod tests {
         let repos = git_status(scanned).await;
         let order: Vec<String> = repos.into_iter().map(|r| r.repo).collect();
         assert_eq!(order, vec!["r0", "r1", "r2", "r3", "r4"]);
+    }
+
+    #[tokio::test]
+    async fn git_status_falls_back_to_short_sha_on_detached_head() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        // Detached HEAD: `git branch --show-current` prints nothing, so branch must not be empty.
+        git(p, &["checkout", "-q", "--detach"]);
+
+        let scanned = vec![ScannedRepo {
+            org: "o".to_string(),
+            repo: "r".to_string(),
+            path: p.to_string_lossy().into_owned(),
+        }];
+        let repos = git_status(scanned).await;
+
+        let short_sha = String::from_utf8_lossy(
+            &std::process::Command::new("git")
+                .arg("-C")
+                .arg(p)
+                .args(["rev-parse", "--short", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .trim()
+        .to_string();
+        assert!(!short_sha.is_empty());
+        assert_eq!(repos[0].branch, short_sha);
     }
 }
