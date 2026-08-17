@@ -83,7 +83,6 @@ pnpm -F @zashiki/desktop dev         # dev launch (Tauri shell)
 
 ## Current constraints
 
-- npm distribution (`npm install -g @zashiki/cli`) is still landing; until it publishes, use the development path above.
 - The distributed `.app` bundling story (externalBin) is a work in progress.
 
 ## Uninstall
