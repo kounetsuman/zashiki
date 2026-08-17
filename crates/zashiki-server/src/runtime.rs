@@ -42,6 +42,9 @@ pub struct ControlRuntimeConfig {
     pub notify_mode: crate::hooks::NotifyMode,
     /// The macOS notification executor (defaults to terminal-notifier; swapped out in tests).
     pub mac_notify: crate::hooks::MacNotify,
+    /// Running app version injected by the Tauri shell (ZK_APP_VERSION). None in dev / standalone server,
+    /// which disables the update check (the placeholder 0.0.0 also no-ops). Feeds the update-check task (#26).
+    pub app_version: Option<String>,
 }
 
 fn empty_snapshot() -> StateSnapshot {
@@ -62,6 +65,9 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         spawn_config_watch(path, hub.clone(), CONFIG_POLL);
     }
     crate::orphan_detector::spawn_orphan_zombie_detector(hub.clone());
+    if let Some(version) = config.app_version {
+        crate::update_checker::spawn_update_checker(hub.clone(), version);
+    }
 
     // The poller (read) and session.new share the same registry (the condition for registrations to be visible to the poller).
     let sessions = Arc::new(SessionRegistry::new());
@@ -130,6 +136,7 @@ mod tests {
             config_path: None,
             notify_mode: crate::hooks::NotifyMode::Web,
             mac_notify: std::sync::Arc::new(|_| {}),
+            app_version: None,
         });
         let mut rx = services.hub.subscribe();
         let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
@@ -169,6 +176,7 @@ mod tests {
             config_path: None,
             notify_mode: crate::hooks::NotifyMode::Web,
             mac_notify: std::sync::Arc::new(|_| {}),
+            app_version: None,
         });
         // Register an owned PTY into the registry the poller references (set cwd to the org root so the org resolves).
         let mut cmd = CommandBuilder::new("sh");

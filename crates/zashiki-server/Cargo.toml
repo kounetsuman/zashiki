@@ -28,6 +28,11 @@ vt100 = "0.16"
 libc = "0.2"
 # session.new の claude 起動に付ける session-id（save/restore 成立条件）。
 uuid = { version = "1", features = ["v4"] }
+# GitHub Releases の更新チェック（#26）。日次ポーリングだけなので非同期 HTTP スタックは引かず、
+# blocking client を spawn_blocking 上で回す。rustls を使い OpenSSL を引き込まない。
+ureq = { version = "2", default-features = false, features = ["tls"] }
+# 起動中バンドルと最新リリースの semver 比較（1.0.0-rc.1 < 1.0.0 の prerelease 順序を含む）。
+semver = "1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

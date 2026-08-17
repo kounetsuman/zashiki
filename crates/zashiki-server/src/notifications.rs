@@ -100,6 +100,25 @@ pub fn pty_exhaustion_notification(created_at: u64) -> Notification {
     }
 }
 
+/// Notification announcing that a newer stable release exists on GitHub than the running bundle (#26).
+/// The id is per-version (`update-available:<version>`) so the same latest version does not re-stack on
+/// every daily poll (singleton per version via upsert), while a genuinely newer version stacks as a new
+/// entry. Toast + panel, and manually dismissible.
+pub fn update_available_notification(version: &str, url: &str, created_at: u64) -> Notification {
+    Notification {
+        id: format!("update-available:{version}"),
+        level: NotificationLevel::Warn,
+        title: format!("🆕 新しいバージョン {version} が利用できます"),
+        body: Some(format!(
+            "最新の安定版 {version} が公開されています。更新は {url} を確認してください。"
+        )),
+        created_at,
+        sticky: false,
+        dismissible: true,
+        toast: Some(true),
+    }
+}
+
 /// Newest-first ordering (createdAt descending; ties by id ascending). TS `byNewest`.
 fn by_newest(a: &Notification, b: &Notification) -> std::cmp::Ordering {
     b.created_at.cmp(&a.created_at).then_with(|| a.id.cmp(&b.id))
@@ -211,6 +230,24 @@ mod tests {
         );
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].created_at, 2);
+    }
+
+    #[test]
+    fn update_available_notification_is_per_version_toasting_warn() {
+        let n = update_available_notification("0.2.0", "https://example.test/rel", 11);
+        assert_eq!(n.id, "update-available:0.2.0");
+        assert_eq!(n.level, NotificationLevel::Warn);
+        assert_eq!(n.toast, Some(true));
+        assert!(n.dismissible && !n.sticky);
+        assert!(n.body.as_deref().unwrap().contains("https://example.test/rel"));
+        // Same version re-poll coalesces (singleton per version); a newer version stacks as a new entry.
+        let same = upsert_notification(
+            &[update_available_notification("0.2.0", "u", 1)],
+            update_available_notification("0.2.0", "u", 2),
+        );
+        assert_eq!(same.len(), 1);
+        let newer = upsert_notification(&same, update_available_notification("0.3.0", "u", 3));
+        assert_eq!(newer.len(), 2);
     }
 
     #[test]

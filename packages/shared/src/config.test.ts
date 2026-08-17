@@ -18,6 +18,16 @@ describe("parseConfig", () => {
     expect(parseConfig({ notifySound: false, debug: true })).toEqual({
       notifySound: false,
       debug: true,
+      updateCheck: true,
+      language: null,
+    });
+  });
+
+  it("reads updateCheck as an opt-out (default on)", () => {
+    expect(parseConfig({ updateCheck: false })).toEqual({
+      notifySound: true,
+      debug: false,
+      updateCheck: false,
       language: null,
     });
   });
@@ -26,6 +36,7 @@ describe("parseConfig", () => {
     expect(parseConfig({ notifySound: false })).toEqual({
       notifySound: false,
       debug: false,
+      updateCheck: true,
       language: null,
     });
   });
@@ -46,6 +57,7 @@ describe("parseConfig", () => {
     expect(parseConfig({ notifySound: false, extra: "x" })).toEqual({
       notifySound: false,
       debug: false,
+      updateCheck: true,
       language: null,
     });
   });

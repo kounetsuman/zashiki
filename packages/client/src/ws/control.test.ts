@@ -162,7 +162,13 @@ describe("ControlClient", () => {
     const late: ServerMessage[] = [];
     client.onMessage((m) => late.push(m));
     expect(late).toEqual([
-      { t: "config.sync", notifySound: false, debug: true, language: null },
+      {
+        t: "config.sync",
+        notifySound: false,
+        debug: true,
+        updateCheck: true,
+        language: null,
+      },
     ]);
   });
 
@@ -185,7 +191,13 @@ describe("ControlClient", () => {
     const late: ServerMessage[] = [];
     client.onMessage((m) => late.push(m));
     expect(late).toEqual([
-      { t: "config.sync", notifySound: false, debug: false, language: null },
+      {
+        t: "config.sync",
+        notifySound: false,
+        debug: false,
+        updateCheck: true,
+        language: null,
+      },
     ]);
   });
 });

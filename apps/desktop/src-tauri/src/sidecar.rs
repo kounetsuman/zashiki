@@ -35,6 +35,10 @@ pub struct Config {
     /// Vite:5173 and does not use the server's static serving, so a dist that is absent at spawn
     /// time is not passed as ZK_CLIENT_DIST).
     pub client_dist: PathBuf,
+    /// The real bundle version (app.package_info().version), passed to the server as ZK_APP_VERSION so it can
+    /// compare against GitHub Releases (#26). The server's own Cargo version stays at the 0.0.0 placeholder, so
+    /// this is the only channel carrying the real version. Empty / 0.0.0 (dev) disables the server's update check.
+    pub app_version: String,
 }
 
 impl Config {
@@ -59,6 +63,8 @@ impl Config {
             token_path,
             server_bin,
             client_dist,
+            // Filled in from app.package_info().version at setup time (main.rs); the env has no real version here.
+            app_version: String::new(),
         }
     }
 }
@@ -485,6 +491,8 @@ fn spawn_env(cfg: &Config) -> Vec<(&'static str, String)> {
             "ZK_TOKEN_FILE",
             cfg.token_path.to_string_lossy().into_owned(),
         ),
+        // The real bundle version so the server can run the update check (#26). 0.0.0/dev no-ops server-side.
+        ("ZK_APP_VERSION", cfg.app_version.clone()),
     ];
     if cfg.client_dist.is_dir() {
         env.push((
@@ -1137,6 +1145,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: dir.path().join("no-such-bin"),
             client_dist: dir.path().join("client-dist"),
+            app_version: String::new(),
         };
         let err = ensure_server(&cfg, &StepLog::new()).unwrap_err();
         assert!(err.contains("cargo build"), "err = {err}");
@@ -1162,6 +1171,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: entry,
             client_dist: dir.path().join("client-dist"),
+            app_version: String::new(),
         };
         let err = ensure_server(&cfg, &StepLog::new()).unwrap_err();
         assert!(err.contains("起動前に終了"), "err = {err}");
@@ -1245,10 +1255,12 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: dir.path().join("zashiki-server"),
             client_dist: dir.path().join("nope"),
+            app_version: "1.2.3".to_string(),
         };
         let env = spawn_env(&cfg);
         assert!(env.iter().any(|(k, v)| *k == "ZK_PORT" && v == "8790"));
         assert!(env.iter().any(|(k, _)| *k == "ZK_TOKEN_FILE"));
+        assert!(env.iter().any(|(k, v)| *k == "ZK_APP_VERSION" && v == "1.2.3"));
     }
 
     #[test]
@@ -1260,6 +1272,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: dir.path().join("zashiki-server"),
             client_dist: dir.path().join("no-such-dist"),
+            app_version: String::new(),
         };
         assert!(!spawn_env(&cfg_missing)
             .iter()
@@ -1273,6 +1286,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: dir.path().join("zashiki-server"),
             client_dist: dist.clone(),
+            app_version: String::new(),
         };
         let value = spawn_env(&cfg_present)
             .into_iter()

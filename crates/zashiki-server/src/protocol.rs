@@ -202,6 +202,7 @@ pub enum ServerMessage {
     ConfigSync {
         notify_sound: bool,
         debug: bool,
+        update_check: bool,
         language: Option<String>,
     },
     /// Full distribution of in-app notifications (to all control connections right after connecting
@@ -477,10 +478,11 @@ mod tests {
         let msg = ServerMessage::ConfigSync {
             notify_sound: true,
             debug: false,
+            update_check: true,
             language: Some("ja".into()),
         };
         let json =
-            r#"{"t":"config.sync","notifySound":true,"debug":false,"language":"ja"}"#;
+            r#"{"t":"config.sync","notifySound":true,"debug":false,"updateCheck":true,"language":"ja"}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -490,10 +492,11 @@ mod tests {
         let msg = ServerMessage::ConfigSync {
             notify_sound: true,
             debug: false,
+            update_check: false,
             language: None,
         };
         let json =
-            r#"{"t":"config.sync","notifySound":true,"debug":false,"language":null}"#;
+            r#"{"t":"config.sync","notifySound":true,"debug":false,"updateCheck":false,"language":null}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

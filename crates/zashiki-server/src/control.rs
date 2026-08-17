@@ -26,6 +26,9 @@ use crate::term_registry::{TermEntry, TermRegistry};
 pub struct ConfigView {
     pub notify_sound: bool,
     pub debug: bool,
+    /// Whether the server may poll GitHub Releases for updates (#26). Default on; set false in config.json
+    /// to stop the outbound egress to github.com. Checked live per poll, so toggling applies without restart.
+    pub update_check: bool,
     /// Display language ("ja"/"en"). None when unset, delegating to the client's browser detection.
     pub language: Option<String>,
 }
@@ -116,6 +119,7 @@ impl ControlHub {
             ServerMessage::ConfigSync {
                 notify_sound: state.config.notify_sound,
                 debug: state.config.debug,
+                update_check: state.config.update_check,
                 language: state.config.language.clone(),
             },
             ServerMessage::NotificationsSync {
@@ -157,10 +161,17 @@ impl ControlHub {
         let msg = ServerMessage::ConfigSync {
             notify_sound: config.notify_sound,
             debug: config.debug,
+            update_check: config.update_check,
             language: config.language.clone(),
         };
         self.inner.write().unwrap().config = config;
         let _ = self.tx.send(msg);
+    }
+
+    /// Whether the update check is currently enabled (the live `updateCheck` config flag). The update-check
+    /// task reads this each poll so disabling it in config.json stops the github.com egress without a restart (#26).
+    pub fn update_check_enabled(&self) -> bool {
+        self.inner.read().unwrap().config.update_check
     }
 
     /// Stores the notification list and broadcasts notifications.sync to all connections.
@@ -218,6 +229,26 @@ impl ControlHub {
             let created = now_ms.max(state.last_notification_at + 1);
             state.last_notification_at = created;
             let n = crate::notifications::warn_notification(id, title, body, created);
+            let next = crate::notifications::append_notification(
+                &state.notifications,
+                n,
+                crate::notifications::NOTIFICATIONS_MAX,
+            );
+            state.notifications = next.clone();
+            next
+        };
+        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+    }
+
+    /// Enqueues an "update available" announcement into NOTIFICATION and broadcasts notifications.sync (#26).
+    /// The per-version id coalesces repeated daily polls of the same latest version (upsert), while a newer
+    /// version stacks as a new entry. createdAt is kept monotonically increasing like the other record_* methods.
+    pub fn record_update_available(&self, version: String, url: String, now_ms: u64) {
+        let items = {
+            let mut state = self.inner.write().unwrap();
+            let created = now_ms.max(state.last_notification_at + 1);
+            state.last_notification_at = created;
+            let n = crate::notifications::update_available_notification(&version, &url, created);
             let next = crate::notifications::append_notification(
                 &state.notifications,
                 n,
@@ -664,6 +695,7 @@ mod tests {
             ConfigView {
                 notify_sound: true,
                 debug: false,
+                update_check: true,
                 language: None,
             },
             vec![],
@@ -701,6 +733,7 @@ mod tests {
         hub.publish_config(ConfigView {
             notify_sound: true,
             debug: true,
+            update_check: true,
             language: Some("en".into()),
         });
         assert!(matches!(

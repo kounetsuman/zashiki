@@ -46,6 +46,7 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
     ConfigView {
         notify_sound: field("notifySound", true),
         debug: field("debug", false),
+        update_check: field("updateCheck", true),
         language,
     }
 }
@@ -143,6 +144,14 @@ mod tests {
         let c = parse(json!({}));
         assert!(c.notify_sound);
         assert!(!c.debug);
+    }
+
+    #[test]
+    fn parse_config_update_check_defaults_on_and_reads_bool() {
+        // Missing key defaults to on (opt-out flag); an explicit false disables the egress; a wrong type falls back to on.
+        assert!(parse(json!({})).update_check);
+        assert!(!parse(json!({"updateCheck": false})).update_check);
+        assert!(parse(json!({"updateCheck": "no"})).update_check);
     }
 
     #[test]

@@ -123,6 +123,9 @@ async fn main() {
             &std::env::var("ZK_NOTIFY").unwrap_or_default(),
         ),
         mac_notify: zashiki_server::mac_notifier::terminal_notifier(),
+        // Real bundle version from the Tauri shell (app.package_info().version). Absent for the standalone
+        // server / dev, which disables the update check (#26).
+        app_version: std::env::var("ZK_APP_VERSION").ok(),
     });
 
     // Grab the registry of owned sessions to be torn down on graceful shutdown, before handing control to the router.
