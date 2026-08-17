@@ -16,12 +16,9 @@ zashiki is an AI cockpit that orchestrates Claude Code on one screen, with best-
 
 ## Quick Start
 
-```sh
-npm install -g @zashiki/cli
-zashiki            # starts the server and opens the cockpit
-```
+Grab the macOS `Zashiki_*.dmg` from [Releases](https://github.com/kounetsuman/zashiki/releases), open it, and drag `Zashiki.app` into `/Applications`. Launch Zashiki and every Claude Code session shows up in one window.
 
-`zashiki` starts the Rust server and opens the cockpit (the bundled UI). Use `--port` to change the port, `--no-open` to skip auto-open.
+> **Unsigned**: on first launch, right-click → "Open" to get past Gatekeeper.
 
 ## How zashiki compares
 
@@ -109,7 +106,6 @@ Main READMEs:
 |---|---|
 | [`packages/shared`](packages/shared/README.md) | Innermost onion core (pure functions + protocol types). The wire contract |
 | [`packages/client`](packages/client/README.md) | UI client (Tauri WebView) launch, manual checklist |
-| [`packages/cli`](packages/cli/README.md) | The npm-published package `@zashiki/cli` (CLI). Distribution model |
 | [`apps/desktop`](apps/desktop/README.md) | Tauri shell, sidecar, build |
 | [`crates`](crates/README.md) | Rust server (`zashiki-server`) and core. Layering / security / PTY ownership / save-restore / env vars |
 | [`hooks`](hooks/README.md) / [`.githooks`](.githooks/README.md) | Claude Code hook junction / contamination-prevention hooks |

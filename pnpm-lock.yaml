@@ -30,22 +30,6 @@ importers:
         specifier: ^22.0.0
         version: 22.20.1
 
-  packages/cli:
-    devDependencies:
-      '@zashiki/client':
-        specifier: workspace:*
-        version: link:../client
-      vitest:
-        specifier: ^3.2.0
-        version: 3.2.7(@types/node@22.20.1)(jsdom@29.1.1)
-    optionalDependencies:
-      '@zashiki/server-darwin-arm64':
-        specifier: workspace:*
-        version: link:../server-darwin-arm64
-      '@zashiki/server-darwin-x64':
-        specifier: workspace:*
-        version: link:../server-darwin-x64
-
   packages/client:
     dependencies:
       '@codemirror/commands':
@@ -136,10 +120,6 @@ importers:
       vitest:
         specifier: ^3.2.0
         version: 3.2.7(@types/node@22.20.1)(jsdom@29.1.1)
-
-  packages/server-darwin-arm64: {}
-
-  packages/server-darwin-x64: {}
 
   packages/shared:
     dependencies:
