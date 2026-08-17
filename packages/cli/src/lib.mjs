@@ -44,7 +44,7 @@ export function resolveServerBin({ env = {}, platform, arch, requireResolve }) {
     return requireResolve(`${pkg}/bin/zashiki-server`);
   } catch {
     throw new Error(
-      `${pkg} not found. Reinstall zashiki, or ` +
+      `${pkg} not found. Reinstall @zashiki/cli, or ` +
         "set ZK_SERVER_BIN to the path of the zashiki-server binary.",
     );
   }

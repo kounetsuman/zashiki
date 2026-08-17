@@ -1,4 +1,4 @@
-//! Local end-to-end check of the published npm package zashiki.
+//! Local end-to-end check of the published npm package @zashiki/cli.
 //! client build -> bundle dist -> generate host binary -> pnpm pack -> extract tarball ->
 //! launch the real CLI and verify /healthz, token-probe, and / (HTML serving).
 //! Isolated via ZK_* so it never touches the real ~/.zashiki / ~/.claude/projects (same
@@ -92,13 +92,18 @@ try {
   // 2) pack (cli + host platform package)
   const packDir = join(work, "tgz");
   mkdirSync(packDir, { recursive: true });
-  sh("pnpm", ["--filter", "zashiki", "pack", "--pack-destination", packDir]);
+  sh("pnpm", [
+    "--filter",
+    "@zashiki/cli",
+    "pack",
+    "--pack-destination",
+    packDir,
+  ]);
   sh("pnpm", ["--filter", HOST_PKG, "pack", "--pack-destination", packDir]);
   const tgzs = readdirSync(packDir).filter((f) => f.endsWith(".tgz"));
   const cliTgz = join(
     packDir,
-    tgzs.find((f) => f.startsWith("zashiki-0") || f === "zashiki.tgz") ??
-      tgzs.find((f) => /^zashiki-\d/.test(f)),
+    tgzs.find((f) => f.startsWith("zashiki-cli-")),
   );
   const serverTgz = join(
     packDir,

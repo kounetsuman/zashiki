@@ -1,5 +1,5 @@
 //! Copy the @zashiki/client build output (packages/client/dist) into the client-dist/
-//! directory bundled with the published zashiki package. Invoked from zashiki's `build`.
+//! directory bundled with the published @zashiki/cli package. Invoked from its `build`.
 //! The bundled files are served statically as zashiki-server's ZK_CLIENT_DIST (the lifeline
 //! that avoids a blank screen).
 

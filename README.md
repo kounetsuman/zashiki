@@ -17,7 +17,7 @@ zashiki is an AI cockpit that orchestrates Claude Code on one screen, with best-
 ## Quick Start
 
 ```sh
-npm install -g zashiki
+npm install -g @zashiki/cli
 zashiki            # starts the server and opens the cockpit
 ```
 
@@ -83,7 +83,7 @@ pnpm -F @zashiki/desktop dev         # dev launch (Tauri shell)
 
 ## Current constraints
 
-- npm distribution (`npm install -g zashiki`) is still landing; until it publishes, use the development path above.
+- npm distribution (`npm install -g @zashiki/cli`) is still landing; until it publishes, use the development path above.
 - The distributed `.app` bundling story (externalBin) is a work in progress.
 
 ## Uninstall
@@ -110,7 +110,7 @@ Main READMEs:
 |---|---|
 | [`packages/shared`](packages/shared/README.md) | Innermost onion core (pure functions + protocol types). The wire contract |
 | [`packages/client`](packages/client/README.md) | UI client (Tauri WebView) launch, manual checklist |
-| [`packages/cli`](packages/cli/README.md) | The npm-published package `zashiki` (CLI). Distribution model |
+| [`packages/cli`](packages/cli/README.md) | The npm-published package `@zashiki/cli` (CLI). Distribution model |
 | [`apps/desktop`](apps/desktop/README.md) | Tauri shell, sidecar, build |
 | [`crates`](crates/README.md) | Rust server (`zashiki-server`) and core. Layering / security / PTY ownership / save-restore / env vars |
 | [`hooks`](hooks/README.md) / [`.githooks`](.githooks/README.md) | Claude Code hook junction / contamination-prevention hooks |
