@@ -1,9 +1,10 @@
-[English](./README.md) | **日本語**
+[English](https://github.com/kounetsuman/zashiki/blob/main/packages/cli/README.md) | **日本語**
 
 # @zashiki/cli（CLI / npm 公開パッケージ）
 
 `npm install -g @zashiki/cli` で入る CLI 本体。`zashiki` コマンドで Rust server（`zashiki-server`）を
-起動し、同梱した client dist を配信させて、ブラウザで開く。
+起動し、同梱した client dist を配信させて、ブラウザで開く。（ネイティブ窓が好みなら、同じコックピットを
+デスクトップアプリ版としても配布している — `Zashiki.dmg` リリースを参照。）
 
 ```sh
 npm install -g @zashiki/cli

@@ -1,9 +1,10 @@
-**English** | [日本語](./README.ja.md)
+**English** | [日本語](https://github.com/kounetsuman/zashiki/blob/main/packages/cli/README.ja.md)
 
 # @zashiki/cli (CLI / published npm package)
 
 The CLI itself, installed via `npm install -g @zashiki/cli`. The `zashiki` command starts the Rust server
-(`zashiki-server`), has it serve the bundled client dist, and opens it in a browser.
+(`zashiki-server`), has it serve the bundled client dist, and opens it in a browser. (Prefer a native
+window? The same cockpit also ships as a desktop app — see the `Zashiki.dmg` release.)
 
 ```sh
 npm install -g @zashiki/cli

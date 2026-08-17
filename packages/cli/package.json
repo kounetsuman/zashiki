@@ -2,7 +2,12 @@
   "name": "@zashiki/cli",
   "version": "0.0.0",
   "license": "MIT",
-  "description": "Claude Code のセッションを一望する Web コックピット（CLI）。zashiki-server を起動しブラウザで開く。",
+  "description": "A cockpit to oversee your Claude Code sessions. This CLI starts zashiki-server and opens the cockpit in your browser; a native desktop app is also available.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kounetsuman/zashiki.git",
+    "directory": "packages/cli"
+  },
   "type": "module",
   "bin": {
     "zashiki": "bin/zashiki.mjs"
