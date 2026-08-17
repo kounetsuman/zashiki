@@ -49,6 +49,7 @@ export {
   type GitFileRequest,
   type GitRepoRequest,
   type GitStatusResponse,
+  type GitStatusResult,
   gitCommitRequestSchema,
   gitFileEntrySchema,
   gitFileRequestSchema,
@@ -58,8 +59,10 @@ export {
   isValidCommitMessage,
   type ParsedGitStatus,
   parseGitStatus,
+  parseGitStatusResponse,
   type RepoStatus,
   repoStatusSchema,
+  type SkippedRepo,
 } from "./git.js";
 export {
   backgroundTaskIds,

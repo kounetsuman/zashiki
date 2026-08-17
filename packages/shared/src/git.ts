@@ -145,6 +145,50 @@ export const gitStatusResponseSchema = z.object({
 
 export type GitStatusResponse = z.infer<typeof gitStatusResponseSchema>;
 
+export interface SkippedRepo {
+  index: number;
+  repo?: string;
+  path?: string;
+}
+
+export interface GitStatusResult {
+  repos: RepoStatus[];
+  /** Repos dropped by per-repo validation. Absent or empty means nothing was skipped. */
+  skipped?: SkippedRepo[];
+}
+
+const gitStatusEnvelopeSchema = z.object({ repos: z.array(z.unknown()) });
+const skippedIdentitySchema = z.object({
+  repo: z.string().optional(),
+  path: z.string().optional(),
+});
+
+/**
+ * Validates the git status response per repo so one malformed entry can't blank the whole panel.
+ * The envelope shape ({ repos: [...] }) is still required; a repo that fails validation is dropped
+ * and reported via `skipped` (with any repo/path it carries) instead of throwing.
+ */
+export function parseGitStatusResponse(data: unknown): GitStatusResult {
+  const { repos: entries } = gitStatusEnvelopeSchema.parse(data);
+  const repos: RepoStatus[] = [];
+  const skipped: SkippedRepo[] = [];
+  entries.forEach((entry, index) => {
+    const parsed = repoStatusSchema.safeParse(entry);
+    if (parsed.success) {
+      repos.push(parsed.data);
+      return;
+    }
+    const identity = skippedIdentitySchema.safeParse(entry);
+    const skip: SkippedRepo = { index };
+    if (identity.success) {
+      if (identity.data.repo) skip.repo = identity.data.repo;
+      if (identity.data.path) skip.path = identity.data.path;
+    }
+    skipped.push(skip);
+  });
+  return { repos, skipped };
+}
+
 export const gitFileRequestSchema = z.object({
   repoPath: z.string().min(1),
   file: z.string().min(1),

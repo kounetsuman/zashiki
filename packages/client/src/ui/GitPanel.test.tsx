@@ -6,7 +6,11 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import type { GitStatusResponse, RepoStatus } from "@zashiki/shared";
+import type {
+  GitStatusResponse,
+  GitStatusResult,
+  RepoStatus,
+} from "@zashiki/shared";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { GitApi } from "../api/git.js";
@@ -507,6 +511,60 @@ describe("GitPanel", () => {
     });
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getByText("変更なし")).toBeTruthy();
+  });
+
+  it("renders the healthy repos and a non-fatal notice when some repos are skipped", async () => {
+    const resolvers: ((r: GitStatusResult) => void)[] = [];
+    const api: GitApi = {
+      status: () => new Promise((resolve) => resolvers.push(resolve)),
+      stage: () => Promise.resolve(),
+      unstage: () => Promise.resolve(),
+      stageAll: () => Promise.resolve(),
+      unstageAll: () => Promise.resolve(),
+      open: () => Promise.resolve(),
+      commit: () => Promise.resolve(),
+    };
+    render(
+      <GitPanel
+        api={api}
+        onGitDirty={() => () => {}}
+        copyText={() => Promise.resolve()}
+      />,
+    );
+    await act(async () => {
+      resolvers[0]?.({ repos: twoRepoFixture(), skipped: [{ index: 53 }] });
+    });
+    // The healthy repos still render, and only a non-fatal warning is shown (not the fatal error block).
+    expect(
+      await screen.findByRole("button", { name: /org1 \(2\)/ }),
+    ).toBeTruthy();
+    expect(document.querySelector(".git-warning")).not.toBeNull();
+    expect(document.querySelector(".git-error")).toBeNull();
+  });
+
+  it("does not show the empty state when every repo was skipped", async () => {
+    const resolvers: ((r: GitStatusResult) => void)[] = [];
+    const api: GitApi = {
+      status: () => new Promise((resolve) => resolvers.push(resolve)),
+      stage: () => Promise.resolve(),
+      unstage: () => Promise.resolve(),
+      stageAll: () => Promise.resolve(),
+      unstageAll: () => Promise.resolve(),
+      open: () => Promise.resolve(),
+      commit: () => Promise.resolve(),
+    };
+    render(
+      <GitPanel
+        api={api}
+        onGitDirty={() => () => {}}
+        copyText={() => Promise.resolve()}
+      />,
+    );
+    await act(async () => {
+      resolvers[0]?.({ repos: [], skipped: [{ index: 0 }] });
+    });
+    expect(document.querySelector(".git-warning")).not.toBeNull();
+    expect(screen.queryByText("変更なし")).toBeNull();
   });
 
   it("clears loading and shows only the error on an initial fetch error (no double display)", async () => {
