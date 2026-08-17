@@ -81,7 +81,7 @@ server のみ**プロセスグループへ SIGTERM → 猶予 5s → SIGKILL で
   `tauri build` で作るビルド（配布 .app・`tauri build --debug` 含む）。dev 判定は初期 URL と同じ
   `tauri::is_dev()` に揃えているため、`--debug` ビルドでも config で正しくゲートされる。
   `tauri build` 産で有効化するため tauri の `devtools` feature を付けている（macOS では
-  private API を使うため App Store 配布時は非対応。本アプリは未署名配布のため実害はない）。
+  private API を使うため App Store 配布時は非対応。本アプリは App Store 外（Developer ID）配布のため実害はない）。
 - 仕様の正本は `src/sidecar.rs` の `parse_debug_flag` / `devtools_enabled`（cargo test）。
 
 ## ビルド
@@ -110,7 +110,43 @@ pnpm -F @zashiki/desktop build:app
 
 CI では `vX.Y.Z` tag の push で [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 が同じ `build-app.sh`（`--prepare-only`）で同梱物を配置し、`tauri build`（`--bundles dmg`）本体を
-tauri-action に委ねて draft Release へ `Zashiki.dmg` を公開する（macOS のみ・未署名）。
+tauri-action に委ねて draft Release へ `Zashiki.dmg` を公開する（macOS のみ）。Apple の secret が
+設定されていれば署名 + notarization され、無ければ未署名にフォールバックする——[署名と notarization](#署名と-notarization) 参照。
+
+### 署名と notarization
+
+リリースビルドは、Apple の認証情報が GitHub Actions の secret として揃っているとき
+**Developer ID Application 証明書で署名 + notarization** される。この場合 `.app`/`.dmg` は
+Gatekeeper の右クリック回避なしで起動する。secret が無いとき（例: fork）はビルドが
+**未署名**にフォールバックし、リリース自体は成功する——[`release.yml`](../../.github/workflows/release.yml)
+は `APPLE_CERTIFICATE` の有無で署名を出し分ける。
+
+`tauri build` の中で Tauri バンドラが証明書を取り込み、アプリと同梱の `zashiki-server` sidecar を
+署名し（hardened runtime は既定で有効）、`notarytool` で notarization し、チケットを staple する。
+その後ワークフローが `codesign --verify --deep --strict` と `spctl -a -vvv` で検証する。
+
+初回セットアップ（メンテナ）:
+
+1. [Apple Developer Program](https://developer.apple.com/programs/)（有料）に登録し、
+   **Developer ID Application** 証明書を作成する。キーチェーンアクセスから `.p12`（パスワード付き）で
+   書き出し、base64 化する: `base64 -i certificate.p12 | pbcopy`。
+2. <https://account.apple.com> → サインインとセキュリティ で Apple ID の
+   **App 用パスワード**を作成し、Apple Developer アカウントページで 10 文字の
+   **Team ID** を控える。
+3. 次のリポジトリ secret を追加する（Settings → Secrets and variables → Actions）:
+
+   | Secret | 値 |
+   | --- | --- |
+   | `APPLE_CERTIFICATE` | 書き出した `.p12` の base64 |
+   | `APPLE_CERTIFICATE_PASSWORD` | `.p12` 書き出し時のパスワード |
+   | `APPLE_SIGNING_IDENTITY` | `Developer ID Application: NAME (TEAMID)`（`security find-identity -v -p codesigning` で確認） |
+   | `APPLE_ID` | notarization に使う Apple ID のメール |
+   | `APPLE_PASSWORD` | 手順 2 の App 用パスワード |
+   | `APPLE_TEAM_ID` | 10 文字の Team ID |
+
+署名リリースを検証（`spctl -a -vvv Zashiki.app` が *accepted* を返す）できたら、ルートの
+[`README.md`](../../README.md) / [`README.ja.md`](../../README.ja.md) から
+「未署名 / 右クリック → 開く」注記を外す。
 
 ### 開発ツリー依存のシェルビルド
 
@@ -170,8 +206,9 @@ pnpm uninstall:app -- --yes --purge-user-data # 上記 + ~/.zashiki も削除
 
 ## 既知の制約
 
-- **配布 .app は未署名**: `build:app` が作る `.app` は署名・notarization 未対応のため、
-  初回起動時に Gatekeeper の警告が出る（右クリック→開く等が必要）。署名/notarization は後続で対応予定。
+- **Apple の署名 secret を設定するまで配布ビルドは未署名**: secret が無いと `build:app` が作る
+  `.app` は初回起動時に Gatekeeper の警告が出る（右クリック→開く等が必要）。secret を設定すると
+  署名 + notarization が有効になる——[署名と notarization](#署名と-notarization) 参照。
 - **client dist を配信しない既存 server への相乗り**: 配布 .app は `http://127.0.0.1:8790`
   （server の `/`）を開く。8790 に別の server が既に稼働していると相乗りするが、その server が
   `ZK_CLIENT_DIST` 付きで起動していない（例: `tauri dev` / dist なしの `cargo run`）と `/` を
