@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use zashiki_core::process_tree::{build_process_maps, find_sid_in_tree, parse_ps_snapshot};
 
-use crate::protocol::{HookEventRequest, HookKind, NotifyKind};
+use crate::protocol::{HookKind, NotifyKind};
 use crate::status_poller::WorkWindow;
 
 /// Notification destination (ZK_NOTIFY; defaults to web). TS `NotifyMode`.
@@ -64,18 +64,15 @@ pub struct ResolvedWindow {
     pub name: String,
 }
 
-/// Map a hook event (sid / cwd) to a work window (TS `resolveWindow`).
+/// Map a hook event / focus request (sid / cwd) to a work window (TS `resolveWindow`).
 /// The primary key is the sid (via process-tree traversal); the fallback is an exact match on the pane cwd.
 pub fn resolve_window(
-    req: &HookEventRequest,
+    sid: Option<&str>,
+    cwd: Option<&str>,
     windows: &[WorkWindow],
     ps_output: &str,
 ) -> Option<ResolvedWindow> {
-    let sid = req
-        .sid
-        .as_deref()
-        .map(|s| s.to_lowercase())
-        .filter(|s| !s.is_empty());
+    let sid = sid.map(|s| s.to_lowercase()).filter(|s| !s.is_empty());
     if let Some(sid) = sid {
         let maps = build_process_maps(&parse_ps_snapshot(ps_output));
         for win in windows {
@@ -89,7 +86,7 @@ pub fn resolve_window(
             }
         }
     }
-    if let Some(cwd) = req.cwd.as_deref().filter(|c| !c.is_empty()) {
+    if let Some(cwd) = cwd.filter(|c| !c.is_empty()) {
         for win in windows {
             if win.panes.iter().any(|p| p.current_path == cwd) {
                 return Some(ResolvedWindow {
@@ -204,14 +201,6 @@ mod tests {
         }
     }
 
-    fn req(kind: HookKind, sid: Option<&str>, cwd: Option<&str>) -> HookEventRequest {
-        HookEventRequest {
-            kind,
-            sid: sid.map(String::from),
-            cwd: cwd.map(String::from),
-        }
-    }
-
     #[test]
     fn delivery_web_falls_back_to_mac_only_when_no_clients() {
         assert_eq!(
@@ -242,7 +231,7 @@ mod tests {
             window("@1", "repo-a", vec![pane(100, "/repos/a")]),
             window("@2", "repo-b", vec![pane(200, "/repos/b")]),
         ];
-        let got = resolve_window(&req(HookKind::Waiting, None, Some("/repos/b")), &windows, "");
+        let got = resolve_window(None, Some("/repos/b"), &windows, "");
         assert_eq!(got.unwrap().window_id, "@2");
     }
 
@@ -252,15 +241,15 @@ mod tests {
         let windows = vec![window("@1", "repo-a", vec![pane(4242, "/repos/a")])];
         // ps snapshot in which a child of pid 4242 is running claude --session-id <sid>.
         let ps = format!("4242 1 -zsh\n5000 4242 claude --session-id {sid}\n");
-        let got = resolve_window(&req(HookKind::Done, Some(&sid.to_uppercase()), None), &windows, &ps);
+        let got = resolve_window(Some(&sid.to_uppercase()), None, &windows, &ps);
         assert_eq!(got.unwrap().name, "repo-a");
     }
 
     #[test]
     fn resolve_returns_none_when_unmatched() {
         let windows = vec![window("@1", "repo-a", vec![pane(100, "/repos/a")])];
-        assert!(resolve_window(&req(HookKind::Waiting, None, Some("/nope")), &windows, "").is_none());
-        assert!(resolve_window(&req(HookKind::Waiting, None, None), &windows, "").is_none());
+        assert!(resolve_window(None, Some("/nope"), &windows, "").is_none());
+        assert!(resolve_window(None, None, &windows, "").is_none());
     }
 
     #[test]

@@ -236,6 +236,13 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           selectWindow(m.windowId);
         },
       });
+    } else if (m.t === "select") {
+      // External focus request (e.g. a clicked desktop notification via /api/focus):
+      // bring the app to front and select the window, without a notification. Ignore
+      // an already-closed window so we do not select a nonexistent session.
+      if (!state.sessions.some((s) => s.windowId === m.windowId)) return;
+      (deps.focusWindow ?? (() => window.focus()))();
+      selectWindow(m.windowId);
     }
   }
 

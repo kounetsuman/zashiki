@@ -208,7 +208,8 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/search", post(search_route))
         .route("/api/sessions/save", post(sessions_save))
         .route("/api/sessions/restore", post(sessions_restore))
-        .route("/api/hooks/event", post(hooks_event));
+        .route("/api/hooks/event", post(hooks_event))
+        .route("/api/focus", post(focus_session));
     if state.control.is_some() {
         authed_routes = authed_routes
             .route("/ws/control", get(ws_control))
@@ -604,15 +605,16 @@ async fn hooks_refresh(control: &ControlServices) -> Option<crate::status_poller
     rx.await.ok()
 }
 
-/// Resolves the window for a hook event from the work window list and the ps snapshot.
+/// Resolves the window for a hook event / focus request from the work window list and the ps snapshot.
 /// The window is derived from the owned PTY's SessionRegistry.
 async fn hooks_resolve(
     control: &ControlServices,
-    req: &crate::protocol::HookEventRequest,
+    sid: Option<&str>,
+    cwd: Option<&str>,
 ) -> Option<hooks::ResolvedWindow> {
     let windows = crate::poller_ports_pty::owned_work_windows(&control.sessions).await;
     let ps = crate::ps::PsAdapter.snapshot().await;
-    hooks::resolve_window(req, &windows, &ps)
+    hooks::resolve_window(sid, cwd, &windows, &ps)
 }
 
 pub(crate) fn now_ms() -> u64 {
@@ -636,7 +638,7 @@ async fn hooks_event(State(state): State<AppState>, body: axum::body::Bytes) -> 
     let snap = hooks_refresh(control).await;
     let resolved = match req.kind {
         crate::protocol::HookKind::Waiting | crate::protocol::HookKind::Done => {
-            hooks_resolve(control, &req).await
+            hooks_resolve(control, req.sid.as_deref(), req.cwd.as_deref()).await
         }
         _ => None,
     };
@@ -677,6 +679,34 @@ async fn hooks_event(State(state): State<AppState>, body: axum::body::Bytes) -> 
     Json(crate::protocol::HookEventResponse {
         ok: true,
         matched: actions.matched,
+    })
+    .into_response()
+}
+
+/// `POST /api/focus`. Resolves the window (sid then cwd) and broadcasts a `select` so an
+/// already-connected app brings that session to the front. The response reports whether it
+/// resolved (and to which window) so the caller can decide how to raise the native window.
+async fn focus_session(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let Some(control) = state.control.as_ref() else {
+        return json_error(StatusCode::SERVICE_UNAVAILABLE, "control not available");
+    };
+    let req: crate::protocol::FocusRequest = match parse_json_body(&body) {
+        Ok(v) => v,
+        Err((status, msg)) => return json_error(status, &msg),
+    };
+
+    let window_id = hooks_resolve(control, req.sid.as_deref(), req.cwd.as_deref())
+        .await
+        .map(|r| r.window_id);
+    if let Some(window_id) = window_id.clone() {
+        control
+            .hub
+            .broadcast(crate::protocol::ServerMessage::Select { window_id });
+    }
+
+    Json(crate::protocol::FocusResponse {
+        resolved: window_id.is_some(),
+        window_id,
     })
     .into_response()
 }
@@ -2668,6 +2698,84 @@ mod tests {
                 assert_eq!(macs.len(), 1);
                 assert_eq!(macs[0].title, "repo-a");
             }
+            for id in sessions.list().await {
+                sessions.remove(&id).await;
+            }
+        }
+
+        async fn send_focus(app: axum::Router, body: &str) -> (StatusCode, String) {
+            let req = HttpRequest::builder()
+                .method("POST")
+                .uri("/api/focus?token=t")
+                .header("host", OK_HOST)
+                .header("x-zashiki-token", "t")
+                .header("content-type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap();
+            let resp = app.oneshot(req).await.unwrap();
+            let status = resp.status();
+            let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+            (status, String::from_utf8(bytes.to_vec()).unwrap())
+        }
+
+        #[tokio::test]
+        async fn focus_unresolved_returns_resolved_false_and_broadcasts_nothing() {
+            let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+            let mut rx = hub.subscribe();
+            let (s, b) = send_focus(
+                app(services(hub.clone(), NotifyMode::Web, Arc::new(Mutex::new(vec![])))),
+                r#"{"cwd":"/nope"}"#,
+            )
+            .await;
+            assert_eq!(s, StatusCode::OK);
+            assert!(b.contains(r#""resolved":false"#), "body: {b}");
+            assert!(rx.try_recv().is_err(), "no select expected when unresolved");
+        }
+
+        /// Resolving a focus request by cwd broadcasts a `select` for the owned window and
+        /// echoes the resolved windowId (so a clicked notification can select the session).
+        #[cfg(unix)]
+        #[tokio::test]
+        async fn focus_resolved_broadcasts_select_with_window_id() {
+            use crate::session_launch::{plan_new_session, plan_to_config};
+            use crate::session_registry::SessionMeta;
+
+            let sessions = Arc::new(SessionRegistry::new());
+            let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
+            let plan = plan_new_session(sid, "/tmp", "repo-a", false, "/bin/sh", "claude");
+            sessions
+                .create_with_meta(
+                    sid.to_string(),
+                    plan_to_config(&plan),
+                    SessionMeta {
+                        cwd: "/tmp".to_string(),
+                        wname: "repo-a".to_string(),
+                    },
+                )
+                .await
+                .unwrap();
+
+            let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+            let mut rx = hub.subscribe();
+            let svc = services_with_registry(
+                hub.clone(),
+                NotifyMode::Web,
+                Arc::new(Mutex::new(vec![])),
+                sessions.clone(),
+            );
+            let (s, b) = send_focus(app(svc), r#"{"cwd":"/tmp"}"#).await;
+            assert_eq!(s, StatusCode::OK);
+            assert!(b.contains(r#""resolved":true"#), "body: {b}");
+            assert!(b.contains(&format!(r#""windowId":"{sid}""#)), "body: {b}");
+
+            let mut saw_select = false;
+            while let Ok(msg) = rx.try_recv() {
+                if let ServerMessage::Select { window_id } = msg {
+                    assert_eq!(window_id, sid);
+                    saw_select = true;
+                }
+            }
+            assert!(saw_select, "select broadcast expected");
             for id in sessions.list().await {
                 sessions.remove(&id).await;
             }

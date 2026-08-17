@@ -280,6 +280,35 @@ describe("createAppStore", () => {
     expect(t.store.getSnapshot().selectedWindowId).toBe("@1");
   });
 
+  it("brings to front and selects the window on select, without notifying", () => {
+    const t = setup();
+    t.control.emit({
+      t: "state.sync",
+      sessions: [session],
+      orgs: [],
+      orgColors: {},
+    });
+    t.control.emit({ t: "select", windowId: "@1" });
+    expect(t.focused).toEqual([1]);
+    expect(t.selected).toEqual(["@1"]);
+    expect(t.store.getSnapshot().selectedWindowId).toBe("@1");
+    expect(t.notified).toHaveLength(0);
+  });
+
+  it("ignores select for an unknown (already-closed) window", () => {
+    const t = setup();
+    t.control.emit({
+      t: "state.sync",
+      sessions: [session],
+      orgs: [],
+      orgColors: {},
+    });
+    t.control.emit({ t: "select", windowId: "@2" });
+    expect(t.focused).toEqual([]);
+    expect(t.selected).toEqual([]);
+    expect(t.store.getSnapshot().selectedWindowId).toBeNull();
+  });
+
   it("auto-selects the newest added window on state.sync after markNewRequested", () => {
     const t = setup();
     t.control.emit({
