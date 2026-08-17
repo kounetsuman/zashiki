@@ -16,7 +16,6 @@
     "e2e": "pnpm -F @zashiki/e2e run e2e",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "verify:npm-pack": "node scripts/verify-npm-pack.mjs",
     "uninstall:app": "bash scripts/uninstall.sh"
   },
   "devDependencies": {

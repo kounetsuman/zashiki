@@ -16,12 +16,9 @@ zashiki は Claude Code のオーケストレーションを、最高の UI/UX �
 
 ## Quick Start
 
-```sh
-npm install -g @zashiki/cli
-zashiki            # サーバを起動してコックピットを開く
-```
+[Releases](https://github.com/kounetsuman/zashiki/releases) から macOS 向け `Zashiki_*.dmg` を入手し、開いて `Zashiki.app` を `/Applications` にドラッグします。Zashiki を起動すると、Claude Code の各セッションが 1 つのウィンドウに集約されます。
 
-`zashiki` は Rust サーバを起動し、コックピット（同梱 UI）を開きます。`--port` でポート変更、`--no-open` で自動オープンを抑止。
+> **未署名**: 初回起動は右クリック →「開く」で Gatekeeper を回避してください。
 
 ## 既存ツールとの比較
 
@@ -109,7 +106,6 @@ pnpm uninstall:app -- --yes --purge-user-data # 上記 + ~/.zashiki（repos.conf
 |---|---|
 | [`packages/shared`](packages/shared/README.md) | オニオン最内核（純関数 + プロトコル型）。ワイヤ契約 |
 | [`packages/client`](packages/client/README.md) | UI クライアント（Tauri WebView）起動、手動チェックリスト |
-| [`packages/cli`](packages/cli/README.md) | npm 公開パッケージ `@zashiki/cli`（CLI）。配布モデル |
 | [`apps/desktop`](apps/desktop/README.md) | Tauri シェル、サイドカー、ビルド |
 | [`crates`](crates/README.md) | Rust サーバ（`zashiki-server`）とコア。レイヤリング / セキュリティ / PTY 所有 / 保存復元 / 環境変数 |
 | [`hooks`](hooks/README.md) / [`.githooks`](.githooks/README.md) | Claude Code フックの junction / 汚染防止フック |

@@ -42,33 +42,9 @@ fn maybe_print_plist() -> bool {
     true
 }
 
-/// The `build-id` JSON payload. Kept in the same top-level shape as `/healthz` so the CLI can reuse
-/// its `git_sha` extractor across both.
-fn build_id_json(version: &str, git_sha: &str) -> String {
-    format!(r#"{{"version":"{version}","git_sha":"{git_sha}"}}"#)
-}
-
-/// `zashiki-server build-id` prints this build's identifiers (`version` / `git_sha`) as JSON to
-/// stdout and exits. The CLI launcher (`packages/cli`) uses it to learn the git_sha of the binary it
-/// would spawn, so it can compare against a resident server's `/healthz` and avoid riding along on a
-/// stale one (#364). Mirrors the `git_sha` embedded into `/healthz` by build.rs.
-fn maybe_print_build_id() -> bool {
-    if std::env::args().nth(1).as_deref() != Some("build-id") {
-        return false;
-    }
-    println!(
-        "{}",
-        build_id_json(env!("CARGO_PKG_VERSION"), env!("ZK_GIT_SHA"))
-    );
-    true
-}
-
 #[tokio::main]
 async fn main() {
     if maybe_print_plist() {
-        return;
-    }
-    if maybe_print_build_id() {
         return;
     }
     let port: u16 = std::env::var("ZK_PORT")
@@ -277,16 +253,3 @@ async fn shutdown_signal(
 
 /// Upper bound allowed for the full teardown on graceful shutdown. Each session goes TERM->300ms->KILL, so it usually takes a few hundred ms.
 const SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
-
-#[cfg(test)]
-mod tests {
-    use super::build_id_json;
-
-    #[test]
-    fn build_id_json_has_version_and_git_sha_fields() {
-        assert_eq!(
-            build_id_json("0.0.0", "abc123"),
-            r#"{"version":"0.0.0","git_sha":"abc123"}"#
-        );
-    }
-}
