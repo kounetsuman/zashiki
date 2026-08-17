@@ -467,7 +467,7 @@ describe("App", () => {
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
     expect(control.sent).toEqual([
       { t: "session.new", org: "kilo" },
       { t: "session.close", windowId: "@2" },

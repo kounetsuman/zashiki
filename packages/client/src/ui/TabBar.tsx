@@ -349,7 +349,7 @@ export function TabBar({
                     setMenu(null);
                   }}
                 >
-                  Copy session (resume)
+                  {t("common.copyResume")}
                 </button>
               </div>
             </div>
