@@ -1,6 +1,6 @@
 name: npm publish
 
-# Publish the npm packages (zashiki + @zashiki/server-darwin-{arm64,x64}) on a vX.Y.Z tag push.
+# Publish the npm packages (@zashiki/cli + @zashiki/server-darwin-{arm64,x64}) on a vX.Y.Z tag push.
 # The repo version stays pinned to the 0.0.0 placeholder (guards against accidental publish); the real
 # version is injected from the tag inside CI only (same approach as release.yml's dmg distribution).
 # The prepublishOnly guard refuses 0.0.0, so a pre-injection or local publish fails fast.
@@ -87,7 +87,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish zashiki (cli)
-        run: pnpm --filter zashiki publish --no-git-checks
+      - name: Publish @zashiki/cli
+        run: pnpm --filter @zashiki/cli publish --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

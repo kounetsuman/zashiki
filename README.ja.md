@@ -17,7 +17,7 @@ zashiki は Claude Code のオーケストレーションを、最高の UI/UX �
 ## Quick Start
 
 ```sh
-npm install -g zashiki
+npm install -g @zashiki/cli
 zashiki            # サーバを起動してコックピットを開く
 ```
 
@@ -83,7 +83,7 @@ pnpm -F @zashiki/desktop dev         # dev 起動（Tauri シェル）
 
 ## 現状の制約
 
-- npm 配布（`npm install -g zashiki`）は着地作業中。publish までは上記の開発手順を使う。
+- npm 配布（`npm install -g @zashiki/cli`）は着地作業中。publish までは上記の開発手順を使う。
 - 配布 `.app` の同梱（externalBin）まわりは追跡中。
 
 ## アンインストール
@@ -110,7 +110,7 @@ pnpm uninstall:app -- --yes --purge-user-data # 上記 + ~/.zashiki（repos.conf
 |---|---|
 | [`packages/shared`](packages/shared/README.md) | オニオン最内核（純関数 + プロトコル型）。ワイヤ契約 |
 | [`packages/client`](packages/client/README.md) | UI クライアント（Tauri WebView）起動、手動チェックリスト |
-| [`packages/cli`](packages/cli/README.md) | npm 公開パッケージ `zashiki`（CLI）。配布モデル（WIP） |
+| [`packages/cli`](packages/cli/README.md) | npm 公開パッケージ `@zashiki/cli`（CLI）。配布モデル（WIP） |
 | [`apps/desktop`](apps/desktop/README.md) | Tauri シェル、サイドカー、ビルド |
 | [`crates`](crates/README.md) | Rust サーバ（`zashiki-server`）とコア。レイヤリング / セキュリティ / PTY 所有 / 保存復元 / 環境変数 |
 | [`hooks`](hooks/README.md) / [`.githooks`](.githooks/README.md) | Claude Code フックの junction / 汚染防止フック |

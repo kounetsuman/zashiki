@@ -1,12 +1,12 @@
 **English** | [日本語](./README.ja.md)
 
-# zashiki (CLI / published npm package)
+# @zashiki/cli (CLI / published npm package)
 
-The CLI itself, installed via `npm install -g zashiki`. The `zashiki` command starts the Rust server
+The CLI itself, installed via `npm install -g @zashiki/cli`. The `zashiki` command starts the Rust server
 (`zashiki-server`), has it serve the bundled client dist, and opens it in a browser.
 
 ```sh
-npm install -g zashiki
+npm install -g @zashiki/cli
 zashiki                 # start server → open http://127.0.0.1:8790/?token=... in a browser
 zashiki --port 9000     # change the port (default 8790 / env var ZK_PORT)
 zashiki --no-open       # do not open a browser; just print the URL

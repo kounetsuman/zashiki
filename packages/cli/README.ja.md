@@ -1,12 +1,12 @@
 [English](./README.md) | **日本語**
 
-# zashiki（CLI / npm 公開パッケージ）
+# @zashiki/cli（CLI / npm 公開パッケージ）
 
-`npm install -g zashiki` で入る CLI 本体。`zashiki` コマンドで Rust server（`zashiki-server`）を
+`npm install -g @zashiki/cli` で入る CLI 本体。`zashiki` コマンドで Rust server（`zashiki-server`）を
 起動し、同梱した client dist を配信させて、ブラウザで開く。
 
 ```sh
-npm install -g zashiki
+npm install -g @zashiki/cli
 zashiki                 # server 起動 → ブラウザで http://127.0.0.1:8790/?token=... を開く
 zashiki --port 9000     # ポート変更（既定 8790 / 環境変数 ZK_PORT）
 zashiki --no-open       # ブラウザを開かず URL を表示するだけ
