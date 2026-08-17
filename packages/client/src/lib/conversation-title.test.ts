@@ -9,8 +9,8 @@ import {
   saveConversationTitles,
 } from "./conversation-title.js";
 
-const SID_A = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
-const SID_B = "11111111-2222-4333-8444-555566667777";
+const WID_A = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
+const WID_B = "11111111-2222-4333-8444-555566667777";
 
 function memStorage(initial: Record<string, string> = {}) {
   const map = new Map(Object.entries(initial));
@@ -35,23 +35,23 @@ describe("loadConversationTitles", () => {
     expect(loadConversationTitles(s)).toEqual({});
   });
 
-  it("keeps only {title,name} for sid (UUID) keys; drops empty titles, missing names, and non-UUID keys", () => {
+  it("keeps only {title,name} for windowId (UUID) keys; drops empty titles, missing names, and non-UUID keys", () => {
     const s = memStorage({
       [CONVERSATION_TITLES_KEY]: JSON.stringify({
-        [SID_A]: { title: "作業A", name: "repoA" },
-        [SID_B]: { title: "", name: "repoB" }, // empty title
+        [WID_A]: { title: "作業A", name: "repoA" },
+        [WID_B]: { title: "", name: "repoB" }, // empty title
         "22222222-3333-4444-8555-666677778888": { title: "x" }, // name missing
-        "@1": { title: "旧 windowId キー", name: "repoC" }, // non-UUID key (old format, discarded on migration)
-        "not-a-uuid": { title: "y", name: "z" },
+        "@1": { title: "旧 tmux windowId キー", name: "repoC" }, // non-UUID key (retired format, discarded on migration)
+        "shell:0:repoD": { title: "y", name: "z" }, // plain-shell id (non-UUID)
         "33333333-4444-4555-8666-777788889999": "旧 string 形式",
       }),
     });
     expect(loadConversationTitles(s)).toEqual({
-      [SID_A]: { title: "作業A", name: "repoA" },
+      [WID_A]: { title: "作業A", name: "repoA" },
     });
   });
 
-  it("discards the entire legacy windowId-key (@N) table on migration (empty)", () => {
+  it("discards the entire retired tmux windowId-key (@N) table on migration (empty)", () => {
     const s = memStorage({
       [CONVERSATION_TITLES_KEY]: JSON.stringify({
         "@1": { title: "作業A", name: "repoA" },
@@ -65,15 +65,15 @@ describe("loadConversationTitles", () => {
 describe("saveConversationTitles", () => {
   it("writes JSON", () => {
     const s = memStorage();
-    saveConversationTitles(s, { [SID_A]: { title: "x", name: "r" } });
+    saveConversationTitles(s, { [WID_A]: { title: "x", name: "r" } });
     expect(s.map.get(CONVERSATION_TITLES_KEY)).toBe(
-      JSON.stringify({ [SID_A]: { title: "x", name: "r" } }),
+      JSON.stringify({ [WID_A]: { title: "x", name: "r" } }),
     );
   });
 
   it("does nothing when storage is null", () => {
     expect(() =>
-      saveConversationTitles(null, { [SID_A]: { title: "x", name: "r" } }),
+      saveConversationTitles(null, { [WID_A]: { title: "x", name: "r" } }),
     ).not.toThrow();
   });
 
@@ -85,50 +85,50 @@ describe("saveConversationTitles", () => {
       },
     };
     expect(() =>
-      saveConversationTitles(throwing, { [SID_A]: { title: "x", name: "r" } }),
+      saveConversationTitles(throwing, { [WID_A]: { title: "x", name: "r" } }),
     ).not.toThrow();
   });
 });
 
 describe("commitTitle", () => {
-  it("sets the trimmed title as a sid-key / name pair", () => {
-    expect(commitTitle({}, SID_A, "repoA", "  作業A  ")).toEqual({
-      [SID_A]: { title: "作業A", name: "repoA" },
+  it("sets the trimmed title as a windowId-key / name pair", () => {
+    expect(commitTitle({}, WID_A, "repoA", "  作業A  ")).toEqual({
+      [WID_A]: { title: "作業A", name: "repoA" },
     });
   });
 
   it("removes the custom title and reverts to auto when empty or whitespace-only", () => {
     expect(
-      commitTitle({ [SID_A]: { title: "旧", name: "r" } }, SID_A, "r", "   "),
+      commitTitle({ [WID_A]: { title: "旧", name: "r" } }, WID_A, "r", "   "),
     ).toEqual({});
   });
 
-  it("does not change titles of other sids (pure, non-destructive)", () => {
+  it("does not change titles of other windowIds (pure, non-destructive)", () => {
     const prev = {
-      [SID_A]: { title: "A", name: "r1" },
-      [SID_B]: { title: "B", name: "r2" },
+      [WID_A]: { title: "A", name: "r1" },
+      [WID_B]: { title: "B", name: "r2" },
     };
-    const next = commitTitle(prev, SID_A, "r1", "A2");
+    const next = commitTitle(prev, WID_A, "r1", "A2");
     expect(next).toEqual({
-      [SID_A]: { title: "A2", name: "r1" },
-      [SID_B]: { title: "B", name: "r2" },
+      [WID_A]: { title: "A2", name: "r1" },
+      [WID_B]: { title: "B", name: "r2" },
     });
     expect(prev).toEqual({
-      [SID_A]: { title: "A", name: "r1" },
-      [SID_B]: { title: "B", name: "r2" },
+      [WID_A]: { title: "A", name: "r1" },
+      [WID_B]: { title: "B", name: "r2" },
     });
   });
 
-  it("is a no-op when sid is undefined (claude not started / old server)", () => {
+  it("is a no-op when windowId is undefined", () => {
     expect(commitTitle({}, undefined, "repoA", "作業A")).toEqual({});
   });
 
-  it('is a no-op when sid is not a UUID (prevents "undefined" bucket pollution)', () => {
-    expect(commitTitle({}, "undefined", "repoA", "作業A")).toEqual({});
+  it("is a no-op when windowId is not a UUID (unbound/plain-shell window)", () => {
+    expect(commitTitle({}, "shell:0:repoA", "repoA", "作業A")).toEqual({});
     expect(commitTitle({}, "", "repoA", "作業A")).toEqual({});
   });
 
-  it("renaming two sid-less windows in a row does not collide or cross wires (both no-ops)", () => {
+  it("renaming two non-UUID windows in a row does not collide or cross wires (both no-ops)", () => {
     const a = commitTitle({}, undefined, "repoA", "AのタイトルX");
     const b = commitTitle(a, undefined, "repoB", "BのタイトルY");
     expect(b).toEqual({});
@@ -136,59 +136,70 @@ describe("commitTitle", () => {
 });
 
 describe("effectiveCustomTitle", () => {
-  const titles = { [SID_A]: { title: "手動", name: "repoA" } };
+  const titles = { [WID_A]: { title: "手動", name: "repoA" } };
 
-  it("returns the manual title when both sid and name match", () => {
-    expect(effectiveCustomTitle(titles, { sid: SID_A, name: "repoA" })).toBe(
-      "手動",
-    );
+  it("returns the manual title when both windowId and name match", () => {
+    expect(
+      effectiveCustomTitle(titles, { windowId: WID_A, name: "repoA" }),
+    ).toBe("手動");
   });
 
-  it("does not adopt on name mismatch (sid collision, double resume, etc.) to prevent title possession", () => {
+  it("does not adopt on name mismatch (windowId reused for a different repo) to prevent title possession", () => {
     expect(
-      effectiveCustomTitle(titles, { sid: SID_A, name: "repoB" }),
+      effectiveCustomTitle(titles, { windowId: WID_A, name: "repoB" }),
     ).toBeUndefined();
   });
 
   it("returns undefined when the entry is absent", () => {
     expect(
-      effectiveCustomTitle(titles, { sid: SID_B, name: "repoA" }),
+      effectiveCustomTitle(titles, { windowId: WID_B, name: "repoA" }),
     ).toBeUndefined();
   });
 
-  it("returns undefined when sid is undefined (claude not started / old server)", () => {
+  it("returns undefined when windowId is undefined", () => {
     expect(
-      effectiveCustomTitle(titles, { sid: undefined, name: "repoA" }),
+      effectiveCustomTitle(titles, { windowId: undefined, name: "repoA" }),
     ).toBeUndefined();
   });
 
-  it('returns undefined when sid is not a UUID (prevents "undefined" key leakage)', () => {
+  it("returns undefined when windowId is not a UUID (unbound/plain-shell window)", () => {
     const leaked = {
-      undefined: { title: "漏洩", name: "repoA" },
+      "shell:0:repoA": { title: "漏洩", name: "repoA" },
     } as unknown as typeof titles;
     expect(
-      effectiveCustomTitle(leaked, { sid: undefined, name: "repoA" }),
+      effectiveCustomTitle(leaked, {
+        windowId: "shell:0:repoA",
+        name: "repoA",
+      }),
     ).toBeUndefined();
   });
 
-  it("uses distinct titles for the same cwd/name when the sid differs", () => {
+  it("uses distinct titles for the same cwd/name when the windowId differs", () => {
     const t = {
-      [SID_A]: { title: "AのタイトルX", name: "repo" },
-      [SID_B]: { title: "BのタイトルY", name: "repo" },
+      [WID_A]: { title: "AのタイトルX", name: "repo" },
+      [WID_B]: { title: "BのタイトルY", name: "repo" },
     };
-    expect(effectiveCustomTitle(t, { sid: SID_A, name: "repo" })).toBe(
+    expect(effectiveCustomTitle(t, { windowId: WID_A, name: "repo" })).toBe(
       "AのタイトルX",
     );
-    expect(effectiveCustomTitle(t, { sid: SID_B, name: "repo" })).toBe(
+    expect(effectiveCustomTitle(t, { windowId: WID_B, name: "repo" })).toBe(
       "BのタイトルY",
     );
   });
 
-  it("re-matches when sid is unchanged even if windowId changes on restore", () => {
-    // At assignment: windowId=@1, sid=SID_A. After restore, windowId changes to @7 but sid is unchanged.
-    const t = commitTitle({}, SID_A, "repoA", "復元後も残るタイトル");
-    const afterRestore = { sid: SID_A, name: "repoA" };
+  it("persists across resume/restore because the owned-mode windowId is preserved", () => {
+    // In owned mode, restore rebuilds the session under the same UUID windowId
+    // (and relaunches `claude --resume <windowId>`), so the title re-matches.
+    const t = commitTitle({}, WID_A, "repoA", "復元後も残るタイトル");
+    const afterRestore = { windowId: WID_A, name: "repoA" };
     expect(effectiveCustomTitle(t, afterRestore)).toBe("復元後も残るタイトル");
+  });
+
+  it("is renamable/adopted even when claude is not currently detected (state no_claude keeps its windowId)", () => {
+    const t = commitTitle({}, WID_A, "repoA", "claude 終了後も残る");
+    expect(effectiveCustomTitle(t, { windowId: WID_A, name: "repoA" })).toBe(
+      "claude 終了後も残る",
+    );
   });
 });
 

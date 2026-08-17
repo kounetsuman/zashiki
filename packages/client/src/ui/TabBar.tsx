@@ -1,5 +1,5 @@
 import type { SessionInfo } from "@zashiki/shared";
-import { resolveOrgColor, resumeCommand } from "@zashiki/shared";
+import { isUuidSid, resolveOrgColor, resumeCommand } from "@zashiki/shared";
 import { type DragEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -29,8 +29,8 @@ export interface TabBarProps {
   orgColors?: Record<string, string>;
   onActivate(key: string): void;
   onClose(key: string): void;
-  /** Commits a double-click rename on a session tab. Commits with sid + name. Rename is disabled when unspecified. */
-  onRename?(sid: string, name: string, title: string): void;
+  /** Commits a double-click rename on a session tab. Commits with windowId + name. Rename is disabled when unspecified. */
+  onRename?(windowId: string, name: string, title: string): void;
   /** Reordering via drag & drop. Moves fromKey to the position of toKey. Reordering is disabled when unspecified. */
   onReorder?(fromKey: string, toKey: string): void;
   /** Apply a faint overlay when inactive. */
@@ -85,12 +85,11 @@ export function TabBar({
   onCopyResume,
 }: TabBarProps) {
   const { t } = useTranslation();
-  // For the tab being edited, remember its sid/name at the start in addition to the key
-  // (to detect sid changes = restore/reassignment, and to verify on commit that we don't
-  // mistakenly commit to a sid other than the one displayed).
+  // For the tab being edited, remember its windowId/name at the start in addition to the key
+  // (to verify on commit that we don't mistakenly commit to a window other than the one displayed).
   const [editing, setEditing] = useState<{
     key: string;
-    sid: string;
+    windowId: string;
     name: string;
   } | null>(null);
   const [draft, setDraft] = useState("");
@@ -107,17 +106,16 @@ export function TabBar({
   // Guard against double-firing commit/cancel (prevents an unmount blur after Escape cancel from mistakenly committing the stale draft).
   const doneRef = useRef(false);
 
-  // Abort editing if, during an edit, the target tab is pruned away or its sid is
-  // reassigned to another session (restore/restart) (prevents possession via sid-change
-  // detection; doneRef guards an unmount blur from mistakenly committing the stale draft.
-  // Adjusting state during render is the React-recommended pattern, so we avoid an effect).
+  // Abort editing if, during an edit, the target tab is pruned away (doneRef guards an unmount blur
+  // from mistakenly committing the stale draft. Adjusting state during render is the React-recommended
+  // pattern, so we avoid an effect).
   if (editing !== null) {
     const tab = tabs.find((t) => tabKey(t) === editing.key);
     const s =
       tab?.kind === "session"
         ? sessions.find((x) => x.windowId === tab.id)
         : undefined;
-    if (s === undefined || s.sid !== editing.sid) {
+    if (s === undefined) {
       doneRef.current = true;
       setEditing(null);
     }
@@ -145,7 +143,7 @@ export function TabBar({
   const commit = (): void => {
     if (doneRef.current || editing === null) return;
     doneRef.current = true;
-    onRename?.(editing.sid, editing.name, draft);
+    onRename?.(editing.windowId, editing.name, draft);
     setEditing(null);
   };
 
@@ -169,18 +167,17 @@ export function TabBar({
             : undefined;
         const isEditing = editing?.key === key;
 
-        // Rename is not accepted when the sid is missing (claude not started / old server)
+        // Rename is not accepted for non-UUID windows (unbound/plain-shell)
         // (commitTitle would become a no-op and just discard the input, so we don't enter edit mode at all).
         const renamable =
           session !== undefined &&
           onRename !== undefined &&
-          session.sid !== undefined &&
-          session.sid !== "";
+          isUuidSid(session.windowId);
         const startEdit = (): void => {
-          if (!renamable || session.sid === undefined) return;
+          if (!renamable) return;
           doneRef.current = false;
           setDraft(label);
-          setEditing({ key, sid: session.sid, name: session.name });
+          setEditing({ key, windowId: session.windowId, name: session.name });
         };
 
         // Drag & drop reordering is possible only when onReorder is present and not currently editing a rename.

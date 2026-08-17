@@ -51,7 +51,7 @@
     "closeRow": "{{name}} を閉じる",
     "closeRowConfirm": "{{name}} を閉じる（確定）",
     "cancelClose": "クローズを取消",
-    "cannotRename": "claude 未起動のため改名できません",
+    "cannotRename": "このセッションはまだリネームできません",
     "reposConf": {
       "notConfigured": "リポジトリが設定されていません。",
       "create": "<code>~/.zashiki/repos.conf</code> を作成してください（1行1パス）:",

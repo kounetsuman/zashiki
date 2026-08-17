@@ -17,7 +17,7 @@ const SID3 = "22222222-3333-4444-8555-666677778888";
 
 const sessions: SessionInfo[] = [
   {
-    windowId: "@1",
+    windowId: SID1,
     name: "zashiki",
     org: "kilo",
     repo: "zashiki",
@@ -27,7 +27,7 @@ const sessions: SessionInfo[] = [
     active: true,
   },
   {
-    windowId: "@2",
+    windowId: SID2,
     name: "tango",
     org: "kilo",
     repo: "tango",
@@ -37,7 +37,7 @@ const sessions: SessionInfo[] = [
     active: false,
   },
   {
-    windowId: "@3",
+    windowId: SID3,
     name: "charlie-app",
     org: "charlie",
     repo: "charlie-app",
@@ -333,7 +333,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("a row that is both active and selected has session-row-active and aria-current together", () => {
-    renderPanel({ selectedWindowId: "@1" });
+    renderPanel({ selectedWindowId: SID1 });
     const row = screen.getByRole("button", { name: /zashiki(?! を閉じる)/ });
     expect(row.className).toContain("session-row-active");
     expect(row.getAttribute("aria-current")).toBe("true");
@@ -344,7 +344,7 @@ describe("SessionListPanel: session rows", () => {
     fireEvent.doubleClick(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
-    expect(props.onSelect).toHaveBeenCalledWith("@2");
+    expect(props.onSelect).toHaveBeenCalledWith(SID2);
   });
 
   it("does not expand on a single click (does not call onSelect); only applies the focus ring", () => {
@@ -358,7 +358,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("a single click on the selected row is a no-op (does not move the focus ring either)", () => {
-    const props = renderPanel({ selectedWindowId: "@2" });
+    const props = renderPanel({ selectedWindowId: SID2 });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -379,7 +379,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("a double-click on the currently shown (selected) row does not resend onSelect (idempotency guard)", () => {
-    const props = renderPanel({ selectedWindowId: "@2" });
+    const props = renderPanel({ selectedWindowId: SID2 });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -408,7 +408,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("adds aria-current to the selected row", () => {
-    renderPanel({ selectedWindowId: "@2" });
+    renderPanel({ selectedWindowId: SID2 });
     expect(
       screen
         .getByRole("button", { name: /tango(?! を閉じる)/ })
@@ -480,12 +480,12 @@ describe("SessionListPanel: focusing the terminal on double-click/Enter", () => 
   it("calls onSelect and onFocusTerminal on double-clicking a different session", () => {
     const props = renderPanel();
     fireEvent.doubleClick(rowFor("tango"));
-    expect(props.onSelect).toHaveBeenCalledWith("@2");
+    expect(props.onSelect).toHaveBeenCalledWith(SID2);
     expect(props.onFocusTerminal).toHaveBeenCalled();
   });
 
   it("does not resend onSelect on double-clicking the shown session but still calls onFocusTerminal", () => {
-    const props = renderPanel({ selectedWindowId: "@2" });
+    const props = renderPanel({ selectedWindowId: SID2 });
     fireEvent.doubleClick(rowFor("tango"));
     expect(props.onSelect).not.toHaveBeenCalled();
     expect(props.onFocusTerminal).toHaveBeenCalled();
@@ -497,7 +497,7 @@ describe("SessionListPanel: focusing the terminal on double-click/Enter", () => 
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @2
     fireEvent.keyDown(panel(), { key: "Enter" });
-    expect(props.onSelect).toHaveBeenCalledWith("@2");
+    expect(props.onSelect).toHaveBeenCalledWith(SID2);
     expect(props.onFocusTerminal).toHaveBeenCalled();
   });
 });
@@ -556,7 +556,7 @@ describe("SessionListPanel: right-click menu", () => {
   it("calls onClose(windowId) immediately on clicking the row ✕ without a confirmation", () => {
     const props = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "tango を閉じる" }));
-    expect(props.onClose).toHaveBeenCalledWith("@2");
+    expect(props.onClose).toHaveBeenCalledWith(SID2);
     // Does not show the confirmation bar (same behavior as right-click Delete)
     expect(
       screen.queryByRole("button", { name: "tango を閉じる（確定）" }),
@@ -573,7 +573,7 @@ describe("SessionListPanel: right-click menu", () => {
     const props = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "zashiki を閉じる" }));
     expect(props.onClose).toHaveBeenCalledTimes(1);
-    expect(props.onClose).toHaveBeenCalledWith("@1");
+    expect(props.onClose).toHaveBeenCalledWith(SID1);
   });
 
   it("right-clicking the org header and choosing 'New session' calls onNew(org)", () => {
@@ -600,7 +600,7 @@ describe("SessionListPanel: right-click menu", () => {
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
     fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
-    expect(props.onClose).toHaveBeenCalledWith("@2");
+    expect(props.onClose).toHaveBeenCalledWith(SID2);
     // Does not show the confirmation bar
     expect(
       screen.queryByRole("button", { name: "tango を閉じる（確定）" }),
@@ -651,7 +651,7 @@ describe("SessionListPanel: right-click menu", () => {
     });
     expect((item as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(item);
-    expect(props.onCopyResume).toHaveBeenCalledWith("@2");
+    expect(props.onCopyResume).toHaveBeenCalledWith(SID2);
     // The menu closes after selection
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
@@ -685,7 +685,7 @@ describe("SessionListPanel: right-click menu", () => {
     const props = {
       sessions,
       orgs,
-      selectedWindowId: "@2" as string | null,
+      selectedWindowId: SID2 as string | null,
       onSelect: vi.fn(),
       onNew: vi.fn(),
       onClose: vi.fn(),
@@ -702,7 +702,7 @@ describe("SessionListPanel: right-click menu", () => {
       screen.getByRole("button", { name: "tango を閉じる（確定）" }),
     ).toBeTruthy();
     // @2 disappears -> the confirmation state is also cleared, and the confirmation bar isn't re-shown even if @2 returns
-    const without = sessions.filter((s) => s.windowId !== "@2");
+    const without = sessions.filter((s) => s.windowId !== SID2);
     rerender(<SessionListPanel {...props} sessions={without} />);
     rerender(<SessionListPanel {...props} sessions={sessions} />);
     expect(
@@ -762,7 +762,7 @@ describe("SessionListPanel: operations", () => {
   });
 
   it("Ctrl-N calls onNew with the selected session's org", () => {
-    const props = renderPanel({ selectedWindowId: "@3" });
+    const props = renderPanel({ selectedWindowId: SID3 });
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "n",
       ctrlKey: true,
@@ -780,7 +780,7 @@ describe("SessionListPanel: operations", () => {
   });
 
   it("Ctrl-X opens the inline confirmation for the selected session and closes it on confirm", () => {
-    const props = renderPanel({ selectedWindowId: "@2" });
+    const props = renderPanel({ selectedWindowId: SID2 });
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "x",
       ctrlKey: true,
@@ -789,7 +789,7 @@ describe("SessionListPanel: operations", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "tango を閉じる（確定）" }),
     );
-    expect(props.onClose).toHaveBeenCalledWith("@2");
+    expect(props.onClose).toHaveBeenCalledWith(SID2);
   });
 
   it("Ctrl-X does nothing when nothing is selected", () => {
@@ -839,7 +839,7 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @2
     fireEvent.keyDown(panel(), { key: "Enter" });
-    expect(props.onSelect).toHaveBeenCalledWith("@2");
+    expect(props.onSelect).toHaveBeenCalledWith(SID2);
   });
 
   it("toggles the collapse on Enter while an org header is focused (does not call onSelect)", () => {
@@ -886,7 +886,7 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
   });
 
   it("anchors ↑↓ at the selected row when no focus is set (moves to the row after the selected one)", () => {
-    renderPanel({ selectedWindowId: "@2" });
+    renderPanel({ selectedWindowId: SID2 });
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // next after @2 = org charlie
     expect(orgHeader("▼ charlie (1)").className).toContain(
       "session-org-focused",
@@ -894,7 +894,7 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
   });
 
   it("anchors ↑↓ at the org header when the selected row is inside a collapsed org with no focus (does not jump to the list edge)", () => {
-    renderPanel({ selectedWindowId: "@2" });
+    renderPanel({ selectedWindowId: SID2 });
     fireEvent.click(screen.getByText("▼ kilo (2)")); // collapse @2's org (focused=org kilo)
     fireEvent.doubleClick(rowFor("charlie-app")); // select(@3): reset focused=null (the selected prop stays @2)
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // anchor=org kilo -> next org charlie
@@ -1005,7 +1005,7 @@ describe("SessionListPanel: Rename", () => {
     expect(screen.queryByRole("menuitem", { name: "Rename" })).toBeNull();
   });
 
-  it("choosing 'Rename' shows an input prefilled with the current title, and Enter after changing the value calls onRename(sid, name, value)", () => {
+  it("choosing 'Rename' shows an input prefilled with the current title, and Enter after changing the value calls onRename(windowId, name, value)", () => {
     const props = renderPanel({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("zashiki"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
@@ -1073,14 +1073,34 @@ describe("SessionListPanel: Rename", () => {
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
-  it("disables 'Rename' for a row without a sid (same as tab renaming)", () => {
+  it("disables 'Rename' for a non-UUID window (unbound/plain-shell)", () => {
     renderPanel({
       onRename: vi.fn(),
-      sessions: [{ ...sessions[1], sid: undefined } as SessionInfo],
+      sessions: [{ ...sessions[1], windowId: "shell:0:tango" } as SessionInfo],
     });
     fireEvent.contextMenu(rowFor("tango"));
     const item = screen.getByRole("menuitem", { name: "Rename" });
     expect((item as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("keeps 'Rename' enabled for a UUID window even when claude is not detected (state no_claude, sid absent)", () => {
+    const props = renderPanel({
+      onRename: vi.fn(),
+      sessions: [
+        {
+          ...sessions[1],
+          state: "no_claude",
+          sid: undefined,
+        } as SessionInfo,
+      ],
+    });
+    fireEvent.contextMenu(rowFor("tango"));
+    const item = screen.getByRole("menuitem", { name: "Rename" });
+    expect((item as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(item);
+    fireEvent.change(renameInput(), { target: { value: "終了後に改名" } });
+    fireEvent.keyDown(renameInput(), { key: "Enter" });
+    expect(props.onRename).toHaveBeenCalledWith(SID2, "tango", "終了後に改名");
   });
 
   it("does not propagate Enter during editing to row selection (onSelect)", () => {
@@ -1109,7 +1129,7 @@ describe("SessionListPanel: Rename", () => {
     expect(
       screen.getByRole("textbox", { name: "セッションのタイトルを編集" }),
     ).toBeTruthy();
-    const without = sessions.filter((s) => s.windowId !== "@2");
+    const without = sessions.filter((s) => s.windowId !== SID2);
     rerender(<SessionListPanel {...props} sessions={without} />);
     expect(
       screen.queryByRole("textbox", { name: "セッションのタイトルを編集" }),

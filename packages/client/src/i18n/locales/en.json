@@ -51,7 +51,7 @@
     "closeRow": "Close {{name}}",
     "closeRowConfirm": "Close {{name}} (confirm)",
     "cancelClose": "Cancel close",
-    "cannotRename": "claude is not running, so renaming is unavailable",
+    "cannotRename": "this session cannot be renamed yet",
     "reposConf": {
       "notConfigured": "No repositories configured.",
       "create": "Create <code>~/.zashiki/repos.conf</code> (one path per line):",

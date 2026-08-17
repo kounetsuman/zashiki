@@ -8,9 +8,11 @@ import { TabBar } from "./TabBar.js";
 
 const SID = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 const SID2 = "11111111-2222-4333-8444-555566667777";
+const KEY = `session:${SID}`;
+const KEY2 = `session:${SID2}`;
 
 const session: SessionInfo = {
-  windowId: "@1",
+  windowId: SID,
   name: "myrepo",
   org: "o",
   repo: "myrepo",
@@ -42,8 +44,8 @@ describe("TabBar", () => {
   it("renders the title for a session tab via resolveTitle", () => {
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -56,8 +58,8 @@ describe("TabBar", () => {
   it("resolves manually edited titles for all tabs", () => {
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{ [SID]: { title: "手動名", name: "myrepo" } }}
         onActivate={() => undefined}
@@ -72,8 +74,8 @@ describe("TabBar", () => {
       "とても長いセッションタイトルなのでタブ幅では省略されるはず";
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[{ ...session, title: longTitle }]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -102,9 +104,9 @@ describe("TabBar", () => {
   it("adds aria-selected to the active tab", () => {
     render(
       <TabBar
-        tabs={[s("@1"), s("@2")]}
-        activeKey="session:@2"
-        sessions={[session, { ...session, windowId: "@2", title: "二番目" }]}
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY2}
+        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -119,7 +121,7 @@ describe("TabBar", () => {
     const onActivate = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
+        tabs={[s(SID)]}
         activeKey={null}
         sessions={[session]}
         conversationTitles={{}}
@@ -128,7 +130,7 @@ describe("TabBar", () => {
       />,
     );
     fireEvent.click(screen.getByRole("tab"));
-    expect(onActivate).toHaveBeenCalledWith("session:@1");
+    expect(onActivate).toHaveBeenCalledWith(KEY);
   });
 
   it("calls onClose(key) on ✕ click without calling onActivate (propagation stopped)", () => {
@@ -136,8 +138,8 @@ describe("TabBar", () => {
     const onClose = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={onActivate}
@@ -147,7 +149,7 @@ describe("TabBar", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "最初のプロンプト のタブを閉じる" }),
     );
-    expect(onClose).toHaveBeenCalledWith("session:@1");
+    expect(onClose).toHaveBeenCalledWith(KEY);
     expect(onActivate).not.toHaveBeenCalled();
   });
 
@@ -168,8 +170,8 @@ describe("TabBar", () => {
   it("gives a session tab an org-color dot (the org name is confirmable via title)", () => {
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[{ ...session, org: "whiskey" }]}
         conversationTitles={{}}
         orgColors={{ whiskey: "#123456" }}
@@ -185,8 +187,8 @@ describe("TabBar", () => {
   it("colors the top border of an active session tab with the org color too", () => {
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[{ ...session, org: "whiskey" }]}
         conversationTitles={{}}
         orgColors={{ whiskey: "#123456" }}
@@ -201,7 +203,7 @@ describe("TabBar", () => {
   it("does not apply a top border color to an inactive session tab", () => {
     render(
       <TabBar
-        tabs={[s("@1")]}
+        tabs={[s(SID)]}
         activeKey={null}
         sessions={[{ ...session, org: "whiskey" }]}
         conversationTitles={{}}
@@ -214,12 +216,12 @@ describe("TabBar", () => {
     expect(tab.style.borderTopColor).toBe("");
   });
 
-  it("enters rename editing on double-click and calls onRename(sid, name, value) on Enter", () => {
+  it("enters rename editing on double-click and calls onRename(windowId, name, value) on Enter", () => {
     const onRename = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -234,13 +236,13 @@ describe("TabBar", () => {
     expect(onRename).toHaveBeenCalledWith(SID, "myrepo", "新しい名前");
   });
 
-  it("does not allow rename for a tab missing sid (claude not started, legacy server)", () => {
+  it("does not allow rename for a non-UUID window (unbound/plain-shell)", () => {
     const onRename = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
-        sessions={[{ ...session, sid: undefined }]}
+        tabs={[s("shell:0:myrepo")]}
+        activeKey="session:shell:0:myrepo"
+        sessions={[{ ...session, windowId: "shell:0:myrepo" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -252,12 +254,32 @@ describe("TabBar", () => {
     expect(onRename).not.toHaveBeenCalled();
   });
 
+  it("allows rename for a UUID window even when claude is not detected (state no_claude, sid absent)", () => {
+    const onRename = vi.fn();
+    render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        sessions={[{ ...session, state: "no_claude", sid: undefined }]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onRename={onRename}
+      />,
+    );
+    fireEvent.doubleClick(screen.getByRole("tab"));
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "終了後に改名" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onRename).toHaveBeenCalledWith(SID, "myrepo", "終了後に改名");
+  });
+
   it("cancels on Escape during rename editing without calling onRename", () => {
     const onRename = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -277,8 +299,8 @@ describe("TabBar", () => {
     const onRename = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -297,8 +319,8 @@ describe("TabBar", () => {
     const onRename = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -319,8 +341,8 @@ describe("TabBar", () => {
     const onRename = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -340,11 +362,11 @@ describe("TabBar", () => {
     const onRename = vi.fn();
     const { rerender } = render(
       <TabBar
-        tabs={[s("@1"), s("@2")]}
-        activeKey="session:@1"
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
         sessions={[
           session,
-          { ...session, windowId: "@2", sid: SID2, name: "other" },
+          { ...session, windowId: SID2, sid: SID2, name: "other" },
         ]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -359,9 +381,9 @@ describe("TabBar", () => {
     // @1 disappears on another client (prune) -> even if the input's unmount blur runs, it must not mistakenly commit
     rerender(
       <TabBar
-        tabs={[s("@2")]}
-        activeKey="session:@2"
-        sessions={[{ ...session, windowId: "@2", sid: SID2, name: "other" }]}
+        tabs={[s(SID2)]}
+        activeKey={KEY2}
+        sessions={[{ ...session, windowId: SID2, sid: SID2, name: "other" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -376,9 +398,9 @@ describe("TabBar", () => {
     const onReorder = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1"), s("@2")]}
-        activeKey="session:@1"
-        sessions={[session, { ...session, windowId: "@2", title: "二番目" }]}
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -393,15 +415,15 @@ describe("TabBar", () => {
     fireEvent.dragStart(tab1);
     fireEvent.dragOver(tab2);
     fireEvent.drop(tab2);
-    expect(onReorder).toHaveBeenCalledWith("session:@1", "session:@2");
+    expect(onReorder).toHaveBeenCalledWith(KEY, KEY2);
   });
 
   it("suppresses the default on dragEnter/dragOver over another tab to satisfy the drop-target contract (assuming WebKit fires drop)", () => {
     render(
       <TabBar
-        tabs={[s("@1"), s("@2")]}
-        activeKey="session:@1"
-        sessions={[session, { ...session, windowId: "@2", title: "二番目" }]}
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -425,9 +447,9 @@ describe("TabBar", () => {
     const onReorder = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1"), s("@2")]}
-        activeKey="session:@1"
-        sessions={[session, { ...session, windowId: "@2", title: "二番目" }]}
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -444,9 +466,9 @@ describe("TabBar", () => {
     const onReorder = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1"), s("@2")]}
-        activeKey="session:@1"
-        sessions={[session, { ...session, windowId: "@2", title: "二番目" }]}
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -461,8 +483,8 @@ describe("TabBar", () => {
   it("does not make tabs draggable when onReorder is not provided (reordering disabled)", () => {
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -473,12 +495,12 @@ describe("TabBar", () => {
     expect(tab.getAttribute("draggable")).toBe("false");
   });
 
-  it("does not spuriously commit when the sid for the same windowId changes during editing (restore/reassignment); aborts on the sid mismatch", () => {
+  it("keeps editing across a detected-sid change under the same windowId (the title is keyed by the stable windowId, not the transient sid)", () => {
     const onRename = vi.fn();
     const { rerender } = render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -488,32 +510,32 @@ describe("TabBar", () => {
     );
     fireEvent.doubleClick(screen.getByRole("tab"));
     fireEvent.change(screen.getByRole("textbox"), {
-      target: { value: "旧セッションの下書き" },
+      target: { value: "編集中の下書き" },
     });
-    // Same windowId @1 but the sid morphs into a different session (tmux restart, windowId reuse)
+    // The detected sid changes (e.g. claude restarted) but the windowId is unchanged.
     rerender(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
-        sessions={[
-          { ...session, sid: SID2, name: "別リポジトリ", title: "別の窓" },
-        ]}
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        sessions={[{ ...session, sid: SID2 }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
         onRename={onRename}
       />,
     );
-    expect(onRename).not.toHaveBeenCalled();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    const input = screen.queryByRole("textbox") as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+    fireEvent.keyDown(input as HTMLInputElement, { key: "Enter" });
+    expect(onRename).toHaveBeenCalledWith(SID, "myrepo", "編集中の下書き");
   });
 
   it("right-clicking a session tab with a sid and choosing 'Copy session (resume)' calls onCopyResume", () => {
     const onCopyResume = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[{ ...session, sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -527,15 +549,15 @@ describe("TabBar", () => {
     });
     expect((item as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(item);
-    expect(onCopyResume).toHaveBeenCalledWith("@1");
+    expect(onCopyResume).toHaveBeenCalledWith(SID);
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
   it("disables the resume item for a session tab without a sid", () => {
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[{ ...session, sid: undefined }]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -553,8 +575,8 @@ describe("TabBar", () => {
   it("does not show the right-click menu when onCopyResume is not provided (backward compatibility)", () => {
     render(
       <TabBar
-        tabs={[s("@1")]}
-        activeKey="session:@1"
+        tabs={[s(SID)]}
+        activeKey={KEY}
         sessions={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -569,13 +591,13 @@ describe("TabBar", () => {
     const onCopyResume = vi.fn();
     render(
       <TabBar
-        tabs={[s("@1"), s("@2")]}
-        activeKey="session:@1"
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
         sessions={[
           { ...session, sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
           {
             ...session,
-            windowId: "@2",
+            windowId: SID2,
             title: "二番目",
             sid: "11111111-2222-3333-4444-555555555555",
           },
@@ -592,6 +614,6 @@ describe("TabBar", () => {
     fireEvent.click(
       screen.getByRole("menuitem", { name: "Copy session (resume)" }),
     );
-    expect(onCopyResume).toHaveBeenCalledWith("@2");
+    expect(onCopyResume).toHaveBeenCalledWith(SID2);
   });
 });

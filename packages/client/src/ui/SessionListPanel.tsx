@@ -1,5 +1,5 @@
 import type { SessionInfo, SessionState } from "@zashiki/shared";
-import { resolveOrgColor, resumeCommand } from "@zashiki/shared";
+import { isUuidSid, resolveOrgColor, resumeCommand } from "@zashiki/shared";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -137,11 +137,11 @@ export interface SessionListPanelProps {
    */
   onCopyResume?(windowId: string): void;
   /**
-   * Inline-rename a row's title via the right-click "Rename" and commit it. Passes sid + name +
+   * Inline-rename a row's title via the right-click "Rename" and commit it. Passes windowId + name +
    * value through the same commitTitle path as tab renaming. If omitted, Rename is not shown in the
-   * row menu. Windows missing a sid (claude not started) cannot be renamed since commitTitle is a no-op.
+   * row menu. Non-UUID windows (unbound/plain-shell) cannot be renamed since commitTitle is a no-op.
    */
-  onRename?(sid: string, name: string, title: string): void;
+  onRename?(windowId: string, name: string, title: string): void;
 }
 
 /** Preserve the order of orgs while appending detected orgs not in orgs at the end. */
@@ -229,11 +229,10 @@ export function SessionListPanel({
   // Target of the inline confirmation (because window.confirm is unresponsive in the Tauri WKWebView).
   const [confirmingClose, setConfirmingClose] = useState<string | null>(null);
   const [menu, setMenu] = useState<ContextMenu | null>(null);
-  // The row currently being inline-renamed (remembers the sid/name pair from when it started, so that
-  // on commit it is not mis-committed to a different sid, and matches to abort editing on prune/reassignment; same convention as tab renaming).
+  // The row currently being inline-renamed (remembers the windowId/name from when it started, so that
+  // on commit it is not mis-committed to a different window, and matches to abort editing on prune; same convention as tab renaming).
   const [renaming, setRenaming] = useState<{
     windowId: string;
-    sid: string;
     name: string;
   } | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -370,35 +369,35 @@ export function SessionListPanel({
     onFocusTerminal?.();
   };
 
-  // Abort editing if the row being edited disappears via prune, or its sid is reassigned to a different
-  // session (restore/restart) (prevents "possession"; the mis-commit of the stale draft via unmount blur is
-  // sealed off by renameDoneRef. Adjusting state during render is the React-recommended pattern. Same convention as tab renaming).
+  // Abort editing if the row being edited disappears via prune (the mis-commit of the stale draft via
+  // unmount blur is sealed off by renameDoneRef. Adjusting state during render is the React-recommended
+  // pattern. Same convention as tab renaming).
   if (renaming !== null) {
     const s = sessions.find((x) => x.windowId === renaming.windowId);
-    if (s === undefined || s.sid !== renaming.sid) {
+    if (s === undefined) {
       renameDoneRef.current = true;
       setRenaming(null);
     }
   }
 
-  // Don't accept renames when the sid is missing (claude not started, or an old server) (commitTitle would be a
-  // no-op and the input would just vanish, so don't let editing start at all. Same convention as tab renaming).
+  // Don't accept renames for non-UUID windows (unbound/plain-shell) (commitTitle would be a no-op and the
+  // input would just vanish, so don't let editing start at all. Same convention as tab renaming).
   const isRenamable = (s: SessionInfo): boolean =>
-    onRename !== undefined && s.sid !== undefined && s.sid !== "";
+    onRename !== undefined && isUuidSid(s.windowId);
 
   const startRename = (s: SessionInfo): void => {
-    if (!isRenamable(s) || s.sid === undefined) return;
+    if (!isRenamable(s)) return;
     renameDoneRef.current = false;
     setRenameDraft(
       resolveTitle(effectiveCustomTitle(conversationTitles, s), s),
     );
-    setRenaming({ windowId: s.windowId, sid: s.sid, name: s.name });
+    setRenaming({ windowId: s.windowId, name: s.name });
   };
 
   const commitRename = (): void => {
     if (renameDoneRef.current || renaming === null) return;
     renameDoneRef.current = true;
-    onRename?.(renaming.sid, renaming.name, renameDraft);
+    onRename?.(renaming.windowId, renaming.name, renameDraft);
     setRenaming(null);
   };
 

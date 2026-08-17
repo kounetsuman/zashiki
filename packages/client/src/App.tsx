@@ -573,13 +573,13 @@ export function App({
     return () => window.clearInterval(id);
   }, [activeEditorKey, loadFile]);
 
-  // Commit the conversation header / tab title edit and persist it keyed by sid (claude session-id)
-  // (even if windowId changes on restore, sid is preserved across resume and re-matches).
-  // name (repository) is stored alongside for disambiguation on sid collisions. For windows lacking a sid, commitTitle is a no-op.
+  // Commit the conversation header / tab title edit and persist it keyed by windowId (the owned-mode
+  // session UUID, preserved across resume/restore). name (repository) is stored alongside for the
+  // display-time match. For non-UUID windows (unbound/plain-shell), commitTitle is a no-op.
   const handleCommitConversationTitle = useCallback(
-    (sid: string, name: string, value: string): void => {
+    (windowId: string, name: string, value: string): void => {
       setConversationTitles((prev) => {
-        const next = commitTitle(prev, sid, name, value);
+        const next = commitTitle(prev, windowId, name, value);
         saveConversationTitles(panelStorage, next);
         return next;
       });

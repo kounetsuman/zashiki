@@ -1,15 +1,18 @@
 /**
  * Persistence of user-edited titles for the conversation panel.
- * The key is claude's session-id (sid). Because sid survives resume, a custom
- * title re-matches even when the windowId is reassigned during a restore such
- * as a tmux restart.
- * sid is unique, so there is no need to guard against windowId reuse
- * (title "possession"). But to prevent contamination of the "undefined" bucket
- * when sid is missing (claude not started, or an old server), we reject sids
- * that fail UUID validation and, as a safeguard, keep the name (repository) it
- * was assigned with as a pair, verifying the match at display time.
- * Follows the localStorage "zk.*" naming convention. When unedited, it falls
- * back to the automatic title (or the name if absent).
+ * The key is the session's windowId. In owned mode the windowId is the session's
+ * stable UUID: it is generated at session.new, launched as `claude --session-id
+ * <windowId>`, and preserved across resume/restore (the registry is rebuilt under
+ * the same id). So a title stays attached for the whole life of the session,
+ * independent of whether a claude process is detected at any given moment.
+ * windowId is unique per session, so there is no cross-session "possession" risk.
+ * We reject non-UUID windowIds (unbound/plain-shell windows that are never
+ * persisted); this also self-enforces the owned-mode assumption, since a legacy
+ * tmux windowId (`@N`) is non-UUID and is simply treated as non-renamable. The
+ * name (repository) is stored alongside the title to keep the storage format
+ * stable and as a display-time consistency check (it normally always matches,
+ * as windowId is unique). Follows the localStorage "zk.*" naming convention. When
+ * unedited, it falls back to the automatic title (or the name if absent).
  */
 
 import { isUuidSid } from "@zashiki/shared";
@@ -24,18 +27,19 @@ export interface TitleEntry {
   name: string;
 }
 
-/** sid → title entry. Empty titles are not kept (i.e. fall back to the automatic title). */
+/** windowId → title entry. Empty titles are not kept (i.e. fall back to the automatic title). */
 export type TitleMap = Record<string, TitleEntry>;
 
-/** Whether the sid can be used as a custom-title key (rejects missing or non-UUID values). */
-function isKeyableSid(sid: string | undefined): sid is string {
-  return sid !== undefined && isUuidSid(sid);
+/** Whether the windowId can be used as a custom-title key (rejects missing or non-UUID values). */
+function isKeyableWindowId(windowId: string | undefined): windowId is string {
+  return windowId !== undefined && isUuidSid(windowId);
 }
 
 /**
  * Reads the persisted title map. Malformed values, empty titles, and non-UUID
- * keys (the old windowId format) are dropped. A map keyed by old windowIds
- * cannot be mapped onto sids, so it is discarded wholesale during migration.
+ * keys (unbound/plain-shell windows, or the retired windowId=@N format) are
+ * dropped. A map keyed by old tmux windowIds cannot be mapped onto the current
+ * UUID windowIds, so it is discarded wholesale during migration.
  */
 export function loadConversationTitles(storage: StoragePart | null): TitleMap {
   if (storage === null) return {};
@@ -78,38 +82,37 @@ export function saveConversationTitles(
 }
 
 /**
- * Returns a new map with the edit committed (pure function). If the sid is
- * missing or non-UUID (claude not started, or an old server), it writes nothing
- * and returns the original map (preventing "undefined" bucket contamination and
- * cross-window mix-ups). If empty after trimming, it deletes the custom title
+ * Returns a new map with the edit committed (pure function). If the windowId is
+ * missing or non-UUID (an unbound/plain-shell window), it writes nothing and
+ * returns the original map. If empty after trimming, it deletes the custom title
  * and falls back to the automatic one. The name is stored as a pair for matching.
  */
 export function commitTitle(
   titles: TitleMap,
-  sid: string | undefined,
+  windowId: string | undefined,
   name: string,
   raw: string,
 ): TitleMap {
-  if (!isKeyableSid(sid)) return titles;
+  if (!isKeyableWindowId(windowId)) return titles;
   const trimmed = raw.trim();
   const next = { ...titles };
-  if (trimmed === "") delete next[sid];
-  else next[sid] = { title: trimmed, name };
+  if (trimmed === "") delete next[windowId];
+  else next[windowId] = { title: trimmed, name };
   return next;
 }
 
 /**
  * Returns the manual title in effect for the current session (undefined if
- * none). Not used if the sid is missing or non-UUID. Only adopted when the name
- * (repository) saved with it matches the current session (a safeguard against
- * sid collisions and duplicate resumes).
+ * none). Not used if the windowId is missing or non-UUID. Only adopted when the
+ * name (repository) saved with it matches the current session (normally always
+ * true since windowId is unique; a defensive display-time check).
  */
 export function effectiveCustomTitle(
   titles: TitleMap,
-  session: { sid?: string | undefined; name: string },
+  session: { windowId?: string | undefined; name: string },
 ): string | undefined {
-  if (!isKeyableSid(session.sid)) return undefined;
-  const entry = titles[session.sid];
+  if (!isKeyableWindowId(session.windowId)) return undefined;
+  const entry = titles[session.windowId];
   if (entry === undefined || entry.name !== session.name) return undefined;
   return entry.title === "" ? undefined : entry.title;
 }
