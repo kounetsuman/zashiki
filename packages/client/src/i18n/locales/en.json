@@ -52,7 +52,7 @@
     "closeRow": "Close {{name}}",
     "closeRowConfirm": "Close {{name}} (confirm)",
     "cancelClose": "Cancel close",
-    "cannotRename": "claude is not running, so renaming is unavailable",
+    "cannotRename": "this session cannot be renamed yet",
     "rename": "Rename",
     "delete": "Delete",
     "reposConf": {

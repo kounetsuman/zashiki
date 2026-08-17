@@ -52,7 +52,7 @@
     "closeRow": "{{name}} を閉じる",
     "closeRowConfirm": "{{name}} を閉じる（確定）",
     "cancelClose": "クローズを取消",
-    "cannotRename": "claude 未起動のため改名できません",
+    "cannotRename": "このセッションはまだリネームできません",
     "rename": "名前を変更",
     "delete": "削除",
     "reposConf": {
