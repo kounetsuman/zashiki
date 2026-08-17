@@ -36,6 +36,7 @@ pub mod status_poller;
 pub mod term_attach_pty;
 pub mod token;
 pub mod term_registry;
+pub mod update_checker;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -2899,6 +2900,7 @@ mod tests {
                 config_path: None,
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: std::sync::Arc::new(|_| {}),
+                app_version: None,
             });
             let repos_handle = services.repos.clone();
             let mut rx = services.hub.subscribe();
@@ -3054,6 +3056,7 @@ mod tests {
                 ConfigView {
                     notify_sound: true,
                     debug: false,
+                    update_check: true,
                     language: None,
                 },
                 vec![],
@@ -3112,6 +3115,7 @@ mod tests {
                 config_path: None,
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: std::sync::Arc::new(|_| {}),
+                app_version: None,
             });
             let port = serve(Some(services)).await;
             let mut ws = connect(port).await;

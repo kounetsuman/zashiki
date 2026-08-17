@@ -307,6 +307,7 @@ describe("App", () => {
         t: "config.sync",
         notifySound: true,
         debug: false,
+        updateCheck: true,
         language: "en",
       }),
     );
@@ -909,6 +910,7 @@ describe("App", () => {
         t: "config.sync",
         notifySound: false,
         debug: false,
+        updateCheck: true,
         language: null,
       });
     });
@@ -918,6 +920,7 @@ describe("App", () => {
         t: "config.sync",
         notifySound: true,
         debug: false,
+        updateCheck: true,
         language: null,
       });
     });
@@ -1461,6 +1464,7 @@ describe("App", () => {
         t: "config.sync",
         notifySound: true,
         debug: true,
+        updateCheck: true,
         language: null,
       });
     });
@@ -1470,6 +1474,7 @@ describe("App", () => {
         t: "config.sync",
         notifySound: true,
         debug: false,
+        updateCheck: true,
         language: null,
       });
     });

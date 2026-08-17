@@ -190,13 +190,29 @@ describe("serverMessageSchema", () => {
     [{ t: "select", windowId: "@3" }],
     [{ t: "select", windowId: "0954e103-14ff-4406-bc6c-325449ef07ba" }],
     [{ t: "error", code: "work_not_found", message: "work session not found" }],
-    [{ t: "config.sync", notifySound: true, debug: false, language: "ja" }],
-    [{ t: "config.sync", notifySound: false, debug: true, language: null }],
+    [
+      {
+        t: "config.sync",
+        notifySound: true,
+        debug: false,
+        updateCheck: true,
+        language: "ja",
+      },
+    ],
+    [
+      {
+        t: "config.sync",
+        notifySound: false,
+        debug: true,
+        updateCheck: false,
+        language: null,
+      },
+    ],
   ])("accepts: %j", (msg) => {
     expect(serverMessageSchema.parse(msg)).toEqual(msg);
   });
 
-  it("defaults an omitted config.sync language to null (compatible with old servers)", () => {
+  it("defaults omitted config.sync updateCheck/language (compatible with old servers)", () => {
     expect(
       serverMessageSchema.parse({
         t: "config.sync",
@@ -207,6 +223,7 @@ describe("serverMessageSchema", () => {
       t: "config.sync",
       notifySound: true,
       debug: false,
+      updateCheck: true,
       language: null,
     });
   });

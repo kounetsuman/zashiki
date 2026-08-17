@@ -68,6 +68,7 @@ process, so the session remains.
 | `ZK_CLIENT_DIST` | distributed .app: `../Resources/client-dist` relative to the executable (bundled) / dev: `packages/client/dist` | the client dist for the server to serve statically. The sidecar passes it on spawn only when it actually exists (in dev it opens Vite:5173, so it is harmless even if not built) |
 | `ZK_SHELL_URL` | dev: `http://localhost:5173` / build: `http://127.0.0.1:8790` | base of the WebView's initial URL |
 | `ZK_CONFIG` | `~/.zashiki/config.json` | config file from which debug mode is read (shared with the server; see "Debug mode" below) |
+| `ZK_APP_VERSION` | (injected by the shell) | the real bundle version (`app.package_info().version`) handed to the server for the update check. The server's own Cargo version stays at the `0.0.0` placeholder, so this is the only channel carrying the real version; unset / `0.0.0` (dev) disables the check |
 
 ## Debug mode (WebView devtools)
 
@@ -95,6 +96,29 @@ it from the right-click menu).
   impact).
 - The canonical spec is `parse_debug_flag` / `devtools_enabled` in `src/sidecar.rs`
   (cargo test).
+
+## Update check (GitHub Releases)
+
+When you run an outdated bundle, the server notifies you in the NOTIFICATION panel
+(and via a toast) that a newer **stable** release exists. It polls
+`GET https://api.github.com/repos/kounetsuman/zashiki/releases/latest` (unauthenticated;
+prereleases excluded) once on startup and then every 24h, compares the latest stable
+tag against the running bundle version, and emits an `update-available:<version>`
+notification when a newer version is found. Offline / non-2xx / parse failures are
+skipped silently, and dev builds (version `0.0.0`) never poll.
+
+Enabled by default. To stop the server's outbound egress to github.com, set
+`updateCheck` to `false` in `~/.zashiki/config.json`:
+
+```json
+{ "updateCheck": false }
+```
+
+- Applied live: the flag is read on each poll, so toggling it takes effect without a
+  restart (it is also distributed to clients via `config.sync`).
+- This is a notice only — there is no auto-update / in-app download.
+- The canonical spec is the `update_checker` / `notifications` tests in
+  `crates/zashiki-server` and `parse_config` in `src/config.rs` (cargo test).
 
 ## Build
 

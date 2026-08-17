@@ -69,6 +69,10 @@ fn main() {
             };
 
             // setup is FnOnce, so cfg/base can be moved in directly.
+            // The real bundle version lives in the shell (tauri.conf.json, injected at release), not the
+            // server's Cargo version. Hand it to the server via ZK_APP_VERSION for the update check (#26).
+            let mut cfg = cfg;
+            cfg.app_version = app.package_info().version.to_string();
             let owned_slot = Arc::clone(&owned_in_setup);
             std::thread::spawn(move || match sidecar::start(&cfg, &base) {
                 Ok((url, owned)) => {

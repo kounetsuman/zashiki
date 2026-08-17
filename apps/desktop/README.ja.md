@@ -63,6 +63,7 @@ server のみ**プロセスグループへ SIGTERM → 猶予 5s → SIGKILL で
 | `ZK_CLIENT_DIST` | 配布 .app: 実行体から `../Resources/client-dist`（同梱物）／dev: `packages/client/dist` | server に静的配信させる client dist。sidecar は実在するときだけ spawn 時に渡す（dev は Vite:5173 を開くため未生成でも無害） |
 | `ZK_SHELL_URL` | dev: `http://localhost:5173` / build: `http://127.0.0.1:8790` | WebView の初期 URL ベース |
 | `ZK_CONFIG` | `~/.zashiki/config.json` | デバッグモードを読む設定ファイル（server と共有。下記「デバッグモード」参照） |
+| `ZK_APP_VERSION` | （シェルが注入） | 更新チェック用に server へ渡す実バンドルバージョン（`app.package_info().version`）。server 自身の Cargo バージョンは `0.0.0` プレースホルダのままなので、実バージョンを運ぶのはこの経路だけ。未設定・`0.0.0`（dev）ならチェックは無効 |
 
 ## デバッグモード（WebView devtools）
 
@@ -83,6 +84,27 @@ server のみ**プロセスグループへ SIGTERM → 猶予 5s → SIGKILL で
   `tauri build` 産で有効化するため tauri の `devtools` feature を付けている（macOS では
   private API を使うため App Store 配布時は非対応。本アプリは未署名配布のため実害はない）。
 - 仕様の正本は `src/sidecar.rs` の `parse_debug_flag` / `devtools_enabled`（cargo test）。
+
+## 更新チェック（GitHub Releases）
+
+古いバンドルで動かしていると、より新しい **安定版** リリースがあることを NOTIFICATION
+パネル（とトースト）で知らせる。`GET https://api.github.com/repos/kounetsuman/zashiki/releases/latest`
+を起動時に1回・以降 24 時間ごとにポーリングし（未認証。プレリリースは除外）、最新の安定版タグを
+起動中のバンドルバージョンと比較して、新しければ `update-available:<version>` の通知を出す。
+オフライン・非 2xx・パース失敗は黙ってスキップし、dev ビルド（バージョン `0.0.0`）はポーリングしない。
+
+既定で有効。github.com への外向き通信を止めたい場合は `~/.zashiki/config.json` の
+`updateCheck` を `false` にする:
+
+```json
+{ "updateCheck": false }
+```
+
+- ライブ適用: フラグはポーリングごとに読むため、再起動なしで切り替わる（`config.sync` で
+  クライアントにも配信される）。
+- これは通知のみ。自動更新・アプリ内ダウンロードは行わない。
+- 仕様の正本は `crates/zashiki-server` の `update_checker` / `notifications` テストと
+  `src/config.rs` の `parse_config`（cargo test）。
 
 ## ビルド
 
