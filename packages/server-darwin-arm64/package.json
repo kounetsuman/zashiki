@@ -3,6 +3,11 @@
   "version": "0.0.0",
   "license": "MIT",
   "description": "zashiki-server binary (macOS arm64), distributed as an optionalDependency of @zashiki/cli.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kounetsuman/zashiki.git",
+    "directory": "packages/server-darwin-arm64"
+  },
   "os": [
     "darwin"
   ],

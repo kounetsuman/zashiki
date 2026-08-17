@@ -1,4 +1,4 @@
-[English](./README.md) | **日本語**
+[English](https://github.com/kounetsuman/zashiki/blob/main/packages/cli/README.md) | **日本語**
 
 # @zashiki/cli（CLI / npm 公開パッケージ）
 
