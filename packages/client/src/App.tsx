@@ -20,6 +20,7 @@ import type { FsApi } from "./api/fs.js";
 import type { GitApi } from "./api/git.js";
 import type { ReposApi } from "./api/repos.js";
 import type { SearchApi } from "./api/search.js";
+import logoUrl from "./assets/logo.png";
 import { DebugPanel } from "./debug/DebugPanel.js";
 import {
   type ControlDebugSnapshot,
@@ -196,7 +197,9 @@ function ErrorDialog({
           aria-label={t("common.close")}
           onClick={onDismiss}
         >
-          ×
+          <span className="material-symbols-outlined" aria-hidden="true">
+            close
+          </span>
         </button>
       </div>
       <p className="error-dialog-body">{message}</p>
@@ -210,9 +213,12 @@ function EmptyConversation() {
   return (
     <div className="empty-conversation">
       <div className="empty-conversation-inner">
-        <div className="empty-conversation-mark" aria-hidden="true">
-          ◍
-        </div>
+        <img
+          className="empty-conversation-mark"
+          src={logoUrl}
+          alt=""
+          aria-hidden="true"
+        />
         <p className="empty-conversation-title">
           {t("emptyConversation.title")}
         </p>
@@ -243,9 +249,12 @@ function NoTabOpen() {
   return (
     <div className="empty-conversation">
       <div className="empty-conversation-inner">
-        <div className="empty-conversation-mark" aria-hidden="true">
-          ◍
-        </div>
+        <img
+          className="empty-conversation-mark"
+          src={logoUrl}
+          alt=""
+          aria-hidden="true"
+        />
         <p className="empty-conversation-title">{t("noTabOpen.title")}</p>
         <p className="empty-conversation-hint">{t("noTabOpen.hint")}</p>
       </div>
@@ -473,7 +482,7 @@ export function App({
   }, [sessions, tabsState.tabs.length, store]);
 
   // Tab activation is funneled from a click (list/tab) into store.selectWindow and
-  // reflected into the tab via the Opener. The tab ✕ only removes the tab (does not kill the session).
+  // reflected into the tab via the Opener. The tab close button only removes the tab (does not kill the session).
   const activateTabByKey = useCallback(
     (key: string): void => {
       const tab = tabsState.tabs.find((t) => tabKey(t) === key);
@@ -493,7 +502,7 @@ export function App({
     },
     [],
   );
-  // Tab ✕: no unsaved-changes prompt since it is read-only (both session and editor close immediately).
+  // Tab close: no unsaved-changes prompt since it is read-only (both session and editor close immediately).
   const closeTabByKey = doCloseTab;
 
   // Generation of each file read (per key). Even if responses are reordered, only the
@@ -626,7 +635,7 @@ export function App({
     [flashCopyToast, t],
   );
 
-  // Copy the absolute path of the file open in the viewer (the ⧉ at the left of the header).
+  // Copy the absolute path of the file open in the viewer (the copy button at the left of the header).
   const copyEditorPath = useCallback(
     (key: string): void => {
       const buf = editorBuffersRef.current[key];
@@ -682,7 +691,7 @@ export function App({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [sessions, orgs, activeSess, newSession]);
 
-  // Close the active tab with Cmd+W (same closeTabByKey path as the tab ✕; only removes the
+  // Close the active tab with Cmd+W (same closeTabByKey path as the tab close button; only removes the
   // tab without killing the session). Like Cmd+N, meta keys pass through to the browser even
   // while the terminal is focused, so it works.
   useEffect(() => {

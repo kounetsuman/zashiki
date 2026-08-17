@@ -7,24 +7,24 @@ import { RefreshButton } from "./RefreshButton.js";
 afterEach(cleanup);
 
 describe("RefreshButton", () => {
-  it("idle renders ↻ with title=label and no aria-busy", () => {
+  it("idle renders the refresh icon with title=label and no aria-busy", () => {
     render(<RefreshButton state="idle" label="更新" onClick={() => {}} />);
     const btn = screen.getByRole("button", { name: "更新" });
-    expect(btn.textContent).toBe("↻");
+    expect(btn.textContent).toBe("refresh");
     expect(btn.getAttribute("title")).toBe("更新");
     expect(btn.getAttribute("aria-busy")).toBeNull();
   });
 
-  it("loading renders a spinner with aria-busy=true (no ↻/⚠)", () => {
+  it("loading renders a spinner with aria-busy=true (no refresh/warning icon)", () => {
     render(<RefreshButton state="loading" label="更新" onClick={() => {}} />);
     const btn = screen.getByRole("button", { name: "更新" });
     expect(btn.getAttribute("aria-busy")).toBe("true");
     expect(btn.querySelector(".panel-refresh-spinner")).not.toBeNull();
-    expect(btn.textContent).not.toContain("↻");
-    expect(btn.textContent).not.toContain("⚠");
+    expect(btn.textContent).not.toContain("refresh");
+    expect(btn.textContent).not.toContain("warning");
   });
 
-  it("error renders ⚠ with the error in title (a tooltip visible on hover)", () => {
+  it("error renders the warning icon with the error in title (a tooltip visible on hover)", () => {
     render(
       <RefreshButton
         state="error"
@@ -34,7 +34,7 @@ describe("RefreshButton", () => {
       />,
     );
     const btn = screen.getByRole("button", { name: "更新" });
-    expect(btn.textContent).toContain("⚠");
+    expect(btn.textContent).toContain("warning");
     expect(btn.getAttribute("title")).toBe("Error: 接続に失敗");
   });
 

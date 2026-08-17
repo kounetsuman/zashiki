@@ -838,10 +838,11 @@ body {
 }
 
 .empty-conversation-mark {
-  font-size: 40px;
-  line-height: 1;
-  color: #3a5a8a;
-  margin-bottom: 14px;
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 14px;
+  opacity: 0.55;
 }
 
 .empty-conversation-title {
@@ -1157,10 +1158,6 @@ body {
 
 .panel-refresh-error:hover {
   color: #e5c07b;
-}
-
-.panel-refresh-alert {
-  font-size: 12px;
 }
 
 /* 取得中の回転スピナー。keyframe（git-spin）は .loading-spinner と共通。 */
@@ -2051,4 +2048,37 @@ body {
 }
 .toast-close .material-symbols-outlined {
   font-size: 16px;
+}
+
+/* 記号グリフから移行した Material Symbols アイコンの寸法（issue #9）。
+ * 折りたたみ矢印・パネルヘッダ/更新ボタン・行アクション・タブ閉じ等で共通。 */
+.panel-arrow.material-symbols-outlined,
+.help-arrow.material-symbols-outlined,
+.search-arrow.material-symbols-outlined,
+.panel-header button .material-symbols-outlined,
+.panel-refresh .material-symbols-outlined {
+  font-size: 18px;
+  line-height: 1;
+  vertical-align: middle;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
+}
+
+.git-row-actions button .material-symbols-outlined,
+.git-commit-button .material-symbols-outlined,
+.session-org-new .material-symbols-outlined,
+.tab-close .material-symbols-outlined,
+.editor-copy .material-symbols-outlined,
+.error-dialog-close .material-symbols-outlined {
+  font-size: 16px;
+  line-height: 1;
+  vertical-align: middle;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
 }

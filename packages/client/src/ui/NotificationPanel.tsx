@@ -10,7 +10,7 @@ export interface NotificationPanelProps {
   notifications: readonly Notification[];
   /** Set of read ids (used to split into the unread/read tabs). */
   seenIds: readonly string[];
-  /** ✕ for a dismissible notification. Sends notification.dismiss to the server. */
+  /** Close button for a dismissible notification. Sends notification.dismiss to the server. */
   onDismiss(id: string): void;
   /** Marks a notification as read on double-click. */
   onMarkRead(id: string): void;
@@ -48,7 +48,7 @@ export function partitionBySeen(
  * List of in-app notifications (one panel of NAVIGATION). All notifications
  * (error / awaiting response / done / restart required / PTY pressure) accumulate
  * newest-first. Switch via the unread/read tabs; double-click an item to mark it
- * read, and dismissible notifications can be cleared with ✕. Read state is managed
+ * read, and dismissible notifications can be cleared with the close button. Read state is managed
  * in localStorage.
  */
 export function NotificationPanel({

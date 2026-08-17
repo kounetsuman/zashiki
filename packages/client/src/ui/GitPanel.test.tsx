@@ -180,7 +180,7 @@ describe("GitPanel", () => {
     expect(h.api.statusCalls).toBe(before + 1);
   });
 
-  it("calls unstage via − on a staged file", async () => {
+  it("calls unstage via the remove button on a staged file", async () => {
     const h = renderPanel(twoRepoFixture());
     await expandToFiles(h);
     await act(async () => {
@@ -236,17 +236,17 @@ describe("GitPanel", () => {
     expect(h.api.calls).toContainEqual(["unstage-all", "/ws/org1/repo-a"]);
   });
 
-  it("repo row actions use +/− and do not show add./reset. text", async () => {
+  it("repo row actions use add/remove icons and do not show add./reset. text", async () => {
     renderPanel(twoRepoFixture());
     fireEvent.click(await screen.findByRole("button", { name: /org1 \(2\)/ }));
     expect(screen.queryByText("add .")).toBeNull();
     expect(screen.queryByText("reset .")).toBeNull();
     expect(
       screen.getByRole("button", { name: "stage-all repo-a" }).textContent,
-    ).toBe("+");
+    ).toBe("add");
     expect(
       screen.getByRole("button", { name: "unstage-all repo-a" }).textContent,
-    ).toBe("−");
+    ).toBe("remove");
   });
 
   it("shows the header as SOURCE CONTROL (VSCode-style)", async () => {
@@ -343,7 +343,7 @@ describe("GitPanel", () => {
     expect(h.api.statusCalls).toBe(before + 1);
   });
 
-  it("shows the header icon as a spinner (aria-busy) while a manual refresh is in flight and returns to ↻ on completion", async () => {
+  it("shows the header icon as a spinner (aria-busy) while a manual refresh is in flight and returns to the refresh icon on completion", async () => {
     const resolvers: ((r: GitStatusResponse) => void)[] = [];
     const api: GitApi = {
       status: () => new Promise((resolve) => resolvers.push(resolve)),
@@ -378,10 +378,10 @@ describe("GitPanel", () => {
       resolvers[1]?.({ repos: twoRepoFixture() });
     });
     expect(btn.getAttribute("aria-busy")).toBeNull();
-    expect(btn.textContent).toBe("↻");
+    expect(btn.textContent).toBe("refresh");
   });
 
-  it("shows ⚠ in the header with the error in the title on an initial fetch error (alongside the red body text)", async () => {
+  it("shows the warning icon in the header with the error in the title on an initial fetch error (alongside the red body text)", async () => {
     const rejecters: ((e: unknown) => void)[] = [];
     const api: GitApi = {
       status: () => new Promise((_resolve, reject) => rejecters.push(reject)),
@@ -403,7 +403,7 @@ describe("GitPanel", () => {
       rejecters[0]?.(new Error("boom"));
     });
     const btn = screen.getByRole("button", { name: "refresh" });
-    expect(btn.textContent).toContain("⚠");
+    expect(btn.textContent).toContain("warning");
     expect(btn.getAttribute("title")).toContain("boom");
     // The red text block in the body is also shown alongside, as before.
     expect(document.querySelector(".git-error")?.textContent).toContain("boom");

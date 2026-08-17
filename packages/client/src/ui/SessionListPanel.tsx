@@ -551,7 +551,15 @@ export function SessionListPanel({
                   }}
                   title={t("sessionList.orgToggleTitle", { org })}
                 >
-                  {`${isCollapsed ? "▶" : "▼"} ${org} (${orgSessions.length})`}
+                  <span
+                    className="panel-arrow material-symbols-outlined"
+                    aria-hidden="true"
+                  >
+                    {isCollapsed ? "chevron_right" : "expand_more"}
+                  </span>{" "}
+                  <span className="session-org-label">
+                    {org} ({orgSessions.length})
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -563,7 +571,12 @@ export function SessionListPanel({
                     onNew(org);
                   }}
                 >
-                  +
+                  <span
+                    className="material-symbols-outlined"
+                    aria-hidden="true"
+                  >
+                    add
+                  </span>
                 </button>
               </div>
               {!isCollapsed &&

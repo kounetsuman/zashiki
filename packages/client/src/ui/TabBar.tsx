@@ -66,7 +66,7 @@ function tabLabel(
 
 /**
  * Unified tab strip at the top of the main area. Shows open sessions/editors
- * as side-by-side tabs; click to switch and ✕ to close (does not kill the session).
+ * as side-by-side tabs; click to switch and the close button to close (does not kill the session).
  * org membership is shown by the leading color dot (no text). Session tabs
  * support inline rename on double-click (same commitTitle path as the conversation header).
  * The tab kind is distinguished by its icon. Renders nothing when empty (the caller shows the empty state).
@@ -308,7 +308,9 @@ export function TabBar({
                 onClose(key);
               }}
             >
-              ✕
+              <span className="material-symbols-outlined" aria-hidden="true">
+                close
+              </span>
             </button>
           </div>
         );

@@ -145,7 +145,12 @@ export function ExplorerPanel({
                   style={{ paddingLeft: `${depth * 12 + 8}px` }}
                   onClick={() => toggleDir(repoPath, childDir)}
                 >
-                  <span className="panel-arrow">{exp ? "▼" : "▶"}</span>{" "}
+                  <span
+                    className="panel-arrow material-symbols-outlined"
+                    aria-hidden="true"
+                  >
+                    {exp ? "expand_more" : "chevron_right"}
+                  </span>{" "}
                   <span className="explorer-name">{e.name}</span>
                 </button>
                 {exp && renderEntries(repoPath, childDir, depth + 1)}
@@ -194,7 +199,9 @@ export function ExplorerPanel({
           title={t("common.refresh")}
           onClick={() => void loadRepos()}
         >
-          ↻
+          <span className="material-symbols-outlined" aria-hidden="true">
+            refresh
+          </span>
         </button>
       </PanelHeader>
       {rootError !== null && <div className="explorer-error">{rootError}</div>}
@@ -210,7 +217,12 @@ export function ExplorerPanel({
                 className="panel-row panel-row-hover explorer-row explorer-repo-row"
                 onClick={() => toggleDir(r.path, rootDir)}
               >
-                <span className="panel-arrow">{exp ? "▼" : "▶"}</span>{" "}
+                <span
+                  className="panel-arrow material-symbols-outlined"
+                  aria-hidden="true"
+                >
+                  {exp ? "expand_more" : "chevron_right"}
+                </span>{" "}
                 <span className="explorer-repo-name">{r.repo}</span>{" "}
                 <span
                   className="org-dot"

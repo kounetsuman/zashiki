@@ -111,7 +111,12 @@ export function SearchPanel({
           className="search-file-row"
           onClick={() => toggleFile(file.path)}
         >
-          <span className="search-arrow">{open ? "▼" : "▶"}</span>{" "}
+          <span
+            className="search-arrow material-symbols-outlined"
+            aria-hidden="true"
+          >
+            {open ? "expand_more" : "chevron_right"}
+          </span>{" "}
           <span className="search-file-name" title={file.path}>
             {file.relPath}
           </span>{" "}

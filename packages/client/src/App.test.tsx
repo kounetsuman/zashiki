@@ -358,7 +358,7 @@ describe("App", () => {
         orgColors: {},
       }),
     );
-    expect(screen.getByText("▼ kilo (2)")).toBeTruthy();
+    expect(screen.getByText("kilo (2)")).toBeTruthy();
     expect(inList().getByRole("button", { name: ROW_ZASHIKI })).toBeTruthy();
     expect(inList().getByRole("button", { name: ROW_TANGO })).toBeTruthy();
   });
@@ -385,7 +385,7 @@ describe("App", () => {
         orgColors: {},
       }),
     );
-    expect(screen.getByText("▼ delta (0)")).toBeTruthy();
+    expect(screen.getByText("delta (0)")).toBeTruthy();
   });
 
   it("when nothing is selected, the active window of work is highlighted", () => {
