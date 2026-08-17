@@ -9,6 +9,7 @@ import {
   shouldSendResize,
   type TerminalSize,
 } from "../lib/terminal-fit.js";
+import { stripTerminalReplies } from "../lib/terminal-reply.js";
 import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
 import { buildTerminalOptions } from "./terminal-options.js";
 
@@ -200,12 +201,14 @@ export function TerminalView({
       }, COPY_DEBOUNCE_MS);
     };
 
-    // With focus tracking enabled, xterm sends focus reports (ESC[I/ESC[O) to onData on focus
-    // in/out. In a plain shell, the pty echoes them as `^[[I`, showing unwanted characters, so we
-    // drop them just before sending to the pty. If nothing remains after stripping, don't send.
+    // xterm sends terminal-generated reports through onData alongside keystrokes: focus reports
+    // (ESC[I/ESC[O) when focus tracking is on, and query replies (device attributes, XTVERSION,
+    // OSC color, cursor position) when tmux re-queries capabilities on window re-attach. At a bare
+    // shell prompt the pty echoes these as garbage, so drop them before sending. If nothing remains
+    // after stripping, don't send.
     const disposables = [
       term.onData((d) => {
-        const input = stripFocusReports(d);
+        const input = stripTerminalReplies(stripFocusReports(d));
         if (input) session.input(input);
       }),
       term.onSelectionChange(scheduleCopy),
