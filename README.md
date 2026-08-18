@@ -16,17 +16,27 @@ zashiki is an AI cockpit that orchestrates Claude Code on one screen, with best-
 
 ## Quick Start
 
+One line (Apple Silicon) — installs the latest release with no Gatekeeper prompt:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kounetsuman/zashiki/main/scripts/install.sh | bash
+```
+
 Homebrew (Apple Silicon):
 
 ```sh
-brew install --cask kounetsuman/tap/zashiki
+brew install --cask --no-quarantine kounetsuman/tap/zashiki
 ```
 
 Or grab the macOS `Zashiki_*.dmg` from [Releases](https://github.com/kounetsuman/zashiki/releases), open it, and drag `Zashiki.app` into `/Applications`.
 
 Launch Zashiki and every Claude Code session shows up in one window.
 
-> **Unsigned**: on first launch, right-click → "Open" to get past Gatekeeper.
+> **Unsigned app**: zashiki is not yet code-signed / notarized ([#25](https://github.com/kounetsuman/zashiki/issues/25)). A browser download of the `.dmg` gets the `com.apple.quarantine` flag, so macOS refuses it with **"Zashiki.app is damaged and can't be opened"** — and right-click → "Open" does **not** clear that. The `curl` installer above avoids quarantine (curl doesn't set it); `brew` needs `--no-quarantine` (shown above). If you already installed a quarantined copy, strip the flag manually:
+>
+> ```sh
+> xattr -dr com.apple.quarantine /Applications/Zashiki.app
+> ```
 
 ## How zashiki compares
 
@@ -73,9 +83,9 @@ For the desktop shell (environment variables, manual smoke-test steps), see [`ap
 
 ### Distributable binary
 
-Grab the macOS `Zashiki_*.dmg` from [Releases](https://github.com/kounetsuman/zashiki/releases), mount it, and drag `Zashiki.app` into `/Applications`. Pushing a `vX.Y.Z` tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds a self-contained bundle and publishes it as a draft Release.
+Grab the macOS `Zashiki_*.dmg` from [Releases](https://github.com/kounetsuman/zashiki/releases), mount it, and drag `Zashiki.app` into `/Applications`. Pushing a `vX.Y.Z` tag triggers [`.github/workflows/release.yml`](.github/workflows/release.yml), which builds a self-contained bundle and publishes it as a draft Release. The one-line `curl` installer in [Quick Start](#quick-start) does the same, without the quarantine issue below.
 
-> **Unsigned**: on first launch, right-click → "Open" to get past Gatekeeper.
+> **Unsigned**: a browser-downloaded `.dmg` is quarantined, so macOS shows **"Zashiki.app is damaged"** (right-click → "Open" does not clear it). Clear it with `xattr -dr com.apple.quarantine /Applications/Zashiki.app`, or use the `curl` installer / `brew --no-quarantine` from [Quick Start](#quick-start). Signing + notarization is tracked in [#25](https://github.com/kounetsuman/zashiki/issues/25).
 
 ### Build it locally
 

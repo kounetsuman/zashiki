@@ -16,17 +16,27 @@ zashiki は Claude Code のオーケストレーションを、最高の UI/UX �
 
 ## Quick Start
 
+ワンライナー（Apple Silicon）— 最新リリースを Gatekeeper の警告なしで入れます:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/kounetsuman/zashiki/main/scripts/install.sh | bash
+```
+
 Homebrew（Apple Silicon）:
 
 ```sh
-brew install --cask kounetsuman/tap/zashiki
+brew install --cask --no-quarantine kounetsuman/tap/zashiki
 ```
 
 もしくは [Releases](https://github.com/kounetsuman/zashiki/releases) から macOS 向け `Zashiki_*.dmg` を入手し、開いて `Zashiki.app` を `/Applications` にドラッグします。
 
 Zashiki を起動すると、Claude Code の各セッションが 1 つのウィンドウに集約されます。
 
-> **未署名**: 初回起動は右クリック →「開く」で Gatekeeper を回避してください。
+> **未署名アプリ**: zashiki はまだ署名・notarize されていません（[#25](https://github.com/kounetsuman/zashiki/issues/25)）。ブラウザで DL した `.dmg` には `com.apple.quarantine` が付くため、macOS は **「Zashiki.app は壊れているため開けません」** と拒否します（右クリック →「開く」でも解除できません）。上記の `curl` インストーラは quarantine が付かないため回避でき、`brew` は `--no-quarantine` が必要です（上記）。既に quarantine 付きで入れてしまった場合は手動で剥がします:
+>
+> ```sh
+> xattr -dr com.apple.quarantine /Applications/Zashiki.app
+> ```
 
 ## 既存ツールとの比較
 
@@ -73,9 +83,9 @@ pnpm -F @zashiki/desktop dev   # Tauri シェル（= tauri dev）
 
 ### 配布バイナリ
 
-[Releases](https://github.com/kounetsuman/zashiki/releases) から macOS の `Zashiki_*.dmg` を取得し、マウントして `Zashiki.app` を `/Applications` にドラッグします。`vX.Y.Z` タグの push で [`.github/workflows/release.yml`](.github/workflows/release.yml) が走り、自己完結バンドルを draft Release として公開します。
+[Releases](https://github.com/kounetsuman/zashiki/releases) から macOS の `Zashiki_*.dmg` を取得し、マウントして `Zashiki.app` を `/Applications` にドラッグします。`vX.Y.Z` タグの push で [`.github/workflows/release.yml`](.github/workflows/release.yml) が走り、自己完結バンドルを draft Release として公開します。[Quick Start](#quick-start) のワンライナー `curl` インストーラは同じことを、下記の quarantine 問題なしで行います。
 
-> **未署名**: 初回起動は右クリック → 「開く」で Gatekeeper を通してください。
+> **未署名**: ブラウザで DL した `.dmg` は quarantine が付くため、macOS は **「Zashiki.app は壊れている」** と表示します（右クリック → 「開く」でも解除不可）。`xattr -dr com.apple.quarantine /Applications/Zashiki.app` で剥がすか、[Quick Start](#quick-start) の `curl` インストーラ / `brew --no-quarantine` を使ってください。署名・notarize は [#25](https://github.com/kounetsuman/zashiki/issues/25) で追跡しています。
 
 ### ローカルでビルド
 
