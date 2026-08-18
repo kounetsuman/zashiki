@@ -56,6 +56,9 @@ fn main() {
             .title("Zashiki")
             .inner_size(1280.0, 840.0)
             .devtools(devtools)
+            // WKWebView's OS-level drag-drop handler swallows HTML5 dragover/drop events,
+            // which breaks in-page tab reordering. Disable it so DOM drag-and-drop works.
+            .disable_drag_drop_handler()
             .build()
             {
                 Ok(window) => window,
