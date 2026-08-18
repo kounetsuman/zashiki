@@ -5,19 +5,19 @@ import {
   bufferLoaded,
   bufferTogglePreview,
   closeBuffer,
-  editorKey,
   isMarkdown,
   openBuffer,
-} from "./editor-model.js";
+  viewerKey,
+} from "./viewer-model.js";
 
 const REPO = "/ws/repo";
 const REL = "src/app.ts";
-const KEY = editorKey(REPO, REL);
+const KEY = viewerKey(REPO, REL);
 
-describe("editorKey", () => {
+describe("viewerKey", () => {
   it("concatenates repoPath and relPath into a unique key", () => {
-    expect(editorKey("/a", "b")).not.toBe(editorKey("/a/b", ""));
-    expect(editorKey("/a", "b")).toBe(editorKey("/a", "b"));
+    expect(viewerKey("/a", "b")).not.toBe(viewerKey("/a/b", ""));
+    expect(viewerKey("/a", "b")).toBe(viewerKey("/a", "b"));
   });
 });
 

@@ -74,7 +74,7 @@ export interface AppStore {
   deselect(): void;
   /**
    * Called when sending session.new. The state.sync that arrives right after
-   * auto-selects the newest added window (showing it in the conversation panel the moment a new session is created).
+   * auto-selects the newest added window (showing it in the main area the moment a new session is created).
    */
   markNewRequested(): void;
   /** Dismisses the error dialog (clears lastError originating from a server error). */

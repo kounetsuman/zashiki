@@ -23,7 +23,7 @@
     "renderError": "An error occurred while rendering the terminal",
     "connectionProblem": "Connection problem ({{detail}})"
   },
-  "emptyConversation": {
+  "emptyMainArea": {
     "title": "No sessions",
     "hint": "Press <plus>＋</plus> for an organization in the list on the right to create a new session.<br />The previous session is restored automatically on startup."
   },
@@ -94,7 +94,7 @@
     "noChanges": "No changes",
     "skipped": "Skipped {{count}} repo(s) with an unreadable status"
   },
-  "editor": {
+  "viewer": {
     "viewerLabel": "Viewer {{path}}",
     "copyPathLabel": "Copy path",
     "code": "Code",

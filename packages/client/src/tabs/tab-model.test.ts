@@ -17,7 +17,7 @@ import {
 } from "./tab-model.js";
 
 const s = (id: string): Tab => ({ kind: "session", id });
-const e = (id: string): Tab => ({ kind: "editor", id });
+const e = (id: string): Tab => ({ kind: "viewer", id });
 
 /** Small helper that builds a state from a tabs array and the active key. */
 function state(tabs: Tab[], activeKey: string | null): TabsState {
@@ -28,7 +28,7 @@ describe("keyFor / tabKey", () => {
   it("separates id collisions across kinds", () => {
     expect(keyFor("session", "@1")).toBe("session:@1");
     expect(tabKey(s("@1"))).toBe("session:@1");
-    expect(tabKey(e("@1"))).toBe("editor:@1");
+    expect(tabKey(e("@1"))).toBe("viewer:@1");
     expect(tabKey(s("@1"))).not.toBe(tabKey(e("@1")));
   });
 });
@@ -59,11 +59,11 @@ describe("openTab", () => {
     expect(openTab(base, s("@1"))).toBe(base);
   });
 
-  it("session and editor are distinct tabs even with the same id", () => {
+  it("session and viewer are distinct tabs even with the same id", () => {
     let r = openTab(EMPTY_TABS, s("@1"));
     r = openTab(r, e("@1"));
     expect(r.tabs).toEqual([s("@1"), e("@1")]);
-    expect(r.activeKey).toBe("editor:@1");
+    expect(r.activeKey).toBe("viewer:@1");
   });
 });
 
@@ -125,11 +125,11 @@ describe("pruneSessions", () => {
     expect(r.activeKey).toBe("session:@1");
   });
 
-  it("keeps editor tabs regardless of the windowId set", () => {
-    const base = state([s("@1"), e("readme.md"), s("@2")], "editor:readme.md");
+  it("keeps viewer tabs regardless of the windowId set", () => {
+    const base = state([s("@1"), e("readme.md"), s("@2")], "viewer:readme.md");
     const r = pruneSessions(base, []);
     expect(r.tabs).toEqual([e("readme.md")]);
-    expect(r.activeKey).toBe("editor:readme.md");
+    expect(r.activeKey).toBe("viewer:readme.md");
   });
 
   it("moves to the right neighboring surviving tab in original order when active disappears", () => {
@@ -166,7 +166,7 @@ describe("pruneSessions", () => {
 
 describe("activeTab / activeSessionId / hasTab", () => {
   it("activeTab returns the active Tab", () => {
-    const base = state([s("@1"), e("x")], "editor:x");
+    const base = state([s("@1"), e("x")], "viewer:x");
     expect(activeTab(base)).toEqual(e("x"));
   });
 
@@ -177,14 +177,14 @@ describe("activeTab / activeSessionId / hasTab", () => {
 
   it("activeSessionId returns an id only when a session is active", () => {
     expect(activeSessionId(state([s("@1")], "session:@1"))).toBe("@1");
-    expect(activeSessionId(state([e("x")], "editor:x"))).toBeNull();
+    expect(activeSessionId(state([e("x")], "viewer:x"))).toBeNull();
     expect(activeSessionId(EMPTY_TABS)).toBeNull();
   });
 
   it("hasTab decides on the combination of kind and id", () => {
     const base = state([s("@1"), e("@1")], "session:@1");
     expect(hasTab(base, "session", "@1")).toBe(true);
-    expect(hasTab(base, "editor", "@1")).toBe(true);
+    expect(hasTab(base, "viewer", "@1")).toBe(true);
     expect(hasTab(base, "session", "@2")).toBe(false);
   });
 });
@@ -207,11 +207,11 @@ describe("moveTab", () => {
     expect(r.activeKey).toBe("session:@2");
   });
 
-  it("can move across kinds even when session and editor are mixed", () => {
-    const mixed = state([s("@1"), e("x"), s("@2")], "editor:x");
+  it("can move across kinds even when session and viewer are mixed", () => {
+    const mixed = state([s("@1"), e("x"), s("@2")], "viewer:x");
     const r = moveTab(mixed, "session:@2", "session:@1");
     expect(r.tabs).toEqual([s("@2"), s("@1"), e("x")]);
-    expect(r.activeKey).toBe("editor:x");
+    expect(r.activeKey).toBe("viewer:x");
   });
 
   it("moving to the same key is a no-op (returns the same reference)", () => {

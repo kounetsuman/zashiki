@@ -23,7 +23,7 @@
     "renderError": "ターミナルの描画でエラーが発生しました",
     "connectionProblem": "接続に問題があります（{{detail}}）"
   },
-  "emptyConversation": {
+  "emptyMainArea": {
     "title": "セッションがありません",
     "hint": "右の一覧で組織の <plus>＋</plus> を押して新規セッションを作成してください。<br />前回のセッションは起動時に自動で復元されます。"
   },
@@ -94,7 +94,7 @@
     "noChanges": "変更なし",
     "skipped": "状態を読み取れないリポジトリを {{count}} 件スキップしました"
   },
-  "editor": {
+  "viewer": {
     "viewerLabel": "ビューア {{path}}",
     "copyPathLabel": "パスをコピー",
     "code": "コード",

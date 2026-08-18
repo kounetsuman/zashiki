@@ -233,7 +233,7 @@ export function TerminalView({
     });
 
     // Cell dimensions are unsettled right after term.open, so the first fit (applySize) is a no-op
-    // and cols stays frozen too small (black gap to the right of the conversation panel). TerminalView
+    // and cols stays frozen too small (black gap to the right of the main area). TerminalView
     // is a single instance and window switches go through session.select, so useEffect does not
     // re-run and the ResizeObserver does not fire because .terminal-view's pixels don't move. So on
     // the first render (onRender), once cells settle, we re-run applySize: start at the actual size if

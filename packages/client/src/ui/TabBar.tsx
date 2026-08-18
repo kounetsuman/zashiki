@@ -14,7 +14,7 @@ import { clampMenuPos, panelClass } from "./panels.js";
 /** Icon per tab kind (Material Symbols Outlined ligature). */
 const TAB_ICON: Record<TabKind, string> = {
   session: "terminal",
-  editor: "description",
+  viewer: "description",
 };
 
 export interface TabBarProps {
@@ -44,7 +44,7 @@ export interface TabBarProps {
 
 /**
  * The tab's display label and title (tooltip). For session tabs, uses resolveTitle;
- * for editor tabs, shows the file name (basename) and attaches the repo-relative path as the title.
+ * for viewer tabs, shows the file name (basename) and attaches the repo-relative path as the title.
  */
 function tabLabel(
   tab: Tab,
@@ -59,13 +59,13 @@ function tabLabel(
         : resolveTitle(effectiveCustomTitle(titles, s), s);
     return { label, title: label };
   }
-  // An editor's id is the editorKey (repoPath and relPath joined by a newline). Display shows the file name.
+  // A viewer id is the viewerKey (repoPath and relPath joined by a newline). Display shows the file name.
   const rel = tab.id.split("\n")[1] ?? tab.id;
   return { label: rel.split("/").pop() ?? rel, title: rel };
 }
 
 /**
- * Unified tab strip at the top of the main area. Shows open sessions/editors
+ * Unified tab strip at the top of the main area. Shows open sessions/viewers
  * as side-by-side tabs; click to switch and the close button to close (does not kill the session).
  * org membership is shown by the leading color dot (no text). Session tabs
  * support inline rename on double-click (same commitTitle path as the conversation header).

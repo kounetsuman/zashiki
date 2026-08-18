@@ -28,15 +28,6 @@ import {
   resolveDebugInitial,
   type TermDebugSnapshot,
 } from "./debug/debug-model.js";
-import {
-  bufferFailed,
-  bufferLoaded,
-  bufferTogglePreview,
-  closeBuffer,
-  type EditorBuffers,
-  editorKey,
-  openBuffer,
-} from "./editor/editor-model.js";
 import type { Locale } from "./i18n/detect.js";
 import i18n from "./i18n/index.js";
 import {
@@ -59,7 +50,6 @@ import {
   tabKey,
 } from "./tabs/tab-model.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
-import { EditorPanel } from "./ui/EditorPanel.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ExplorerPanel } from "./ui/ExplorerPanel.js";
 import { FooterPanelTabs } from "./ui/FooterPanelTabs.js";
@@ -80,6 +70,16 @@ import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
 import { Toaster } from "./ui/Toaster.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
+import { ViewerPanel } from "./ui/ViewerPanel.js";
+import {
+  bufferFailed,
+  bufferLoaded,
+  bufferTogglePreview,
+  closeBuffer,
+  openBuffer,
+  type ViewerBuffers,
+  viewerKey,
+} from "./viewer/viewer-model.js";
 import type { ControlStatus } from "./ws/control.js";
 
 type PanelStorage = Pick<Storage, "getItem" | "setItem">;
@@ -99,7 +99,7 @@ const FILE_READ_TIMEOUT_MS = 8000;
 
 function readErrorMessage(e: unknown): string {
   if (e instanceof DOMException && e.name === "AbortError") {
-    return i18n.t("editor.readTimeout");
+    return i18n.t("viewer.readTimeout");
   }
   return e instanceof Error ? e.message : String(e);
 }
@@ -207,24 +207,22 @@ function ErrorDialog({
   );
 }
 
-/** Empty state shown in the conversation panel when there are no sessions. */
-function EmptyConversation() {
+/** Empty state shown in the main area when there are no sessions. */
+function EmptyMainArea() {
   const { t } = useTranslation();
   return (
-    <div className="empty-conversation">
-      <div className="empty-conversation-inner">
+    <div className="empty-main-area">
+      <div className="empty-main-area-inner">
         <img
-          className="empty-conversation-mark"
+          className="empty-main-area-mark"
           src={logoUrl}
           alt=""
           aria-hidden="true"
         />
-        <p className="empty-conversation-title">
-          {t("emptyConversation.title")}
-        </p>
-        <p className="empty-conversation-hint">
+        <p className="empty-main-area-title">{t("emptyMainArea.title")}</p>
+        <p className="empty-main-area-hint">
           <Trans
-            i18nKey="emptyConversation.hint"
+            i18nKey="emptyMainArea.hint"
             components={{
               plus: <span className="empty-key" />,
               br: <br />,
@@ -247,16 +245,16 @@ function repoPathOfSearchFile(file: { path: string; relPath: string }): string {
 function NoTabOpen() {
   const { t } = useTranslation();
   return (
-    <div className="empty-conversation">
-      <div className="empty-conversation-inner">
+    <div className="empty-main-area">
+      <div className="empty-main-area-inner">
         <img
-          className="empty-conversation-mark"
+          className="empty-main-area-mark"
           src={logoUrl}
           alt=""
           aria-hidden="true"
         />
-        <p className="empty-conversation-title">{t("noTabOpen.title")}</p>
-        <p className="empty-conversation-hint">{t("noTabOpen.hint")}</p>
+        <p className="empty-main-area-title">{t("noTabOpen.title")}</p>
+        <p className="empty-main-area-hint">{t("noTabOpen.hint")}</p>
       </div>
     </div>
   );
@@ -298,8 +296,8 @@ export function App({
 
   // Identifier of the active (focus-holding) panel. Follows the focused element up to
   // the nearest data-panel and dims inactive panels.
-  // Initially treats the conversation panel as active (avoids dimming every panel).
-  const [activePanel, setActivePanel] = useState("conversation");
+  // Initially treats the main area as active (avoids dimming every panel).
+  const [activePanel, setActivePanel] = useState("main");
   const handlePanelFocus = useCallback((e: FocusEvent<HTMLElement>): void => {
     const el = (e.target as HTMLElement).closest<HTMLElement>("[data-panel]");
     const id = el?.dataset.panel;
@@ -416,18 +414,18 @@ export function App({
   );
   // The unified tab row of the main area. The single source of truth for what is open.
   // Copy the store's selectedWindowId (open request) one-way into openTab, and derive the
-  // conversation display and terminal attach from the active session tab (kept one-way to avoid a loop).
+  // main-area display and terminal attach from the active session tab (kept one-way to avoid a loop).
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
   const activeSess = activeSessionId(tabsState);
 
-  // Viewer. One editor tab = one buffer (key matches tab.id).
-  const [editorBuffers, setEditorBuffers] = useState<EditorBuffers>({});
-  const editorBuffersRef = useRef(editorBuffers);
-  editorBuffersRef.current = editorBuffers;
+  // Viewer. One viewer tab = one buffer (key matches tab.id).
+  const [viewerBuffers, setViewerBuffers] = useState<ViewerBuffers>({});
+  const viewerBuffersRef = useRef(viewerBuffers);
+  viewerBuffersRef.current = viewerBuffers;
   const active = activeTab(tabsState);
-  const activeEditorKey = active?.kind === "editor" ? active.id : null;
+  const activeViewerKey = active?.kind === "viewer" ? active.id : null;
   const activeBuffer =
-    activeEditorKey !== null ? (editorBuffers[activeEditorKey] ?? null) : null;
+    activeViewerKey !== null ? (viewerBuffers[activeViewerKey] ?? null) : null;
 
   // Opener: when the store requests a selection (new session, notification, list double-click),
   // open that session's tab and make it active. The sole entry point for opening a tab.
@@ -494,7 +492,7 @@ export function App({
   );
   const doCloseTab = useCallback((key: string): void => {
     setTabsState((prev) => closeTab(prev, key));
-    setEditorBuffers((prev) => closeBuffer(prev, key));
+    setViewerBuffers((prev) => closeBuffer(prev, key));
   }, []);
   const reorderTabByKey = useCallback(
     (fromKey: string, toKey: string): void => {
@@ -502,7 +500,7 @@ export function App({
     },
     [],
   );
-  // Tab close: no unsaved-changes prompt since it is read-only (both session and editor close immediately).
+  // Tab close: no unsaved-changes prompt since it is read-only (both session and viewer close immediately).
   const closeTabByKey = doCloseTab;
 
   // Generation of each file read (per key). Even if responses are reordered, only the
@@ -523,13 +521,13 @@ export function App({
         .read(repoPath, relPath, ctrl.signal)
         .then(
           (content) =>
-            setEditorBuffers((cur) =>
+            setViewerBuffers((cur) =>
               readSeqRef.current[key] === seq
                 ? bufferLoaded(cur, key, content)
                 : cur,
             ),
           (e: unknown) =>
-            setEditorBuffers((cur) => {
+            setViewerBuffers((cur) => {
               if (readSeqRef.current[key] !== seq) return cur;
               if (silent || cur[key]?.status === "ready") return cur;
               return bufferFailed(cur, key, readErrorMessage(e));
@@ -540,13 +538,13 @@ export function App({
     [filesApi],
   );
 
-  // Open a file as an editor tab (from explorer/search). Fires a read if not yet loaded.
-  const openEditor = useCallback(
+  // Open a file as a viewer tab (from explorer/search). Fires a read if not yet loaded.
+  const openViewer = useCallback(
     (repoPath: string, relPath: string): void => {
-      const key = editorKey(repoPath, relPath);
-      setTabsState((prev) => openTab(prev, { kind: "editor", id: key }));
+      const key = viewerKey(repoPath, relPath);
+      setTabsState((prev) => openTab(prev, { kind: "viewer", id: key }));
       let shouldLoad = false;
-      setEditorBuffers((prev) => {
+      setViewerBuffers((prev) => {
         if (prev[key] !== undefined) return prev;
         shouldLoad = true;
         return openBuffer(prev, repoPath, relPath);
@@ -557,7 +555,7 @@ export function App({
   );
 
   const togglePreview = useCallback((key: string): void => {
-    setEditorBuffers((prev) => bufferTogglePreview(prev, key));
+    setViewerBuffers((prev) => bufferTogglePreview(prev, key));
   }, []);
 
   // Realtime reflection: re-read the active file at a fixed interval. Since edits happen on
@@ -566,12 +564,12 @@ export function App({
   // inflight is kept local to this effect and discarded on key switch or unmount (not stuck
   // globally). Failures are swallowed.
   useEffect(() => {
-    if (activeEditorKey === null) return;
-    const key = activeEditorKey;
+    if (activeViewerKey === null) return;
+    const key = activeViewerKey;
     let inflight = false;
     const tick = (): void => {
       if (inflight) return;
-      const buf = editorBuffersRef.current[key];
+      const buf = viewerBuffersRef.current[key];
       if (buf === undefined) return;
       inflight = true;
       void loadFile(key, buf.repoPath, buf.relPath, true).finally(() => {
@@ -580,7 +578,7 @@ export function App({
     };
     const id = window.setInterval(tick, FILE_POLL_INTERVAL_MS);
     return () => window.clearInterval(id);
-  }, [activeEditorKey, loadFile]);
+  }, [activeViewerKey, loadFile]);
 
   // Commit the conversation header / tab title edit and persist it keyed by windowId (the owned-mode
   // session UUID, preserved across resume/restore). name (repository) is stored alongside for the
@@ -597,7 +595,7 @@ export function App({
   );
 
   // Create a new session and, on the immediately following state.sync, auto-switch the
-  // conversation panel to the new window (markNewRequested). Shared by both the Cmd+N and list onNew paths.
+  // main area to the new window (markNewRequested). Shared by both the Cmd+N and list onNew paths.
   const newSession = useCallback(
     (org: string): void => {
       store.markNewRequested();
@@ -636,9 +634,9 @@ export function App({
   );
 
   // Copy the absolute path of the file open in the viewer (the copy button at the left of the header).
-  const copyEditorPath = useCallback(
+  const copyViewerPath = useCallback(
     (key: string): void => {
-      const buf = editorBuffersRef.current[key];
+      const buf = viewerBuffersRef.current[key];
       if (buf === undefined) return;
       void navigator.clipboard
         ?.writeText(`${buf.repoPath}/${buf.relPath}`)
@@ -801,8 +799,8 @@ export function App({
     <div className="app">
       <div className="main-row" onFocusCapture={handlePanelFocus}>
         <div
-          className={`conversation${activePanel === "conversation" ? "" : " panel-inactive"}`}
-          data-panel="conversation"
+          className={`main-area${activePanel === "main" ? "" : " panel-inactive"}`}
+          data-panel="main"
         >
           <TabBar
             tabs={tabsState.tabs}
@@ -814,10 +812,10 @@ export function App({
             onClose={closeTabByKey}
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
-            inactive={activePanel !== "conversation"}
+            inactive={activePanel !== "main"}
             onCopyResume={copyResumeByWindowId}
           />
-          <div className="conversation-body">
+          <div className="tab-panel">
             <ErrorBoundary
               fallback={(error, reset) => (
                 <div className="terminal-error" role="alert">
@@ -845,18 +843,18 @@ export function App({
             </ErrorBoundary>
             {controlStatus === "open" &&
               sessions.length === 0 &&
-              activeEditorKey === null && <EmptyConversation />}
+              activeViewerKey === null && <EmptyMainArea />}
             {controlStatus === "open" &&
               sessions.length > 0 &&
               activeSess === null &&
-              activeEditorKey === null && <NoTabOpen />}
-            {activeBuffer !== null && activeEditorKey !== null && (
-              <EditorPanel
-                key={activeEditorKey}
+              activeViewerKey === null && <NoTabOpen />}
+            {activeBuffer !== null && activeViewerKey !== null && (
+              <ViewerPanel
+                key={activeViewerKey}
                 buffer={activeBuffer}
-                onTogglePreview={() => togglePreview(activeEditorKey)}
-                onCopyPath={() => copyEditorPath(activeEditorKey)}
-                inactive={activePanel !== "conversation"}
+                onTogglePreview={() => togglePreview(activeViewerKey)}
+                onCopyPath={() => copyViewerPath(activeViewerKey)}
+                inactive={activePanel !== "main"}
               />
             )}
           </div>
@@ -886,7 +884,7 @@ export function App({
             <ExplorerPanel
               api={fsApi}
               orgColors={orgColors}
-              onOpenFile={openEditor}
+              onOpenFile={openViewer}
               inactive={activePanel !== "explorer"}
             />
           )}
@@ -895,7 +893,7 @@ export function App({
               api={searchApi}
               orgColors={orgColors}
               onOpen={(file, _line) =>
-                openEditor(repoPathOfSearchFile(file), file.relPath)
+                openViewer(repoPathOfSearchFile(file), file.relPath)
               }
               inactive={activePanel !== "search"}
             />

@@ -13,7 +13,7 @@ export interface SearchPanelProps {
   /** org → display color (explicit colors from repos.conf). Unspecified orgs get an auto-assigned color. */
   orgColors?: Record<string, string>;
   /**
-   * "Open" target for clicking a result row (code editor). While the editor is
+   * "Open" target for clicking a result row (the viewer). While the viewer is
    * unfinished, leaving this unspecified means display-only. When specified, the
    * matching file and line are passed to it.
    */
