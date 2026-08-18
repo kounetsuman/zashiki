@@ -8,6 +8,10 @@ describe("buildTerminalOptions", () => {
     expect(buildTerminalOptions().scrollback).toBe(10000);
   });
 
+  it("enables screenReaderMode so the WebGL-rendered text stays in the accessibility DOM", () => {
+    expect(buildTerminalOptions().screenReaderMode).toBe(true);
+  });
+
   it("uses the default font size when none is given", () => {
     expect(buildTerminalOptions().fontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
   });

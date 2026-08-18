@@ -104,7 +104,24 @@ interface Sizable {
   rows: number;
 }
 
+const { MockWebglAddon } = vi.hoisted(() => {
+  class MockWebglAddon {
+    static instances = 0;
+    disposed = false;
+    constructor() {
+      MockWebglAddon.instances += 1;
+    }
+    activate(): void {}
+    onContextLoss(): void {}
+    dispose(): void {
+      this.disposed = true;
+    }
+  }
+  return { MockWebglAddon };
+});
+
 vi.mock("@xterm/xterm", () => ({ Terminal: MockTerminal }));
+vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: MockWebglAddon }));
 vi.mock("@xterm/addon-unicode11", () => ({
   Unicode11Addon: class {
     activate(): void {}
@@ -156,6 +173,7 @@ function fakeSession() {
 describe("TerminalView", () => {
   beforeEach(() => {
     MockTerminal.instances.length = 0;
+    MockWebglAddon.instances = 0;
     fitTarget = null;
   });
   afterEach(() => {
@@ -163,6 +181,13 @@ describe("TerminalView", () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("loads the WebGL renderer (avoids the DOM-renderer first-paint race under WKWebView)", () => {
+    fitTarget = { cols: 80, rows: 24 };
+    const f = fakeSession();
+    render(<TerminalView session={f.session} />);
+    expect(MockWebglAddon.instances).toBe(1);
   });
 
   it("builds the terminal with the given font size", () => {

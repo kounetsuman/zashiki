@@ -28,6 +28,10 @@ export function buildTerminalOptions(
     // leaving the whole app on a blank screen.
     allowProposedApi: true,
     scrollback: 10000,
+    // The WebGL renderer (TerminalView) paints to a canvas, so terminal text is not in the DOM.
+    // screenReaderMode keeps a live text mirror in the accessibility tree, which restores assistive-tech
+    // readability and lets e2e assert on-screen output regardless of the renderer.
+    screenReaderMode: true,
     fontSize,
     // Include a monospace CJK font in the fallback. With only Western fonts, Japanese uses a
     // synthesized fallback where full-width and cell width mismatch, so characters overflow their
