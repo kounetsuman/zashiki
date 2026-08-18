@@ -3,7 +3,7 @@
  *
  * xterm.js renders at a width discretized to cols × cell width. When the available width of
  * `.terminal-view` exceeds the xterm cols width, the difference remains as black empty space to the
- * right of the conversation panel (measured: at 1120px width, leaving cols=61 leaves 639px of empty
+ * right of the main area (measured: at 1120px width, leaving cols=61 leaves 639px of empty
  * space on the right; once fit bumps cols to 143, the gap disappears).
  *
  * FitAddon.fit() becomes a no-op while cell dimensions are undetermined (right after `term.open`),

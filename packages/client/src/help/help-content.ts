@@ -68,6 +68,6 @@ export const HELP_CATEGORIES: HelpCategoryDef[] = [
   {
     id: "mainpanel",
     titleKey: "help.category.mainpanel",
-    topicIds: ["session", "editor"],
+    topicIds: ["session", "viewer"],
   },
 ];

@@ -31,7 +31,7 @@ export interface ExplorerPanelProps {
   /** org -> display color (explicit color from repos.conf). Unspecified orgs get an auto color. */
   orgColors?: Record<string, string>;
   /**
-   * Hook point for file clicks (the editor's connection target).
+   * Hook point for file clicks (the viewer's connection target).
    * While this is unfinished, selection only is supported and a no-op is passed.
    */
   onOpenFile?(repoPath: string, file: string): void;

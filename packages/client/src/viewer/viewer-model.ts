@@ -1,6 +1,6 @@
 /**
  * The state and transitions of the viewer's open files (pure functions).
- * One buffer per tab (tab-model kind:"editor"). The key is editorKey (repoPath joined with
+ * One buffer per tab (tab-model kind:"viewer"). The key is viewerKey (repoPath joined with
  * the repo-relative path; kept equal to the tab's id). Being read-only, it holds no edit
  * state, only the content last read. Side effects (read) happen on the App/api side; this
  * holds only state transitions. Realtime reflection is driven by polling re-firing bufferLoaded.
@@ -8,7 +8,7 @@
 
 export type BufferStatus = "loading" | "ready" | "error";
 
-export interface EditorBuffer {
+export interface ViewerBuffer {
   readonly repoPath: string;
   readonly relPath: string;
   readonly status: BufferStatus;
@@ -19,10 +19,10 @@ export interface EditorBuffer {
   readonly preview: boolean;
 }
 
-export type EditorBuffers = Readonly<Record<string, EditorBuffer>>;
+export type ViewerBuffers = Readonly<Record<string, ViewerBuffer>>;
 
 /** The composite key matching the tab's id (repoPath and repo-relative path joined by a newline). */
-export function editorKey(repoPath: string, relPath: string): string {
+export function viewerKey(repoPath: string, relPath: string): string {
   return `${repoPath}\n${relPath}`;
 }
 
@@ -32,10 +32,10 @@ export function isMarkdown(relPath: string): boolean {
 }
 
 function patch(
-  bufs: EditorBuffers,
+  bufs: ViewerBuffers,
   key: string,
-  next: (b: EditorBuffer) => EditorBuffer,
-): EditorBuffers {
+  next: (b: ViewerBuffer) => ViewerBuffer,
+): ViewerBuffers {
   const b = bufs[key];
   if (b === undefined) return bufs;
   const nb = next(b);
@@ -45,11 +45,11 @@ function patch(
 
 /** Opens a file (adds it in loading state if not open; leaves an existing one unchanged). */
 export function openBuffer(
-  bufs: EditorBuffers,
+  bufs: ViewerBuffers,
   repoPath: string,
   relPath: string,
-): EditorBuffers {
-  const key = editorKey(repoPath, relPath);
+): ViewerBuffers {
+  const key = viewerKey(repoPath, relPath);
   if (bufs[key] !== undefined) return bufs;
   return {
     ...bufs,
@@ -68,10 +68,10 @@ export function openBuffer(
  * value, returns the same reference when the content is unchanged (avoids wasteful re-render / CM replacement).
  */
 export function bufferLoaded(
-  bufs: EditorBuffers,
+  bufs: ViewerBuffers,
   key: string,
   content: string,
-): EditorBuffers {
+): ViewerBuffers {
   return patch(bufs, key, (b) =>
     b.status === "ready" && b.content === content
       ? b
@@ -80,21 +80,21 @@ export function bufferLoaded(
 }
 
 export function bufferFailed(
-  bufs: EditorBuffers,
+  bufs: ViewerBuffers,
   key: string,
   error: string,
-): EditorBuffers {
+): ViewerBuffers {
   return patch(bufs, key, (b) => ({ ...b, status: "error", error }));
 }
 
 export function bufferTogglePreview(
-  bufs: EditorBuffers,
+  bufs: ViewerBuffers,
   key: string,
-): EditorBuffers {
+): ViewerBuffers {
   return patch(bufs, key, (b) => ({ ...b, preview: !b.preview }));
 }
 
-export function closeBuffer(bufs: EditorBuffers, key: string): EditorBuffers {
+export function closeBuffer(bufs: ViewerBuffers, key: string): ViewerBuffers {
   if (bufs[key] === undefined) return bufs;
   const { [key]: _removed, ...rest } = bufs;
   return rest;

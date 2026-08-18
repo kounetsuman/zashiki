@@ -2,10 +2,10 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { EditorBuffer } from "../editor/editor-model.js";
-import { EditorPanel } from "./EditorPanel.js";
+import type { ViewerBuffer } from "../viewer/viewer-model.js";
+import { ViewerPanel } from "./ViewerPanel.js";
 
-const base: EditorBuffer = {
+const base: ViewerBuffer = {
   repoPath: "/ws/repo",
   relPath: "src/app.ts",
   status: "ready",
@@ -17,10 +17,10 @@ const noop = () => undefined;
 
 afterEach(cleanup);
 
-describe("EditorPanel", () => {
+describe("ViewerPanel", () => {
   it("shows the shared loading UI while loading", () => {
     render(
-      <EditorPanel
+      <ViewerPanel
         buffer={{ ...base, status: "loading", content: null }}
         onTogglePreview={noop}
         onCopyPath={noop}
@@ -31,7 +31,7 @@ describe("EditorPanel", () => {
 
   it("shows the error message on error", () => {
     render(
-      <EditorPanel
+      <ViewerPanel
         buffer={{ ...base, status: "error", error: "file not found" }}
         onTogglePreview={noop}
         onCopyPath={noop}
@@ -42,14 +42,14 @@ describe("EditorPanel", () => {
 
   it("has no save button since it is read-only", () => {
     render(
-      <EditorPanel buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
+      <ViewerPanel buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
     );
     expect(screen.queryByRole("button", { name: /保存/ })).toBeNull();
   });
 
   it("has no refresh button since it is read-only (realtime is polling)", () => {
     render(
-      <EditorPanel buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
+      <ViewerPanel buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
     );
     expect(screen.queryByRole("button", { name: "更新" })).toBeNull();
   });
@@ -57,7 +57,7 @@ describe("EditorPanel", () => {
   it("calls onCopyPath via the copy button", () => {
     const onCopyPath = vi.fn();
     render(
-      <EditorPanel
+      <ViewerPanel
         buffer={base}
         onTogglePreview={noop}
         onCopyPath={onCopyPath}
@@ -69,14 +69,14 @@ describe("EditorPanel", () => {
 
   it("does not show the preview toggle for non-Markdown", () => {
     render(
-      <EditorPanel buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
+      <ViewerPanel buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
     );
     expect(screen.queryByRole("button", { name: "プレビュー" })).toBeNull();
   });
 
   it("shows the toggle for Markdown and renders with markdown-it in preview mode", () => {
     render(
-      <EditorPanel
+      <ViewerPanel
         buffer={{
           ...base,
           relPath: "README.md",
@@ -97,7 +97,7 @@ describe("EditorPanel", () => {
   it("calls onTogglePreview on toggle click", () => {
     const onTogglePreview = vi.fn();
     render(
-      <EditorPanel
+      <ViewerPanel
         buffer={{ ...base, relPath: "README.md" }}
         onTogglePreview={onTogglePreview}
         onCopyPath={noop}

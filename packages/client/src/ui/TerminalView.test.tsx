@@ -565,7 +565,7 @@ describe("TerminalView", () => {
     expect(resize).not.toHaveBeenCalled();
   });
 
-  it("sends resize when the size changes after start (fixes the black gap to the right of the conversation panel)", () => {
+  it("sends resize when the size changes after start (fixes the black gap to the right of the main area)", () => {
     const f = fakeSession();
     const resize = vi.spyOn(f.session, "resize");
     fitTarget = { cols: 100, rows: 30 }; // measurable at mount, so start(100,30)

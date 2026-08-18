@@ -8,14 +8,14 @@ import MarkdownIt from "markdown-it";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
-import { type EditorBuffer, isMarkdown } from "../editor/editor-model.js";
+import { isMarkdown, type ViewerBuffer } from "../viewer/viewer-model.js";
 import { Loading } from "./Loading.js";
 import { panelClass } from "./panels.js";
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
 
-export interface EditorPanelProps {
-  buffer: EditorBuffer;
+export interface ViewerPanelProps {
+  buffer: ViewerBuffer;
   onTogglePreview(): void;
   /** The copy button at the header's left edge copies the file's absolute path. */
   onCopyPath(): void;
@@ -27,7 +27,7 @@ export interface EditorPanelProps {
  * changes the content, the doc is swapped out. Editing is disabled, so cursor
  * position is not a concern.
  */
-function CodeMirrorHost({ buffer }: Pick<EditorPanelProps, "buffer">) {
+function CodeMirrorHost({ buffer }: Pick<ViewerPanelProps, "buffer">) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   // Read the initial doc via a ref so the closure is fixed at view creation
@@ -83,22 +83,22 @@ function CodeMirrorHost({ buffer }: Pick<EditorPanelProps, "buffer">) {
     });
   }, [buffer.content]);
 
-  return <div className="editor-cm" ref={hostRef} />;
+  return <div className="viewer-cm" ref={hostRef} />;
 }
 
 /**
- * File viewer. Overlays the conversation body only while the editor tab in the
+ * File viewer. Overlays the main-area body only while the viewer tab in the
  * unified tab bar is active. Displays read-only via CodeMirror 6 (line numbers,
  * extension-based syntax highlighting, one-dark); Markdown toggles between code
  * and preview. File editing is delegated to claude code and is not done here
  * (realtime updates come from polling on the App side).
  */
-export function EditorPanel({
+export function ViewerPanel({
   buffer,
   onTogglePreview,
   onCopyPath,
   inactive,
-}: EditorPanelProps) {
+}: ViewerPanelProps) {
   const { t } = useTranslation();
   const md5 = isMarkdown(buffer.relPath);
   const showPreview = md5 && buffer.preview;
@@ -109,15 +109,15 @@ export function EditorPanel({
 
   return (
     <section
-      className={panelClass("editor-panel", inactive)}
-      data-panel="conversation"
-      aria-label={t("editor.viewerLabel", { path: buffer.relPath })}
+      className={panelClass("viewer-panel", inactive)}
+      data-panel="main"
+      aria-label={t("viewer.viewerLabel", { path: buffer.relPath })}
     >
-      <div className="editor-toolbar">
+      <div className="viewer-toolbar">
         <button
           type="button"
-          className="editor-copy"
-          aria-label={t("editor.copyPathLabel")}
+          className="viewer-copy"
+          aria-label={t("viewer.copyPathLabel")}
           title={t("common.copyAbsPath")}
           onClick={onCopyPath}
         >
@@ -125,32 +125,32 @@ export function EditorPanel({
             content_copy
           </span>
         </button>
-        <span className="editor-path" title={buffer.relPath}>
+        <span className="viewer-path" title={buffer.relPath}>
           {buffer.relPath}
         </span>
         {md5 && (
           <button
             type="button"
-            className={`editor-toggle${showPreview ? " is-active" : ""}`}
+            className={`viewer-toggle${showPreview ? " is-active" : ""}`}
             aria-pressed={showPreview}
             onClick={onTogglePreview}
           >
-            {showPreview ? t("editor.code") : t("editor.preview")}
+            {showPreview ? t("viewer.code") : t("viewer.preview")}
           </button>
         )}
       </div>
-      <div className="editor-body">
+      <div className="viewer-body">
         {buffer.status === "loading" && <Loading />}
         {buffer.status === "error" && (
-          <div className="editor-message editor-error" role="alert">
-            {t("editor.openFailed", { error: buffer.error })}
+          <div className="viewer-message viewer-error" role="alert">
+            {t("viewer.openFailed", { error: buffer.error })}
           </div>
         )}
         {buffer.status === "ready" &&
           (showPreview ? (
             // markdown-it escapes raw HTML with html:false (mitigates XSS).
             <div
-              className="editor-preview markdown-body"
+              className="viewer-preview markdown-body"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
               dangerouslySetInnerHTML={{ __html: previewHtml }}
             />

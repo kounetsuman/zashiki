@@ -197,7 +197,7 @@ describe("GitPanel", () => {
     ]);
   });
 
-  it("opens the editor (open) on file name click", async () => {
+  it("opens the viewer (open) on file name click", async () => {
     const h = renderPanel(twoRepoFixture());
     await expandToFiles(h);
     await act(async () => {

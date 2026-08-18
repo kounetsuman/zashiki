@@ -1005,7 +1005,7 @@ describe("App", () => {
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
-  it("with 0 sessions the conversation panel shows the empty state, which clears when sessions arrive", () => {
+  it("with 0 sessions the main area shows the empty state, which clears when sessions arrive", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1019,7 +1019,7 @@ describe("App", () => {
         reposApi={fakeReposApi}
       />,
     );
-    // Initially (sessions empty, control open) the conversation panel shows the empty state.
+    // Initially (sessions empty, control open) the main area shows the empty state.
     expect(screen.getByText("セッションがありません")).toBeTruthy();
     act(() =>
       control.emit({
@@ -1162,15 +1162,15 @@ describe("App", () => {
         orgColors: {},
       }),
     );
-    const conversation = container.querySelector('[data-panel="conversation"]');
+    const mainArea = container.querySelector('[data-panel="main"]');
     const sessionList = container.querySelector('[data-panel="sessions"]');
-    // Initially the conversation panel is active (the session list is dimmed).
-    expect(conversation?.classList.contains("panel-inactive")).toBe(false);
+    // Initially the main area is active (the session list is dimmed).
+    expect(mainArea?.classList.contains("panel-inactive")).toBe(false);
     expect(sessionList?.classList.contains("panel-inactive")).toBe(true);
-    // When the session list gains focus, active moves to it and the conversation panel dims.
+    // When the session list gains focus, active moves to it and the main area dims.
     act(() => (sessionList as HTMLElement).focus());
     expect(sessionList?.classList.contains("panel-inactive")).toBe(false);
-    expect(conversation?.classList.contains("panel-inactive")).toBe(true);
+    expect(mainArea?.classList.contains("panel-inactive")).toBe(true);
   });
 
   it("single selection: only one selected panel is shown, and the session list stays permanently pinned", () => {

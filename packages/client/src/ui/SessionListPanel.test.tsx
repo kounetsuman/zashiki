@@ -954,7 +954,7 @@ describe("SessionListPanel: header", () => {
 });
 
 describe("SessionListPanel: empty state", () => {
-  it("does not show an empty state in the list even with 0 sessions (moved to the conversation panel)", () => {
+  it("does not show an empty state in the list even with 0 sessions (moved to the main area)", () => {
     renderPanel({ sessions: [], orgs: ["kilo"] });
     expect(screen.queryByText("セッションがありません")).toBeNull();
     // Show org headers (the right-click entry point for new sessions) as before

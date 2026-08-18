@@ -1,17 +1,17 @@
 /**
  * State and transitions for the main area's unified tab list (pure functions).
- * The tab list is the single source of truth for what is open, and session/editor
+ * The tab list is the single source of truth for what is open, and session/viewer
  * tabs live in the same list. Identity uses a composite `kind:id` key
- * (session=windowId, editor=fileKey) to avoid id collisions across kinds. When the
+ * (session=windowId, viewer=fileKey) to avoid id collisions across kinds. When the
  * active tab drops out due to being closed or removed, the nearest surviving tab in
  * the original order is chosen deterministically (even when several vanish at once).
  */
 
-export type TabKind = "session" | "editor";
+export type TabKind = "session" | "viewer";
 
 export interface Tab {
   readonly kind: TabKind;
-  /** Identifier unique within a kind (session=windowId, editor=fileKey). */
+  /** Identifier unique within a kind (session=windowId, viewer=fileKey). */
   readonly id: string;
 }
 
@@ -43,7 +43,7 @@ export function activeTab(state: TabsState): Tab | null {
   return i === -1 ? null : (state.tabs[i] ?? null);
 }
 
-/** The active session tab's windowId, or null otherwise (editor/empty). */
+/** The active session tab's windowId, or null otherwise (viewer/empty). */
 export function activeSessionId(state: TabsState): string | null {
   const t = activeTab(state);
   return t !== null && t.kind === "session" ? t.id : null;
@@ -126,7 +126,7 @@ export function moveTab(
 }
 
 /**
- * Prunes session tabs against the set of live windowIds (editor tabs always stay).
+ * Prunes session tabs against the set of live windowIds (viewer tabs always stay).
  * If the active tab disappears, move to the nearest surviving tab in the original
  * order. Deterministic even when several vanish at once.
  */

@@ -22,7 +22,7 @@ cases, and untranslated keys all fall back to `en` (`fallbackLng: en`). There is
 
 - A single namespace (default `translation`) plus nested keys grouped by feature, `.`-separated.
   Groups roughly correspond to "screen / feature" (`sessionList` / `tabBar` / `notification` / `search` /
-  `git` / `editor` / `explorer` / `help` / `footer` / `panel` / `debug`, etc.).
+  `git` / `viewer` / `explorer` / `help` / `footer` / `panel` / `debug`, etc.).
   Generic terms shared across multiple places go in `common` (`close` / `cancel` / `retry` …).
 - Leaf keys are lowerCamelCase. Dynamic values use `{{name}}` interpolation (do not split sentences).
 - To add a language, add `locales/<lng>.json` and register it in `resources` in `index.ts` and

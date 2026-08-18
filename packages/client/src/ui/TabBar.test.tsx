@@ -85,13 +85,13 @@ describe("TabBar", () => {
     expect(screen.getByRole("tab").getAttribute("title")).toBe(longTitle);
   });
 
-  it("keeps the full path in title for an editor tab", () => {
+  it("keeps the full path in title for a viewer tab", () => {
     const rel = "very/deeply/nested/path/to/some-long-file-name.md";
-    const e = (id: string): Tab => ({ kind: "editor", id });
+    const e = (id: string): Tab => ({ kind: "viewer", id });
     render(
       <TabBar
         tabs={[e(`/repo\n${rel}`)]}
-        activeKey={`editor:/repo\n${rel}`}
+        activeKey={`viewer:/repo\n${rel}`}
         sessions={[]}
         conversationTitles={{}}
         onActivate={() => undefined}

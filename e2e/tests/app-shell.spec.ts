@@ -15,7 +15,7 @@ test.describe("App shell startup and the token gate", () => {
   });
 
   // Story: a valid token boots the app itself
-  test("a valid token renders the SESSION LIST, panel switcher, and conversation area", async ({
+  test("a valid token renders the SESSION LIST, panel switcher, and main area", async ({
     page,
   }) => {
     await gotoApp(page);
@@ -23,11 +23,11 @@ test.describe("App shell startup and the token gate", () => {
     await expect(
       page.getByRole("radiogroup", { name: "Switch panel" }),
     ).toBeVisible();
-    await expect(page.locator('[data-panel="conversation"]')).toBeVisible();
+    await expect(page.locator('[data-panel="main"]')).toBeVisible();
   });
 
-  // Story: the empty state of the conversation area when there are no sessions
-  test("when there are no sessions, the conversation area shows the no-sessions message", async ({
+  // Story: the empty state of the main area when there are no sessions
+  test("when there are no sessions, the main area shows the no-sessions message", async ({
     page,
   }) => {
     await gotoApp(page);

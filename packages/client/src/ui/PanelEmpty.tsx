@@ -9,7 +9,7 @@ export interface PanelEmptyProps {
  * Shared empty-state for panels. The message varies per panel, while the base
  * design (colors, spacing, etc.) is centralized here. Rich guidance
  * (session-empty-guide) and the terminal area's hero empty state
- * (empty-conversation) serve different purposes and are out of scope.
+ * (empty-main-area) serve different purposes and are out of scope.
  */
 export function PanelEmpty({ children }: PanelEmptyProps) {
   return <div className="panel-empty">{children}</div>;
