@@ -882,6 +882,35 @@ body {
   height: 100%;
 }
 
+/* Force a classic, always-present scrollbar on the xterm viewport instead of the macOS overlay
+ * scrollbar that auto-hides. The transparent track keeps it invisible when there is no scrollback,
+ * while the thumb stays continuously visible (never auto-hides) whenever history is scrollable, so
+ * the presence of history is always discoverable (issue #41). */
+.terminal-view .xterm .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: #4a4a4a transparent;
+}
+
+.terminal-view .xterm .xterm-viewport::-webkit-scrollbar {
+  width: 12px;
+}
+
+.terminal-view .xterm .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.terminal-view .xterm .xterm-viewport::-webkit-scrollbar-thumb {
+  min-height: 24px;
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background-color: #4a4a4a;
+  background-clip: content-box;
+}
+
+.terminal-view .xterm .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background-color: #5f5f5f;
+}
+
 /* セッション内検索バー（issue #35）。conversation-body（position:relative）の右上に浮かせる
  * オーバーレイ。pty をリサイズしないよう xterm 上に被せる（ブラウザの Find と同じ流儀）。 */
 .terminal-find {
