@@ -882,6 +882,73 @@ body {
   height: 100%;
 }
 
+/* セッション内検索バー（issue #35）。conversation-body（position:relative）の右上に浮かせる
+ * オーバーレイ。pty をリサイズしないよう xterm 上に被せる（ブラウザの Find と同じ流儀）。 */
+.terminal-find {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.terminal-find-input {
+  width: 200px;
+  min-width: 0;
+  background: #141414;
+  border: 1px solid #333;
+  color: #ddd;
+  font: inherit;
+  padding: 3px 6px;
+  border-radius: 3px;
+}
+
+.terminal-find-input:focus {
+  outline: none;
+  border-color: #4a7;
+}
+
+.terminal-find-count {
+  min-width: 4.5em;
+  text-align: right;
+  color: #888;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.terminal-find-count.is-empty {
+  color: #c66;
+}
+
+.terminal-find-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.terminal-find-btn:hover {
+  background: #2f2f2f;
+  color: #ddd;
+}
+
+.terminal-find-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
 .status-bar {
   display: flex;
   align-items: center;

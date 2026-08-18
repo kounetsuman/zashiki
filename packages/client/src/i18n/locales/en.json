@@ -21,7 +21,14 @@
   },
   "terminal": {
     "renderError": "An error occurred while rendering the terminal",
-    "connectionProblem": "Connection problem ({{detail}})"
+    "connectionProblem": "Connection problem ({{detail}})",
+    "find": {
+      "placeholder": "Find in session",
+      "next": "Next match (Enter)",
+      "previous": "Previous match (Shift+Enter)",
+      "close": "Close (Esc)",
+      "noMatches": "No matches"
+    }
   },
   "emptyConversation": {
     "title": "No sessions",

@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -70,6 +76,16 @@ const { MockTerminal } = vi.hoisted(() => {
     getSelection(): string {
       return this.selection;
     }
+    selectionPosition:
+      | { start: { x: number; y: number }; end: { x: number; y: number } }
+      | undefined = undefined;
+    getSelectionPosition() {
+      return this.selectionPosition;
+    }
+    scrollToLineArg: number | null = null;
+    scrollToLine(line: number): void {
+      this.scrollToLineArg = line;
+    }
     clear(): void {
       this.clearCount += 1;
     }
@@ -88,7 +104,11 @@ const { MockTerminal } = vi.hoisted(() => {
     }
     emitKey(ev: Partial<KeyboardEvent>): boolean {
       return (
-        this.keyHandler?.({ type: "keydown", ...ev } as KeyboardEvent) ?? true
+        this.keyHandler?.({
+          type: "keydown",
+          preventDefault: () => {},
+          ...ev,
+        } as KeyboardEvent) ?? true
       );
     }
   }
@@ -120,8 +140,52 @@ const { MockWebglAddon } = vi.hoisted(() => {
   return { MockWebglAddon };
 });
 
+const { MockSearchAddon } = vi.hoisted(() => {
+  class MockSearchAddon {
+    static instances: MockSearchAddon[] = [];
+    findNextCalls: Array<{ term: string; options: unknown }> = [];
+    findPreviousCalls: Array<{ term: string; options: unknown }> = [];
+    clearCount = 0;
+    nextResult = false;
+    private resultsHandler:
+      | ((r: { resultIndex: number; resultCount: number }) => void)
+      | null = null;
+    constructor() {
+      MockSearchAddon.instances.push(this);
+    }
+    activate(): void {}
+    dispose(): void {}
+    findNext(term: string, options?: unknown): boolean {
+      this.findNextCalls.push({ term, options });
+      return this.nextResult;
+    }
+    findPrevious(term: string, options?: unknown): boolean {
+      this.findPreviousCalls.push({ term, options });
+      return this.nextResult;
+    }
+    clearDecorations(): void {
+      this.clearCount += 1;
+    }
+    onDidChangeResults(
+      fn: (r: { resultIndex: number; resultCount: number }) => void,
+    ): { dispose(): void } {
+      this.resultsHandler = fn;
+      return {
+        dispose: () => {
+          this.resultsHandler = null;
+        },
+      };
+    }
+    emitResults(r: { resultIndex: number; resultCount: number }): void {
+      this.resultsHandler?.(r);
+    }
+  }
+  return { MockSearchAddon };
+});
+
 vi.mock("@xterm/xterm", () => ({ Terminal: MockTerminal }));
 vi.mock("@xterm/addon-webgl", () => ({ WebglAddon: MockWebglAddon }));
+vi.mock("@xterm/addon-search", () => ({ SearchAddon: MockSearchAddon }));
 vi.mock("@xterm/addon-unicode11", () => ({
   Unicode11Addon: class {
     activate(): void {}
@@ -174,6 +238,7 @@ describe("TerminalView", () => {
   beforeEach(() => {
     MockTerminal.instances.length = 0;
     MockWebglAddon.instances = 0;
+    MockSearchAddon.instances.length = 0;
     fitTarget = null;
   });
   afterEach(() => {
@@ -631,5 +696,106 @@ describe("TerminalView", () => {
     const f = fakeSession();
     render(<TerminalView session={f.session} />);
     expect(MockTerminal.instances[0]?.clearCount).toBe(0);
+  });
+
+  describe("in-session find bar (issue #35)", () => {
+    const PLACEHOLDER = "セッション内を検索";
+
+    function renderStarted() {
+      fitTarget = { cols: 80, rows: 24 };
+      const f = fakeSession();
+      render(<TerminalView session={f.session} />);
+      const term = MockTerminal.instances[0];
+      if (!term) throw new Error("terminal not created");
+      return { term, session: f.session };
+    }
+
+    it("opens on Cmd+F and swallows the key (does not forward to the pty)", () => {
+      const { term } = renderStarted();
+      let forwarded = true;
+      act(() => {
+        forwarded = term.emitKey({ key: "f", metaKey: true });
+      });
+      expect(forwarded).toBe(false);
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeTruthy();
+    });
+
+    it("prefills the query from the selection's first line only (newlines never match)", () => {
+      const { term } = renderStarted();
+      term.selection = "foo\nbar";
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      expect(
+        (screen.getByPlaceholderText(PLACEHOLDER) as HTMLInputElement).value,
+      ).toBe("foo");
+    });
+
+    it("does not open on Ctrl+F (left to the shell's forward-char)", () => {
+      const { term } = renderStarted();
+      let forwarded = false;
+      act(() => {
+        forwarded = term.emitKey({ key: "f", ctrlKey: true });
+      });
+      expect(forwarded).toBe(true);
+      expect(screen.queryByPlaceholderText(PLACEHOLDER)).toBeNull();
+    });
+
+    it("runs an incremental search while typing", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      fireEvent.change(screen.getByPlaceholderText(PLACEHOLDER), {
+        target: { value: "foo" },
+      });
+      const search = MockSearchAddon.instances[0];
+      if (!search) throw new Error("search addon not loaded");
+      expect(search.findNextCalls.at(-1)?.term).toBe("foo");
+      expect(search.findNextCalls.at(-1)?.options).toMatchObject({
+        incremental: true,
+      });
+    });
+
+    it("navigates with Enter (non-incremental) and centers the match", () => {
+      const { term } = renderStarted();
+      const search = MockSearchAddon.instances[0];
+      if (!search) throw new Error("search addon not loaded");
+      search.nextResult = true;
+      term.selectionPosition = {
+        start: { x: 1, y: 100 },
+        end: { x: 5, y: 100 },
+      };
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      const input = screen.getByPlaceholderText(PLACEHOLDER);
+      fireEvent.change(input, { target: { value: "foo" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(search.findNextCalls.at(-1)?.options).toMatchObject({
+        incremental: false,
+      });
+      // rows 24, match on 1-based line 100 => scroll top to 100 - 1 - 12 = 87
+      expect(term.scrollToLineArg).toBe(87);
+    });
+
+    it("navigates backwards with Shift+Enter", () => {
+      const { term } = renderStarted();
+      const search = MockSearchAddon.instances[0];
+      if (!search) throw new Error("search addon not loaded");
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      const input = screen.getByPlaceholderText(PLACEHOLDER);
+      fireEvent.change(input, { target: { value: "foo" } });
+      fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+      expect(search.findPreviousCalls.at(-1)?.term).toBe("foo");
+    });
+
+    it("closes on Escape, clearing decorations and refocusing the terminal", () => {
+      const { term } = renderStarted();
+      const search = MockSearchAddon.instances[0];
+      if (!search) throw new Error("search addon not loaded");
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      const focusBefore = term.focusCount;
+      fireEvent.keyDown(screen.getByPlaceholderText(PLACEHOLDER), {
+        key: "Escape",
+      });
+      expect(screen.queryByPlaceholderText(PLACEHOLDER)).toBeNull();
+      expect(search.clearCount).toBeGreaterThan(0);
+      expect(term.focusCount).toBeGreaterThan(focusBefore);
+    });
   });
 });
