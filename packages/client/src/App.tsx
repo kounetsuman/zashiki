@@ -383,7 +383,6 @@ export function App({
     selectedWindowId,
     focusNonce,
     resizeNonce,
-    clearNonce,
   } = useSyncExternalStore(store.subscribe, store.getSnapshot);
   // Set of seen ids for the unread badge (persisted in localStorage). Notifications are marked read individually by double-click.
   const [seenIds, setSeenIds] = useState(() => loadSeenIds(panelStorage));
@@ -837,7 +836,6 @@ export function App({
                 session={session}
                 focusNonce={focusNonce}
                 resizeNonce={resizeNonce}
-                clearNonce={clearNonce}
                 fontSize={terminalFont.fontSize}
               />
             </ErrorBoundary>

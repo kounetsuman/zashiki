@@ -28,33 +28,17 @@ import type {
 } from "./lib/notify.js";
 import type { ControlStatus } from "./ws/control.js";
 
-// To guard the focusNonce / clearNonce wiring (store -> App -> TerminalView.props)
-// at the App level, the mock mirrors the received nonces into data attributes.
+// To guard the focusNonce wiring (store -> App -> TerminalView.props) at the App level,
+// the mock mirrors the received nonce into a data attribute.
 vi.mock("./ui/TerminalView.js", () => ({
-  TerminalView: ({
-    focusNonce,
-    clearNonce,
-  }: {
-    focusNonce?: number;
-    clearNonce?: number;
-  }) => (
-    <div
-      data-testid="terminal-view"
-      data-focus-nonce={focusNonce ?? 0}
-      data-clear-nonce={clearNonce ?? 0}
-    />
+  TerminalView: ({ focusNonce }: { focusNonce?: number }) => (
+    <div data-testid="terminal-view" data-focus-nonce={focusNonce ?? 0} />
   ),
 }));
 
 function terminalFocusNonce(): number {
   return Number(
     screen.getByTestId("terminal-view").getAttribute("data-focus-nonce"),
-  );
-}
-
-function terminalClearNonce(): number {
-  return Number(
-    screen.getByTestId("terminal-view").getAttribute("data-clear-nonce"),
   );
 }
 
@@ -1604,99 +1588,5 @@ describe("App", () => {
       }),
     );
     expect(f.resume).toHaveBeenCalled();
-  });
-
-  it("clearNonce does not increase after a restart (Bootstrap)", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-      />,
-    );
-    // Initially 0.
-    expect(terminalClearNonce()).toBe(0);
-    // state.sync -> Bootstrap calls selectWindow(active) (null -> @1).
-    act(() =>
-      control.emit({
-        t: "state.sync",
-        sessions,
-        orgs: ["kilo"],
-        orgColors: {},
-      }),
-    );
-    // The first selection from null does not bump clearNonce.
-    expect(terminalClearNonce()).toBe(0);
-  });
-
-  it("clearNonce does not increase when closing a tab and reopening the same session", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-      />,
-    );
-    act(() =>
-      control.emit({
-        t: "state.sync",
-        sessions,
-        orgs: ["kilo"],
-        orgColors: {},
-      }),
-    );
-    // Bootstrap opens the @1 tab. clearNonce = 0.
-    expect(terminalClearNonce()).toBe(0);
-
-    // Close the @1 tab (deselect -> selectedWindowId = null).
-    pressCmdW();
-    expect(terminalClearNonce()).toBe(0);
-
-    // Double-click @1 to reopen it (null -> reselect @1).
-    fireEvent.doubleClick(inList().getByRole("button", { name: ROW_ZASHIKI }));
-    // A reselection from null, so clearNonce does not bump.
-    expect(terminalClearNonce()).toBe(0);
-  });
-
-  it("switching sessions increases clearNonce (regression guard)", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-      />,
-    );
-    act(() =>
-      control.emit({
-        t: "state.sync",
-        sessions,
-        orgs: ["kilo"],
-        orgColors: {},
-      }),
-    );
-    // Bootstrap: null → @1、clearNonce = 0。
-    expect(terminalClearNonce()).toBe(0);
-
-    // Switch to @2 (@1 -> @2) -> clearNonce +1.
-    fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
-    expect(terminalClearNonce()).toBe(1);
   });
 });

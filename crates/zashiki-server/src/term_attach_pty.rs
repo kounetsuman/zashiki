@@ -5,12 +5,15 @@
 //!
 //! Characteristics of an owned PTY (because it has multiple subscribers and shares the PTY with the
 //! state-detection poller):
-//! - **Restore on attach / tab switch uses raw ring replay (scrollback) + the redraw sequence from
-//!   `contents_formatted()`**. The redraw sequence only carries the current screen (the vt100 parser
-//!   keeps 0 scrollback rows), so scrollback would be empty after a restart or tab reopen. We stream
-//!   the raw replay first to rebuild the history, then use the redraw sequence to overwrite the
-//!   current screen precisely, including colors and cursor position. The raw replay may be corrupted
-//!   at the very start if it begins mid-escape-sequence.
+//! - **Restore on attach / tab switch is self-contained: a screen+scrollback clear, then the raw
+//!   scrollback replay (full history), then the redraw sequence from `contents_formatted()`**. Because
+//!   one xterm instance is shared across sessions, the leading clear wipes the previous session's
+//!   leftover scrollback deterministically (replacing a client-side `term.clear()` that used to race
+//!   with this stream). The redraw sequence only carries the current screen (the vt100 parser keeps 0
+//!   scrollback rows), so scrollback would be empty after a restart or tab reopen; the raw replay
+//!   rebuilds the full history (retained without eviction), and the redraw then overwrites the current
+//!   screen precisely, including colors and cursor position. The raw replay may be corrupted at the
+//!   very start if it begins mid-escape-sequence.
 //! - A broadcast `Lagged` recovers automatically by re-subscribing and resending the current screen
 //!   (redraw sequence only). We do not resend the raw replay here, to avoid duplicating scrollback
 //!   the client already holds.
@@ -168,10 +171,18 @@ async fn send_restore(
     replay: Vec<u8>,
     formatted: Vec<u8>,
 ) -> Result<bool, ()> {
-    let paused_after_replay = send_accounted(socket, services, term_id, replay).await?;
+    let mut head = RESTORE_CLEAR_PREFIX.to_vec();
+    head.extend_from_slice(&replay);
+    let paused_after_replay = send_accounted(socket, services, term_id, head).await?;
     let paused_after_screen = send_accounted(socket, services, term_id, formatted).await?;
     Ok(paused_after_replay || paused_after_screen)
 }
+
+/// Prefix that makes the restore stream self-contained: cursor home + erase screen + erase scrollback
+/// (`CSI H` / `CSI 2 J` / `CSI 3 J`). Because a single xterm instance is shared across sessions, this
+/// wipes the previous session's leftover scrollback deterministically before the raw replay rebuilds
+/// this session's history — replacing the client-side `term.clear()` that used to race with the replay.
+const RESTORE_CLEAR_PREFIX: &[u8] = b"\x1b[H\x1b[2J\x1b[3J";
 
 /// The main loop: subscribe -> initial restore (raw ring replay + redraw sequence) -> then run
 /// live/input/backpressure/heartbeat. Because an owned PTY's attach target can be swapped on a tab switch
@@ -252,9 +263,11 @@ async fn run_bridge(
                     paused = services.terms.lock().unwrap().on_sent(term_id, units);
                 }
                 // A lagging subscriber's drop -> recover automatically by re-subscribing and resending
-                // the current screen (redraw sequence).
+                // the current screen (redraw sequence). Take a receiver-only resubscribe: the raw
+                // replay is not resent here (it would duplicate scrollback the client holds), so cloning
+                // the full unbounded history via subscribe() would be pure waste under the lock.
                 Err(RecvError::Lagged(_)) => {
-                    sub = session.subscribe();
+                    sub.receiver = session.resubscribe();
                     if !paused {
                         let formatted = session.screen_formatted();
                         if !formatted.is_empty() {
@@ -597,6 +610,31 @@ mod tests {
         assert!(
             seen.contains("SCROLLBACK-MARKER"),
             "scrollback history not replayed on attach: {seen:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn initial_restore_starts_by_clearing_stale_scrollback() {
+        // B2: the restore stream is self-contained. It begins by erasing the client's screen and
+        // scrollback (CSI 3 J) so a previous session's leftover scrollback in the shared xterm cannot
+        // linger or race with the replay; the raw replay then rebuilds this session's history. This is
+        // why the client no longer clears the terminal itself on a tab switch.
+        let services = services_with_pty("t1", "sess-1", cat_cfg()).await;
+        let session = services.sessions.get("sess-1").await.unwrap();
+        session.write_input(b"HELLO-CLEAR\n").unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(session.screen_contents().contains("HELLO-CLEAR"));
+
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        let seen = recv_until(&mut ws, "HELLO-CLEAR", 3000).await;
+        let clear = seen
+            .find("\u{1b}[3J")
+            .expect("restore must begin by erasing scrollback (CSI 3 J)");
+        let content = seen.find("HELLO-CLEAR").expect("restored content missing");
+        assert!(
+            clear < content,
+            "scrollback clear must precede restored content: {seen:?}"
         );
     }
 

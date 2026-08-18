@@ -27,14 +27,6 @@ export interface AppState {
    * force-resends a resize at the current view's actual size to reclaim the shared window for the current view.
    */
   resizeNonce: number;
-  /**
-   * Scrollback-clear request counter that increments on every session switch.
-   * Because the same xterm instance is shared across multiple sessions, on a switch
-   * the previous session's output remains in the scrollback and becomes visible when
-   * scrolling. TerminalView detects the change and calls term.clear() to empty the
-   * scrollback. Re-selecting the same windowId does not increment it.
-   */
-  clearNonce: number;
 }
 
 export interface AppStoreDeps {
@@ -122,7 +114,6 @@ const INITIAL_STATE: AppState = {
   selectedWindowId: null,
   focusNonce: 0,
   resizeNonce: 0,
-  clearNonce: 0,
 };
 
 /**
@@ -145,9 +136,6 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     setState({
       selectedWindowId: windowId,
       resizeNonce: state.resizeNonce + 1,
-      ...(windowId !== state.selectedWindowId && state.selectedWindowId !== null
-        ? { clearNonce: state.clearNonce + 1 }
-        : {}),
     });
     deps.session.select(windowId);
   }
@@ -181,10 +169,6 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           selectedWindowId: added,
           focusNonce: state.focusNonce + 1,
           resizeNonce: state.resizeNonce + 1,
-          clearNonce:
-            state.selectedWindowId !== null
-              ? state.clearNonce + 1
-              : state.clearNonce,
         });
         deps.session.select(added);
       } else {
