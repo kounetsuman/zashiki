@@ -323,6 +323,28 @@ describe("SessionListPanel: session rows", () => {
     expect(row.getAttribute("aria-label")).toBe("tango");
   });
 
+  it("falls back to the window name in the row body until the title is resolved (e.g. right after resume)", () => {
+    // tango is title:null; the visible label should show the window name (= org name for
+    // owned sessions), matching the tab, instead of a blank row.
+    renderPanel({ sessions: [sessions[1] as SessionInfo] });
+    const row = screen.getByRole("button", {
+      name: /tango(?! を閉じる)/,
+    });
+    expect(row.querySelector(".session-title")?.textContent).toContain("tango");
+  });
+
+  it("replaces the window-name fallback with the summary once the title resolves", () => {
+    renderPanel({
+      sessions: [{ ...sessions[1], title: "調査タスク" } as SessionInfo],
+    });
+    const row = screen.getByRole("button", {
+      name: /tango 調査タスク/,
+    });
+    const body = row.querySelector(".session-title")?.textContent;
+    expect(body).toContain("調査タスク");
+    expect(body).not.toContain("tango");
+  });
+
   it("indicates the active window with a subtle row highlight (class) rather than a >", () => {
     renderPanel();
     const active = screen.getByRole("button", { name: /zashiki(?! を閉じる)/ });

@@ -583,7 +583,12 @@ export function SessionListPanel({
                 orgSessions.map((s) => {
                   // Prefer the manual title (header rename); fall back to the automatic title if none.
                   const custom = effectiveCustomTitle(conversationTitles, s);
-                  const displayTitle = custom ?? s.title;
+                  const summaryTitle = custom ?? s.title;
+                  // Visible label. Falls back to the window name (= org name for owned sessions)
+                  // via resolveTitle, the same fallback the tab uses, so an unresolved title
+                  // (e.g. right after resume, before the summary is computed) shows the org name
+                  // rather than a blank row.
+                  const displayTitle = resolveTitle(custom, s);
                   const fresh = isFresh(s, custom);
                   const isRenaming = renaming?.windowId === s.windowId;
                   return (
@@ -643,11 +648,12 @@ export function SessionListPanel({
                                 ? "true"
                                 : undefined
                             }
-                            // The org name is obvious from the collapse header, so don't show it on the row.
                             // Keep the window name in aria-label for row identification and a11y.
+                            // Pair it with the summary only when one exists; the visible label may
+                            // fall back to the name, but the aria-label must not repeat it.
                             aria-label={
-                              displayTitle !== null
-                                ? `${s.name} ${displayTitle}`
+                              summaryTitle !== null
+                                ? `${s.name} ${summaryTitle}`
                                 : s.name
                             }
                             // Expand via double-click/Enter. A single click is the focus ring only (to prevent accidental triggering).
@@ -673,12 +679,10 @@ export function SessionListPanel({
                                 (+{s.shellsRunning ?? 0}sh)
                               </span>
                             )}
-                            {displayTitle !== null && (
-                              <span className="session-title">
-                                {" "}
-                                {displayTitle}
-                              </span>
-                            )}
+                            <span className="session-title">
+                              {" "}
+                              {displayTitle}
+                            </span>
                           </button>
                           <button
                             type="button"
