@@ -1,5 +1,6 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 
@@ -93,6 +94,20 @@ export function TerminalView({
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
     term.open(el);
+
+    // Render via WebGL instead of xterm's default DOM renderer. Under WKWebView (the packaged app)
+    // the DOM renderer intermittently drops the first paint on attach: rows exist but stay empty
+    // while the buffer holds the content, and a later resize does not reliably repaint. The WebGL
+    // renderer paints to a canvas and is not subject to that DOM first-paint race. On context loss
+    // it disposes itself, and xterm falls back to the DOM renderer; if WebGL is unavailable the
+    // constructor throws and we keep the DOM renderer (unchanged behavior).
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch {
+      // WebGL unavailable: keep the DOM renderer.
+    }
 
     // The actual render size, obtainable only once cell dimensions are settled. Right after
     // term.open they are unsettled and proposeDimensions() returns undefined, so this returns null (= not started yet).
