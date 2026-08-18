@@ -21,7 +21,14 @@
   },
   "terminal": {
     "renderError": "ターミナルの描画でエラーが発生しました",
-    "connectionProblem": "接続に問題があります（{{detail}}）"
+    "connectionProblem": "接続に問題があります（{{detail}}）",
+    "find": {
+      "placeholder": "セッション内を検索",
+      "next": "次の一致（Enter）",
+      "previous": "前の一致（Shift+Enter）",
+      "close": "閉じる（Esc）",
+      "noMatches": "一致なし"
+    }
   },
   "emptyConversation": {
     "title": "セッションがありません",

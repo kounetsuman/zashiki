@@ -1,8 +1,9 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { stripFocusReports } from "../lib/focus-report.js";
 import {
@@ -11,6 +12,13 @@ import {
   type TerminalSize,
 } from "../lib/terminal-fit.js";
 import { stripTerminalReplies } from "../lib/terminal-reply.js";
+import {
+  buildSearchOptions,
+  centerScrollTop,
+  EMPTY_SEARCH_RESULTS,
+  type SearchResults,
+} from "../lib/terminal-search.js";
+import { TerminalFindBar } from "./TerminalFindBar.js";
 import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
 import { buildTerminalOptions } from "./terminal-options.js";
 
@@ -74,7 +82,53 @@ export function TerminalView({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
+  const searchRef = useRef<SearchAddon | null>(null);
   const reassertSizeRef = useRef<() => void>(() => undefined);
+
+  // In-session find bar (issue #35). Cmd+F while the terminal is focused opens it; the SearchAddon
+  // highlights matches, and each match is scrolled to the vertical center.
+  const [find, setFind] = useState({ open: false, query: "" });
+  const [findResults, setFindResults] =
+    useState<SearchResults>(EMPTY_SEARCH_RESULTS);
+  const [findFocusSignal, setFindFocusSignal] = useState(0);
+
+  const runSearch = useCallback(
+    (query: string, direction: "next" | "previous" | "incremental"): void => {
+      const search = searchRef.current;
+      const term = termRef.current;
+      if (!search || !term) return;
+      if (query === "") {
+        search.clearDecorations();
+        setFindResults(EMPTY_SEARCH_RESULTS);
+        return;
+      }
+      const found =
+        direction === "previous"
+          ? search.findPrevious(query, buildSearchOptions(false))
+          : search.findNext(
+              query,
+              buildSearchOptions(direction === "incremental"),
+            );
+      if (!found) return;
+      const pos = term.getSelectionPosition();
+      if (pos) term.scrollToLine(centerScrollTop(pos.start.y, term.rows));
+    },
+    [],
+  );
+
+  const openFind = useCallback((): void => {
+    // Prefill from the current selection, but only its first line: the addon searches line by line,
+    // so a query containing a newline can never match.
+    const selection = (termRef.current?.getSelection() ?? "").split("\n")[0];
+    setFind((prev) => ({ open: true, query: selection || prev.query }));
+    setFindFocusSignal((n) => n + 1);
+  }, []);
+
+  const closeFind = useCallback((): void => {
+    searchRef.current?.clearDecorations();
+    setFind((prev) => ({ ...prev, open: false }));
+    termRef.current?.focus();
+  }, []);
   // Latest font size, read (not depended on) by the construction effect so a font change updates the
   // live instance instead of rebuilding the terminal (which would drop scrollback and restart the pty).
   const fontSizeRef = useRef(fontSize);
@@ -83,6 +137,11 @@ export function TerminalView({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    // A session switch rebuilds the terminal (previous scrollback and decorations are gone), so start
+    // from a closed find bar rather than one pointing at a stale buffer.
+    setFind({ open: false, query: "" });
+    setFindResults(EMPTY_SEARCH_RESULTS);
 
     const term = new Terminal(buildTerminalOptions(fontSizeRef.current));
     termRef.current = term;
@@ -93,6 +152,12 @@ export function TerminalView({
     // and appears to "float". Version "11" is only registered after the addon is loaded.
     term.loadAddon(new Unicode11Addon());
     term.unicode.activeVersion = "11";
+    // In-session search (issue #35). onDidChangeResults only fires while decorations are enabled,
+    // which the find bar always passes via buildSearchOptions.
+    const search = new SearchAddon();
+    term.loadAddon(search);
+    searchRef.current = search;
+    const offResults = search.onDidChangeResults(setFindResults);
     term.open(el);
 
     // Render via WebGL instead of xterm's default DOM renderer. Under WKWebView (the packaged app)
@@ -182,6 +247,19 @@ export function TerminalView({
       // so the committed text is never sent (characters vanish). isComposing can be false around
       // compositionend, so we also check keyCode 229.
       if (e.isComposing || e.keyCode === 229) return true;
+      // Cmd+F opens the in-session find bar instead of going to the pty (issue #35). Ctrl+F is left
+      // to the shell (readline forward-char); on macOS Cmd is the conventional Find modifier.
+      if (
+        (e.key === "f" || e.key === "F") &&
+        e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey
+      ) {
+        e.preventDefault();
+        openFind();
+        return false;
+      }
       if (
         e.key === "Enter" &&
         e.shiftKey &&
@@ -262,12 +340,14 @@ export function TerminalView({
       observer?.disconnect();
       window.removeEventListener("resize", applySize);
       offData();
+      offResults.dispose();
       for (const d of disposables) d.dispose();
       term.dispose();
       termRef.current = null;
+      searchRef.current = null;
       reassertSizeRef.current = () => undefined;
     };
-  }, [session]);
+  }, [session, openFind]);
 
   // When focusNonce increments on new session creation, return focus to the terminal.
   // Don't fire on initial mount (initial value 0) or when unchanged. A disposed term is set to
@@ -312,5 +392,27 @@ export function TerminalView({
     reassertSizeRef.current();
   }, [fontSize]);
 
-  return <div ref={containerRef} className="terminal-view" />;
+  // Drive the search when the bar opens (with a possibly prefilled selection) or the query changes.
+  // Explicit next/previous navigation calls runSearch directly and does not touch the query.
+  useEffect(() => {
+    if (!find.open) return;
+    runSearch(find.query, "incremental");
+  }, [find.open, find.query, runSearch]);
+
+  return (
+    <>
+      {find.open && (
+        <TerminalFindBar
+          query={find.query}
+          results={findResults}
+          focusSignal={findFocusSignal}
+          onQueryChange={(query) => setFind((prev) => ({ ...prev, query }))}
+          onNext={() => runSearch(find.query, "next")}
+          onPrevious={() => runSearch(find.query, "previous")}
+          onClose={closeFind}
+        />
+      )}
+      <div ref={containerRef} className="terminal-view" />
+    </>
+  );
 }
