@@ -21,7 +21,6 @@ const { MockTerminal } = vi.hoisted(() => {
     selection = "";
     disposed = false;
     focusCount = 0;
-    clearCount = 0;
     private dataHandler: ((d: string) => void) | null = null;
     private selectionHandler: (() => void) | null = null;
     private keyHandler: ((e: KeyboardEvent) => boolean) | null = null;
@@ -85,9 +84,6 @@ const { MockTerminal } = vi.hoisted(() => {
     scrollToLineArg: number | null = null;
     scrollToLine(line: number): void {
       this.scrollToLineArg = line;
-    }
-    clear(): void {
-      this.clearCount += 1;
     }
     dispose(): void {
       this.disposed = true;
@@ -663,39 +659,6 @@ describe("TerminalView", () => {
     expect(live.focusCount).toBeGreaterThan(0);
     // Focus on a disposed instance does not increase (termRef was nulled in cleanup).
     expect(disposed.focusCount).toBe(disposedFocusBefore);
-  });
-
-  it("calls term.clear() when clearNonce increases (prevents scrollback pollution on session switch)", () => {
-    const f = fakeSession();
-    fitTarget = { cols: 80, rows: 24 };
-    const { rerender } = render(
-      <TerminalView session={f.session} clearNonce={0} />,
-    );
-    const term = MockTerminal.instances[0];
-    if (!term) throw new Error("terminal not created");
-    expect(term.clearCount).toBe(0);
-    rerender(<TerminalView session={f.session} clearNonce={1} />);
-    expect(term.clearCount).toBe(1);
-    rerender(<TerminalView session={f.session} clearNonce={2} />);
-    expect(term.clearCount).toBe(2);
-  });
-
-  it("does not call term.clear() for the initial or unchanged clearNonce", () => {
-    const f = fakeSession();
-    fitTarget = { cols: 80, rows: 24 };
-    const { rerender } = render(
-      <TerminalView session={f.session} clearNonce={0} />,
-    );
-    const term = MockTerminal.instances[0];
-    if (!term) throw new Error("terminal not created");
-    rerender(<TerminalView session={f.session} clearNonce={0} />);
-    expect(term.clearCount).toBe(0);
-  });
-
-  it("does not crash when clearNonce is unspecified", () => {
-    const f = fakeSession();
-    render(<TerminalView session={f.session} />);
-    expect(MockTerminal.instances[0]?.clearCount).toBe(0);
   });
 
   describe("in-session find bar (issue #35)", () => {

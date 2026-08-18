@@ -6,8 +6,8 @@
 //! grouped sessions (the shared-window contention of `window-size latest`) structurally disappear.
 //!
 //! One session = one `PtySession`. A single reader thread reads the PTY output and:
-//! - accumulates recent output in a [`RingBuffer`] for replay on attach (a replacement for tmux
-//!   scrollback),
+//! - accumulates the full output in a [`ScrollbackBuffer`] for replay on attach (a replacement for
+//!   tmux scrollback),
 //! - feeds the same byte stream to [`vt100`] to reconstruct the visible screen (a replacement for
 //!   tmux `capture-pane`),
 //! - fans out to all subscribers via broadcast.
@@ -17,7 +17,6 @@
 //! grouped sessions / output coalescing) are tracked separately. The source of truth for behavior is
 //! the `tests` at the end of this file.
 
-use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,9 +24,6 @@ use std::thread::{self, JoinHandle};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::broadcast;
-
-/// Default capacity (bytes) of the recent output retained for replay on attach.
-pub const DEFAULT_SCROLLBACK_BYTES: usize = 256 * 1024;
 
 /// Capacity of the broadcast channel (number of chunks). A slow subscriber can lag by this much, and
 /// beyond it drops output via `Lagged`. This is the primary backpressure preventing unbounded
@@ -44,38 +40,35 @@ pub struct PtyConfig {
     pub command: CommandBuilder,
     pub cols: u16,
     pub rows: u16,
-    /// Ring buffer capacity for replay (bytes).
-    pub scrollback_bytes: usize,
 }
 
 impl PtyConfig {
-    /// A configuration that launches `command` with the default size and default scrollback.
+    /// A configuration that launches `command` with the default size.
     pub fn new(command: CommandBuilder) -> Self {
         Self {
             command,
             cols: 80,
             rows: 24,
-            scrollback_bytes: DEFAULT_SCROLLBACK_BYTES,
         }
     }
 }
 
 /// State shared by the reader thread, subscribers, and state queries.
 ///
-/// The reader takes this lock exactly once per chunk and performs the append to `ring`, the feed to
-/// `parser`, and the send to `tx` **together**. Because [`PtySession::subscribe`] also takes the ring
-/// snapshot and `tx.subscribe()` under the same lock, **no double delivery or dropped output occurs
-/// at the subscription boundary** (a chunk that entered replay is not re-sent live, and vice versa).
+/// The reader takes this lock exactly once per chunk and performs the append to `scrollback`, the feed
+/// to `parser`, and the send to `tx` **together**. Because [`PtySession::subscribe`] also takes the
+/// scrollback snapshot and `tx.subscribe()` under the same lock, **no double delivery or dropped output
+/// occurs at the subscription boundary** (a chunk that entered replay is not re-sent live, and vice versa).
 ///
-/// However, replay only restores **the recent output within the ring capacity of `cap` bytes**;
-/// output older than that is not replayed (scrollback truncation). Since the parser consumes all
-/// bytes, `screen_contents()` is complete, but the raw replay may begin partway through an escape
-/// sequence, so it is not guaranteed to match the reconstructed screen. On attach, this raw replay
-/// rebuilds the scrollback, and then the redraw sequence from `screen_formatted()` precisely
-/// overwrites the current screen (the source of truth is `send_restore` and its tests in
-/// `term_attach_pty`).
+/// The `scrollback` retains the **full session history without eviction** so replay can restore the
+/// session from its very first prompt; the aggregate memory cost across sessions is watched separately
+/// (`scrollback_len` feeds the scrollback-memory monitor). Since the parser consumes all bytes,
+/// `screen_contents()` is complete, but the raw replay may begin partway through an escape sequence, so
+/// it is not guaranteed to match the reconstructed screen. On attach, this raw replay rebuilds the
+/// scrollback, and then the redraw sequence from `screen_formatted()` precisely overwrites the current
+/// screen (the source of truth is `send_restore` and its tests in `term_attach_pty`).
 struct Inner {
-    ring: RingBuffer,
+    scrollback: ScrollbackBuffer,
     parser: vt100::Parser,
     tx: broadcast::Sender<Arc<[u8]>>,
 }
@@ -104,11 +97,11 @@ const SIG_TERM: i32 = 15;
 #[cfg(not(unix))]
 const SIG_KILL: i32 = 9;
 
-/// The return of [`PtySession::subscribe`]. Drawing `replay` (the recent output up to the
+/// The return of [`PtySession::subscribe`]. Drawing `replay` (the full history up to the
 /// subscription point) fully first, then streaming the live chunks from `receiver`, restores the
 /// screen on connect even without tmux.
 pub struct Subscription {
-    /// The ring buffer contents at the subscription point (raw bytes of recent output).
+    /// The full scrollback contents at the subscription point (raw bytes of all output so far).
     pub replay: Vec<u8>,
     /// Subsequent live output. `Lagged` indicates dropped output for a lagging subscriber.
     pub receiver: broadcast::Receiver<Arc<[u8]>>,
@@ -143,7 +136,7 @@ impl PtySession {
 
         let (tx, _rx) = broadcast::channel(BROADCAST_CAPACITY);
         let inner = Arc::new(Mutex::new(Inner {
-            ring: RingBuffer::new(config.scrollback_bytes),
+            scrollback: ScrollbackBuffer::new(),
             parser: vt100::Parser::new(config.rows, config.cols, 0),
             tx,
         }));
@@ -164,15 +157,27 @@ impl PtySession {
         })
     }
 
-    /// Subscribe. Atomically takes `replay` (the most recent `cap` bytes) and the live receiver under
-    /// the lock, **preventing double delivery and dropped output at the subscription boundary** (past
-    /// output beyond `cap` is not replayed).
+    /// Subscribe. Atomically takes `replay` (the full history so far) and the live receiver under the
+    /// lock, **preventing double delivery and dropped output at the subscription boundary**.
     pub fn subscribe(&self) -> Subscription {
         let inner = lock_recover(&self.inner);
         Subscription {
-            replay: inner.ring.snapshot(),
+            replay: inner.scrollback.snapshot(),
             receiver: inner.tx.subscribe(),
         }
+    }
+
+    /// A fresh live receiver only, **without** snapshotting the (now unbounded) history. The Lagged
+    /// recovery path needs just a caught-up receiver and resends the current screen separately, so it
+    /// must not pay for — or clone the full history under the lock via — [`subscribe`](Self::subscribe).
+    pub fn resubscribe(&self) -> broadcast::Receiver<Arc<[u8]>> {
+        lock_recover(&self.inner).tx.subscribe()
+    }
+
+    /// Current retained scrollback size in bytes. Feeds the scrollback-memory monitor, which sums this
+    /// across sessions to warn when aggregate usage enters the danger zone.
+    pub fn scrollback_len(&self) -> usize {
+        lock_recover(&self.inner).scrollback.len()
     }
 
     /// Aggregates input from all views and writes to the PTY (the sole writer owner).
@@ -314,7 +319,7 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
         };
         let chunk: Arc<[u8]> = Arc::from(&buf[..n]);
         let mut guard = lock_recover(&inner);
-        guard.ring.push(chunk.as_ref());
+        guard.scrollback.push(chunk.as_ref());
         guard.parser.process(chunk.as_ref());
         // Err if there are no subscribers. Dropped output is handled on the subscriber side via
         // replay/Lagged, so it is ignored here.
@@ -322,36 +327,29 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
     }
 }
 
-/// A fixed-capacity buffer that retains only the last `cap` bytes (a replacement for scrollback;
-/// holds raw bytes).
-struct RingBuffer {
-    buf: VecDeque<u8>,
-    cap: usize,
+/// An append-only buffer that retains the full raw output of a session (a replacement for tmux
+/// scrollback). Nothing is evicted, so replay on attach can restore the session from its very first
+/// prompt; the aggregate memory across sessions is watched by the scrollback-memory monitor via
+/// [`len`](Self::len) rather than bounded here.
+struct ScrollbackBuffer {
+    buf: Vec<u8>,
 }
 
-impl RingBuffer {
-    fn new(cap: usize) -> Self {
-        Self {
-            buf: VecDeque::new(),
-            cap,
-        }
+impl ScrollbackBuffer {
+    fn new() -> Self {
+        Self { buf: Vec::new() }
     }
 
     fn push(&mut self, bytes: &[u8]) {
-        if bytes.len() >= self.cap {
-            // If a single chunk is at least the capacity, keep only the last cap bytes.
-            self.buf.clear();
-            self.buf.extend(&bytes[bytes.len() - self.cap..]);
-            return;
-        }
-        self.buf.extend(bytes);
-        while self.buf.len() > self.cap {
-            self.buf.pop_front();
-        }
+        self.buf.extend_from_slice(bytes);
     }
 
     fn snapshot(&self) -> Vec<u8> {
-        self.buf.iter().copied().collect()
+        self.buf.clone()
+    }
+
+    fn len(&self) -> usize {
+        self.buf.len()
     }
 }
 
@@ -522,30 +520,21 @@ mod tests {
     }
 
     #[test]
-    fn ring_buffer_keeps_only_the_tail_within_capacity() {
-        let mut ring = RingBuffer::new(4);
-        ring.push(b"ab");
-        ring.push(b"cd");
-        ring.push(b"ef");
-        // With capacity 4, only the last "cdef" remains.
-        assert_eq!(ring.snapshot(), b"cdef");
+    fn scrollback_buffer_retains_all_appended_output_in_order() {
+        let mut sb = ScrollbackBuffer::new();
+        sb.push(b"ab");
+        sb.push(b"cd");
+        sb.push(b"ef");
+        // Nothing is evicted: the full history is retained so replay reaches the first prompt.
+        assert_eq!(sb.snapshot(), b"abcdef");
+        assert_eq!(sb.len(), 6);
     }
 
     #[test]
-    fn ring_buffer_handles_chunk_larger_than_capacity() {
-        let mut ring = RingBuffer::new(3);
-        ring.push(b"0123456789");
-        // Even if a single chunk exceeds the capacity, keep only the last cap bytes.
-        assert_eq!(ring.snapshot(), b"789");
-    }
-
-    #[test]
-    fn ring_buffer_handles_chunk_exactly_capacity() {
-        let mut ring = RingBuffer::new(3);
-        ring.push(b"abc");
-        assert_eq!(ring.snapshot(), b"abc");
-        ring.push(b"de");
-        // The append exceeds cap -> drop the front, keeping the last 3 bytes.
-        assert_eq!(ring.snapshot(), b"cde");
+    fn scrollback_buffer_retains_a_large_chunk_whole() {
+        let mut sb = ScrollbackBuffer::new();
+        sb.push(b"0123456789");
+        assert_eq!(sb.snapshot(), b"0123456789");
+        assert_eq!(sb.len(), 10);
     }
 }

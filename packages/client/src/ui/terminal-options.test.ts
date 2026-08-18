@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
-import { buildTerminalOptions } from "./terminal-options.js";
+import {
+  buildTerminalOptions,
+  TERMINAL_SCROLLBACK_LINES,
+} from "./terminal-options.js";
 
 describe("buildTerminalOptions", () => {
-  it("after removing tmux, xterm owns the scrollback", () => {
-    expect(buildTerminalOptions().scrollback).toBe(10000);
+  it("after removing tmux, xterm owns the scrollback (effectively unlimited so the first prompt stays reachable)", () => {
+    expect(buildTerminalOptions().scrollback).toBe(TERMINAL_SCROLLBACK_LINES);
+    expect(TERMINAL_SCROLLBACK_LINES).toBeGreaterThanOrEqual(100_000);
   });
 
   it("enables screenReaderMode so the WebGL-rendered text stays in the accessibility DOM", () => {

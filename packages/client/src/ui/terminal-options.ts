@@ -3,9 +3,17 @@ import type { ITerminalOptions } from "@xterm/xterm";
 import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
 
 /**
+ * Client-side viewable scrollback (lines). The server retains the full session history without
+ * eviction and replays it on attach; this is the browser-side cap on how many of those lines xterm
+ * keeps addressable, chosen large enough that the very first prompt stays reachable for realistic
+ * sessions. xterm grows its buffer lazily up to this cap, so memory tracks the lines actually seen.
+ */
+export const TERMINAL_SCROLLBACK_LINES = 100_000;
+
+/**
  * xterm.js construction options. Factored out into a pure function and covered by unit tests.
  *
- * - `scrollback: 10000`: history of plain shell output (not using the alternate screen) is owned by
+ * - `scrollback`: history of plain shell output (not using the alternate screen) is owned by
  *   xterm. Scrolling inside a TUI (alternate screen) is handled by the TUI itself.
  * - `mouseEventsRequireAlt`: even during mouse tracking, route ordinary drag without modifiers to
  *   xterm.js's native selection (mouse click/drag/move are sent to the app only when Alt is held).
@@ -27,7 +35,7 @@ export function buildTerminalOptions(
     // Without this flag xterm.js throws on construction, and TerminalView's render fails,
     // leaving the whole app on a blank screen.
     allowProposedApi: true,
-    scrollback: 10000,
+    scrollback: TERMINAL_SCROLLBACK_LINES,
     // The WebGL renderer (TerminalView) paints to a canvas, so terminal text is not in the DOM.
     // screenReaderMode keeps a live text mirror in the accessibility tree, which restores assistive-tech
     // readability and lets e2e assert on-screen output regardless of the renderer.

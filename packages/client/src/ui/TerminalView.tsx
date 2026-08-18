@@ -50,7 +50,6 @@ export function TerminalView({
   session,
   focusNonce = 0,
   resizeNonce = 0,
-  clearNonce = 0,
   fontSize = DEFAULT_TERMINAL_FONT_SIZE,
 }: {
   session: TerminalViewSession;
@@ -73,12 +72,6 @@ export function TerminalView({
    * fire because pixels are unchanged, so we reclaim it here.
    */
   resizeNonce?: number;
-  /**
-   * Scrollback-clear request counter, incremented on every session switch.
-   * Each time it increments, calls term.clear() to erase the previous session's scrollback.
-   * Not called on initial mount or when unchanged.
-   */
-  clearNonce?: number;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -367,16 +360,6 @@ export function TerminalView({
     prevResizeNonce.current = resizeNonce;
     reassertSizeRef.current();
   }, [resizeNonce]);
-
-  // When clearNonce increments on a session switch, clear the scrollback so the previous
-  // session's content is not visible by scrolling.
-  // Don't call on initial mount (initial value 0) or when unchanged.
-  const prevClearNonce = useRef(clearNonce);
-  useEffect(() => {
-    if (clearNonce === prevClearNonce.current) return;
-    prevClearNonce.current = clearNonce;
-    termRef.current?.clear();
-  }, [clearNonce]);
 
   // Apply a font-size change to the live terminal. Not on initial mount (already built with it):
   // the construction effect reads fontSizeRef, so we only handle later changes here. After updating

@@ -299,6 +299,43 @@ impl ControlHub {
         };
         let _ = self.tx.send(ServerMessage::NotificationsSync { items });
     }
+
+    /// Enqueues a scrollback-memory pressure warning into NOTIFICATION and broadcasts
+    /// notifications.sync. A fixed id upserts so repeated ticks above the threshold refresh a single
+    /// entry rather than stacking. createdAt is monotonically increasing like the other record_* methods.
+    pub fn record_scrollback_pressure(&self, used_bytes: usize, now_ms: u64) {
+        let items = {
+            let mut state = self.inner.write().unwrap();
+            let created = now_ms.max(state.last_notification_at + 1);
+            state.last_notification_at = created;
+            let n = crate::notifications::scrollback_pressure_notification(used_bytes, created);
+            let next = crate::notifications::append_notification(
+                &state.notifications,
+                n,
+                crate::notifications::NOTIFICATIONS_MAX,
+            );
+            state.notifications = next.clone();
+            next
+        };
+        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+    }
+
+    /// Withdraws the scrollback-memory pressure warning once aggregate usage drops back below the
+    /// clear watermark (server-driven removal regardless of dismissible). No-op broadcast is skipped
+    /// when the entry was not present.
+    pub fn withdraw_scrollback_pressure(&self) {
+        let changed = {
+            let mut state = self.inner.write().unwrap();
+            let before = state.notifications.len();
+            state
+                .notifications
+                .retain(|n| n.id != crate::notifications::SCROLLBACK_PRESSURE_ID);
+            (state.notifications.len() != before).then(|| state.notifications.clone())
+        };
+        if let Some(items) = changed {
+            let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+        }
+    }
 }
 
 fn to_text(msg: &ServerMessage) -> Message {
