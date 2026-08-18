@@ -100,6 +100,30 @@ pub fn pty_exhaustion_notification(created_at: u64) -> Notification {
     }
 }
 
+/// Fixed id for the scrollback-memory pressure notification. A singleton (upsert) that is refreshed
+/// or withdrawn as aggregate usage crosses the danger threshold back and forth.
+pub const SCROLLBACK_PRESSURE_ID: &str = "scrollback-pressure";
+
+/// Warning pushed into NOTIFICATION when the total scrollback retained across all sessions enters the
+/// danger zone. Session history is kept without eviction (so the first prompt stays reachable), so the
+/// user is asked to close unneeded sessions rather than the server silently truncating history. Fixed
+/// id (upsert), toast + panel, manually dismissible.
+pub fn scrollback_pressure_notification(used_bytes: usize, created_at: u64) -> Notification {
+    let used_mib = used_bytes / (1024 * 1024);
+    Notification {
+        id: SCROLLBACK_PRESSURE_ID.to_string(),
+        level: NotificationLevel::Warn,
+        title: "⚠️ スクロールバックのメモリ使用が増大".to_string(),
+        body: Some(format!(
+            "全セッションの履歴が約 {used_mib}MiB を占有しています。履歴は自動削除されません。不要なタブ/セッションを閉じてメモリを解放してください。"
+        )),
+        created_at,
+        sticky: false,
+        dismissible: true,
+        toast: Some(true),
+    }
+}
+
 /// Notification announcing that a newer stable release exists on GitHub than the running bundle (#26).
 /// The id is per-version (`update-available:<version>`) so the same latest version does not re-stack on
 /// every daily poll (singleton per version via upsert), while a genuinely newer version stacks as a new
@@ -205,6 +229,16 @@ mod tests {
         assert!(w.dismissible && !w.sticky);
         let d = notify_notification("id2".to_string(), NotifyKind::Done, "repo-b", 6);
         assert_eq!(d.title, "✅ 完了 repo-b");
+    }
+
+    #[test]
+    fn scrollback_pressure_notification_is_warn_singleton_with_mib_body() {
+        let n = scrollback_pressure_notification(600 * 1024 * 1024, 42);
+        assert_eq!(n.id, SCROLLBACK_PRESSURE_ID);
+        assert_eq!(n.level, NotificationLevel::Warn);
+        assert!(n.body.as_deref().unwrap().contains("600MiB"));
+        assert!(n.dismissible && !n.sticky);
+        assert_eq!(n.toast, Some(true));
     }
 
     #[test]

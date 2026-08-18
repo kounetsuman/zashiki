@@ -26,6 +26,7 @@ pub mod pty_host;
 pub mod repos;
 pub mod repos_watch;
 pub mod runtime;
+pub mod scrollback_monitor;
 pub mod search;
 pub mod session_launch;
 pub mod session_persist;

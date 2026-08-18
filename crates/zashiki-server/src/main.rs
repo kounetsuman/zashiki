@@ -172,6 +172,15 @@ async fn main() {
         zashiki_server::session_persist::AUTOSAVE_INTERVAL,
     );
 
+    // Session history is retained without eviction so the first prompt stays reachable; this watches the
+    // aggregate scrollback memory and raises a NOTIFICATION (rather than silently truncating) when it
+    // enters the danger zone, prompting the user to close unneeded sessions.
+    zashiki_server::scrollback_monitor::spawn_scrollback_monitor(
+        registry.clone(),
+        control.hub.clone(),
+        zashiki_server::scrollback_monitor::MONITOR_INTERVAL,
+    );
+
     // Demo sandbox seeding (`zashiki --demo`). When ZK_DEMO_SEED points to a seed JSON, stage the cockpit
     // with state/title-annotated sessions without launching real claude (see demo_seed.rs). Isolated dirs
     // are set up by the CLI, so this never touches real user data. A malformed/missing seed is logged and skipped.
