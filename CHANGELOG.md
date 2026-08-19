@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The installer quits a running Zashiki before swapping the app bundle, so the new version launches on next open instead of the old one lingering. It requests a graceful quit through the app's own guarded-quit path and never hard-kills (#66)
+
 ## [0.3.0] - 2026-08-19
 
 ### Added
