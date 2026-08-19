@@ -432,6 +432,7 @@ mod tests {
             notify_mode: crate::hooks::NotifyMode::Web,
             mac_notify: std::sync::Arc::new(|_| {}),
             config_path: None,
+            app_version: None,
         }
     }
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Manual "Check for updates" in SETTINGS, reporting whether a newer release is available (#62)
+
+### Changed
+
+- Check for a newer release every 3h instead of every 24h, so running clients notice sooner (#62)
+
 ## [0.2.0] - 2026-08-19
 
 ### Added

@@ -201,6 +201,14 @@ export const configUpdateSchema = z.object({
   language: z.enum(["ja", "en"]),
 });
 
+/**
+ * On-demand "Check for updates" from SETTINGS. The server checks GitHub Releases immediately
+ * and replies with `update.check.result`; a newer version also arrives as a notification.
+ */
+export const updateCheckSchema = z.object({
+  t: z.literal("update.check"),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   termOpenSchema,
   termResizeSchema,
@@ -212,6 +220,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   stateRefreshSchema,
   notificationDismissSchema,
   configUpdateSchema,
+  updateCheckSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -295,6 +304,16 @@ export const notificationsSyncSchema = z.object({
   items: z.array(notificationSchema),
 });
 
+/**
+ * Reply to `update.check`, sent only to the requester so SETTINGS can show feedback.
+ * `version` is the newer version when `status` is `"available"`, and null otherwise.
+ */
+export const updateCheckResultSchema = z.object({
+  t: z.literal("update.check.result"),
+  status: z.enum(["available", "upToDate", "error"]),
+  version: z.string().nullable(),
+});
+
 export const serverMessageSchema = z.discriminatedUnion("t", [
   stateSyncSchema,
   termReconnectSchema,
@@ -304,6 +323,7 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   errorMessageSchema,
   configSyncSchema,
   notificationsSyncSchema,
+  updateCheckResultSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
@@ -313,6 +333,7 @@ export type StateSyncMessage = z.infer<typeof stateSyncSchema>;
 export type NotifyMessage = z.infer<typeof notifySchema>;
 export type ConfigSyncMessage = z.infer<typeof configSyncSchema>;
 export type NotificationsSyncMessage = z.infer<typeof notificationsSyncSchema>;
+export type UpdateCheckResultMessage = z.infer<typeof updateCheckResultSchema>;
 
 // ---- Claude Code hooks → server（POST /api/hooks/event）----
 

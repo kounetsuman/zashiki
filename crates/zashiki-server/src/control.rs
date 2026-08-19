@@ -63,6 +63,9 @@ pub struct ControlServices {
     pub mac_notify: crate::hooks::MacNotify,
     /// The path to config.json (the write target for SETTINGS' config.update; None for tests etc.).
     pub config_path: Option<std::path::PathBuf>,
+    /// Parsed running app version for the on-demand "Check for updates" (SETTINGS). None (dev /
+    /// placeholder / unparseable) means the manual check reports it can't determine the version.
+    pub app_version: Option<semver::Version>,
 }
 
 struct HubState {
@@ -456,6 +459,36 @@ async fn handle_client_message(
                 services.hub.publish_config(crate::config::read_config(path));
             }
             true
+        }
+        // On-demand "Check for updates" (SETTINGS): run the check now (ignoring the background egress
+        // flag — explicit user intent) and reply with the outcome so the UI can show feedback. A newer
+        // version also flows to all clients as a notification via run_manual_check.
+        ClientMessage::UpdateCheck => {
+            use crate::protocol::UpdateCheckStatus;
+            use crate::update_checker::CheckOutcome;
+            let result = match &services.app_version {
+                Some(current) => {
+                    match crate::update_checker::run_manual_check(&services.hub, current).await {
+                        CheckOutcome::Newer { version, .. } => ServerMessage::UpdateCheckResult {
+                            status: UpdateCheckStatus::Available,
+                            version: Some(version),
+                        },
+                        CheckOutcome::UpToDate => ServerMessage::UpdateCheckResult {
+                            status: UpdateCheckStatus::UpToDate,
+                            version: None,
+                        },
+                        CheckOutcome::Failed => ServerMessage::UpdateCheckResult {
+                            status: UpdateCheckStatus::Error,
+                            version: None,
+                        },
+                    }
+                }
+                None => ServerMessage::UpdateCheckResult {
+                    status: UpdateCheckStatus::Error,
+                    version: None,
+                },
+            };
+            socket.send(to_text(&result)).await.is_ok()
         }
         ClientMessage::SessionNew { org } => handle_session_new(socket, services, &org).await,
         // For owned, the actual entity lives in SessionRegistry, so remove it from the registry.
@@ -919,6 +952,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),
                 config_path: None,
+                app_version: None,
             }
         }
 
@@ -995,6 +1029,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),
                 config_path: Some(config_path),
+                app_version: None,
             }
         }
 

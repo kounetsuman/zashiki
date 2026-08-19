@@ -4,6 +4,7 @@ import {
   resumeCommand,
   type ServerMessage,
   type SessionInfo,
+  type UpdateCheckResultMessage,
   unreadCount,
 } from "@zashiki/shared";
 import {
@@ -792,6 +793,31 @@ export function App({
     [control, t],
   );
 
+  // On-demand "Check for updates" (SETTINGS): send update.check and resolve with the server's
+  // update.check.result. Not connected (send=false) / no response (timeout) rejects so the panel
+  // shows an error. The 15s window covers the server's 10s GitHub request timeout.
+  const checkForUpdates = useCallback(
+    (): Promise<UpdateCheckResultMessage> =>
+      new Promise((resolve, reject) => {
+        if (!control.send({ t: "update.check" })) {
+          reject(new Error(t("settings.updateError")));
+          return;
+        }
+        let unsubscribe = (): void => {};
+        const timer = setTimeout(() => {
+          unsubscribe();
+          reject(new Error(t("settings.updateError")));
+        }, 15000);
+        unsubscribe = control.onMessage((m) => {
+          if (m.t !== "update.check.result") return;
+          clearTimeout(timer);
+          unsubscribe();
+          resolve(m);
+        });
+      }),
+    [control, t],
+  );
+
   const handleDismissError = (): void => {
     store.clearError();
   };
@@ -948,6 +974,7 @@ export function App({
               canDecreaseFontSize={terminalFont.canDecrease}
               canResetFontSize={terminalFont.canReset}
               onAddOrg={() => setAddOrgOpen(true)}
+              onCheckForUpdates={checkForUpdates}
               inactive={activePanel !== "settings"}
             />
           )}
