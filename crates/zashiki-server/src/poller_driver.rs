@@ -109,6 +109,16 @@ mod tests {
         async fn subagent_ages(&self, _cwd: &str, _sid: &str) -> Vec<f64> {
             Vec::new()
         }
+        async fn lsof_fd_outputs(&self) -> String {
+            String::new()
+        }
+        async fn background_task_ids(
+            &self,
+            _cwd: &str,
+            _sid: &str,
+        ) -> std::collections::HashSet<String> {
+            std::collections::HashSet::new()
+        }
     }
 
     fn one_running_window() -> FakePorts {

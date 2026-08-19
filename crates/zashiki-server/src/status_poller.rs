@@ -3,7 +3,7 @@
 //! changed. The infra (tmux capture / ps / jsonl reads) is injected via `PollerPorts`, and this module holds only
 //! the logic (timer driving and WS broadcast wiring come later).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
 
 use zashiki_core::process_tree::{build_process_maps, find_sid_in_tree, parse_ps_snapshot};
@@ -16,6 +16,7 @@ use zashiki_core::session_state::{
 
 use crate::jsonl::{first_user_title, last_user_or_assistant_event};
 use crate::protocol::SessionInfo;
+use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
 
 const TITLE_MAX_CHARS: usize = 30;
 
@@ -58,6 +59,11 @@ pub trait PollerPorts {
     fn read_slices(&self, cwd: &str, sid: &str) -> impl Future<Output = Option<Slices>> + Send;
     /// The elapsed mtime seconds of each subagents/*.jsonl file (material for the count).
     fn subagent_ages(&self, cwd: &str, sid: &str) -> impl Future<Output = Vec<f64>> + Send;
+    /// Raw `lsof -F pfn -a -d 1` output for resident background-shell detection (parsed by `crate::shells`).
+    fn lsof_fd_outputs(&self) -> impl Future<Output = String> + Send;
+    /// The set of `toolUseResult.backgroundTaskId` in the transcript (separates bg shells from fg).
+    fn background_task_ids(&self, cwd: &str, sid: &str)
+        -> impl Future<Output = HashSet<String>> + Send;
 }
 
 /// Evaluation configuration (reposRoots is fixed at startup; colors can be read each time).
@@ -176,10 +182,19 @@ impl StatusPoller {
     ) -> (StateSnapshot, bool) {
         let windows = ports.list_work_windows().await;
         let maps = build_process_maps(&parse_ps_snapshot(&ports.ps_snapshot().await));
+        // No windows = no session to attribute a shell to, so skip the lsof spawn entirely.
+        let shell_outputs = if windows.is_empty() {
+            Vec::new()
+        } else {
+            parse_lsof_fd_outputs(&ports.lsof_fd_outputs().await)
+        };
 
         let mut sessions = Vec::new();
         for win in &windows {
-            if let Some(info) = self.evaluate_window(win, &maps, ports, config).await {
+            if let Some(info) = self
+                .evaluate_window(win, &maps, &shell_outputs, ports, config)
+                .await
+            {
                 sessions.push(info);
             }
         }
@@ -207,6 +222,7 @@ impl StatusPoller {
         &mut self,
         win: &WorkWindow,
         maps: &zashiki_core::process_tree::ProcessMaps,
+        shell_outputs: &[ShellOutput],
         ports: &P,
         config: &PollConfig,
     ) -> Option<SessionInfo> {
@@ -307,6 +323,19 @@ impl StatusPoller {
             }
         }
 
+        // Only sids with a live fd1 output need a transcript read to tell bg from fg; absent that,
+        // there is nothing resident (0 shells is omitted, not sent as 0).
+        let mut shells_running: Option<u32> = None;
+        if let Some(sid) = &sid {
+            if shell_outputs.iter().any(|o| &o.sid == sid) {
+                let bg_ids = ports.background_task_ids(&cwd, sid).await;
+                let n = count_running_shells_for_sid(shell_outputs, sid, &bg_ids);
+                if n > 0 {
+                    shells_running = Some(n);
+                }
+            }
+        }
+
         self.prev_states.insert(win.window_id.clone(), state);
         self.prev_limited.insert(win.window_id.clone(), limited);
         Some(SessionInfo {
@@ -319,6 +348,7 @@ impl StatusPoller {
             sid,
             active: win.active,
             running_subagents: Some(running_subagents as u32),
+            shells_running,
             limited,
         })
     }
@@ -386,6 +416,8 @@ mod tests {
         captures: HashMap<String, String>,
         slices: HashMap<String, Slices>,
         subagent_ages: HashMap<String, Vec<f64>>,
+        lsof: String,
+        bg_task_ids: HashMap<String, HashSet<String>>,
     }
 
     impl PollerPorts for FakePorts {
@@ -409,6 +441,15 @@ mod tests {
         }
         async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
             self.subagent_ages
+                .get(&format!("{cwd}\u{0}{sid}"))
+                .cloned()
+                .unwrap_or_default()
+        }
+        async fn lsof_fd_outputs(&self) -> String {
+            self.lsof.clone()
+        }
+        async fn background_task_ids(&self, cwd: &str, sid: &str) -> HashSet<String> {
+            self.bg_task_ids
                 .get(&format!("{cwd}\u{0}{sid}"))
                 .cloned()
                 .unwrap_or_default()
@@ -458,6 +499,45 @@ mod tests {
         assert_eq!(s.sid.as_deref(), Some(SID));
         assert_eq!(s.running_subagents, Some(0));
         assert!(!s.limited);
+    }
+
+    /// A live fd1 output whose task id is a transcript backgroundTaskId is counted as a resident shell.
+    #[tokio::test]
+    async fn resident_background_shell_sets_shells_running() {
+        let cwd = "/repos/charlie/app";
+        let lsof = format!("p900\nf1\nn/private/tmp/x/{SID}/tasks/bgtask123.output\n");
+        let ports = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            lsof,
+            bg_task_ids: HashMap::from([(
+                format!("{cwd}\u{0}{SID}"),
+                HashSet::from(["bgtask123".to_string()]),
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].shells_running, Some(1));
+    }
+
+    /// A live fd1 output whose task id is NOT a backgroundTaskId (a foreground Bash) is excluded; with
+    /// nothing resident the field is omitted (None).
+    #[tokio::test]
+    async fn foreground_shell_fd_is_not_counted() {
+        let cwd = "/repos/charlie/app";
+        let lsof = format!("p900\nf1\nn/private/tmp/x/{SID}/tasks/fgtask999.output\n");
+        let ports = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            lsof,
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].shells_running, None);
     }
 
     /// A capture containing the limit banner puts limited=true on the wire. Orthogonal to the primary state (running).
