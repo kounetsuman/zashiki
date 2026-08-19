@@ -1,9 +1,12 @@
 //! Background task that notifies when the running bundle is outdated (#26). It polls GitHub's
-//! `releases/latest` (which already excludes prereleases) once on startup and every 24h, compares the
+//! `releases/latest` (which already excludes prereleases) once on startup and every 3h, compares the
 //! latest stable tag against the running app version (`ZK_APP_VERSION`, injected by the Tauri shell from
 //! `app.package_info().version`), and pushes an "update available" notification when a newer stable
 //! release exists. Gated by the live `updateCheck` config flag and silent on any failure
 //! (offline / non-2xx / parse). Dev builds (version `0.0.0`) never poll (no egress).
+//!
+//! SETTINGS' "Check for updates" runs the same check on demand via `check_now`, which — unlike the
+//! background poll — reports up-to-date / failure back to the requester so the UI can give feedback (#62).
 //!
 //! The version-comparison behavior is canonicalized by the `tests` module below.
 
@@ -12,7 +15,7 @@ use std::time::Duration;
 
 use crate::control::ControlHub;
 
-const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(3 * 60 * 60);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/kounetsuman/zashiki/releases/latest";
@@ -58,18 +61,49 @@ fn fetch_latest_release() -> Option<String> {
         .ok()
 }
 
-async fn check_once(current: &semver::Version) -> Option<(String, String)> {
-    let body = tokio::task::spawn_blocking(fetch_latest_release).await.ok()??;
-    evaluate_release(current, &body)
+/// Outcome of a single check, distinguishing "up to date" from "the fetch failed" so a manual
+/// check can tell the user which happened (the background poll ignores both — it only acts on `Newer`).
+#[derive(Debug, PartialEq, Eq)]
+pub enum CheckOutcome {
+    Newer { version: String, url: String },
+    UpToDate,
+    Failed,
 }
 
-/// Resident task: poll once on startup then every 24h, gated per-tick by the live `updateCheck` flag.
+/// Classify an already-fetched body (or a fetch failure, `None`). Pure, for testability. A present-but-not-newer
+/// or unparseable body is treated as up to date — the manual UI distinguishes only "failed to reach GitHub".
+fn evaluate_outcome(current: &semver::Version, fetched: Option<&str>) -> CheckOutcome {
+    match fetched {
+        None => CheckOutcome::Failed,
+        Some(body) => match evaluate_release(current, body) {
+            Some((version, url)) => CheckOutcome::Newer { version, url },
+            None => CheckOutcome::UpToDate,
+        },
+    }
+}
+
+async fn check_now(current: &semver::Version) -> CheckOutcome {
+    let fetched = tokio::task::spawn_blocking(fetch_latest_release)
+        .await
+        .ok()
+        .flatten();
+    evaluate_outcome(current, fetched.as_deref())
+}
+
+/// Run a check on demand (SETTINGS' "Check for updates") and record a notification when newer. Explicit user
+/// intent, so it ignores the background `updateCheck` egress flag. Returns the outcome for the UI reply.
+pub async fn run_manual_check(hub: &ControlHub, current: &semver::Version) -> CheckOutcome {
+    let outcome = check_now(current).await;
+    if let CheckOutcome::Newer { version, url } = &outcome {
+        hub.record_update_available(version.clone(), url.clone(), crate::now_ms());
+    }
+    outcome
+}
+
+/// Resident task: poll once on startup then every 3h, gated per-tick by the live `updateCheck` flag.
 /// No-ops entirely (never spawns network I/O) when the running version is the dev placeholder / unparseable.
-pub fn spawn_update_checker(hub: Arc<ControlHub>, current_version: String) -> tokio::task::JoinHandle<()> {
+pub fn spawn_update_checker(hub: Arc<ControlHub>, current: semver::Version) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let Some(current) = parse_running_version(&current_version) else {
-            return;
-        };
         let mut interval = tokio::time::interval(UPDATE_CHECK_INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -77,7 +111,7 @@ pub fn spawn_update_checker(hub: Arc<ControlHub>, current_version: String) -> to
             if !hub.update_check_enabled() {
                 continue;
             }
-            if let Some((version, url)) = check_once(&current).await {
+            if let CheckOutcome::Newer { version, url } = check_now(&current).await {
                 hub.record_update_available(version, url, crate::now_ms());
             }
         }
@@ -156,5 +190,27 @@ mod tests {
         assert_eq!(evaluate_release(&current, r#"{"tag_name":"v0.1.0"}"#), None); // older
         assert_eq!(evaluate_release(&current, r#"{"foo":1}"#), None); // no tag_name
         assert_eq!(evaluate_release(&current, "not json"), None); // parse failure
+    }
+
+    #[test]
+    fn evaluate_outcome_distinguishes_newer_uptodate_and_failed() {
+        let current = semver::Version::new(0, 1, 1);
+        assert_eq!(
+            evaluate_outcome(&current, Some(r#"{"tag_name":"v0.2.0"}"#)),
+            CheckOutcome::Newer {
+                version: "0.2.0".to_string(),
+                url: RELEASES_URL.to_string(),
+            }
+        );
+        // Present-but-not-newer and unparseable both read as up to date; only a fetch failure is Failed.
+        assert_eq!(
+            evaluate_outcome(&current, Some(r#"{"tag_name":"v0.1.1"}"#)),
+            CheckOutcome::UpToDate
+        );
+        assert_eq!(
+            evaluate_outcome(&current, Some("not json")),
+            CheckOutcome::UpToDate
+        );
+        assert_eq!(evaluate_outcome(&current, None), CheckOutcome::Failed);
     }
 }

@@ -151,7 +151,13 @@
     "fontSizeIncrease": "Increase font size",
     "fontSizeReset": "Reset",
     "orgSection": "Organizations",
-    "addOrg": "Add org"
+    "addOrg": "Add org",
+    "updateSection": "Updates",
+    "checkForUpdates": "Check for updates",
+    "updateChecking": "Checking…",
+    "updateAvailable": "Version {{version}} is available.",
+    "updateUpToDate": "You're on the latest version.",
+    "updateError": "Couldn't check for updates."
   },
   "addOrg": {
     "title": "Add org",

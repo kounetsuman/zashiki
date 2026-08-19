@@ -80,6 +80,19 @@ pub enum ClientMessage {
     /// it to config.json and distributes config.sync to all connections via watch.
     #[serde(rename = "config.update", rename_all = "camelCase")]
     ConfigUpdate { language: String },
+    /// On-demand "Check for updates" from SETTINGS. The server checks GitHub Releases now and replies
+    /// with an `update.check.result` (a newer version additionally lands as a notification).
+    #[serde(rename = "update.check")]
+    UpdateCheck,
+}
+
+/// Result of an on-demand update check, sent only to the requester so SETTINGS can show feedback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdateCheckStatus {
+    Available,
+    UpToDate,
+    Error,
 }
 
 /// The kind of notify.
@@ -213,6 +226,13 @@ pub enum ServerMessage {
     /// and on changes; a full replacement, not a diff).
     #[serde(rename = "notifications.sync")]
     NotificationsSync { items: Vec<Notification> },
+    /// Reply to a `update.check`, sent only to the requester. `version` carries the newer version when
+    /// `status` is `available`, and is null otherwise.
+    #[serde(rename = "update.check.result", rename_all = "camelCase")]
+    UpdateCheckResult {
+        status: UpdateCheckStatus,
+        version: Option<String>,
+    },
 }
 
 #[cfg(test)]
@@ -533,6 +553,34 @@ mod tests {
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg, ClientMessage::ConfigUpdate { language: "en".into() });
         assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn update_check_roundtrips_and_matches_wire() {
+        let json = r#"{"t":"update.check"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg, ClientMessage::UpdateCheck);
+        assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn update_check_result_matches_wire() {
+        let available = ServerMessage::UpdateCheckResult {
+            status: UpdateCheckStatus::Available,
+            version: Some("0.2.0".into()),
+        };
+        assert_eq!(
+            to_json(&available),
+            r#"{"t":"update.check.result","status":"available","version":"0.2.0"}"#
+        );
+        let up_to_date = ServerMessage::UpdateCheckResult {
+            status: UpdateCheckStatus::UpToDate,
+            version: None,
+        };
+        assert_eq!(
+            to_json(&up_to_date),
+            r#"{"t":"update.check.result","status":"upToDate","version":null}"#
+        );
     }
 
     #[test]

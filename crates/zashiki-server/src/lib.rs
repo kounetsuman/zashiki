@@ -2359,6 +2359,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: std::sync::Arc::new(|_| {}),
                 config_path: None,
+                app_version: None,
             }
         }
 
@@ -2555,6 +2556,7 @@ mod tests {
                 notify_mode: mode,
                 mac_notify: Arc::new(move |n| mac_log.lock().unwrap().push(n)),
                 config_path: None,
+                app_version: None,
             }
         }
 
@@ -2990,6 +2992,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: std::sync::Arc::new(|_| {}),
                 config_path: None,
+                app_version: None,
             }
         }
 

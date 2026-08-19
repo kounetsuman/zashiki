@@ -144,6 +144,9 @@ export {
   type TermOpenMessage,
   termAckSchema,
   termIdSchema,
+  type UpdateCheckResultMessage,
+  updateCheckResultSchema,
+  updateCheckSchema,
   type WindowId,
   windowIdSchema,
 } from "./protocol.js";

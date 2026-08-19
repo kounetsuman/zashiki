@@ -151,7 +151,13 @@
     "fontSizeIncrease": "文字を大きく",
     "fontSizeReset": "リセット",
     "orgSection": "組織",
-    "addOrg": "組織を追加"
+    "addOrg": "組織を追加",
+    "updateSection": "アップデート",
+    "checkForUpdates": "アップデートを確認",
+    "updateChecking": "確認中…",
+    "updateAvailable": "バージョン {{version}} が利用できます。",
+    "updateUpToDate": "最新バージョンです。",
+    "updateError": "アップデートを確認できませんでした。"
   },
   "addOrg": {
     "title": "組織を追加",

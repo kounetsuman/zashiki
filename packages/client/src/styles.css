@@ -1781,6 +1781,11 @@ body {
   border-color: #4a7;
 }
 
+.settings-update-status {
+  font-size: 11px;
+  color: #999;
+}
+
 /* fieldset for the terminal font-size group: strip the default border/padding so it matches the
  * other settings fields (the fieldset/legend pair is used for the group label semantics). */
 .font-size-field {

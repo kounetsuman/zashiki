@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { UpdateCheckResultMessage } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsPanel } from "./SettingsPanel.js";
@@ -129,6 +130,63 @@ describe("SettingsPanel", () => {
     );
     expect(
       screen.getByRole("group", { name: "ターミナルの文字サイズ" }),
+    ).toBeTruthy();
+  });
+
+  it("hides the update-check entry when onCheckForUpdates is omitted", () => {
+    render(<SettingsPanel language="ja" onSaveLanguage={() => {}} />);
+    expect(
+      screen.queryByRole("button", { name: "アップデートを確認" }),
+    ).toBeNull();
+  });
+
+  it("runs the check and shows the newer version when one is available", async () => {
+    const onCheckForUpdates = vi.fn().mockResolvedValue({
+      t: "update.check.result",
+      status: "available",
+      version: "0.2.0",
+    } satisfies UpdateCheckResultMessage);
+    render(
+      <SettingsPanel
+        language="ja"
+        onSaveLanguage={() => {}}
+        onCheckForUpdates={onCheckForUpdates}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "アップデートを確認" }));
+    expect(onCheckForUpdates).toHaveBeenCalledOnce();
+    expect(
+      await screen.findByText("バージョン 0.2.0 が利用できます。"),
+    ).toBeTruthy();
+  });
+
+  it("reports being up to date", async () => {
+    render(
+      <SettingsPanel
+        language="ja"
+        onSaveLanguage={() => {}}
+        onCheckForUpdates={vi.fn().mockResolvedValue({
+          t: "update.check.result",
+          status: "upToDate",
+          version: null,
+        } satisfies UpdateCheckResultMessage)}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "アップデートを確認" }));
+    expect(await screen.findByText("最新バージョンです。")).toBeTruthy();
+  });
+
+  it("reports an error when the check rejects", async () => {
+    render(
+      <SettingsPanel
+        language="ja"
+        onSaveLanguage={() => {}}
+        onCheckForUpdates={vi.fn().mockRejectedValue(new Error("offline"))}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "アップデートを確認" }));
+    expect(
+      await screen.findByText("アップデートを確認できませんでした。"),
     ).toBeTruthy();
   });
 });
