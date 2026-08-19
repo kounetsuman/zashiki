@@ -125,9 +125,16 @@ jobs:
           uploadUpdaterJson: false
 
       # Gate the release on a valid signature + stapled notarization ticket for signed builds.
+      # Verify the shipped .dmg: the bundler removes the intermediate .app after packaging it,
+      # so mount the dmg and check the .app inside (what users actually download).
       - name: Verify signature & notarization
         if: steps.signing.outputs.enabled == 'true'
         run: |
-          APP="apps/desktop/src-tauri/target/release/bundle/macos/Zashiki.app"
+          DMG=$(find apps/desktop/src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' | head -1)
+          test -n "$DMG" || { echo "::error::no .dmg found to verify"; exit 1; }
+          MOUNT=$(hdiutil attach "$DMG" -nobrowse -readonly | grep -Eo '/Volumes/.*' | tail -1)
+          trap 'hdiutil detach "$MOUNT" -quiet || true' EXIT
+          APP=$(find "$MOUNT" -maxdepth 1 -name '*.app' | head -1)
           codesign --verify --deep --strict --verbose=2 "$APP"
           spctl -a -vvv "$APP"
+          xcrun stapler validate "$APP"
