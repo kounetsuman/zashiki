@@ -3,16 +3,18 @@ name: Bump Homebrew tap
 # When a vX.Y.Z release is published (the draft from release.yml is promoted to a full
 # release, so the .dmg download URL is now public), rewrite kounetsuman/homebrew-tap's
 # Casks/zashiki.rb to the new version + the sha256 of the published .dmg and push it — no
-# hand-edit. Prereleases don't fire `released`, so only stable builds reach the tap.
-# Requires a HOMEBREW_TAP_TOKEN secret: a PAT with contents:write on kounetsuman/homebrew-tap
+# hand-edit. `published` (not `released`) is required: `released`/`prereleased` don't fire
+# when a *draft* is promoted, which is how release.yml ships every build; the job's `if`
+# then drops prereleases so only stable builds reach the tap.
+# Needs a HOMEBREW_TAP_TOKEN secret: a PAT with contents:write on kounetsuman/homebrew-tap
 # (the job-scoped GITHUB_TOKEN can't push cross-repo).
 on:
   release:
-    types: [released]
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "既存の published release tag（vX.Y.Z）を指定して再実行する用途"
+        description: "An existing published release tag (vX.Y.Z) to re-run the bump for"
         required: true
         type: string
 
@@ -21,6 +23,7 @@ permissions:
 
 jobs:
   bump:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
     runs-on: ubuntu-latest
     steps:
       - name: Resolve and validate tag
@@ -60,7 +63,7 @@ jobs:
           SHA: ${{ steps.dmg.outputs.sha256 }}
         run: |
           CASK="Casks/zashiki.rb"
-          # version と sha256 の行だけを差し替える（url は #{version} 参照なので触らない）。
+          # Only version + sha256 change; the url line derives the filename from #{version}.
           sed -i -E "s/^(  version ).*/\1\"${VERSION}\"/" "$CASK"
           sed -i -E "s/^(  sha256 ).*/\1\"${SHA}\"/" "$CASK"
           if git diff --quiet -- "$CASK"; then
@@ -69,5 +72,5 @@ jobs:
           fi
           git config user.name "Kotaro Sato"
           git config user.email "kounetsuman@gmail.com"
-          git commit -m "zashiki ${VERSION} (signed & notarized)" -- "$CASK"
-          git push
+          git commit -m "zashiki ${VERSION}" -- "$CASK"
+          git push origin HEAD
