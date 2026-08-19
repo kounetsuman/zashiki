@@ -92,8 +92,8 @@ it from the right-click menu).
   `tauri::is_dev()`, the same as the initial URL, so even a `--debug` build is
   correctly gated by config. To enable it in `tauri build` output, tauri's `devtools`
   feature is enabled (on macOS it uses private API, so it is not supported for App
-  Store distribution; since this app is distributed unsigned, there is no practical
-  impact).
+  Store distribution; this app is distributed outside the App Store (Developer ID),
+  so there is no practical impact).
 - The canonical spec is `parse_debug_flag` / `devtools_enabled` in `src/sidecar.rs`
   (cargo test).
 
@@ -152,7 +152,46 @@ CI load).
 
 In CI, a `vX.Y.Z` tag push has [`.github/workflows/release.yml`](../../.github/workflows/release.yml)
 place the bundled artifacts with the same `build-app.sh` (`--prepare-only`), delegate the actual
-`tauri build` (`--bundles dmg`) to tauri-action, and publish `Zashiki.dmg` to a draft Release (macOS only, unsigned).
+`tauri build` (`--bundles dmg`) to tauri-action, and publish `Zashiki.dmg` to a draft Release (macOS only).
+The build is signed + notarized when the Apple secrets are configured, and falls back to unsigned
+otherwise — see [Signing & notarization](#signing--notarization).
+
+### Signing & notarization
+
+Release builds are **code-signed with a Developer ID Application certificate and notarized**
+when the Apple credentials are present as GitHub Actions secrets; the `.app`/`.dmg` then launch
+without the Gatekeeper right-click workaround. When the secrets are absent (e.g. on a fork), the
+build falls back to **unsigned** and the release still succeeds —
+[`release.yml`](../../.github/workflows/release.yml) gates signing on the presence of
+`APPLE_CERTIFICATE`.
+
+During `tauri build` the Tauri bundler imports the certificate, signs the app and its bundled
+`zashiki-server` sidecar (hardened runtime is on by default), notarizes via `notarytool`, and
+staples the ticket; the workflow then verifies with `codesign --verify --deep --strict` and
+`spctl -a -vvv`.
+
+One-time setup (maintainer):
+
+1. Enroll in the [Apple Developer Program](https://developer.apple.com/programs/) (paid) and
+   create a **Developer ID Application** certificate. Export it from Keychain Access as a `.p12`
+   (with a password), then base64-encode it: `base64 -i certificate.p12 | pbcopy`.
+2. Create an **app-specific password** for your Apple ID at <https://account.apple.com> →
+   Sign-In and Security, and note your 10-character **Team ID** from the Apple Developer account
+   page.
+3. Add these repository secrets (Settings → Secrets and variables → Actions):
+
+   | Secret | Value |
+   | --- | --- |
+   | `APPLE_CERTIFICATE` | base64 of the exported `.p12` |
+   | `APPLE_CERTIFICATE_PASSWORD` | password used when exporting the `.p12` |
+   | `APPLE_SIGNING_IDENTITY` | `Developer ID Application: NAME (TEAMID)` (from `security find-identity -v -p codesigning`) |
+   | `APPLE_ID` | Apple ID email used for notarization |
+   | `APPLE_PASSWORD` | the app-specific password from step 2 |
+   | `APPLE_TEAM_ID` | 10-character Team ID |
+
+Once a signed release is verified (`spctl -a -vvv Zashiki.app` reports *accepted*), drop the
+"Unsigned / right-click → Open" note from the root [`README.md`](../../README.md) /
+[`README.ja.md`](../../README.ja.md).
 
 ### Shell build that depends on the development tree
 
@@ -219,9 +258,10 @@ pnpm uninstall:app -- --yes --purge-user-data # the above + also deletes ~/.zash
 
 ## Known limitations
 
-- **The distributed .app is unsigned**: the `.app` produced by `build:app` does not
-  yet support signing or notarization, so a Gatekeeper warning appears on first
-  launch (right-click → Open, etc. is required). Signing/notarization is follow-up.
+- **Distributed builds are unsigned until the Apple signing secrets are configured**:
+  without them the `.app` produced by `build:app` triggers a Gatekeeper warning on
+  first launch (right-click → Open, etc. is required). Configure the secrets to enable
+  signing + notarization — see [Signing & notarization](#signing--notarization).
 - **Riding on an existing server that does not serve client dist**: the distributed
   .app opens `http://127.0.0.1:8790` (the server's `/`). If another server is already
   running on 8790, it rides on it, but if that server was not started with

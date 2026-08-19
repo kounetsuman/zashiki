@@ -63,6 +63,53 @@ jobs:
       - name: Prepare bundle payload (client dist + server binary)
         run: bash scripts/build-app.sh --prepare-only
 
+      # Sign + notarize only when the APPLE_CERTIFICATE secret is configured; otherwise
+      # fall back to an unsigned build (see apps/desktop/README.md "Signing & notarization").
+      - name: Detect signing secrets
+        id: signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::APPLE_CERTIFICATE secret is not set — building an UNSIGNED app."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Import the Developer ID Application cert into a throwaway keychain and forward the
+      # signing identity + notarization credentials to the build step (unset in the unsigned
+      # path, so the Tauri bundler skips signing entirely).
+      - name: Import Apple Developer ID certificate
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PW="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
+          # Prepend the temp keychain to the existing search list (keep login.keychain-db so the
+          # Developer ID intermediate stays resolvable), rather than replacing it.
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/[[:space:]"]//g')
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+          {
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+            echo "APPLE_ID=$APPLE_ID"
+            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+          } >> "$GITHUB_ENV"
+
       - name: Build app & publish draft release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -76,3 +123,11 @@ jobs:
           releaseDraft: true
           prerelease: false
           uploadUpdaterJson: false
+
+      # Gate the release on a valid signature + stapled notarization ticket for signed builds.
+      - name: Verify signature & notarization
+        if: steps.signing.outputs.enabled == 'true'
+        run: |
+          APP="apps/desktop/src-tauri/target/release/bundle/macos/Zashiki.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl -a -vvv "$APP"
