@@ -1,5 +1,10 @@
 import type { SessionInfo, SessionState } from "@zashiki/shared";
-import { isUuidSid, resolveOrgColor, resumeCommand } from "@zashiki/shared";
+import {
+  claudeSessionId,
+  isUuidSid,
+  resolveOrgColor,
+  resumeCommand,
+} from "@zashiki/shared";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 
@@ -137,6 +142,11 @@ export interface SessionListPanelProps {
    */
   onCopyResume?(windowId: string): void;
   /**
+   * Copy the target session's Claude Code session id (`sid`) to the clipboard verbatim.
+   * If omitted, the item is not shown in the row menu.
+   */
+  onCopySessionId?(windowId: string): void;
+  /**
    * Inline-rename a row's title via the right-click "Rename" and commit it. Passes windowId + name +
    * value through the same commitTitle path as tab renaming. If omitted, Rename is not shown in the
    * row menu. Non-UUID windows (unbound/plain-shell) cannot be renamed since commitTitle is a no-op.
@@ -220,6 +230,7 @@ export function SessionListPanel({
   inactive,
   full,
   onCopyResume,
+  onCopySessionId,
   onRename,
 }: SessionListPanelProps) {
   const { t } = useTranslation();
@@ -273,11 +284,12 @@ export function SessionListPanel({
     (e: React.MouseEvent): void => {
       e.preventDefault();
       e.stopPropagation();
-      // The row menu has at most 3 items: Delete + (when provided) Rename + Copy session (resume).
+      // The row menu has at most 4 items: Delete + (when provided) Rename + Copy session (resume) + Copy session id.
       const itemCount =
         1 +
         (onRename !== undefined ? 1 : 0) +
-        (onCopyResume !== undefined ? 1 : 0);
+        (onCopyResume !== undefined ? 1 : 0) +
+        (onCopySessionId !== undefined ? 1 : 0);
       const { x, y } = clampMenuPos(e.clientX, e.clientY, itemCount);
       setMenu({ kind: "row", windowId: s.windowId, name: s.name, x, y });
     };
@@ -811,6 +823,33 @@ export function SessionListPanel({
                         }}
                       >
                         {t("common.copyResume")}
+                      </button>
+                    );
+                  })()}
+                {onCopySessionId !== undefined &&
+                  (() => {
+                    const target = sessions.find(
+                      (s) => s.windowId === menu.windowId,
+                    );
+                    const canCopySessionId =
+                      target !== undefined && claudeSessionId(target) !== null;
+                    return (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="session-context-item"
+                        disabled={!canCopySessionId}
+                        title={
+                          canCopySessionId
+                            ? undefined
+                            : t("common.cannotCopySessionId")
+                        }
+                        onClick={() => {
+                          onCopySessionId(menu.windowId);
+                          closeMenu();
+                        }}
+                      >
+                        {t("common.copySessionId")}
                       </button>
                     );
                   })()}

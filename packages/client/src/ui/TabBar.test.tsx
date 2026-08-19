@@ -572,7 +572,66 @@ describe("TabBar", () => {
     expect((item as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("does not show the right-click menu when onCopyResume is not provided (backward compatibility)", () => {
+  it("right-clicking a session tab with a sid and choosing 'Copy Claude Code session ID' calls onCopySessionId", () => {
+    const onCopySessionId = vi.fn();
+    render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        sessions={[session]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onCopySessionId={onCopySessionId}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    const item = screen.getByRole("menuitem", {
+      name: "Claude Code セッションIDをコピー",
+    });
+    expect((item as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(item);
+    expect(onCopySessionId).toHaveBeenCalledWith(SID);
+    expect(screen.queryByRole("menuitem")).toBeNull();
+  });
+
+  it("disables the copy-session-id item for a session tab without a sid", () => {
+    render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        sessions={[{ ...session, sid: undefined }]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onCopySessionId={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    const item = screen.getByRole("menuitem", {
+      name: "Claude Code セッションIDをコピー",
+    });
+    expect((item as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows both menu items when onCopyResume and onCopySessionId are provided", () => {
+    render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        sessions={[session]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onCopyResume={vi.fn()}
+        onCopySessionId={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+  });
+
+  it("does not show the right-click menu when neither copy handler is provided (backward compatibility)", () => {
     render(
       <TabBar
         tabs={[s(SID)]}

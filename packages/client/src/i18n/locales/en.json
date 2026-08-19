@@ -7,7 +7,9 @@
     "loading": "Loading…",
     "copyAbsPath": "Copy absolute path",
     "cannotResume": "claude is not running, so resume is unavailable",
-    "copyResume": "Copy session (resume)"
+    "copyResume": "Copy session (resume)",
+    "cannotCopySessionId": "claude is not running, so there is no session ID to copy",
+    "copySessionId": "Copy Claude Code session ID"
   },
   "boot": {
     "tokenMissing": "No token found. Reopen from the URL with <code>?token=…</code> shown when the server started.",
@@ -40,6 +42,7 @@
   },
   "toast": {
     "resumeCopied": "Copied the resume command",
+    "sessionIdCopied": "Copied the session ID",
     "pathCopied": "Copied the path"
   },
   "sessionList": {
