@@ -15,5 +15,4 @@ pub mod process_tree;
 pub mod repos;
 pub mod save_file;
 pub mod session_state;
-pub mod shells;
 pub mod terminal_size;

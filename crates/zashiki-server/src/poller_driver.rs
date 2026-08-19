@@ -109,12 +109,15 @@ mod tests {
         async fn subagent_ages(&self, _cwd: &str, _sid: &str) -> Vec<f64> {
             Vec::new()
         }
-        async fn bg_shell_counts(
+        async fn lsof_fd_outputs(&self) -> String {
+            String::new()
+        }
+        async fn background_task_ids(
             &self,
-            _wrapper_pids: Vec<i64>,
-            _cwd_by_sid: std::collections::HashMap<String, String>,
-        ) -> std::collections::HashMap<String, u32> {
-            std::collections::HashMap::new()
+            _cwd: &str,
+            _sid: &str,
+        ) -> std::collections::HashSet<String> {
+            std::collections::HashSet::new()
         }
     }
 

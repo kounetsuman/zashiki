@@ -124,9 +124,9 @@ pub fn claude_project_dir_name(cwd: &str) -> String {
     cwd.replace('/', "-")
 }
 
-/// Collects every background shell launch id (`toolUseResult.backgroundTaskId`) in the transcript
-/// (present only for Bash run_in_background, not for foreground). Stays light on huge transcripts by
-/// JSON-parsing only candidate lines. Port of TS `backgroundTaskIds`.
+/// Collects every background shell launch ID (`toolUseResult.backgroundTaskId`) in the transcript
+/// (present only for Bash run_in_background, not for foreground). Stays lightweight even on huge
+/// transcripts by JSON-parsing only the candidate lines.
 pub fn background_task_ids(content: &str) -> std::collections::HashSet<String> {
     let mut ids = std::collections::HashSet::new();
     for line in content.split('\n') {
@@ -136,11 +136,12 @@ pub fn background_task_ids(content: &str) -> std::collections::HashSet<String> {
         let Some(event) = parse_line(line) else {
             continue;
         };
-        let id = event
+        if let Some(id) = event
             .get("toolUseResult")
+            .filter(|r| r.is_object())
             .and_then(|r| r.get("backgroundTaskId"))
-            .and_then(Value::as_str);
-        if let Some(id) = id {
+            .and_then(Value::as_str)
+        {
             if !id.is_empty() {
                 ids.insert(id.to_string());
             }
@@ -358,32 +359,40 @@ mod tests {
 
     // ---- background_task_ids ----
 
-    #[test]
-    fn background_task_ids_collects_ids_from_tool_use_results() {
-        let content = [
-            user_line(json!("依頼")),
-            json!({"type":"user","toolUseResult":{"backgroundTaskId":"bg-1","stdout":""}})
-                .to_string(),
-            json!({"type":"user","toolUseResult":{"backgroundTaskId":"bg-2"}}).to_string(),
-            // duplicate id collapses
-            json!({"type":"user","toolUseResult":{"backgroundTaskId":"bg-1"}}).to_string(),
-            // foreground result has no backgroundTaskId
-            json!({"type":"user","toolUseResult":{"stdout":"done"}}).to_string(),
-        ]
-        .join("\n");
-        let ids = background_task_ids(&content);
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains("bg-1") && ids.contains("bg-2"));
+    fn bg(id: &str) -> String {
+        json!({"type": "user", "toolUseResult": {"backgroundTaskId": id}}).to_string()
+    }
+
+    fn ids(list: &[&str]) -> std::collections::HashSet<String> {
+        list.iter().map(|s| s.to_string()).collect()
     }
 
     #[test]
-    fn background_task_ids_ignores_non_string_or_empty_and_broken_lines() {
-        let content = [
-            json!({"toolUseResult":{"backgroundTaskId":123}}).to_string(),
-            json!({"toolUseResult":{"backgroundTaskId":""}}).to_string(),
-            "{ broken json with \"backgroundTaskId\"".to_string(),
+    fn background_task_ids_returns_deduplicated_set() {
+        let jsonl = [
+            bg("bush20ok3"),
+            json!({"type": "user", "toolUseResult": {"stdout": "x"}}).to_string(),
+            bg("b48tqxha9"),
+            bg("bush20ok3"),
         ]
         .join("\n");
-        assert!(background_task_ids(&content).is_empty());
+        assert_eq!(background_task_ids(&jsonl), ids(&["bush20ok3", "b48tqxha9"]));
+    }
+
+    #[test]
+    fn background_task_ids_foreground_only_is_empty() {
+        let jsonl = json!({"type": "user", "toolUseResult": {"stdout": "ok"}}).to_string();
+        assert!(background_task_ids(&jsonl).is_empty());
+    }
+
+    #[test]
+    fn background_task_ids_skips_broken_lines_and_continues() {
+        let jsonl = format!("not json\n{}\n{{\"broken", bg("bcyiin1lh"));
+        assert_eq!(background_task_ids(&jsonl), ids(&["bcyiin1lh"]));
+    }
+
+    #[test]
+    fn background_task_ids_empty_string_is_empty() {
+        assert!(background_task_ids("").is_empty());
     }
 }

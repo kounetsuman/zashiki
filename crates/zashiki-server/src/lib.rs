@@ -15,6 +15,7 @@ pub mod git;
 pub mod hooks;
 pub mod jsonl;
 pub mod launchd;
+pub mod lsof;
 pub mod mac_notifier;
 pub mod notifications;
 pub mod orphan_detector;
@@ -22,6 +23,7 @@ pub mod poller_driver;
 pub mod poller_ports_pty;
 pub mod protocol;
 pub mod ps;
+pub mod shells;
 pub mod pty_host;
 pub mod repos;
 pub mod repos_watch;
@@ -33,7 +35,6 @@ pub mod session_persist;
 pub mod session_registry;
 pub mod session_restore;
 pub mod session_status;
-pub mod shells;
 pub mod status_poller;
 pub mod term_attach_pty;
 pub mod token;
@@ -212,7 +213,8 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/sessions/save", post(sessions_save))
         .route("/api/sessions/restore", post(sessions_restore))
         .route("/api/hooks/event", post(hooks_event))
-        .route("/api/focus", post(focus_session));
+        .route("/api/focus", post(focus_session))
+        .route("/api/activity", get(activity));
     if state.control.is_some() {
         authed_routes = authed_routes
             .route("/ws/control", get(ws_control))
@@ -687,6 +689,18 @@ async fn hooks_event(State(state): State<AppState>, body: axum::body::Bytes) -> 
 }
 
 /// `POST /api/focus`. Resolves the window (sid then cwd) and broadcasts a `select` so an
+/// In-flight work counts for the desktop shell's guarded quit. Zeros when control is unavailable
+/// (REST-only), so an unreachable session model never traps the user in the app.
+async fn activity(State(state): State<AppState>) -> Json<crate::control::ActivitySummary> {
+    Json(
+        state
+            .control
+            .as_ref()
+            .map(|c| c.hub.activity_summary())
+            .unwrap_or_default(),
+    )
+}
+
 /// already-connected app brings that session to the front. The response reports whether it
 /// resolved (and to which window) so the caller can decide how to raise the native window.
 async fn focus_session(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
@@ -2971,8 +2985,8 @@ mod tests {
                     sid: None,
                     active: true,
                     running_subagents: Some(0),
-                    limited: false,
                     shells_running: None,
+                    limited: false,
                 }],
                 orgs: vec!["org".to_string()],
                 org_colors: BTreeMap::new(),
@@ -3055,6 +3069,62 @@ mod tests {
             for _ in 0..3 {
                 next_text(ws).await;
             }
+        }
+
+        fn session_info(state: &str, subagents: Option<u32>, shells: Option<u32>) -> crate::protocol::SessionInfo {
+            crate::protocol::SessionInfo {
+                window_id: "@1".to_string(),
+                name: "repo".to_string(),
+                org: "org".to_string(),
+                repo: "repo".to_string(),
+                state: state.to_string(),
+                title: None,
+                sid: None,
+                active: true,
+                running_subagents: subagents,
+                shells_running: shells,
+                limited: false,
+            }
+        }
+
+        #[tokio::test]
+        async fn activity_endpoint_reports_snapshot_counts() {
+            use axum::body::{to_bytes, Body};
+            use axum::http::Request as HttpRequest;
+            use tower::ServiceExt;
+
+            let snapshot = StateSnapshot {
+                sessions: vec![
+                    session_info("running", Some(0), None),
+                    session_info("running_bg_agent", Some(2), None),
+                    session_info("idle", None, Some(1)),
+                ],
+                orgs: vec![],
+                org_colors: BTreeMap::new(),
+            };
+            let hub = ControlHub::new(ConfigView::default(), vec![], snapshot);
+            let app = build_router(ServerConfig {
+                expected_token: Some("t".to_string()),
+                control: Some(test_services(hub, vec![])),
+                ..Default::default()
+            });
+            let resp = app
+                .oneshot(
+                    HttpRequest::builder()
+                        .uri("/api/activity")
+                        .header("host", "127.0.0.1:8790")
+                        .header("x-zashiki-token", "t")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), 200);
+            let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+            let body = String::from_utf8(bytes.to_vec()).unwrap();
+            assert!(body.contains(r#""activeSessions":2"#), "{body}");
+            assert!(body.contains(r#""runningSubagents":2"#), "{body}");
+            assert!(body.contains(r#""backgroundShells":1"#), "{body}");
         }
 
         #[tokio::test]

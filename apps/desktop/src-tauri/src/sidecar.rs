@@ -376,6 +376,63 @@ pub fn verify_token(port: u16, token: &str) -> bool {
     )
 }
 
+/// In-flight work reported by the server's `GET /api/activity`, for the guarded quit (#65).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Activity {
+    pub active_sessions: u32,
+    pub running_subagents: u32,
+    pub background_shells: u32,
+}
+
+impl Activity {
+    pub fn is_busy(&self) -> bool {
+        self.active_sessions + self.running_subagents + self.background_shells > 0
+    }
+
+    /// e.g. "2 sessions, 1 background agent, 1 background shell still running".
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if self.active_sessions > 0 {
+            parts.push(plural(self.active_sessions, "session"));
+        }
+        if self.running_subagents > 0 {
+            parts.push(plural(self.running_subagents, "background agent"));
+        }
+        if self.background_shells > 0 {
+            parts.push(plural(self.background_shells, "background shell"));
+        }
+        format!("{} still running", parts.join(", "))
+    }
+}
+
+fn plural(n: u32, singular: &str) -> String {
+    if n == 1 {
+        format!("1 {singular}")
+    } else {
+        format!("{n} {singular}s")
+    }
+}
+
+/// Parses the `GET /api/activity` JSON body (None if malformed or a field is missing).
+pub fn parse_activity(body: &str) -> Option<Activity> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let field = |key: &str| v.get(key).and_then(serde_json::Value::as_u64);
+    Some(Activity {
+        active_sessions: field("activeSessions")? as u32,
+        running_subagents: field("runningSubagents")? as u32,
+        background_shells: field("backgroundShells")? as u32,
+    })
+}
+
+/// Queries the server for in-flight work. None when the request fails or the body is malformed, which
+/// the caller treats as "nothing to protect" so an unreachable server never blocks quitting.
+pub fn fetch_activity(port: u16, token: &str) -> Option<Activity> {
+    match http_get(port, "/api/activity", &[("x-zashiki-token", token)]) {
+        Ok((200, body)) => parse_activity(&body),
+        _ => None,
+    }
+}
+
 /// The token is already validated as alphanumeric-only by read_token, so no URL encoding is needed.
 pub fn initial_url(base: &str, token: &str) -> String {
     format!("{base}/?token={token}")
@@ -974,6 +1031,45 @@ mod tests {
         assert_eq!(healthz_pid(r#"{"status":"ok","pid":9999999999}"#), None);
         // The valid minimum is accepted.
         assert_eq!(healthz_pid(r#"{"status":"ok","pid":1}"#), Some(1));
+    }
+
+    #[test]
+    fn parse_activity_reads_camelcase_counts() {
+        let a = parse_activity(
+            r#"{"activeSessions":2,"runningSubagents":1,"backgroundShells":3}"#,
+        )
+        .unwrap();
+        assert_eq!(a.active_sessions, 2);
+        assert_eq!(a.running_subagents, 1);
+        assert_eq!(a.background_shells, 3);
+        assert!(a.is_busy());
+    }
+
+    #[test]
+    fn parse_activity_all_zero_is_not_busy() {
+        let a = parse_activity(
+            r#"{"activeSessions":0,"runningSubagents":0,"backgroundShells":0}"#,
+        )
+        .unwrap();
+        assert!(!a.is_busy());
+    }
+
+    #[test]
+    fn parse_activity_rejects_malformed_or_missing_field() {
+        assert_eq!(parse_activity("not json"), None);
+        assert_eq!(parse_activity(r#"{"activeSessions":1}"#), None);
+    }
+
+    #[test]
+    fn activity_summary_lists_only_nonzero_parts_with_plurals() {
+        assert_eq!(
+            Activity { active_sessions: 2, running_subagents: 1, background_shells: 0 }.summary(),
+            "2 sessions, 1 background agent still running"
+        );
+        assert_eq!(
+            Activity { active_sessions: 0, running_subagents: 0, background_shells: 1 }.summary(),
+            "1 background shell still running"
+        );
     }
 
     #[test]

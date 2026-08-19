@@ -1,58 +1,150 @@
-//! Background-shell detection adapter (issue #69). Runs lsof over the Bash-wrapper pids to read each
-//! live wrapper's fd1 (`tasks/<ID>.output`), then reconciles against each sid's transcript
-//! `backgroundTaskId`s so only resident bg shells (not foreground) are counted. Every I/O failure
-//! collapses to "0 shells" so the poll is never broken. The pure reconciliation lives in
-//! `zashiki_core::shells`; this module is only the I/O orchestration (port of TS `infra/shells.ts`).
+//! Resident background-shell detection (port of TS `packages/shared/src/shells.ts`).
+//! Involves regex, so it lives in the server crate rather than core (which has zero dependencies).
+//! Running lsof / reading transcripts is infra's responsibility; here we only reconcile lsof output
+//! strings against the set of backgroundTaskIds. Detection contract lives in the tests below.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
+use std::sync::LazyLock;
 
-use tokio::process::Command;
-use zashiki_core::shells::{count_running_shells_by_sid, parse_lsof_fd_outputs};
+use regex::Regex;
 
-use crate::claude_projects::ClaudeProjectsAdapter;
-use crate::jsonl::background_task_ids;
-
-/// Raw `lsof -p <pids> -a -d 1 -F pfn` output (empty on failure). We keep stdout regardless of exit
-/// status: lsof exits non-zero when any queried pid lacks the fd (e.g. it vanished between ps and
-/// lsof), yet still prints valid entries for the others, so filtering on success would under-count.
-async fn lsof_fd1(pids: &[i64]) -> String {
-    if pids.is_empty() {
-        return String::new();
-    }
-    let pid_arg = pids
-        .iter()
-        .map(i64::to_string)
-        .collect::<Vec<_>>()
-        .join(",");
-    Command::new("lsof")
-        .args(["-p", &pid_arg, "-a", "-d", "1", "-F", "pfn"])
-        .output()
-        .await
-        .ok()
-        .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
-        .unwrap_or_default()
+/// sid and bg task ID extracted from the output file that the live wrapper's fd1 points to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellOutput {
+    pub sid: String,
+    pub task_id: String,
 }
 
-/// Counts resident background shells per sid. `cwd_by_sid` locates each candidate sid's transcript.
-/// A sid with zero resident shells gets no key (so the served `shells_running` is absent, = 0).
-pub async fn count_bg_shells(
-    projects: &ClaudeProjectsAdapter,
-    wrapper_pids: &[i64],
-    cwd_by_sid: &HashMap<String, String>,
-) -> HashMap<String, u32> {
-    let outputs = parse_lsof_fd_outputs(&lsof_fd1(wrapper_pids).await);
-    if outputs.is_empty() {
-        return HashMap::new();
-    }
-    let sids: HashSet<&str> = outputs.iter().map(|o| o.sid.as_str()).collect();
-    let mut bg_task_ids_by_sid: HashMap<String, HashSet<String>> = HashMap::new();
-    for sid in sids {
-        let Some(cwd) = cwd_by_sid.get(sid) else {
+static OUTPUT_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/tasks/([A-Za-z0-9]+)\.output$")
+        .expect("static regex is valid")
+});
+
+/// From the machine-readable output of `lsof -F pfn -a -d 1`, extracts the `{sid, task_id}` of
+/// entries whose fd1 points to `<sid>/tasks/<ID>.output`. Entries other than fd1, and non-output
+/// files, are ignored.
+pub fn parse_lsof_fd_outputs(lsof_output: &str) -> Vec<ShellOutput> {
+    let mut outputs = Vec::new();
+    let mut fd: Option<&str> = None;
+    for line in lsof_output.split('\n') {
+        let mut chars = line.chars();
+        let Some(tag) = chars.next() else {
             continue;
         };
-        if let Some(content) = projects.read_transcript(cwd, sid).await {
-            bg_task_ids_by_sid.insert(sid.to_string(), background_task_ids(&content));
+        let rest = chars.as_str();
+        match tag {
+            'p' => fd = None,
+            'f' => fd = Some(rest),
+            'n' => {
+                if fd != Some("1") {
+                    continue;
+                }
+                if let Some(caps) = OUTPUT_PATH_RE.captures(rest) {
+                    outputs.push(ShellOutput {
+                        sid: caps[1].to_string(),
+                        task_id: caps[2].to_string(),
+                    });
+                }
+            }
+            _ => {}
         }
     }
-    count_running_shells_by_sid(&outputs, &bg_task_ids_by_sid)
+    outputs
+}
+
+/// Counts, for one sid, the live wrappers whose task_id is in that sid's backgroundTaskId set (fg =
+/// task_ids absent from the set are excluded).
+pub fn count_running_shells_for_sid(
+    outputs: &[ShellOutput],
+    sid: &str,
+    bg_task_ids: &HashSet<String>,
+) -> u32 {
+    outputs
+        .iter()
+        .filter(|o| o.sid == sid && bg_task_ids.contains(&o.task_id))
+        .count() as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SID_A: &str = "a2814219-c53d-4def-b542-5e71aeddab2b";
+    const SID_B: &str = "631587f4-bed5-4eec-8b43-8e162bf1e5c6";
+
+    fn set(ids: &[&str]) -> HashSet<String> {
+        ids.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parse_extracts_sid_and_task_id_from_fd1_output() {
+        let lsof = format!(
+            "p44413\nf1\nn/private/tmp/claude-501/-Users-kilo-workspace-whiskey/{SID_A}/tasks/bush20ok3.output\np73096\nf1\nn/private/tmp/claude-501/-Users-kilo-workspace-whiskey/{SID_B}/tasks/bh8hl40cs.output\n"
+        );
+        assert_eq!(
+            parse_lsof_fd_outputs(&lsof),
+            vec![
+                ShellOutput { sid: SID_A.into(), task_id: "bush20ok3".into() },
+                ShellOutput { sid: SID_B.into(), task_id: "bh8hl40cs".into() },
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_ignores_non_output_files() {
+        let out = format!("p100\nf1\nn/dev/ttys003\np200\nf1\nn/private/tmp/claude-501/-Users-x/{SID_A}/tasks/abc12345x.output\n");
+        assert_eq!(
+            parse_lsof_fd_outputs(&out),
+            vec![ShellOutput { sid: SID_A.into(), task_id: "abc12345x".into() }]
+        );
+    }
+
+    #[test]
+    fn parse_excludes_fds_other_than_fd1() {
+        let out = format!(
+            "p300\nf2\nn/private/tmp/claude-501/-Users-x/{SID_A}/tasks/zzz99999z.output\n"
+        );
+        assert_eq!(parse_lsof_fd_outputs(&out), vec![]);
+    }
+
+    #[test]
+    fn parse_empty_and_malformed_is_empty() {
+        assert_eq!(parse_lsof_fd_outputs(""), vec![]);
+        assert_eq!(parse_lsof_fd_outputs("garbage\n\n"), vec![]);
+    }
+
+    #[test]
+    fn count_only_counts_live_wrappers_whose_task_id_is_background() {
+        let outputs = vec![
+            ShellOutput { sid: SID_A.into(), task_id: "bush20ok3".into() },
+            ShellOutput { sid: SID_A.into(), task_id: "fgonly123".into() },
+            ShellOutput { sid: SID_B.into(), task_id: "bh8hl40cs".into() },
+        ];
+        assert_eq!(
+            count_running_shells_for_sid(&outputs, SID_A, &set(&["bush20ok3", "b48tqxha9"])),
+            1
+        );
+        assert_eq!(
+            count_running_shells_for_sid(&outputs, SID_B, &set(&["bh8hl40cs"])),
+            1
+        );
+    }
+
+    #[test]
+    fn count_adds_up_multiple_bg_shells_under_the_same_sid() {
+        let outputs = vec![
+            ShellOutput { sid: SID_A.into(), task_id: "bush20ok3".into() },
+            ShellOutput { sid: SID_A.into(), task_id: "b48tqxha9".into() },
+        ];
+        assert_eq!(
+            count_running_shells_for_sid(&outputs, SID_A, &set(&["bush20ok3", "b48tqxha9"])),
+            2
+        );
+    }
+
+    #[test]
+    fn count_is_zero_when_no_background_ids_match() {
+        let outputs = vec![ShellOutput { sid: SID_A.into(), task_id: "fgonly123".into() }];
+        assert_eq!(count_running_shells_for_sid(&outputs, SID_A, &set(&[])), 0);
+    }
 }

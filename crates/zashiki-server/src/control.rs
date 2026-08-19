@@ -17,7 +17,7 @@ use zashiki_core::terminal_size::clamp_terminal_size;
 /// no pong returns before the next interval (effective timeout is one to two intervals).
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
-use crate::protocol::{ClientMessage, Notification, ServerMessage};
+use crate::protocol::{ClientMessage, Notification, ServerMessage, SessionInfo};
 use crate::status_poller::StateSnapshot;
 use crate::term_registry::{TermEntry, TermRegistry};
 
@@ -93,6 +93,34 @@ fn state_sync_of(snapshot: &StateSnapshot) -> ServerMessage {
     }
 }
 
+/// In-flight work counts backing `GET /api/activity`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivitySummary {
+    pub active_sessions: u32,
+    pub running_subagents: u32,
+    pub background_shells: u32,
+}
+
+/// A session counts as active when Claude is working (`running`/`running_bg_agent`) or blocked
+/// awaiting the user (`waiting_input`). `idle`/`no_claude`/`starting` are safely restorable and do
+/// not, on their own, warrant a quit confirmation.
+fn is_active_state(state: &str) -> bool {
+    matches!(state, "running" | "running_bg_agent" | "waiting_input")
+}
+
+fn summarize_activity(sessions: &[SessionInfo]) -> ActivitySummary {
+    let mut summary = ActivitySummary::default();
+    for session in sessions {
+        if is_active_state(&session.state) {
+            summary.active_sessions += 1;
+        }
+        summary.running_subagents += session.running_subagents.unwrap_or(0);
+        summary.background_shells += session.shells_running.unwrap_or(0);
+    }
+    summary
+}
+
 impl ControlHub {
     pub fn new(
         config: ConfigView,
@@ -135,6 +163,12 @@ impl ControlHub {
     /// The state.sync for the currently held snapshot (a response guarantee for when the refresh path is unavailable).
     fn current_state_sync(&self) -> ServerMessage {
         state_sync_of(&self.inner.read().unwrap().snapshot)
+    }
+
+    /// A count of in-flight work (active sessions / running subagents / resident background shells)
+    /// from the currently held snapshot, for the guarded-quit confirmation (`GET /api/activity`).
+    pub fn activity_summary(&self) -> ActivitySummary {
+        summarize_activity(&self.inner.read().unwrap().snapshot.sessions)
     }
 
     /// Manual dismissal (removes only dismissible notifications). Broadcasts notifications.sync
@@ -753,12 +787,49 @@ mod tests {
                 sid: None,
                 active: true,
                 running_subagents: Some(0),
-                limited: false,
                 shells_running: None,
+                limited: false,
             }],
             orgs: vec!["org".to_string()],
             org_colors: BTreeMap::new(),
         }
+    }
+
+    fn session(state: &str, subagents: Option<u32>, shells: Option<u32>) -> SessionInfo {
+        SessionInfo {
+            window_id: "@1".to_string(),
+            name: "repo".to_string(),
+            org: "org".to_string(),
+            repo: "repo".to_string(),
+            state: state.to_string(),
+            title: None,
+            sid: None,
+            active: true,
+            running_subagents: subagents,
+            shells_running: shells,
+            limited: false,
+        }
+    }
+
+    #[test]
+    fn summarize_activity_counts_active_states_subagents_and_shells() {
+        let sessions = vec![
+            session("running", Some(0), None),
+            session("running_bg_agent", Some(2), None),
+            session("waiting_input", None, None),
+            session("idle", None, Some(1)),
+            session("no_claude", None, None),
+        ];
+        let summary = summarize_activity(&sessions);
+        assert_eq!(summary.active_sessions, 3);
+        assert_eq!(summary.running_subagents, 2);
+        assert_eq!(summary.background_shells, 1);
+    }
+
+    #[test]
+    fn summarize_activity_is_all_zero_when_nothing_runs() {
+        let sessions = vec![session("idle", None, None), session("no_claude", None, None)];
+        assert_eq!(summarize_activity(&sessions), ActivitySummary::default());
     }
 
     #[test]

@@ -4,12 +4,13 @@
 //! Parsing is the responsibility of the pure functions in `jsonl` / `status_poller`;
 //! this module only handles I/O (`spawn_blocking` + std::fs) and computing freshness in seconds.
 
+use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::jsonl::claude_project_dir_name;
+use crate::jsonl::{background_task_ids, claude_project_dir_name};
 use crate::status_poller::Slices;
 
 const DEFAULT_MAX_SLICE_BYTES: u64 = 64 * 1024;
@@ -66,23 +67,6 @@ impl ClaudeProjectsAdapter {
             .flatten()
     }
 
-    /// cwd + sid → the whole transcript content (None when missing/unreadable). Used for background
-    /// shell reconciliation, which must scan every `backgroundTaskId` (not just the head/tail slices).
-    pub async fn read_transcript(&self, cwd: &str, sid: &str) -> Option<String> {
-        let path = self
-            .root_dir
-            .join(claude_project_dir_name(cwd))
-            .join(format!("{sid}.jsonl"));
-        tokio::task::spawn_blocking(move || {
-            fs::read(&path)
-                .ok()
-                .map(|b| String::from_utf8_lossy(&b).into_owned())
-        })
-        .await
-        .ok()
-        .flatten()
-    }
-
     /// Elapsed seconds since mtime for each `<sid>/subagents/agent-*.jsonl` file (empty if the directory is missing).
     pub async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
         let dir = self
@@ -94,6 +78,22 @@ impl ClaudeProjectsAdapter {
         tokio::task::spawn_blocking(move || subagent_ages_sync(&dir, now))
             .await
             .unwrap_or_default()
+    }
+
+    /// The set of `toolUseResult.backgroundTaskId` in the transcript (empty when the file is missing
+    /// or has none). Unlike `read_slices`, this reads the whole file: a still-live background shell
+    /// may have been launched far from the tail, so its launch line must not be sliced away.
+    pub async fn background_task_ids(&self, cwd: &str, sid: &str) -> HashSet<String> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        tokio::task::spawn_blocking(move || match fs::read_to_string(&path) {
+            Ok(content) => background_task_ids(&content),
+            Err(_) => HashSet::new(),
+        })
+        .await
+        .unwrap_or_default()
     }
 }
 
@@ -186,6 +186,26 @@ mod tests {
 
     fn slices_path(root: &Path, sid: &str) -> PathBuf {
         root.join(PROJ_DIR).join(format!("{sid}.jsonl"))
+    }
+
+    #[tokio::test]
+    async fn background_task_ids_reads_full_transcript() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"user\",\"toolUseResult\":{\"backgroundTaskId\":\"bush20ok3\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"x\"}}\n{\"type\":\"user\",\"toolUseResult\":{\"backgroundTaskId\":\"b48tqxha9\"}}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let ids = adapter.background_task_ids(CWD, SID).await;
+        assert_eq!(
+            ids,
+            HashSet::from(["bush20ok3".to_string(), "b48tqxha9".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn background_task_ids_missing_transcript_is_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert!(adapter.background_task_ids(CWD, SID).await.is_empty());
     }
 
     #[test]
