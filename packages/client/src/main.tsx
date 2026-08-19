@@ -6,6 +6,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider, Trans } from "react-i18next";
 import { App } from "./App.js";
+import { createCrashApi } from "./api/crash.js";
 import { createFilesApi } from "./api/files.js";
 import { createFsApi } from "./api/fs.js";
 import { createGitApi } from "./api/git.js";
@@ -68,6 +69,7 @@ if (token === null) {
   const searchApi = createSearchApi(base, token);
   const filesApi = createFilesApi(base, token);
   const reposApi = createReposApi(base, token);
+  const crashApi = createCrashApi(base, token);
   root.render(
     <StrictMode>
       <I18nextProvider i18n={i18n}>
@@ -95,6 +97,7 @@ if (token === null) {
             searchApi={searchApi}
             filesApi={filesApi}
             reposApi={reposApi}
+            crashApi={crashApi}
           />
         </ErrorBoundary>
       </I18nextProvider>

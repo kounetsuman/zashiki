@@ -1,0 +1,98 @@
+.crash-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.crash-modal {
+  width: min(640px, 92vw);
+  padding: 16px 18px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  color: #ddd;
+}
+
+.crash-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.crash-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.crash-close {
+  display: inline-flex;
+  padding: 2px;
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+}
+
+.crash-close:hover {
+  color: #ddd;
+}
+
+.crash-message {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #bbb;
+}
+
+.crash-log {
+  max-height: 40vh;
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  overflow: auto;
+  background: #141414;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #cbd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.crash-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crash-button {
+  padding: 5px 12px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.crash-button:hover {
+  border-color: #4a7;
+}
+
+.crash-report {
+  background: #34506b;
+  border-color: #3f6288;
+}
+
+.crash-copied {
+  font-size: 11px;
+  color: #4a7;
+}

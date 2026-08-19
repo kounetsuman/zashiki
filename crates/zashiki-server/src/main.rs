@@ -62,6 +62,12 @@ async fn main() {
     let token_file = std::env::var_os("ZK_TOKEN_FILE")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".zashiki/token"));
+
+    // Read the stderr tail before this boot appends its own lines. ZK_SERVER_ERR_LOG overrides the path.
+    let err_log = std::env::var_os("ZK_SERVER_ERR_LOG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home().join("Library/Logs/zashiki-server.err.log"));
+    let prior_log_tail = zashiki_server::crash_report::read_tail(&err_log);
     let client_dist = std::env::var_os("ZK_CLIENT_DIST").map(PathBuf::from);
     // repos.conf comes from ZK_REPOS_CONF, or ~/.zashiki/repos.conf if unset (per index.ts).
     let repos_conf = std::env::var_os("ZK_REPOS_CONF")
@@ -143,6 +149,14 @@ async fn main() {
         eprintln!("zashiki-server: token file 書き込み失敗（{}）: {e}", token_file.display());
     }
 
+    // A marker left by the previous run means it never reached shutdown_signal. Checked after bind so a
+    // busy-port double launch never touches it.
+    let marker = zashiki_server::crash_report::marker_path(&token_file, port);
+    let last_crash = if marker.exists() { prior_log_tail } else { None };
+    if let Err(e) = std::fs::write(&marker, []) {
+        eprintln!("zashiki-server: running marker の書き込みに失敗しました（{}）: {e}", marker.display());
+    }
+
     // Startup auto-restore: rebuild owned sessions from the last.tsv saved at the previous shutdown.
     // The registry is empty right after startup, so the pre-restore backup is None (non-destructive). No-op if no restore file exists.
     // Done before listen so the first state.sync carries the restored sessions.
@@ -208,11 +222,12 @@ async fn main() {
         file_max_bytes: None,
         // Destination for session save/restore (same as the startup restore and shutdown save).
         saves_dir: Some(saves_dir.clone()),
+        last_crash,
     });
     eprintln!("zashiki-server listening on http://{addr}");
     eprintln!("token file: {}", token_file.display());
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal(registry, saves_dir, autosave))
+        .with_graceful_shutdown(shutdown_signal(registry, saves_dir, autosave, marker))
         .await
         .expect("serve");
 }
@@ -227,6 +242,7 @@ async fn shutdown_signal(
     registry: std::sync::Arc<zashiki_server::session_registry::SessionRegistry>,
     saves_dir: PathBuf,
     autosave: tokio::task::JoinHandle<()>,
+    marker: PathBuf,
 ) {
     #[cfg(unix)]
     {
@@ -261,6 +277,8 @@ async fn shutdown_signal(
             "zashiki-server: graceful shutdown が {SHUTDOWN_BUDGET:?} を超過。ベストエフォートで終了します"
         );
     }
+    // Reaching here means the shutdown routine ran; drop the marker so the next launch counts this clean.
+    let _ = std::fs::remove_file(&marker);
 }
 
 /// Upper bound allowed for the full teardown on graceful shutdown. Each session goes TERM->300ms->KILL, so it usually takes a few hundred ms.

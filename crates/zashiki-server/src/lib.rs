@@ -8,6 +8,7 @@
 pub mod claude_projects;
 pub mod config;
 pub mod control;
+pub mod crash_report;
 pub mod demo_seed;
 pub mod file;
 pub mod fs;
@@ -82,6 +83,8 @@ pub struct ServerConfig {
     pub file_max_bytes: Option<u64>,
     /// Destination for session save/restore (ZK_SAVES_DIR; `~/.zashiki/saves` if None).
     pub saves_dir: Option<PathBuf>,
+    /// The previous run's log tail when it did not shut down cleanly, served once via `/api/last-crash`.
+    pub last_crash: Option<String>,
 }
 
 /// Response for `GET /healthz`. Beyond `status`, it returns build identifiers (`version` / `git_sha`)
@@ -100,6 +103,12 @@ struct HealthResponse {
 #[derive(Serialize)]
 struct TokenProbeResponse {
     ok: bool,
+}
+
+/// Response for `GET /api/last-crash`.
+#[derive(Serialize)]
+struct LastCrashResponse {
+    log: Option<String>,
 }
 
 /// Response for `GET /api/fs/repos` (TS: `FsReposResponse` in `packages/shared/src/fs-tree.ts`).
@@ -136,6 +145,8 @@ struct AppState {
     persist_lock: Arc<tokio::sync::Mutex<()>>,
     /// TTL cache for scan (the repos.conf walk).
     scan_cache: ScanCache,
+    /// The previous run's crash log tail, cleared by `POST /api/last-crash/ack` once the client has shown it.
+    last_crash: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 /// Default destination for session save/restore (`~/.zashiki/saves`; matches TS's default).
@@ -182,6 +193,7 @@ pub fn build_router(config: ServerConfig) -> Router {
         saves_dir: Arc::new(config.saves_dir.unwrap_or_else(default_saves_dir)),
         persist_lock: Arc::new(tokio::sync::Mutex::new(())),
         scan_cache: Arc::new(tokio::sync::Mutex::new(None)),
+        last_crash: Arc::new(std::sync::Mutex::new(config.last_crash)),
     };
 
     // Token-required API group (/api/* has requireToken=true). `/ws/control` also requires a token.
@@ -214,7 +226,9 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/sessions/restore", post(sessions_restore))
         .route("/api/hooks/event", post(hooks_event))
         .route("/api/focus", post(focus_session))
-        .route("/api/activity", get(activity));
+        .route("/api/activity", get(activity))
+        .route("/api/last-crash", get(last_crash))
+        .route("/api/last-crash/ack", post(ack_last_crash));
     if state.control.is_some() {
         authed_routes = authed_routes
             .route("/ws/control", get(ws_control))
@@ -686,6 +700,20 @@ async fn hooks_event(State(state): State<AppState>, body: axum::body::Bytes) -> 
         matched: actions.matched,
     })
     .into_response()
+}
+
+/// `GET /api/last-crash`. Idempotent read of the previous run's crash log tail (`null` when clean).
+async fn last_crash(State(state): State<AppState>) -> Json<LastCrashResponse> {
+    let log = state.last_crash.lock().ok().and_then(|g| g.clone());
+    Json(LastCrashResponse { log })
+}
+
+/// `POST /api/last-crash/ack`. Clears the stored crash log once the client has shown it.
+async fn ack_last_crash(State(state): State<AppState>) -> StatusCode {
+    if let Ok(mut g) = state.last_crash.lock() {
+        *g = None;
+    }
+    StatusCode::NO_CONTENT
 }
 
 /// `POST /api/focus`. Resolves the window (sid then cwd) and broadcasts a `select` so an
@@ -1539,6 +1567,48 @@ mod tests {
                 expected_path.display()
             )
         );
+    }
+
+    #[tokio::test]
+    async fn last_crash_is_idempotent_until_acked() {
+        let app = build_router(ServerConfig {
+            expected_token: Some("t".to_string()),
+            last_crash: Some("panicked at 'boom'".to_string()),
+            ..Default::default()
+        });
+        let (s1, b1) = request(app.clone(), "/api/last-crash?token=t", Some(OK_HOST), &[]).await;
+        assert_eq!(s1, StatusCode::OK);
+        assert_eq!(b1, r#"{"log":"panicked at 'boom'"}"#);
+        let (s2, b2) = request(app.clone(), "/api/last-crash?token=t", Some(OK_HOST), &[]).await;
+        assert_eq!(b2, r#"{"log":"panicked at 'boom'"}"#, "read must not clear (s={s2})");
+
+        let ack = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/api/last-crash/ack?token=t")
+                    .header("host", OK_HOST)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ack.status(), StatusCode::NO_CONTENT);
+
+        let (_, b3) = request(app.clone(), "/api/last-crash?token=t", Some(OK_HOST), &[]).await;
+        assert_eq!(b3, r#"{"log":null}"#, "ack clears the crash");
+    }
+
+    #[tokio::test]
+    async fn last_crash_requires_a_token() {
+        let app = build_router(ServerConfig {
+            expected_token: Some("t".to_string()),
+            last_crash: Some("boom".to_string()),
+            ..Default::default()
+        });
+        let (status, _) = request(app, "/api/last-crash", Some(OK_HOST), &[]).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
