@@ -413,14 +413,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* 常駐バックグラウンドシェル（issue #229）: 主状態に重ねる左下バッジ。
- * robot_2（右下・青）と系統を分け緑で、主状態と直交して同時表示できる。 */
+/* 常駐バックグラウンドシェル: サブエージェント表示に寄せた右下バッジ（青のプロンプト）。
+ * running_bg_agent の robot_2 が右下を取るので排他で、両者が重なることはない。 */
 .state-shell-badge {
   position: absolute;
-  left: -3px;
+  right: -3px;
   bottom: -3px;
   font-size: 9px;
-  color: #9ece6a;
+  color: #7aa2f7;
   text-shadow:
     0 0 1px #141414,
     0 0 1px #141414,
@@ -428,7 +428,7 @@ body {
 }
 
 /* 使用量上限到達（issue #301）: 主状態に重ねる右上バッジ。警告色（赤）で
- * bg-agent（右下・青）/ shell（左下・緑）と位置・色を分け、同時表示できる。 */
+ * bg-agent / shell（右下・青）と位置・色を分け、同時表示できる。 */
 .state-limited-badge {
   position: absolute;
   right: -3px;
@@ -441,11 +441,11 @@ body {
     0 0 2px #141414;
 }
 
-/* 常駐バックグラウンドシェル数 (+Nsh)。シェルバッジと同系の緑で控えめに添える。 */
+/* 常駐バックグラウンドシェルが複数のとき添える (+N)。シェルバッジと同系の青で控えめに。 */
 .session-shell-count {
   margin-left: 2px;
   font-size: 11px;
-  color: #9ece6a;
+  color: #7aa2f7;
   font-variant-numeric: tabular-nums;
 }
 

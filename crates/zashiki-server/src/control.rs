@@ -754,6 +754,7 @@ mod tests {
                 active: true,
                 running_subagents: Some(0),
                 limited: false,
+                shells_running: None,
             }],
             orgs: vec!["org".to_string()],
             org_colors: BTreeMap::new(),

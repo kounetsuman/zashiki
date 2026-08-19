@@ -33,9 +33,9 @@ const FRESH_ICON = "start";
 // While a subagent is running (running_bg_agent), overlay this bottom-right badge on the main icon.
 const BG_AGENT_BADGE = "robot_2";
 
-// A persistent background shell adds this bottom-left badge overlaid on the main state.
-// Orthogonal to the main state (shown for any state); can be displayed alongside robot_2 (bottom-right).
-const SHELL_BADGE = "deployed_code";
+// Bottom-right badge for a persistent background shell. Shares the corner with robot_2, which
+// running_bg_agent wins, so the two never overlap.
+const SHELL_BADGE = "terminal";
 
 // Reaching the usage limit adds this top-right badge overlaid on the main state. Orthogonal to the main state (shown for any state).
 const LIMIT_BADGE = "error";
@@ -49,9 +49,9 @@ function isFresh(s: SessionInfo, custom: string | undefined): boolean {
 }
 
 /**
- * Session state icon. On the main state glyph, overlays robot_2 (bottom-right) when
- * running_bg_agent, and deployed_code (bottom-left) when a persistent bg shell exists
- * (the two are orthogonal and can be shown simultaneously).
+ * Session state icon. The bottom-right corner shows robot_2 for a subagent or the shell prompt badge
+ * for a background shell (subagent wins). An otherwise idle/fresh row with a shell takes the hourglass
+ * so the badge sits on a running-style glyph.
  */
 function StateIcon({
   session,
@@ -61,11 +61,20 @@ function StateIcon({
   fresh: boolean;
 }) {
   const { t } = useTranslation();
-  const stateClass = fresh ? "fresh" : session.state;
-  const glyph = fresh ? FRESH_ICON : STATE_ICONS[session.state];
   const showAgent = session.state === "running_bg_agent";
-  const showShell = (session.shellsRunning ?? 0) > 0;
+  const showShell = !showAgent && (session.shellsRunning ?? 0) > 0;
   const showLimited = session.limited === true;
+  const shellHourglass = showShell && (fresh || session.state === "idle");
+  const stateClass = shellHourglass
+    ? "running"
+    : fresh
+      ? "fresh"
+      : session.state;
+  const glyph = shellHourglass
+    ? STATE_ICONS.running
+    : fresh
+      ? FRESH_ICON
+      : STATE_ICONS[session.state];
   return (
     <span
       className={`state state-stack state-${stateClass}`}
@@ -683,14 +692,15 @@ export function SessionListPanel({
                                   (+{s.runningSubagents ?? 0})
                                 </span>
                               )}
-                            {(s.shellsRunning ?? 0) > 0 && (
-                              <span
-                                className="session-shell-count"
-                                title={t("sessionList.shellCountTitle")}
-                              >
-                                (+{s.shellsRunning ?? 0}sh)
-                              </span>
-                            )}
+                            {s.state !== "running_bg_agent" &&
+                              (s.shellsRunning ?? 0) > 1 && (
+                                <span
+                                  className="session-shell-count"
+                                  title={t("sessionList.shellCountTitle")}
+                                >
+                                  (+{s.shellsRunning ?? 0})
+                                </span>
+                              )}
                             <span className="session-title">
                               {" "}
                               {displayTitle}

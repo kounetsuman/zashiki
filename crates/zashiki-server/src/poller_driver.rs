@@ -109,6 +109,13 @@ mod tests {
         async fn subagent_ages(&self, _cwd: &str, _sid: &str) -> Vec<f64> {
             Vec::new()
         }
+        async fn bg_shell_counts(
+            &self,
+            _wrapper_pids: Vec<i64>,
+            _cwd_by_sid: std::collections::HashMap<String, String>,
+        ) -> std::collections::HashMap<String, u32> {
+            std::collections::HashMap::new()
+        }
     }
 
     fn one_running_window() -> FakePorts {

@@ -88,6 +88,14 @@ impl PollerPorts for PtyPollerPorts {
     async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
         self.projects.subagent_ages(cwd, sid).await
     }
+
+    async fn bg_shell_counts(
+        &self,
+        wrapper_pids: Vec<i64>,
+        cwd_by_sid: std::collections::HashMap<String, String>,
+    ) -> std::collections::HashMap<String, u32> {
+        crate::shells::count_bg_shells(&self.projects, &wrapper_pids, &cwd_by_sid).await
+    }
 }
 
 #[cfg(test)]

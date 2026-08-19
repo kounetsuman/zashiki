@@ -33,6 +33,7 @@ pub mod session_persist;
 pub mod session_registry;
 pub mod session_restore;
 pub mod session_status;
+pub mod shells;
 pub mod status_poller;
 pub mod term_attach_pty;
 pub mod token;
@@ -2971,6 +2972,7 @@ mod tests {
                     active: true,
                     running_subagents: Some(0),
                     limited: false,
+                    shells_running: None,
                 }],
                 orgs: vec!["org".to_string()],
                 org_colors: BTreeMap::new(),

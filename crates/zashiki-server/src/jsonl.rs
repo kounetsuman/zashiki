@@ -124,6 +124,31 @@ pub fn claude_project_dir_name(cwd: &str) -> String {
     cwd.replace('/', "-")
 }
 
+/// Collects every background shell launch id (`toolUseResult.backgroundTaskId`) in the transcript
+/// (present only for Bash run_in_background, not for foreground). Stays light on huge transcripts by
+/// JSON-parsing only candidate lines. Port of TS `backgroundTaskIds`.
+pub fn background_task_ids(content: &str) -> std::collections::HashSet<String> {
+    let mut ids = std::collections::HashSet::new();
+    for line in content.split('\n') {
+        if line.is_empty() || !line.contains("\"backgroundTaskId\"") {
+            continue;
+        }
+        let Some(event) = parse_line(line) else {
+            continue;
+        };
+        let id = event
+            .get("toolUseResult")
+            .and_then(|r| r.get("backgroundTaskId"))
+            .and_then(Value::as_str);
+        if let Some(id) = id {
+            if !id.is_empty() {
+                ids.insert(id.to_string());
+            }
+        }
+    }
+    ids
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,5 +354,36 @@ mod tests {
             claude_project_dir_name("/Users/kilo/workspace/charlie"),
             "-Users-kilo-workspace-charlie"
         );
+    }
+
+    // ---- background_task_ids ----
+
+    #[test]
+    fn background_task_ids_collects_ids_from_tool_use_results() {
+        let content = [
+            user_line(json!("依頼")),
+            json!({"type":"user","toolUseResult":{"backgroundTaskId":"bg-1","stdout":""}})
+                .to_string(),
+            json!({"type":"user","toolUseResult":{"backgroundTaskId":"bg-2"}}).to_string(),
+            // duplicate id collapses
+            json!({"type":"user","toolUseResult":{"backgroundTaskId":"bg-1"}}).to_string(),
+            // foreground result has no backgroundTaskId
+            json!({"type":"user","toolUseResult":{"stdout":"done"}}).to_string(),
+        ]
+        .join("\n");
+        let ids = background_task_ids(&content);
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains("bg-1") && ids.contains("bg-2"));
+    }
+
+    #[test]
+    fn background_task_ids_ignores_non_string_or_empty_and_broken_lines() {
+        let content = [
+            json!({"toolUseResult":{"backgroundTaskId":123}}).to_string(),
+            json!({"toolUseResult":{"backgroundTaskId":""}}).to_string(),
+            "{ broken json with \"backgroundTaskId\"".to_string(),
+        ]
+        .join("\n");
+        assert!(background_task_ids(&content).is_empty());
     }
 }

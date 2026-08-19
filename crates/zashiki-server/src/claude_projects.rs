@@ -66,6 +66,23 @@ impl ClaudeProjectsAdapter {
             .flatten()
     }
 
+    /// cwd + sid → the whole transcript content (None when missing/unreadable). Used for background
+    /// shell reconciliation, which must scan every `backgroundTaskId` (not just the head/tail slices).
+    pub async fn read_transcript(&self, cwd: &str, sid: &str) -> Option<String> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        tokio::task::spawn_blocking(move || {
+            fs::read(&path)
+                .ok()
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
     /// Elapsed seconds since mtime for each `<sid>/subagents/agent-*.jsonl` file (empty if the directory is missing).
     pub async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
         let dir = self

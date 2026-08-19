@@ -8,6 +8,7 @@ use std::future::Future;
 
 use zashiki_core::process_tree::{build_process_maps, find_sid_in_tree, parse_ps_snapshot};
 use zashiki_core::repos::{org_names, org_of_cwd};
+use zashiki_core::shells::is_bash_wrapper_args;
 use zashiki_core::session_state::{
     apply_startup_grace, count_running_subagents, detect_state, fallback_state, is_limit_reached,
     startup_grace_polls, subagent_fresh_within_sec, DetectStateOptions, SessionState,
@@ -58,6 +59,13 @@ pub trait PollerPorts {
     fn read_slices(&self, cwd: &str, sid: &str) -> impl Future<Output = Option<Slices>> + Send;
     /// The elapsed mtime seconds of each subagents/*.jsonl file (material for the count).
     fn subagent_ages(&self, cwd: &str, sid: &str) -> impl Future<Output = Vec<f64>> + Send;
+    /// Resident background-shell counts keyed by sid (only sids with a count > 0). `wrapper_pids` are
+    /// the Bash-wrapper pids to probe; `cwd_by_sid` locates each candidate sid's transcript.
+    fn bg_shell_counts(
+        &self,
+        wrapper_pids: Vec<i64>,
+        cwd_by_sid: HashMap<String, String>,
+    ) -> impl Future<Output = HashMap<String, u32>> + Send;
 }
 
 /// Evaluation configuration (reposRoots is fixed at startup; colors can be read each time).
@@ -175,11 +183,17 @@ impl StatusPoller {
         config: &PollConfig,
     ) -> (StateSnapshot, bool) {
         let windows = ports.list_work_windows().await;
-        let maps = build_process_maps(&parse_ps_snapshot(&ports.ps_snapshot().await));
+        let entries = parse_ps_snapshot(&ports.ps_snapshot().await);
+        let maps = build_process_maps(&entries);
+
+        let shell_counts = self.bg_shell_counts(&windows, &entries, &maps, ports).await;
 
         let mut sessions = Vec::new();
         for win in &windows {
-            if let Some(info) = self.evaluate_window(win, &maps, ports, config).await {
+            if let Some(info) = self
+                .evaluate_window(win, &maps, &shell_counts, ports, config)
+                .await
+            {
                 sessions.push(info);
             }
         }
@@ -203,10 +217,40 @@ impl StatusPoller {
         (snapshot, changed)
     }
 
+    /// Resident background-shell counts keyed by sid for this poll. Bash-wrapper pids come from the ps
+    /// snapshot; the sid→cwd map (to locate transcripts) comes from the same pane pick each window
+    /// uses, so a shell is only attributed to a session we actually display.
+    async fn bg_shell_counts<P: PollerPorts>(
+        &self,
+        windows: &[WorkWindow],
+        entries: &[zashiki_core::process_tree::ProcessEntry],
+        maps: &zashiki_core::process_tree::ProcessMaps,
+        ports: &P,
+    ) -> HashMap<String, u32> {
+        let wrapper_pids: Vec<i64> = entries
+            .iter()
+            .filter(|e| is_bash_wrapper_args(&e.args))
+            .map(|e| e.pid)
+            .collect();
+        if wrapper_pids.is_empty() {
+            return HashMap::new();
+        }
+        let mut cwd_by_sid: HashMap<String, String> = HashMap::new();
+        for win in windows {
+            if let Some(picked) = pick_pane(win, maps) {
+                if let Some(sid) = picked.sid {
+                    cwd_by_sid.entry(sid).or_insert(picked.cwd);
+                }
+            }
+        }
+        ports.bg_shell_counts(wrapper_pids, cwd_by_sid).await
+    }
+
     async fn evaluate_window<P: PollerPorts>(
         &mut self,
         win: &WorkWindow,
         maps: &zashiki_core::process_tree::ProcessMaps,
+        shell_counts: &HashMap<String, u32>,
         ports: &P,
         config: &PollConfig,
     ) -> Option<SessionInfo> {
@@ -307,6 +351,10 @@ impl StatusPoller {
             }
         }
 
+        let shells_running = sid
+            .as_ref()
+            .and_then(|s| shell_counts.get(s).copied());
+
         self.prev_states.insert(win.window_id.clone(), state);
         self.prev_limited.insert(win.window_id.clone(), limited);
         Some(SessionInfo {
@@ -320,6 +368,7 @@ impl StatusPoller {
             active: win.active,
             running_subagents: Some(running_subagents as u32),
             limited,
+            shells_running,
         })
     }
 }
@@ -386,6 +435,7 @@ mod tests {
         captures: HashMap<String, String>,
         slices: HashMap<String, Slices>,
         subagent_ages: HashMap<String, Vec<f64>>,
+        shell_counts: HashMap<String, u32>,
     }
 
     impl PollerPorts for FakePorts {
@@ -412,6 +462,13 @@ mod tests {
                 .get(&format!("{cwd}\u{0}{sid}"))
                 .cloned()
                 .unwrap_or_default()
+        }
+        async fn bg_shell_counts(
+            &self,
+            _wrapper_pids: Vec<i64>,
+            _cwd_by_sid: HashMap<String, String>,
+        ) -> HashMap<String, u32> {
+            self.shell_counts.clone()
         }
     }
 
@@ -458,6 +515,50 @@ mod tests {
         assert_eq!(s.sid.as_deref(), Some(SID));
         assert_eq!(s.running_subagents, Some(0));
         assert!(!s.limited);
+    }
+
+    const BASH_WRAPPER: &str =
+        "/bin/zsh -c source /Users/x/.claude/shell-snapshots/snapshot-zsh-1.sh && eval sleep 100";
+
+    /// A resident bg shell (a live Bash wrapper in ps) makes the poller probe and the returned per-sid
+    /// count lands on shells_running, orthogonal to the primary state (idle here).
+    #[tokio::test]
+    async fn resident_bg_shell_count_flows_to_shells_running() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: format!("{}  400  300 {BASH_WRAPPER}\n", ps_with_claude(100)),
+            captures: HashMap::from([("%1".to_string(), "ready> ".to_string())]),
+            shell_counts: HashMap::from([(SID.to_string(), 3)]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "idle");
+        assert_eq!(snap.sessions[0].shells_running, Some(3));
+    }
+
+    /// Without a live Bash wrapper in ps, the poller never probes (the wrapper gate), so shells_running
+    /// stays absent even if the port would have returned a count.
+    #[tokio::test]
+    async fn no_bash_wrapper_skips_the_shell_probe() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), "ready> ".to_string())]),
+            shell_counts: HashMap::from([(SID.to_string(), 3)]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].shells_running, None);
     }
 
     /// A capture containing the limit banner puts limited=true on the wire. Orthogonal to the primary state (running).
