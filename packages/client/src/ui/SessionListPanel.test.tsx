@@ -226,18 +226,32 @@ describe("SessionListPanel: session rows", () => {
     expect(screen.queryByText(/\(\+\d+\)/)).toBeNull();
   });
 
-  it("overlays a deployed_code badge at the bottom-left for a row with a persistent bg shell", () => {
+  it("overlays a terminal prompt badge at the bottom-right for a row with a persistent bg shell", () => {
     renderPanel({
       sessions: [
         { ...sessions[0], state: "running", shellsRunning: 1 } as SessionInfo,
       ],
     });
-    const badge = screen.getByText("deployed_code");
+    const badge = screen.getByText("terminal");
     expect(badge.className).toContain("state-shell-badge");
     expect(badge.className).toContain("material-symbols-outlined");
   });
 
-  it("can display robot_2 (bottom-right) and deployed_code (bottom-left) at once (orthogonal to the primary state)", () => {
+  it("turns an otherwise idle row into the hourglass while a bg shell runs", () => {
+    renderPanel({
+      sessions: [
+        { ...sessions[0], state: "idle", shellsRunning: 1 } as SessionInfo,
+      ],
+    });
+    const base = screen.getByText("hourglass");
+    expect(base.className).toContain("state-running");
+    expect(screen.getByText("terminal").className).toContain(
+      "state-shell-badge",
+    );
+    expect(screen.queryByText("check")).toBeNull();
+  });
+
+  it("lets the subagent badge win the bottom-right corner (no shell badge while running_bg_agent)", () => {
     renderPanel({
       sessions: [
         {
@@ -251,9 +265,31 @@ describe("SessionListPanel: session rows", () => {
     expect(screen.getByText("robot_2").className).toContain(
       "state-bg-agent-badge",
     );
-    expect(screen.getByText("deployed_code").className).toContain(
-      "state-shell-badge",
-    );
+    expect(screen.queryByText("terminal")).toBeNull();
+  });
+
+  it("appends the shell total (+N) only when several shells run and not in a bg-agent state", () => {
+    renderPanel({
+      sessions: [
+        { ...sessions[0], state: "running", shellsRunning: 3 } as SessionInfo,
+      ],
+    });
+    const count = screen.getByText("(+3)");
+    expect(count.className).toContain("session-shell-count");
+  });
+
+  it("does not show the shell (+N) for a single shell or in a bg-agent state", () => {
+    renderPanel({
+      sessions: [
+        { ...sessions[0], state: "running", shellsRunning: 1 } as SessionInfo,
+        {
+          ...sessions[1],
+          state: "running_bg_agent",
+          shellsRunning: 4,
+        } as SessionInfo,
+      ],
+    });
+    expect(screen.queryByText(/\(\+\d+\)/)).toBeNull();
   });
 
   it("does not show the shell badge when shellsRunning is 0/undefined", () => {
@@ -263,7 +299,7 @@ describe("SessionListPanel: session rows", () => {
         { ...sessions[1] } as SessionInfo,
       ],
     });
-    expect(screen.queryByText("deployed_code")).toBeNull();
+    expect(screen.queryByText("terminal")).toBeNull();
   });
 
   it("overlays an error badge at the top-right for a row that hit the usage limit", () => {
