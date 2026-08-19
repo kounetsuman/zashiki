@@ -20,6 +20,10 @@ pub struct SessionInfo {
     pub state: String,
     /// Summary of the first user utterance (null if absent).
     pub title: Option<String>,
+    /// The running claude's session id (sid), used to build the client's resume command. Absent for
+    /// windows where claude is not started, when sid detection fails, or with old servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sid: Option<String>,
     pub active: bool,
     /// Total number of running subagents (including nested). An approximate value that is only
     /// meaningful when running_bg_agent. Optional for backward compatibility with older servers (not
@@ -314,6 +318,7 @@ mod tests {
                 repo: "repo".into(),
                 state: "running".into(),
                 title: None,
+                sid: None,
                 active: true,
                 running_subagents: None,
                 limited: false,
@@ -429,6 +434,7 @@ mod tests {
                 repo: "repo".into(),
                 state: "running_bg_agent".into(),
                 title: None,
+                sid: None,
                 active: true,
                 running_subagents: Some(3),
                 limited: false,
@@ -450,6 +456,7 @@ mod tests {
             repo: "repo".into(),
             state: "running".into(),
             title: None,
+            sid: None,
             active: false,
             running_subagents: None,
             limited: false,
@@ -457,6 +464,25 @@ mod tests {
         let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":false}"#;
         assert_eq!(to_json(&info), json);
         // Backward compatibility with older servers: a missing runningSubagents collapses to None.
+        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_info_serializes_sid_when_present() {
+        let info = SessionInfo {
+            window_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "running".into(),
+            title: None,
+            sid: Some("0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f".into()),
+            active: true,
+            running_subagents: None,
+            limited: false,
+        };
+        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"sid":"0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f","active":true}"#;
+        assert_eq!(to_json(&info), json);
         assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
     }
 

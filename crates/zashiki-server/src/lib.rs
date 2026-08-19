@@ -2965,6 +2965,7 @@ mod tests {
                     repo: "repo".to_string(),
                     state: "running".to_string(),
                     title: None,
+                    sid: None,
                     active: true,
                     running_subagents: Some(0),
                     limited: false,

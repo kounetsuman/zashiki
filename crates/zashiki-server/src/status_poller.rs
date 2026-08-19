@@ -316,6 +316,7 @@ impl StatusPoller {
             repo: last_path_segment(&cwd).to_string(),
             state: state_wire(state).to_string(),
             title,
+            sid,
             active: win.active,
             running_subagents: Some(running_subagents as u32),
             limited,
@@ -454,6 +455,7 @@ mod tests {
         assert_eq!(s.repo, "app");
         assert_eq!(s.state, "running");
         assert!(s.active);
+        assert_eq!(s.sid.as_deref(), Some(SID));
         assert_eq!(s.running_subagents, Some(0));
         assert!(!s.limited);
     }
@@ -498,6 +500,7 @@ mod tests {
         let mut poller = StatusPoller::new();
         let (snap1, _) = poller.evaluate(&ports, &cfg).await;
         assert_eq!(snap1.sessions[0].state, "starting");
+        assert_eq!(snap1.sessions[0].sid, None);
         let (snap2, _) = poller.evaluate(&ports, &cfg).await;
         assert_eq!(snap2.sessions[0].state, "no_claude");
     }
