@@ -21,6 +21,13 @@
     "title": "⚠ エラー",
     "outdatedServer": "サーバーがリクエストを拒否しました。稼働中の zashiki サーバーが古い可能性があります。再起動または更新してください（サーバーを再ビルドし、デーモンを再インストール）。"
   },
+  "crashReport": {
+    "title": "⚠ 前回 zashiki が異常終了しました",
+    "message": "前回のセッションが予期せず終了しました。下のログを添えて報告してください。",
+    "copy": "ログをコピー",
+    "copied": "コピーしました",
+    "report": "GitHub で報告"
+  },
   "terminal": {
     "renderError": "ターミナルの描画でエラーが発生しました",
     "connectionProblem": "接続に問題があります（{{detail}}）",
