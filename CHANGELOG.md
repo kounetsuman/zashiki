@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-19
+
+### Added
+
+- Copy a session's Claude Code session ID from the tab and session-list context menus (#50)
+
+### Fixed
+
+- Fall back to a fresh session when resume fails instead of dropping to a bare shell (#52)
+- Enable "Copy session (resume)" by serializing the session id on state sync (#55)
+
 ## [0.1.1] - 2026-08-19
 
 First public release. macOS (Apple Silicon).
@@ -37,5 +48,6 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/kounetsuman/zashiki/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/kounetsuman/zashiki/releases/tag/v0.1.1
