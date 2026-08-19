@@ -189,6 +189,20 @@ One-time setup (maintainer):
    | `APPLE_PASSWORD` | the app-specific password from step 2 |
    | `APPLE_TEAM_ID` | 10-character Team ID |
 
+### Homebrew tap auto-bump
+
+`brew install --cask kounetsuman/tap/zashiki` is served from the
+[`kounetsuman/homebrew-tap`](https://github.com/kounetsuman/homebrew-tap) cask. Publishing a
+`vX.Y.Z` release (promoting the draft from `release.yml`) fires
+[`.github/workflows/bump-tap.yml`](../../.github/workflows/bump-tap.yml), which downloads the
+published `.dmg`, computes its `sha256`, rewrites `version` + `sha256` in `Casks/zashiki.rb`,
+and pushes to the tap — no hand-edit. Prereleases don't trigger it, so only stable builds reach
+the tap. It needs one repository secret:
+
+| Secret | Value |
+| --- | --- |
+| `HOMEBREW_TAP_TOKEN` | a PAT with `contents:write` on `kounetsuman/homebrew-tap` (the job's `GITHUB_TOKEN` can't push cross-repo) |
+
 ### Shell build that depends on the development tree
 
 ```sh

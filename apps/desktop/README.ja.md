@@ -166,6 +166,19 @@ Gatekeeper の右クリック回避なしで起動する。secret が無いと�
    | `APPLE_PASSWORD` | 手順 2 の App 用パスワード |
    | `APPLE_TEAM_ID` | 10 文字の Team ID |
 
+### Homebrew tap の自動更新
+
+`brew install --cask kounetsuman/tap/zashiki` は
+[`kounetsuman/homebrew-tap`](https://github.com/kounetsuman/homebrew-tap) の cask から配信される。
+`vX.Y.Z` リリースを publish（`release.yml` の draft を昇格）すると
+[`.github/workflows/bump-tap.yml`](../../.github/workflows/bump-tap.yml) が発火し、公開された `.dmg` を
+ダウンロードして `sha256` を計算し、`Casks/zashiki.rb` の `version` + `sha256` を書き換えて tap へ push する
+（手編集なし）。prerelease では発火しないため、安定版だけが tap に届く。必要な secret は 1 つ:
+
+| Secret | 値 |
+| --- | --- |
+| `HOMEBREW_TAP_TOKEN` | `kounetsuman/homebrew-tap` に `contents:write` を持つ PAT（ジョブの `GITHUB_TOKEN` はクロスリポジトリに push できない） |
+
 ### 開発ツリー依存のシェルビルド
 
 ```sh
