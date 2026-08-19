@@ -14,8 +14,8 @@ use zashiki_core::session_state::{
     DEFAULT_LIMIT_MARKER,
 };
 
-use crate::jsonl::{first_user_title, last_user_or_assistant_event};
-use crate::protocol::SessionInfo;
+use crate::jsonl::{first_user_title, last_user_or_assistant_event, SessionUsageData};
+use crate::protocol::{SessionInfo, SessionUsage};
 use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
 
 const TITLE_MAX_CHARS: usize = 30;
@@ -64,6 +64,15 @@ pub trait PollerPorts {
     /// The set of `toolUseResult.backgroundTaskId` in the transcript (separates bg shells from fg).
     fn background_task_ids(&self, cwd: &str, sid: &str)
         -> impl Future<Output = HashSet<String>> + Send;
+    /// Token/timing rollup for the status footer (None when there is no readable transcript).
+    /// Defaulted to None so stubs that do not exercise the footer need not implement it.
+    fn session_usage(
+        &self,
+        _cwd: &str,
+        _sid: &str,
+    ) -> impl Future<Output = Option<SessionUsageData>> + Send {
+        async { None }
+    }
 }
 
 /// Evaluation configuration (reposRoots is fixed at startup; colors can be read each time).
@@ -336,6 +345,23 @@ impl StatusPoller {
             }
         }
 
+        let usage = match (&sid, state) {
+            (
+                Some(sid),
+                SessionState::Running
+                | SessionState::RunningBgAgent
+                | SessionState::WaitingInput
+                | SessionState::Idle,
+            ) => ports.session_usage(&cwd, sid).await.map(|d| SessionUsage {
+                turn_tokens: d.turn_tokens,
+                session_tokens: d.session_tokens,
+                turn_started_at: d.turn_started_at_ms,
+                session_started_at: d.session_started_at_ms,
+                limits: None,
+            }),
+            _ => None,
+        };
+
         self.prev_states.insert(win.window_id.clone(), state);
         self.prev_limited.insert(win.window_id.clone(), limited);
         Some(SessionInfo {
@@ -350,6 +376,7 @@ impl StatusPoller {
             running_subagents: Some(running_subagents as u32),
             shells_running,
             limited,
+            usage,
         })
     }
 }

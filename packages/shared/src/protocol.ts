@@ -60,6 +60,40 @@ export const sessionStateSchema = z.enum([
 
 export type SessionState = z.infer<typeof sessionStateSchema>;
 
+/**
+ * One account usage limit: the rounded used percentage and, when known, the epoch-ms reset time.
+ * Filled from the statusLine bridge; the footer renders a live reset countdown from `resetsAt`.
+ */
+export const usageLimitSchema = z.object({
+  usedPercent: z.number().int().min(0),
+  resetsAt: z.number().int().optional(),
+});
+
+export type UsageLimit = z.infer<typeof usageLimitSchema>;
+
+/** Account usage limits Claude Code exposes to its statusLine (5-hour window and weekly). */
+export const usageLimitsSchema = z.object({
+  fiveHour: usageLimitSchema.optional(),
+  week: usageLimitSchema.optional(),
+});
+
+export type UsageLimits = z.infer<typeof usageLimitsSchema>;
+
+/**
+ * Session status-footer material. `turn*` counts from the most recent human prompt; `session*` spans
+ * the whole transcript. `*StartedAt` are epoch ms — the client renders live elapsed as `now - start`.
+ * Tokens/timestamps derive from the transcript (no user setup); `limits` arrives via the statusLine bridge.
+ */
+export const sessionUsageSchema = z.object({
+  turnTokens: z.number().int().min(0),
+  sessionTokens: z.number().int().min(0),
+  turnStartedAt: z.number().int(),
+  sessionStartedAt: z.number().int(),
+  limits: usageLimitsSchema.optional(),
+});
+
+export type SessionUsage = z.infer<typeof sessionUsageSchema>;
+
 /** Per-window snapshot distributed via state.sync. */
 export const sessionInfoSchema = z.object({
   windowId: windowIdSchema,
@@ -95,6 +129,11 @@ export const sessionInfoSchema = z.object({
    * Orthogonal to the main state (meaningful in any state). optional for old-server compatibility (not sent is treated as false).
    */
   limited: z.boolean().optional(),
+  /**
+   * Token totals and elapsed anchors for the session status footer. Absent for old servers or when
+   * the transcript can't be read; `limits` inside is present only when the statusLine bridge is set up.
+   */
+  usage: sessionUsageSchema.optional(),
 });
 
 export type SessionInfo = z.infer<typeof sessionInfoSchema>;

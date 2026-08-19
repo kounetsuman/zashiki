@@ -10,7 +10,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::jsonl::{background_task_ids, claude_project_dir_name};
+use crate::jsonl::{background_task_ids, claude_project_dir_name, session_usage, SessionUsageData};
 use crate::status_poller::Slices;
 
 const DEFAULT_MAX_SLICE_BYTES: u64 = 64 * 1024;
@@ -78,6 +78,20 @@ impl ClaudeProjectsAdapter {
         tokio::task::spawn_blocking(move || subagent_ages_sync(&dir, now))
             .await
             .unwrap_or_default()
+    }
+
+    /// Token/timing rollup for the session status footer (None when the file is missing/unreadable or
+    /// has no timestamped event). Like `background_task_ids`, it reads the whole file: session totals
+    /// need every assistant `usage`, not just the tail slice.
+    pub async fn session_usage(&self, cwd: &str, sid: &str) -> Option<SessionUsageData> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        tokio::task::spawn_blocking(move || session_usage(&fs::read_to_string(&path).ok()?))
+            .await
+            .ok()
+            .flatten()
     }
 
     /// The set of `toolUseResult.backgroundTaskId` in the transcript (empty when the file is missing
@@ -199,6 +213,24 @@ mod tests {
             ids,
             HashSet::from(["bush20ok3".to_string(), "b48tqxha9".to_string()])
         );
+    }
+
+    #[tokio::test]
+    async fn session_usage_reads_full_transcript_totals() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"user\",\"timestamp\":\"2000-01-01T00:00:00Z\",\"message\":{\"content\":\"go\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let u = adapter.session_usage(CWD, SID).await.unwrap();
+        assert_eq!(u.session_tokens, 15);
+        assert_eq!(u.session_started_at_ms, 946_684_800_000);
+    }
+
+    #[tokio::test]
+    async fn session_usage_missing_transcript_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert!(adapter.session_usage(CWD, SID).await.is_none());
     }
 
     #[tokio::test]

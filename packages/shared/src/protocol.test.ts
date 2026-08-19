@@ -117,6 +117,29 @@ describe("sessionInfoSchema", () => {
       }).success,
     ).toBe(false);
   });
+  // Wire parity with the Rust server's SessionInfo.usage (crates/zashiki-server/src/protocol.rs).
+  it("accepts the usage footer material with account limits", () => {
+    const info = {
+      windowId: "@1",
+      name: "repo",
+      org: "o",
+      repo: "repo",
+      state: "running",
+      title: null,
+      active: true,
+      usage: {
+        turnTokens: 1200,
+        sessionTokens: 3400000,
+        turnStartedAt: 1700000000000,
+        sessionStartedAt: 1699999000000,
+        limits: {
+          fiveHour: { usedPercent: 42, resetsAt: 1700010000000 },
+          week: { usedPercent: 61 },
+        },
+      },
+    };
+    expect(sessionInfoSchema.parse(info)).toEqual(info);
+  });
 });
 
 describe("clientMessageSchema", () => {
