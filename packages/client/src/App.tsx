@@ -16,7 +16,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Trans, useTranslation } from "react-i18next";
-
+import type { CrashApi } from "./api/crash.js";
 import type { FilesApi } from "./api/files.js";
 import type { FsApi } from "./api/fs.js";
 import type { GitApi } from "./api/git.js";
@@ -52,6 +52,7 @@ import {
   tabKey,
 } from "./tabs/tab-model.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
+import { CrashReportModal } from "./ui/CrashReportModal.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ExplorerPanel } from "./ui/ExplorerPanel.js";
 import { FooterPanelTabs } from "./ui/FooterPanelTabs.js";
@@ -163,6 +164,8 @@ export interface AppProps {
   filesApi: FilesApi;
   /** The "add org" REST (registers a directory into repos.conf). */
   reposApi: ReposApi;
+  /** Surfaces the previous run's crash log on launch (omitted in tests that don't exercise it). */
+  crashApi?: CrashApi;
   /** Notification service (defaults to the real Web Notification + synthesized sound). */
   notifier?: Notifier;
   /** Persistence target for panel selection state (defaults to localStorage). */
@@ -271,6 +274,7 @@ export function App({
   searchApi,
   filesApi,
   reposApi,
+  crashApi,
   notifier: notifierProp,
   panelStorage: panelStorageProp,
   debugInitial,
@@ -278,6 +282,7 @@ export function App({
   const { t } = useTranslation();
   const terminalFont = useTerminalFontSize();
   const [addOrgOpen, setAddOrgOpen] = useState(false);
+  const [crashLog, setCrashLog] = useState<string | null>(null);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
   const [panelStorage] = useState(() =>
     panelStorageProp === undefined ? defaultPanelStorage() : panelStorageProp,
@@ -321,6 +326,20 @@ export function App({
     },
     [panelStorage, selectedPanel],
   );
+
+  useEffect(() => {
+    if (crashApi === undefined) return;
+    let cancelled = false;
+    crashApi.last().then(
+      (log) => {
+        if (!cancelled && log !== null) setCrashLog(log);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [crashApi]);
 
   // Global switch shortcuts (Ctrl+Alt+<key>). They do not collide with the panel-local
   // Ctrl-N/X (SessionListPanel) because the modifier keys differ.
@@ -994,6 +1013,15 @@ export function App({
           api={reposApi}
           onClose={() => setAddOrgOpen(false)}
           onAdded={(org) => flashCopyToast(t("addOrg.added", { org }))}
+        />
+      )}
+      {crashLog !== null && (
+        <CrashReportModal
+          log={crashLog}
+          onClose={() => {
+            setCrashLog(null);
+            void crashApi?.ack();
+          }}
         />
       )}
       <Toaster notifications={notifications} />

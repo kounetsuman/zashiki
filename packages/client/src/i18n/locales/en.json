@@ -21,6 +21,13 @@
     "title": "⚠ Error",
     "outdatedServer": "The server rejected the request. The running zashiki server may be outdated—restart or update it (rebuild the server and reinstall the daemon)."
   },
+  "crashReport": {
+    "title": "⚠ zashiki crashed last time",
+    "message": "The previous session ended unexpectedly. Please report it with the log below.",
+    "copy": "Copy log",
+    "copied": "Copied",
+    "report": "Report on GitHub"
+  },
   "terminal": {
     "renderError": "An error occurred while rendering the terminal",
     "connectionProblem": "Connection problem ({{detail}})",
