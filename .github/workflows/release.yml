@@ -34,6 +34,33 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
+      # Populate the Release body from CHANGELOG.md: extract the [X.Y.Z] section so a
+      # normal release ships curated notes with no hand-editing. Fall back to GitHub's
+      # auto-generated notes when there is no matching section (e.g. a prerelease tag).
+      - name: Compute release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.tag.outputs.version }}"
+          BODY=$(awk -v v="$VERSION" '
+            function flush() { while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--; for (i = 1; i <= n; i++) print lines[i] }
+            $0 ~ "^## \\[" v "\\]" { inx = 1; next }
+            inx && (/^## / || /^\[[^]]+\]:[[:space:]]/) { inx = 0 }
+            inx { if (!(n == 0 && $0 ~ /^[[:space:]]*$/)) lines[++n] = $0 }
+            END { flush() }
+          ' CHANGELOG.md)
+          if [ -z "${BODY//[[:space:]]/}" ]; then
+            echo "::warning::no [$VERSION] section in CHANGELOG.md — using auto-generated notes"
+            BODY=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+              -f tag_name="${{ steps.tag.outputs.tag }}" --jq .body)
+          fi
+          {
+            echo "body<<CHANGELOG_EOF"
+            echo "$BODY"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -120,6 +147,7 @@ jobs:
           args: --config src-tauri/tauri.bundle.conf.json --bundles dmg
           tagName: ${{ steps.tag.outputs.tag }}
           releaseName: "Zashiki ${{ steps.tag.outputs.tag }}"
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           uploadUpdaterJson: false
