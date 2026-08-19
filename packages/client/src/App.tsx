@@ -1,5 +1,6 @@
 import {
   type ClientMessage,
+  claudeSessionId,
   resumeCommand,
   type ServerMessage,
   type SessionInfo,
@@ -654,6 +655,21 @@ export function App({
     [copyResume, sessions],
   );
 
+  // Copy the target session's Claude Code session id (sid) to the clipboard.
+  // Does nothing for a session without a sid (claude not started / undetectable) (the caller disables the menu).
+  const copySessionIdByWindowId = useCallback(
+    (windowId: string): void => {
+      const s = sessions.find((x) => x.windowId === windowId);
+      const sid = s == null ? null : claudeSessionId(s);
+      if (sid === null) return;
+      void navigator.clipboard?.writeText(sid).then(
+        () => flashCopyToast(t("toast.sessionIdCopied")),
+        () => undefined,
+      );
+    },
+    [flashCopyToast, sessions, t],
+  );
+
   // Always capture Cmd+R for copying the resume command (suppressing reload). meta keys
   // pass through to the browser even while the terminal is focused, so it works (same style
   // as Cmd+N/W). Reload is stopped even when there is no target / no sid to copy (prevents an accidental page reload).
@@ -813,6 +829,7 @@ export function App({
             onReorder={reorderTabByKey}
             inactive={activePanel !== "main"}
             onCopyResume={copyResumeByWindowId}
+            onCopySessionId={copySessionIdByWindowId}
           />
           <div className="tab-panel">
             <ErrorBoundary
@@ -876,6 +893,7 @@ export function App({
             inactive={activePanel !== "sessions"}
             full={selectedPanel === null}
             onCopyResume={copyResumeByWindowId}
+            onCopySessionId={copySessionIdByWindowId}
             onRename={handleCommitConversationTitle}
           />
           {selectedPanel === "explorer" && (

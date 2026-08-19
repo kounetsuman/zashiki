@@ -706,6 +706,46 @@ describe("SessionListPanel: right-click menu", () => {
     expect(screen.getByRole("menuitem", { name: "削除" })).toBeTruthy();
   });
 
+  it("right-clicking a row with a sid and choosing 'Copy Claude Code session ID' calls onCopySessionId(windowId)", () => {
+    const props = renderPanel({ onCopySessionId: vi.fn() });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    const item = screen.getByRole("menuitem", {
+      name: "Claude Code セッションIDをコピー",
+    });
+    expect((item as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(item);
+    expect(props.onCopySessionId).toHaveBeenCalledWith(SID2);
+    expect(screen.queryByRole("menuitem")).toBeNull();
+  });
+
+  it("disables 'Copy Claude Code session ID' for a row without a sid", () => {
+    const noSid: SessionInfo[] = [
+      { ...sessions[1], sid: undefined },
+    ] as SessionInfo[];
+    renderPanel({ sessions: noSid, onCopySessionId: vi.fn() });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    const item = screen.getByRole("menuitem", {
+      name: "Claude Code セッションIDをコピー",
+    });
+    expect((item as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("does not show the copy-session-id item when onCopySessionId is not provided (backward compatibility)", () => {
+    renderPanel();
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    expect(
+      screen.queryByRole("menuitem", {
+        name: "Claude Code セッションIDをコピー",
+      }),
+    ).toBeNull();
+  });
+
   it("clears the confirmation state when the target session disappears while the confirmation bar (Ctrl-X) is shown", () => {
     const props = {
       sessions,

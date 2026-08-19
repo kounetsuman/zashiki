@@ -101,6 +101,7 @@ export {
 export {
   type ClientMessage,
   type ConfigSyncMessage,
+  claudeSessionId,
   clientMessageSchema,
   configSyncSchema,
   type ErrorMessage,

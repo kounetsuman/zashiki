@@ -1,5 +1,10 @@
 import type { SessionInfo } from "@zashiki/shared";
-import { isUuidSid, resolveOrgColor, resumeCommand } from "@zashiki/shared";
+import {
+  claudeSessionId,
+  isUuidSid,
+  resolveOrgColor,
+  resumeCommand,
+} from "@zashiki/shared";
 import { type DragEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -40,6 +45,11 @@ export interface TabBarProps {
    * (for branched sessions). No context menu is shown when unspecified.
    */
   onCopyResume?(windowId: string): void;
+  /**
+   * Right-clicking a session tab copies the Claude Code session id (`sid`) verbatim.
+   * The context menu appears when either this or onCopyResume is provided.
+   */
+  onCopySessionId?(windowId: string): void;
 }
 
 /**
@@ -83,6 +93,7 @@ export function TabBar({
   onReorder,
   inactive,
   onCopyResume,
+  onCopySessionId,
 }: TabBarProps) {
   const { t } = useTranslation();
   // For the tab being edited, remember its windowId/name at the start in addition to the key
@@ -245,10 +256,18 @@ export function TabBar({
             }
             onDragEnd={draggable ? endDrag : undefined}
             onContextMenu={
-              session !== undefined && onCopyResume !== undefined
+              session !== undefined &&
+              (onCopyResume !== undefined || onCopySessionId !== undefined)
                 ? (e) => {
                     e.preventDefault();
-                    const { x, y } = clampMenuPos(e.clientX, e.clientY);
+                    const itemCount =
+                      (onCopyResume !== undefined ? 1 : 0) +
+                      (onCopySessionId !== undefined ? 1 : 0);
+                    const { x, y } = clampMenuPos(
+                      e.clientX,
+                      e.clientY,
+                      itemCount,
+                    );
                     setMenu({ windowId: session.windowId, x, y });
                   }
                 : undefined
@@ -316,11 +335,13 @@ export function TabBar({
         );
       })}
       {menu !== null &&
-        onCopyResume !== undefined &&
+        (onCopyResume !== undefined || onCopySessionId !== undefined) &&
         (() => {
           const target = sessions.find((s) => s.windowId === menu.windowId);
           const canResume =
             target !== undefined && resumeCommand(target) !== null;
+          const canCopySessionId =
+            target !== undefined && claudeSessionId(target) !== null;
           return (
             // biome-ignore lint/a11y/useKeyWithClickEvents: overlay solely for capturing clicks (Escape is handled by window keydown)
             // biome-ignore lint/a11y/noStaticElementInteractions: same as above (not an interactive widget, just an outside-click catcher)
@@ -337,19 +358,40 @@ export function TabBar({
                 role="menu"
                 style={{ top: menu.y, left: menu.x }}
               >
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="session-context-item"
-                  disabled={!canResume}
-                  title={canResume ? undefined : t("common.cannotResume")}
-                  onClick={() => {
-                    onCopyResume(menu.windowId);
-                    setMenu(null);
-                  }}
-                >
-                  {t("common.copyResume")}
-                </button>
+                {onCopyResume !== undefined && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="session-context-item"
+                    disabled={!canResume}
+                    title={canResume ? undefined : t("common.cannotResume")}
+                    onClick={() => {
+                      onCopyResume(menu.windowId);
+                      setMenu(null);
+                    }}
+                  >
+                    {t("common.copyResume")}
+                  </button>
+                )}
+                {onCopySessionId !== undefined && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="session-context-item"
+                    disabled={!canCopySessionId}
+                    title={
+                      canCopySessionId
+                        ? undefined
+                        : t("common.cannotCopySessionId")
+                    }
+                    onClick={() => {
+                      onCopySessionId(menu.windowId);
+                      setMenu(null);
+                    }}
+                  >
+                    {t("common.copySessionId")}
+                  </button>
+                )}
               </div>
             </div>
           );

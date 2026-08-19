@@ -112,6 +112,18 @@ export function resumeCommand(session: {
   return `claude --resume ${sid}`;
 }
 
+/**
+ * The running claude's session id (sid), for copying to the clipboard verbatim.
+ * Returns null for sessions without a sid (claude not started or undetectable); the caller disables the menu.
+ */
+export function claudeSessionId(session: {
+  sid?: string | undefined;
+}): string | null {
+  const sid = session.sid;
+  if (sid === undefined || sid === "") return null;
+  return sid;
+}
+
 const colsSchema = z.number().int().min(1).max(10000);
 const rowsSchema = z.number().int().min(1).max(10000);
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  claudeSessionId,
   clientMessageSchema,
   focusRequestSchema,
   focusResponseSchema,
@@ -22,6 +23,20 @@ describe("resumeCommand", () => {
     expect(resumeCommand({})).toBeNull();
     expect(resumeCommand({ sid: undefined })).toBeNull();
     expect(resumeCommand({ sid: "" })).toBeNull();
+  });
+});
+
+describe("claudeSessionId", () => {
+  it("returns the sid verbatim when present", () => {
+    expect(
+      claudeSessionId({ sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" }),
+    ).toBe("0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f");
+  });
+
+  it("returns null when the sid is missing/empty (the caller disables the menu)", () => {
+    expect(claudeSessionId({})).toBeNull();
+    expect(claudeSessionId({ sid: undefined })).toBeNull();
+    expect(claudeSessionId({ sid: "" })).toBeNull();
   });
 });
 
