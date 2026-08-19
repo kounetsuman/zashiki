@@ -51,12 +51,26 @@ pub fn plan_new_session(
     }
 }
 
-/// The claude launch payload passed to `sh -lc` (pure function; shared by new / resume). So that the shell
-/// survives after claude exits, it does not replace via `exec` but falls back to `exec "$SHELL"` at the end
-/// (symmetric with the tmux version keeping the shell around).
+/// Appended to every claude launch payload so the login shell takes over after claude exits (no `exec`
+/// replacement of claude itself), keeping the pane alive (symmetric with the tmux version keeping the shell around).
+const SHELL_TAKEOVER_TAIL: &str = r#"exec "${SHELL:-/bin/sh}""#;
+
+/// The claude launch payload passed to `sh -lc` (pure function; used for a new session). So that the shell
+/// survives after claude exits, it does not replace via `exec` but falls back to the shell at the end.
 /// Pass a resolved absolute path as `claude_program` so it launches even with a thin PATH.
 pub(crate) fn claude_launch_payload(claude_program: &str, claude_args: &str) -> String {
-    format!(r#"{claude_program} {claude_args}; exec "${{SHELL:-/bin/sh}}""#)
+    format!(r#"{claude_program} {claude_args}; {SHELL_TAKEOVER_TAIL}"#)
+}
+
+/// The resume payload passed to `sh -lc` (pure function). Tries `--resume <sid>`, and if that exits non-zero
+/// (e.g. the conversation no longer exists, which makes resume fail to start), falls back to a fresh session
+/// with the **same sid** so the pane keeps its identity instead of dropping to a bare shell. `sid` must already
+/// be validated as a UUID by the caller. Pass a resolved absolute path as `claude_program` for a thin PATH.
+pub(crate) fn claude_resume_payload(claude_program: &str, sid: &str) -> String {
+    let sid = sid.to_lowercase();
+    format!(
+        r#"{claude_program} --resume {sid} || {claude_program} --session-id {sid}; {SHELL_TAKEOVER_TAIL}"#
+    )
 }
 
 /// A working directory that falls back to `$HOME` (or /tmp if unset) when cwd is not an existing directory.
@@ -163,6 +177,17 @@ mod tests {
         assert_eq!(plan.wname, "charlie");
         // The sid is kept lowercased (to prevent arbitrary strings from creeping in and to unify notation).
         assert_eq!(plan.sid, SID.to_lowercase());
+    }
+
+    #[test]
+    fn resume_payload_falls_back_to_fresh_session_with_same_sid() {
+        assert_eq!(
+            claude_resume_payload("/abs/claude", SID),
+            format!(
+                r#"/abs/claude --resume {sid} || /abs/claude --session-id {sid}; exec "${{SHELL:-/bin/sh}}""#,
+                sid = SID.to_lowercase()
+            ),
+        );
     }
 
     #[test]
