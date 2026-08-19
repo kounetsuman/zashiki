@@ -101,6 +101,14 @@ impl PollerPorts for PtyPollerPorts {
     async fn background_task_ids(&self, cwd: &str, sid: &str) -> HashSet<String> {
         self.projects.background_task_ids(cwd, sid).await
     }
+
+    async fn session_usage(
+        &self,
+        cwd: &str,
+        sid: &str,
+    ) -> Option<crate::jsonl::SessionUsageData> {
+        self.projects.session_usage(cwd, sid).await
+    }
 }
 
 #[cfg(test)]

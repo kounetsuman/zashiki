@@ -129,7 +129,18 @@
   "footer": {
     "panelSwitch": "Switch panel",
     "unreadBadge": "{{label}} ({{count}} unread)",
-    "shortcutTitle": "{{label}} (Ctrl+Alt+{{key}})"
+    "shortcutTitle": "{{label}} (Ctrl+Alt+{{key}})",
+    "status": {
+      "turn": "turn",
+      "session": "session",
+      "fiveHour": "5h",
+      "week": "week",
+      "percentReset": "{{percent}}% · {{time}}",
+      "tokensTitle": "Tokens the API touched — this turn / this session",
+      "elapsedTitle": "Elapsed — this turn / this session",
+      "fiveHourTitle": "5-hour session usage",
+      "weekTitle": "Weekly usage"
+    }
   },
   "panel": {
     "explorer": "Explorer",

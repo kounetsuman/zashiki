@@ -129,7 +129,18 @@
   "footer": {
     "panelSwitch": "パネル切替",
     "unreadBadge": "{{label}}（未読 {{count}}）",
-    "shortcutTitle": "{{label}}（Ctrl+Alt+{{key}}）"
+    "shortcutTitle": "{{label}}（Ctrl+Alt+{{key}}）",
+    "status": {
+      "turn": "ターン",
+      "session": "セッション",
+      "fiveHour": "5h",
+      "week": "週",
+      "percentReset": "{{percent}}% · {{time}}",
+      "tokensTitle": "API が扱ったトークン — 今ターン / セッション累計",
+      "elapsedTitle": "経過時間 — 今ターン / セッション累計",
+      "fiveHourTitle": "5時間セッション使用率",
+      "weekTitle": "週間使用率"
+    }
   },
   "panel": {
     "explorer": "エクスプローラー",

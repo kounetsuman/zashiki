@@ -7,10 +7,39 @@
 
 use std::sync::Arc;
 
+use serde_json::Value;
 use zashiki_core::process_tree::{build_process_maps, find_sid_in_tree, parse_ps_snapshot};
 
-use crate::protocol::{HookKind, NotifyKind};
+use crate::protocol::{HookKind, NotifyKind, UsageLimit, UsageLimits};
 use crate::status_poller::WorkWindow;
+
+/// Reads one `{used_percentage, resets_at}` block Claude Code exposes to its statusLine.
+/// `used_percentage` rounds to an integer; `resets_at` is unix seconds, converted to epoch ms.
+fn parse_usage_limit(v: &Value) -> Option<UsageLimit> {
+    let used_percent = v.get("used_percentage").and_then(Value::as_f64)?.round();
+    let resets_at = v
+        .get("resets_at")
+        .and_then(Value::as_f64)
+        .map(|s| (s * 1000.0) as u64);
+    Some(UsageLimit {
+        used_percent: used_percent.max(0.0) as u32,
+        resets_at,
+    })
+}
+
+/// Extracts the sid and account usage limits from a Claude Code statusLine payload
+/// (`POST /api/hooks/statusline`). None when there is no session_id or no reportable limit,
+/// so an unconfigured/partial statusLine simply reports nothing.
+pub fn parse_statusline_limits(json: &Value) -> Option<(String, UsageLimits)> {
+    let sid = json.get("session_id").and_then(Value::as_str)?;
+    let rl = json.get("rate_limits")?;
+    let five_hour = rl.get("five_hour").and_then(parse_usage_limit);
+    let week = rl.get("seven_day").and_then(parse_usage_limit);
+    if five_hour.is_none() && week.is_none() {
+        return None;
+    }
+    Some((sid.to_string(), UsageLimits { five_hour, week }))
+}
 
 /// Notification destination (ZK_NOTIFY; defaults to web). TS `NotifyMode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -180,6 +209,44 @@ pub fn decide(
 mod tests {
     use super::*;
     use crate::status_poller::WorkWindowPane;
+    use serde_json::json;
+
+    #[test]
+    fn statusline_parses_sid_and_both_limits() {
+        let payload = json!({
+            "session_id": "abc",
+            "rate_limits": {
+                "five_hour": {"used_percentage": 42.4, "resets_at": 1_700_000_000},
+                "seven_day": {"used_percentage": 61.6},
+            },
+        });
+        let (sid, limits) = parse_statusline_limits(&payload).unwrap();
+        assert_eq!(sid, "abc");
+        assert_eq!(
+            limits.five_hour,
+            Some(UsageLimit {
+                used_percent: 42,
+                resets_at: Some(1_700_000_000_000),
+            })
+        );
+        assert_eq!(
+            limits.week,
+            Some(UsageLimit {
+                used_percent: 62,
+                resets_at: None,
+            })
+        );
+    }
+
+    #[test]
+    fn statusline_none_without_sid_or_reportable_limit() {
+        assert!(parse_statusline_limits(
+            &json!({"rate_limits": {"five_hour": {"used_percentage": 5}}})
+        )
+        .is_none());
+        assert!(parse_statusline_limits(&json!({"session_id": "abc"})).is_none());
+        assert!(parse_statusline_limits(&json!({"session_id": "abc", "rate_limits": {}})).is_none());
+    }
 
     fn pane(pid: i64, cwd: &str) -> WorkWindowPane {
         WorkWindowPane {

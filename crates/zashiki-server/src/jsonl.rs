@@ -124,6 +124,161 @@ pub fn claude_project_dir_name(cwd: &str) -> String {
     cwd.replace('/', "-")
 }
 
+/// Token/timing rollup for a session's transcript (the material for the session status footer).
+/// `turn` counts from the most recent human prompt; `session` counts the whole transcript.
+/// `*_at_ms` are epoch-ms starting points (the client renders live elapsed as `now - start`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SessionUsageData {
+    pub turn_tokens: u64,
+    pub session_tokens: u64,
+    pub turn_started_at_ms: u64,
+    pub session_started_at_ms: u64,
+}
+
+/// Sum of the tokens the API touched for one assistant response
+/// (input + cache_creation + cache_read + output).
+fn usage_total(usage: &Value) -> u64 {
+    const KEYS: [&str; 4] = [
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "output_tokens",
+    ];
+    KEYS.iter()
+        .map(|k| usage.get(*k).and_then(Value::as_u64).unwrap_or(0))
+        .sum()
+}
+
+/// A human-typed user line (the boundary of a "turn"): a `user` event whose content is not solely
+/// tool_result output (string content is always human; an array counts unless it holds a tool_result block).
+fn is_human_prompt(event: &Value) -> bool {
+    if event.get("type").and_then(Value::as_str) != Some("user") {
+        return false;
+    }
+    match content_of(event) {
+        Some(Value::String(_)) => true,
+        Some(Value::Array(blocks)) => !blocks
+            .iter()
+            .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")),
+        _ => true,
+    }
+}
+
+/// Parses Claude's transcript timestamp (`YYYY-MM-DDTHH:MM:SS[.fff]Z`, always UTC) to epoch ms.
+/// Dependency-free (no chrono): fixed-layout digits plus the civil-days formula. Fractional seconds
+/// and a trailing `Z` are optional; any offset other than `Z` is read as the same wall clock in UTC.
+fn parse_iso8601_ms(s: &str) -> Option<u64> {
+    let b = s.as_bytes();
+    if b.len() < 19
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+    {
+        return None;
+    }
+    let num = |from: usize, to: usize| -> Option<i64> {
+        let mut v: i64 = 0;
+        for &c in &b[from..to] {
+            if !c.is_ascii_digit() {
+                return None;
+            }
+            v = v * 10 + i64::from(c - b'0');
+        }
+        Some(v)
+    };
+    let year = num(0, 4)?;
+    let month = num(5, 7)?;
+    let day = num(8, 10)?;
+    let hour = num(11, 13)?;
+    let min = num(14, 16)?;
+    let sec = num(17, 19)?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    let mut ms: i64 = 0;
+    if b.get(19) == Some(&b'.') {
+        let mut i = 20;
+        let mut frac = 0i64;
+        let mut digits = 0;
+        while i < b.len() && b[i].is_ascii_digit() && digits < 3 {
+            frac = frac * 10 + i64::from(b[i] - b'0');
+            digits += 1;
+            i += 1;
+        }
+        for _ in digits..3 {
+            frac *= 10;
+        }
+        ms = frac;
+    }
+    let days = days_from_civil(year, month, day);
+    let secs = days * 86_400 + hour * 3_600 + min * 60 + sec;
+    u64::try_from(secs * 1_000 + ms).ok()
+}
+
+/// Days since the Unix epoch for a proleptic-Gregorian date (Howard Hinnant's `days_from_civil`).
+fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = (if y >= 0 { y } else { y - 399 }) / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if month > 2 { month - 3 } else { month + 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// Aggregates per-turn / per-session token totals and their starting timestamps from a full transcript.
+/// Returns None when no user/assistant event carries a parseable timestamp (nothing to anchor elapsed on).
+/// A turn boundary (`is_human_prompt`) resets the turn total and moves the turn start.
+pub fn session_usage(content: &str) -> Option<SessionUsageData> {
+    let mut session_tokens: u64 = 0;
+    let mut turn_tokens: u64 = 0;
+    let mut session_started_at_ms: Option<u64> = None;
+    let mut turn_started_at_ms: Option<u64> = None;
+
+    for line in content.split('\n') {
+        if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
+            continue;
+        }
+        let Some(event) = parse_line(line) else {
+            continue;
+        };
+        let kind = event.get("type").and_then(Value::as_str);
+        if kind != Some("user") && kind != Some("assistant") {
+            continue;
+        }
+        let ts = event
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(parse_iso8601_ms);
+        if let Some(ts) = ts {
+            session_started_at_ms.get_or_insert(ts);
+        }
+        if is_human_prompt(&event) {
+            turn_tokens = 0;
+            if let Some(ts) = ts {
+                turn_started_at_ms = Some(ts);
+            }
+            continue;
+        }
+        if kind == Some("assistant") {
+            if let Some(usage) = event.get("message").and_then(|m| m.get("usage")) {
+                let t = usage_total(usage);
+                session_tokens += t;
+                turn_tokens += t;
+            }
+        }
+    }
+
+    let session_started_at_ms = session_started_at_ms?;
+    Some(SessionUsageData {
+        turn_tokens,
+        session_tokens,
+        turn_started_at_ms: turn_started_at_ms.unwrap_or(session_started_at_ms),
+        session_started_at_ms,
+    })
+}
+
 /// Collects every background shell launch ID (`toolUseResult.backgroundTaskId`) in the transcript
 /// (present only for Bash run_in_background, not for foreground). Stays lightweight even on huge
 /// transcripts by JSON-parsing only the candidate lines.
@@ -394,5 +549,112 @@ mod tests {
     #[test]
     fn background_task_ids_empty_string_is_empty() {
         assert!(background_task_ids("").is_empty());
+    }
+
+    // ---- parse_iso8601_ms ----
+
+    #[test]
+    fn iso_epoch_zero_and_millis() {
+        assert_eq!(parse_iso8601_ms("1970-01-01T00:00:00.000Z"), Some(0));
+        assert_eq!(parse_iso8601_ms("1970-01-01T00:00:01.500Z"), Some(1500));
+    }
+
+    #[test]
+    fn iso_known_date_and_optional_fraction() {
+        assert_eq!(
+            parse_iso8601_ms("2000-01-01T00:00:00Z"),
+            Some(946_684_800_000)
+        );
+        assert_eq!(
+            parse_iso8601_ms("2000-01-01T00:00:00.250Z"),
+            Some(946_684_800_250)
+        );
+    }
+
+    #[test]
+    fn iso_rejects_malformed() {
+        assert_eq!(parse_iso8601_ms("not-a-date"), None);
+        assert_eq!(parse_iso8601_ms("2000-13-01T00:00:00Z"), None);
+        assert_eq!(parse_iso8601_ms(""), None);
+    }
+
+    // ---- session_usage ----
+
+    fn user_at(ts: &str, content: Value) -> String {
+        json!({"type": "user", "timestamp": ts, "message": {"content": content}}).to_string()
+    }
+
+    fn assistant_usage(ts: &str, input: u64, cache_read: u64, output: u64) -> String {
+        json!({
+            "type": "assistant",
+            "timestamp": ts,
+            "message": {"content": [{"type": "text", "text": "ok"}], "usage": {
+                "input_tokens": input,
+                "cache_read_input_tokens": cache_read,
+                "output_tokens": output,
+            }},
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn usage_sums_session_and_resets_turn_on_human_prompt() {
+        let jsonl = [
+            user_at("2000-01-01T00:00:00Z", json!("最初")),
+            assistant_usage("2000-01-01T00:00:05Z", 10, 20, 5),
+            assistant_usage("2000-01-01T00:00:10Z", 1, 2, 3),
+            user_at("2000-01-01T00:01:00Z", json!("次")),
+            assistant_usage("2000-01-01T00:01:05Z", 100, 0, 7),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 10 + 20 + 5 + 1 + 2 + 3 + 100 + 7);
+        assert_eq!(u.turn_tokens, 100 + 7);
+        assert_eq!(u.session_started_at_ms, 946_684_800_000);
+        assert_eq!(u.turn_started_at_ms, 946_684_800_000 + 60_000);
+    }
+
+    #[test]
+    fn usage_tool_result_user_is_not_a_turn_boundary() {
+        let jsonl = [
+            user_at("2000-01-01T00:00:00Z", json!("依頼")),
+            assistant_usage("2000-01-01T00:00:05Z", 10, 0, 0),
+            user_at(
+                "2000-01-01T00:00:06Z",
+                json!([{"type": "tool_result", "content": "out"}]),
+            ),
+            assistant_usage("2000-01-01T00:00:10Z", 5, 0, 0),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.turn_tokens, 15);
+        assert_eq!(u.turn_started_at_ms, 946_684_800_000);
+    }
+
+    #[test]
+    fn usage_turn_start_falls_back_to_session_start_without_human_prompt() {
+        let jsonl = assistant_usage("2000-01-01T00:00:05Z", 4, 0, 1);
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 5);
+        assert_eq!(u.turn_tokens, 5);
+        assert_eq!(u.turn_started_at_ms, u.session_started_at_ms);
+        assert_eq!(u.session_started_at_ms, 946_684_800_000 + 5_000);
+    }
+
+    #[test]
+    fn usage_none_without_timestamped_event() {
+        assert!(session_usage("").is_none());
+        assert!(session_usage(r#"{"type":"summary","summary":"x"}"#).is_none());
+    }
+
+    #[test]
+    fn usage_skips_broken_lines() {
+        let jsonl = [
+            r#"{"type":"user","broken"#.to_string(),
+            assistant_usage("2000-01-01T00:00:05Z", 2, 0, 3),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 5);
     }
 }

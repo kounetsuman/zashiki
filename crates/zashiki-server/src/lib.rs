@@ -213,6 +213,7 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/sessions/save", post(sessions_save))
         .route("/api/sessions/restore", post(sessions_restore))
         .route("/api/hooks/event", post(hooks_event))
+        .route("/api/hooks/statusline", post(hooks_statusline))
         .route("/api/focus", post(focus_session))
         .route("/api/activity", get(activity));
     if state.control.is_some() {
@@ -686,6 +687,27 @@ async fn hooks_event(State(state): State<AppState>, body: axum::body::Bytes) -> 
         matched: actions.matched,
     })
     .into_response()
+}
+
+/// `POST /api/hooks/statusline`. Receives Claude Code's statusLine payload (which carries
+/// `rate_limits`, unavailable from the transcript) and records the account usage limits per sid so
+/// the session footer can show them. Confluence, not replacement: never fails Claude Code.
+async fn hooks_statusline(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let Some(control) = state.control.as_ref() else {
+        return json_error(StatusCode::SERVICE_UNAVAILABLE, "control not available");
+    };
+    let json: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid json"),
+    };
+    let matched = match crate::hooks::parse_statusline_limits(&json) {
+        Some((sid, limits)) => {
+            control.hub.publish_rate_limits(&sid, limits, now_ms());
+            true
+        }
+        None => false,
+    };
+    Json(crate::protocol::HookEventResponse { ok: true, matched }).into_response()
 }
 
 /// `POST /api/focus`. Resolves the window (sid then cwd) and broadcasts a `select` so an
@@ -2987,6 +3009,7 @@ mod tests {
                     running_subagents: Some(0),
                     shells_running: None,
                     limited: false,
+                    usage: None,
                 }],
                 orgs: vec!["org".to_string()],
                 org_colors: BTreeMap::new(),
@@ -3084,6 +3107,7 @@ mod tests {
                 running_subagents: subagents,
                 shells_running: shells,
                 limited: false,
+                usage: None,
             }
         }
 

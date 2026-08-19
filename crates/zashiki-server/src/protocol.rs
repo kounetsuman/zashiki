@@ -7,6 +7,42 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// One account usage limit: the rounded used percentage and, when known, the epoch-ms reset time.
+/// Populated from the statusLine bridge (`POST /api/hooks/statusline`); the client renders a live
+/// reset countdown from `resets_at`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageLimit {
+    pub used_percent: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_at: Option<u64>,
+}
+
+/// Account usage limits Claude Code exposes to its statusLine (5-hour session window and weekly).
+/// Each is absent until the bridge has reported it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageLimits {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub five_hour: Option<UsageLimit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub week: Option<UsageLimit>,
+}
+
+/// Session status-footer material: token totals plus the epoch-ms starting points for live elapsed.
+/// `turn` is measured from the most recent human prompt; `session` spans the whole transcript.
+/// Tokens/timestamps come from the transcript (no user setup); `limits` arrives via the statusLine bridge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUsage {
+    pub turn_tokens: u64,
+    pub session_tokens: u64,
+    pub turn_started_at: u64,
+    pub session_started_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<UsageLimits>,
+}
+
 /// One window's snapshot distributed via state.sync.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +76,11 @@ pub struct SessionInfo {
     /// For backward compatibility with older servers, false is not sent (not sent = treated as false).
     #[serde(default, skip_serializing_if = "is_false")]
     pub limited: bool,
+    /// Token totals and elapsed anchors for the session status footer (absent for old servers, or
+    /// while there is no readable transcript). `limits` inside is filled only when the statusLine
+    /// bridge is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<SessionUsage>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -348,6 +389,7 @@ mod tests {
                 running_subagents: None,
                 shells_running: None,
                 limited: false,
+                usage: None,
             }],
             orgs: vec!["org1".into()],
             org_colors: BTreeMap::from([("org1".to_string(), "#7ec699".to_string())]),
@@ -465,6 +507,7 @@ mod tests {
                 running_subagents: Some(3),
                 shells_running: None,
                 limited: false,
+                usage: None,
             }],
             orgs: vec![],
             org_colors: BTreeMap::new(),
@@ -488,6 +531,7 @@ mod tests {
             running_subagents: None,
             shells_running: Some(2),
             limited: false,
+            usage: None,
         };
         let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
         assert_eq!(to_json(&info), json);
@@ -508,6 +552,7 @@ mod tests {
             running_subagents: None,
             shells_running: None,
             limited: false,
+            usage: None,
         };
         let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":false}"#;
         assert_eq!(to_json(&info), json);
@@ -529,8 +574,72 @@ mod tests {
             running_subagents: None,
             shells_running: None,
             limited: false,
+            usage: None,
         };
         let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"sid":"0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f","active":true}"#;
+        assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_info_serializes_usage_with_limits() {
+        let info = SessionInfo {
+            window_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "running".into(),
+            title: None,
+            sid: None,
+            active: true,
+            running_subagents: None,
+            shells_running: None,
+            limited: false,
+            usage: Some(SessionUsage {
+                turn_tokens: 1200,
+                session_tokens: 3_400_000,
+                turn_started_at: 1_700_000_000_000,
+                session_started_at: 1_699_999_000_000,
+                limits: Some(UsageLimits {
+                    five_hour: Some(UsageLimit {
+                        used_percent: 42,
+                        resets_at: Some(1_700_010_000_000),
+                    }),
+                    week: Some(UsageLimit {
+                        used_percent: 61,
+                        resets_at: None,
+                    }),
+                }),
+            }),
+        };
+        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"usage":{"turnTokens":1200,"sessionTokens":3400000,"turnStartedAt":1700000000000,"sessionStartedAt":1699999000000,"limits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61}}}}"#;
+        assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_info_usage_omits_limits_when_absent() {
+        let info = SessionInfo {
+            window_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "idle".into(),
+            title: None,
+            sid: None,
+            active: false,
+            running_subagents: None,
+            shells_running: None,
+            limited: false,
+            usage: Some(SessionUsage {
+                turn_tokens: 0,
+                session_tokens: 500,
+                turn_started_at: 10,
+                session_started_at: 10,
+                limits: None,
+            }),
+        };
+        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"turnStartedAt":10,"sessionStartedAt":10}}"#;
         assert_eq!(to_json(&info), json);
         assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
     }

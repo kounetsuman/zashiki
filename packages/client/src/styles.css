@@ -557,6 +557,67 @@ body {
   flex-direction: column;
 }
 
+/* ---- セッション状態フッタ（issue #74。MAIN AREA が SESSION の時のみ端末下に出す） ---- */
+
+.session-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 4px 10px;
+  background: linear-gradient(180deg, #1c1c1c, #181818);
+  border-top: 1px solid #333;
+  color: #9aa0a6;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ss-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ss-group-limits {
+  margin-left: auto;
+}
+
+.ss-icon {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+  color: #6b7078;
+}
+
+.ss-val {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  color: #d0d3d6;
+}
+
+.ss-cap {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7078;
+}
+
+.ss-val.ss-warn {
+  color: #e5c07b;
+}
+
+.ss-val.ss-high {
+  color: #e59f52;
+}
+
+.ss-val.ss-crit {
+  color: #ff6b6b;
+}
+
 /* ---- メインエリア上部の統合タブ列（issue #149） ---- */
 
 .tab-bar {

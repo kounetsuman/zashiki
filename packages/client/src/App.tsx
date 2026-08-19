@@ -67,6 +67,7 @@ import {
 } from "./ui/panels.js";
 import { SearchPanel } from "./ui/SearchPanel.js";
 import { SessionListPanel } from "./ui/SessionListPanel.js";
+import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
 import { SettingsPanel } from "./ui/SettingsPanel.js";
 import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
@@ -418,6 +419,12 @@ export function App({
   // main-area display and terminal attach from the active session tab (kept one-way to avoid a loop).
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
   const activeSess = activeSessionId(tabsState);
+  // Status footer material for the active session tab (absent for viewer/empty, or before a
+  // readable transcript exists). Only the active session's footer is shown.
+  const activeSessionUsage =
+    activeSess !== null
+      ? (sessions.find((s) => s.windowId === activeSess)?.usage ?? null)
+      : null;
 
   // Viewer. One viewer tab = one buffer (key matches tab.id).
   const [viewerBuffers, setViewerBuffers] = useState<ViewerBuffers>({});
@@ -899,6 +906,9 @@ export function App({
               />
             )}
           </div>
+          {activeSess !== null && activeSessionUsage !== null && (
+            <SessionStatusFooter usage={activeSessionUsage} />
+          )}
         </div>
         <aside className="side-column">
           <SessionListPanel
