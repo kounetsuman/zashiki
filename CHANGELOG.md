@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-19
+
+### Added
+
+- A session status footer under the terminal showing this-turn and session token usage and elapsed time, plus 5-hour and weekly account usage limits when the statusLine bridge is configured (#74)
+- The previous crash log in a copyable dialog on the next launch, with a bug-report link (#73)
+- A background-shell badge on session rows so you can tell which sessions have a shell running in the background (#69)
+- A confirmation before quitting while sessions, agents, or background shells are still running (#65)
+
 ### Changed
 
 - The installer quits a running Zashiki before swapping the app bundle, so the new version launches on next open instead of the old one lingering. It requests a graceful quit through the app's own guarded-quit path and never hard-kills (#66)
@@ -62,7 +71,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/kounetsuman/zashiki/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kounetsuman/zashiki/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kounetsuman/zashiki/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/kounetsuman/zashiki/releases/tag/v0.1.1
