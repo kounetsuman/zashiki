@@ -150,7 +150,7 @@ jobs:
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false
-          uploadUpdaterJson: false
+          includeUpdaterJson: false
 
       # Gate the release on a valid signature + stapled notarization ticket for signed builds.
       # Verify the shipped .dmg: the bundler removes the intermediate .app after packaging it,
