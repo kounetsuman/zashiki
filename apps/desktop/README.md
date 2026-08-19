@@ -189,10 +189,6 @@ One-time setup (maintainer):
    | `APPLE_PASSWORD` | the app-specific password from step 2 |
    | `APPLE_TEAM_ID` | 10-character Team ID |
 
-Once a signed release is verified (`spctl -a -vvv Zashiki.app` reports *accepted*), drop the
-"Unsigned / right-click → Open" note from the root [`README.md`](../../README.md) /
-[`README.ja.md`](../../README.ja.md).
-
 ### Shell build that depends on the development tree
 
 ```sh
@@ -258,10 +254,6 @@ pnpm uninstall:app -- --yes --purge-user-data # the above + also deletes ~/.zash
 
 ## Known limitations
 
-- **Distributed builds are unsigned until the Apple signing secrets are configured**:
-  without them the `.app` produced by `build:app` triggers a Gatekeeper warning on
-  first launch (right-click → Open, etc. is required). Configure the secrets to enable
-  signing + notarization — see [Signing & notarization](#signing--notarization).
 - **Riding on an existing server that does not serve client dist**: the distributed
   .app opens `http://127.0.0.1:8790` (the server's `/`). If another server is already
   running on 8790, it rides on it, but if that server was not started with

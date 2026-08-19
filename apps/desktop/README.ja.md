@@ -166,10 +166,6 @@ Gatekeeper の右クリック回避なしで起動する。secret が無いと�
    | `APPLE_PASSWORD` | 手順 2 の App 用パスワード |
    | `APPLE_TEAM_ID` | 10 文字の Team ID |
 
-署名リリースを検証（`spctl -a -vvv Zashiki.app` が *accepted* を返す）できたら、ルートの
-[`README.md`](../../README.md) / [`README.ja.md`](../../README.ja.md) から
-「未署名 / 右クリック → 開く」注記を外す。
-
 ### 開発ツリー依存のシェルビルド
 
 ```sh
@@ -228,9 +224,6 @@ pnpm uninstall:app -- --yes --purge-user-data # 上記 + ~/.zashiki も削除
 
 ## 既知の制約
 
-- **Apple の署名 secret を設定するまで配布ビルドは未署名**: secret が無いと `build:app` が作る
-  `.app` は初回起動時に Gatekeeper の警告が出る（右クリック→開く等が必要）。secret を設定すると
-  署名 + notarization が有効になる——[署名と notarization](#署名と-notarization) 参照。
 - **client dist を配信しない既存 server への相乗り**: 配布 .app は `http://127.0.0.1:8790`
   （server の `/`）を開く。8790 に別の server が既に稼働していると相乗りするが、その server が
   `ZK_CLIENT_DIST` 付きで起動していない（例: `tauri dev` / dist なしの `cargo run`）と `/` を

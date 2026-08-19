@@ -3,11 +3,9 @@
 # zashiki installer for macOS (Apple Silicon).
 #
 # Downloads the latest release .dmg over curl and installs Zashiki.app into
-# /Applications. Downloads made by curl do NOT carry the com.apple.quarantine
-# attribute, so Gatekeeper does not block the (currently unsigned, un-notarized)
-# app with the "is damaged and can't be opened" dialog that a browser download
-# triggers. Proper signing + notarization is tracked in #25; this installer is
-# the quarantine-free path from #31.
+# /Applications. The .dmg is code-signed with a Developer ID certificate and
+# notarized (#25), so Gatekeeper accepts it. Downloads made by curl also do NOT
+# carry the com.apple.quarantine attribute (the quarantine-free path from #31).
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/kounetsuman/zashiki/main/scripts/install.sh | bash
