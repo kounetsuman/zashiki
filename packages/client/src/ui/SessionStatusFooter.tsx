@@ -6,6 +6,7 @@ import {
   fmtDuration,
   fmtResetCountdown,
   fmtTokens,
+  type Severity,
   tokenSeverity,
   usageSeverity,
 } from "../session/status-footer.js";
@@ -30,7 +31,7 @@ function Cell({
 }: {
   value: string;
   caption: string;
-  severity?: string;
+  severity?: Severity;
 }) {
   const cls = severity ? `ss-val ss-${severity}` : "ss-val";
   return (

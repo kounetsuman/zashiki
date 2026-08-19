@@ -419,8 +419,7 @@ export function App({
   // main-area display and terminal attach from the active session tab (kept one-way to avoid a loop).
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
   const activeSess = activeSessionId(tabsState);
-  // Status footer material for the active session tab (absent for viewer/empty, or before a
-  // readable transcript exists). Only the active session's footer is shown.
+  // Footer material for the active session tab (null for viewer/empty or before a readable transcript).
   const activeSessionUsage =
     activeSess !== null
       ? (sessions.find((s) => s.windowId === activeSess)?.usage ?? null)
