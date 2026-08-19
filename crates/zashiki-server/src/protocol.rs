@@ -30,6 +30,11 @@ pub struct SessionInfo {
     /// sent when unavailable or in other states).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub running_subagents: Option<u32>,
+    /// Number of persistent background shells (Bash run_in_background) whose output fd is still held
+    /// by a live wrapper. Orthogonal to the primary state (meaningful in any state). Absent when zero
+    /// or unfetched (older servers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shells_running: Option<u32>,
     /// Flag indicating the Claude Code usage limit has been reached. Detected from the limit banner
     /// text at the bottom of the screen. Orthogonal to the primary state (meaningful in any state).
     /// For backward compatibility with older servers, false is not sent (not sent = treated as false).
@@ -341,6 +346,7 @@ mod tests {
                 sid: None,
                 active: true,
                 running_subagents: None,
+                shells_running: None,
                 limited: false,
             }],
             orgs: vec!["org1".into()],
@@ -457,6 +463,7 @@ mod tests {
                 sid: None,
                 active: true,
                 running_subagents: Some(3),
+                shells_running: None,
                 limited: false,
             }],
             orgs: vec![],
@@ -465,6 +472,26 @@ mod tests {
         let json = r#"{"t":"state.sync","sessions":[{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{}}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
+    }
+
+    #[test]
+    fn session_info_serializes_shells_running_when_present() {
+        let info = SessionInfo {
+            window_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "idle".into(),
+            title: None,
+            sid: None,
+            active: false,
+            running_subagents: None,
+            shells_running: Some(2),
+            limited: false,
+        };
+        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
+        assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
     }
 
     #[test]
@@ -479,6 +506,7 @@ mod tests {
             sid: None,
             active: false,
             running_subagents: None,
+            shells_running: None,
             limited: false,
         };
         let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":false}"#;
@@ -499,6 +527,7 @@ mod tests {
             sid: Some("0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f".into()),
             active: true,
             running_subagents: None,
+            shells_running: None,
             limited: false,
         };
         let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"sid":"0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f","active":true}"#;

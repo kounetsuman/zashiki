@@ -124,6 +124,32 @@ pub fn claude_project_dir_name(cwd: &str) -> String {
     cwd.replace('/', "-")
 }
 
+/// Collects every background shell launch ID (`toolUseResult.backgroundTaskId`) in the transcript
+/// (present only for Bash run_in_background, not for foreground). Stays lightweight even on huge
+/// transcripts by JSON-parsing only the candidate lines.
+pub fn background_task_ids(content: &str) -> std::collections::HashSet<String> {
+    let mut ids = std::collections::HashSet::new();
+    for line in content.split('\n') {
+        if line.is_empty() || !line.contains("\"backgroundTaskId\"") {
+            continue;
+        }
+        let Some(event) = parse_line(line) else {
+            continue;
+        };
+        if let Some(id) = event
+            .get("toolUseResult")
+            .filter(|r| r.is_object())
+            .and_then(|r| r.get("backgroundTaskId"))
+            .and_then(Value::as_str)
+        {
+            if !id.is_empty() {
+                ids.insert(id.to_string());
+            }
+        }
+    }
+    ids
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -329,5 +355,44 @@ mod tests {
             claude_project_dir_name("/Users/kilo/workspace/charlie"),
             "-Users-kilo-workspace-charlie"
         );
+    }
+
+    // ---- background_task_ids ----
+
+    fn bg(id: &str) -> String {
+        json!({"type": "user", "toolUseResult": {"backgroundTaskId": id}}).to_string()
+    }
+
+    fn ids(list: &[&str]) -> std::collections::HashSet<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn background_task_ids_returns_deduplicated_set() {
+        let jsonl = [
+            bg("bush20ok3"),
+            json!({"type": "user", "toolUseResult": {"stdout": "x"}}).to_string(),
+            bg("b48tqxha9"),
+            bg("bush20ok3"),
+        ]
+        .join("\n");
+        assert_eq!(background_task_ids(&jsonl), ids(&["bush20ok3", "b48tqxha9"]));
+    }
+
+    #[test]
+    fn background_task_ids_foreground_only_is_empty() {
+        let jsonl = json!({"type": "user", "toolUseResult": {"stdout": "ok"}}).to_string();
+        assert!(background_task_ids(&jsonl).is_empty());
+    }
+
+    #[test]
+    fn background_task_ids_skips_broken_lines_and_continues() {
+        let jsonl = format!("not json\n{}\n{{\"broken", bg("bcyiin1lh"));
+        assert_eq!(background_task_ids(&jsonl), ids(&["bcyiin1lh"]));
+    }
+
+    #[test]
+    fn background_task_ids_empty_string_is_empty() {
+        assert!(background_task_ids("").is_empty());
     }
 }
