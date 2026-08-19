@@ -4,6 +4,7 @@ import {
   type ServerMessage,
   type SessionInfo,
   unreadCount,
+  updateAvailableVersion,
 } from "@zashiki/shared";
 import {
   type FocusEvent,
@@ -69,6 +70,7 @@ import { SettingsPanel } from "./ui/SettingsPanel.js";
 import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
 import { Toaster } from "./ui/Toaster.js";
+import { UpdateBanner } from "./ui/UpdateBanner.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { ViewerPanel } from "./ui/ViewerPanel.js";
 import {
@@ -387,6 +389,7 @@ export function App({
   // Set of seen ids for the unread badge (persisted in localStorage). Notifications are marked read individually by double-click.
   const [seenIds, setSeenIds] = useState(() => loadSeenIds(panelStorage));
   const unread = unreadCount(notifications, seenIds);
+  const updateVersion = updateAvailableVersion(notifications);
   // Number of sessions that have hit the usage limit (input for the footer warning).
   const limitedCount = sessions.filter((s) => s.limited === true).length;
   const markRead = useCallback((id: string) => {
@@ -796,6 +799,7 @@ export function App({
 
   return (
     <div className="app">
+      <UpdateBanner version={updateVersion} />
       <div className="main-row" onFocusCapture={handlePanelFocus}>
         <div
           className={`main-area${activePanel === "main" ? "" : " panel-inactive"}`}

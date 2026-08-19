@@ -128,6 +128,10 @@
     "unreadBadge": "{{label}}（未読 {{count}}）",
     "shortcutTitle": "{{label}}（Ctrl+Alt+{{key}}）"
   },
+  "update": {
+    "button": "アップデート",
+    "tooltip": "バージョン {{version}} が利用できます — リリースページを開く"
+  },
   "panel": {
     "explorer": "エクスプローラー",
     "search": "検索",

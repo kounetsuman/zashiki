@@ -86,8 +86,11 @@ export {
   removeNotification,
   restartRequiredNotification,
   rootsChanged,
+  UPDATE_AVAILABLE_ID_PREFIX,
   unreadCount,
+  updateAvailableVersion,
   upsertNotification,
+  ZASHIKI_RELEASES_URL,
 } from "./notifications.js";
 export {
   buildProcessMaps,

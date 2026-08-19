@@ -13,7 +13,9 @@ import {
   removeNotification,
   restartRequiredNotification,
   rootsChanged,
+  UPDATE_AVAILABLE_ID_PREFIX,
   unreadCount,
+  updateAvailableVersion,
   upsertNotification,
 } from "./notifications.js";
 
@@ -232,5 +234,33 @@ describe("appendNotification (capped append)", () => {
     for (let i = 1; i <= 5; i++)
       list = appendNotification(list, n(`e${i}`, i), 0);
     expect(list).toHaveLength(5);
+  });
+});
+
+describe("updateAvailableVersion", () => {
+  const upd = (version: string, createdAt = 1): Notification =>
+    n(`${UPDATE_AVAILABLE_ID_PREFIX}${version}`, createdAt);
+
+  it("returns null when no update notification is present", () => {
+    expect(updateAvailableVersion([n("a", 1), n("b", 2)])).toBeNull();
+    expect(updateAvailableVersion([])).toBeNull();
+  });
+
+  it("extracts the version from the update-available notification", () => {
+    expect(updateAvailableVersion([n("a", 1), upd("0.2.0")])).toBe("0.2.0");
+  });
+
+  it("picks the newest update-available version (list is newest-first)", () => {
+    const list = upsertNotification(
+      upsertNotification([], upd("0.2.0", 10)),
+      upd("0.3.0", 20),
+    );
+    expect(updateAvailableVersion(list)).toBe("0.3.0");
+  });
+
+  it("returns null for a bare prefix with no version", () => {
+    expect(
+      updateAvailableVersion([n(UPDATE_AVAILABLE_ID_PREFIX, 1)]),
+    ).toBeNull();
   });
 });

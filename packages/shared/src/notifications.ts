@@ -193,6 +193,30 @@ export function unreadCount(
 }
 
 /**
+ * Prefix of the "update available" notification id (`update-available:<version>`).
+ * Mirrors the server's update checker; the version suffix is the newest stable release.
+ */
+export const UPDATE_AVAILABLE_ID_PREFIX = "update-available:";
+
+/** GitHub releases page opened by the header Update button (mirrors the server's release URL). */
+export const ZASHIKI_RELEASES_URL =
+  "https://github.com/kounetsuman/zashiki/releases/latest";
+
+/**
+ * The newer version announced by the update checker (from the newest
+ * `update-available:<version>` notification), or null when no update is
+ * available. Drives whether the header Update button is shown.
+ */
+export function updateAvailableVersion(
+  list: readonly Notification[],
+): string | null {
+  const hit = list.find((x) => x.id.startsWith(UPDATE_AVAILABLE_ID_PREFIX));
+  if (hit === undefined) return null;
+  const version = hit.id.slice(UPDATE_AVAILABLE_ID_PREFIX.length);
+  return version.length > 0 ? version : null;
+}
+
+/**
  * Whether roots (the list of org root absolute paths) has changed since startup.
  * Compares order as well (reordering also affects org display order, and since
  * this is a startup snapshot it is not reflected immediately).
