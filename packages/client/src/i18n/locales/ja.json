@@ -153,6 +153,12 @@
       "elapsedTitle": "経過時間 — 今ターン / セッション累計",
       "fiveHourTitle": "5時間セッション使用率",
       "weekTitle": "週間使用率"
+    },
+    "account": {
+      "session": "現在のセッション",
+      "week": "今週",
+      "sessionTitle": "Claude Code 現在のセッション（5時間）使用率",
+      "weekTitle": "Claude Code 今週の使用率"
     }
   },
   "update": {

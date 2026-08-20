@@ -35,8 +35,10 @@ import {
   saveConversationTitles,
 } from "./lib/conversation-title.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
+import { pickAccountLimits } from "./session/status-footer.js";
 import type { TerminalSessionStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
+import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
 import { CockpitTerminalListView } from "./ui/CockpitTerminalListView.js";
 import { CrashReportModal } from "./ui/CrashReportModal.js";
@@ -191,6 +193,8 @@ export function App({
   const updateVersion = updateAvailableVersion(notifications);
   // Number of sessions that have hit the usage limit (input for the footer warning).
   const limitedCount = sessions.filter((s) => s.limited === true).length;
+  // Account-wide Claude Code usage for the global footer (null until a session reports limits).
+  const accountLimits = pickAccountLimits(sessions);
 
   const controlStatus = useSyncExternalStore(
     useCallback((cb: () => void) => control.onStatus(() => cb()), [control]),
@@ -598,6 +602,7 @@ export function App({
         />
       )}
       <footer className="status-bar">
+        <AccountUsageFooter limits={accountLimits} />
         {abnormal !== null && <span className="status-error">{abnormal}</span>}
         <LimitIndicator count={limitedCount} />
         <FooterViewTabs
