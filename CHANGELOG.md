@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A header update banner with a one-click link to the latest release, shown while the update checker reports a newer version — the notice is no longer panel-only (#78)
+
 ## [0.4.0] - 2026-08-19
 
 ### Added

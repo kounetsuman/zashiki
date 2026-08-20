@@ -1,11 +1,7 @@
 import { ZASHIKI_RELEASES_URL } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
-/**
- * Header banner offering to update when the server's update checker has
- * announced a newer release (shown only then). The link opens the GitHub
- * releases page; the packaged Tauri shell opens target=_blank in the browser.
- */
+/** Header banner linking to the latest release; renders only when an update is available. */
 export function UpdateBanner({ version }: { version: string | null }) {
   const { t } = useTranslation();
   if (version === null) return null;

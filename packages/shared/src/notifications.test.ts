@@ -263,4 +263,10 @@ describe("updateAvailableVersion", () => {
       updateAvailableVersion([n(UPDATE_AVAILABLE_ID_PREFIX, 1)]),
     ).toBeNull();
   });
+
+  it("parses the server's literal id wire format (drift guard vs crates/zashiki-server)", () => {
+    expect(updateAvailableVersion([n("update-available:0.2.0", 1)])).toBe(
+      "0.2.0",
+    );
+  });
 });

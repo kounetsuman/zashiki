@@ -192,21 +192,13 @@ export function unreadCount(
   return list.reduce((acc, x) => (seen.has(x.id) ? acc : acc + 1), 0);
 }
 
-/**
- * Prefix of the "update available" notification id (`update-available:<version>`).
- * Mirrors the server's update checker; the version suffix is the newest stable release.
- */
 export const UPDATE_AVAILABLE_ID_PREFIX = "update-available:";
 
-/** GitHub releases page opened by the header Update button (mirrors the server's release URL). */
+/** GitHub releases page the update banner links to. */
 export const ZASHIKI_RELEASES_URL =
   "https://github.com/kounetsuman/zashiki/releases/latest";
 
-/**
- * The newer version announced by the update checker (from the newest
- * `update-available:<version>` notification), or null when no update is
- * available. Drives whether the header Update button is shown.
- */
+/** Newest announced update version from the notifications, or null when none. */
 export function updateAvailableVersion(
   list: readonly Notification[],
 ): string | null {
