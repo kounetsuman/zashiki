@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-20
+
 ### Added
 
 - A header update banner with a one-click link to the latest release, shown while the update checker reports a newer version — the notice is no longer panel-only (#78)
@@ -75,7 +77,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/kounetsuman/zashiki/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kounetsuman/zashiki/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kounetsuman/zashiki/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/kounetsuman/zashiki/compare/v0.1.1...v0.2.0
