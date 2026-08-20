@@ -1,30 +1,25 @@
 import {
   type ClientMessage,
-  claudeSessionId,
   resolveOrgColor,
-  resumeCommand,
   type ServerMessage,
-  type SessionInfo,
   type UpdateCheckResultMessage,
   unreadCount,
   updateAvailableVersion,
 } from "@zashiki/shared";
 import {
-  type FocusEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { Trans, useTranslation } from "react-i18next";
+import { useTranslation } from "react-i18next";
 import type { CrashApi } from "./api/crash.js";
 import type { FilesApi } from "./api/files.js";
 import type { FsApi } from "./api/fs.js";
 import type { GitApi } from "./api/git.js";
 import type { ReposApi } from "./api/repos.js";
 import type { SearchApi } from "./api/search.js";
-import logoUrl from "./assets/logo.png";
 import { DebugPanel } from "./debug/DebugPanel.js";
 import {
   type ControlDebugSnapshot,
@@ -42,32 +37,17 @@ import {
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import type { TerminalSessionStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
-import {
-  activateTab,
-  activeSessionId,
-  activeTab,
-  closeTab,
-  EMPTY_TABS,
-  moveTab,
-  openTab,
-  pruneSessions,
-  tabKey,
-} from "./tabs/tab-model.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
 import { CrashReportModal } from "./ui/CrashReportModal.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
+import { ErrorDialog } from "./ui/ErrorDialog.js";
 import { ExplorerPanel } from "./ui/ExplorerPanel.js";
 import { FooterPanelTabs } from "./ui/FooterPanelTabs.js";
 import { GitPanel } from "./ui/GitPanel.js";
 import { HelpPanel } from "./ui/HelpPanel.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
+import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
 import { NotificationPanel } from "./ui/NotificationPanel.js";
-import {
-  loadSelectedPanel,
-  PANEL_DEFS,
-  type PanelId,
-  saveSelectedPanel,
-} from "./ui/panels.js";
 import { SearchPanel } from "./ui/SearchPanel.js";
 import { SessionListPanel } from "./ui/SessionListPanel.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
@@ -76,18 +56,17 @@ import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
 import { Toaster } from "./ui/Toaster.js";
 import { UpdateBanner } from "./ui/UpdateBanner.js";
+import { useAppKeyboardShortcuts } from "./ui/useAppKeyboardShortcuts.js";
+import { useAppTabs } from "./ui/useAppTabs.js";
+import { useClipboardCopy } from "./ui/useClipboardCopy.js";
 import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
+import { useCopyToast } from "./ui/useCopyToast.js";
+import { useCrashReport } from "./ui/useCrashReport.js";
+import { usePanelSelection } from "./ui/usePanelSelection.js";
+import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
+import { useViewer } from "./ui/useViewer.js";
 import { ViewerPanel } from "./ui/ViewerPanel.js";
-import {
-  bufferFailed,
-  bufferLoaded,
-  bufferTogglePreview,
-  closeBuffer,
-  openBuffer,
-  type ViewerBuffers,
-  viewerKey,
-} from "./viewer/viewer-model.js";
 import type { ControlStatus } from "./ws/control.js";
 
 type PanelStorage = Pick<Storage, "getItem" | "setItem">;
@@ -96,40 +75,11 @@ function defaultPanelStorage(): PanelStorage | null {
   return typeof localStorage === "undefined" ? null : localStorage;
 }
 
-/** Persistence key for seen notification ids (used to compute the unread badge). */
-const NOTIFICATIONS_SEEN_KEY = "zk.notifications.seen";
-
-/** Interval for re-reading the file open in the viewer (realtime reflection). */
-const FILE_POLL_INTERVAL_MS = 2000;
-
-/** Timeout for a file read (always settles the Promise even if it hangs). */
-const FILE_READ_TIMEOUT_MS = 8000;
-
-function readErrorMessage(e: unknown): string {
-  if (e instanceof DOMException && e.name === "AbortError") {
-    return i18n.t("viewer.readTimeout");
-  }
-  return e instanceof Error ? e.message : String(e);
-}
-
-function loadSeenIds(storage: PanelStorage | null): string[] {
-  if (storage === null) return [];
-  try {
-    const raw = storage.getItem(NOTIFICATIONS_SEEN_KEY);
-    const parsed: unknown = raw === null ? [] : JSON.parse(raw);
-    return Array.isArray(parsed)
-      ? parsed.filter((x): x is string => typeof x === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveSeenIds(
-  storage: PanelStorage | null,
-  ids: readonly string[],
-): void {
-  storage?.setItem(NOTIFICATIONS_SEEN_KEY, JSON.stringify(ids));
+/** Derives repoPath by subtracting the repo-relative relPath from a SearchFile's absolute path. */
+function repoPathOfSearchFile(file: { path: string; relPath: string }): string {
+  return file.path
+    .slice(0, file.path.length - file.relPath.length)
+    .replace(/\/+$/, "");
 }
 
 export interface AppControl {
@@ -178,98 +128,6 @@ export interface AppProps {
   debugInitial?: boolean;
 }
 
-/**
- * Error notification. Surfaced to the front rather than buried in the footer.
- * Non-modal (no overlay; does not block interaction behind it) and stays until
- * dismissed via the close button.
- */
-function ErrorDialog({
-  message,
-  onDismiss,
-}: {
-  message: string;
-  onDismiss: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      className="error-dialog"
-      role="alertdialog"
-      aria-label={t("errorDialog.label")}
-    >
-      <div className="error-dialog-head">
-        <span className="error-dialog-title" aria-hidden="true">
-          {t("errorDialog.title")}
-        </span>
-        <button
-          type="button"
-          className="error-dialog-close"
-          aria-label={t("common.close")}
-          onClick={onDismiss}
-        >
-          <span className="material-symbols-outlined" aria-hidden="true">
-            close
-          </span>
-        </button>
-      </div>
-      <p className="error-dialog-body">{message}</p>
-    </div>
-  );
-}
-
-/** Empty state shown in the main area when there are no sessions. */
-function EmptyMainArea() {
-  const { t } = useTranslation();
-  return (
-    <div className="empty-main-area">
-      <div className="empty-main-area-inner">
-        <img
-          className="empty-main-area-mark"
-          src={logoUrl}
-          alt=""
-          aria-hidden="true"
-        />
-        <p className="empty-main-area-title">{t("emptyMainArea.title")}</p>
-        <p className="empty-main-area-hint">
-          <Trans
-            i18nKey="emptyMainArea.hint"
-            components={{
-              plus: <span className="empty-key" />,
-              br: <br />,
-            }}
-          />
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/** Derives repoPath by subtracting the repo-relative relPath from a SearchFile's absolute path. */
-function repoPathOfSearchFile(file: { path: string; relPath: string }): string {
-  return file.path
-    .slice(0, file.path.length - file.relPath.length)
-    .replace(/\/+$/, "");
-}
-
-/** Empty state shown when there are sessions but no tab is open. */
-function NoTabOpen() {
-  const { t } = useTranslation();
-  return (
-    <div className="empty-main-area">
-      <div className="empty-main-area-inner">
-        <img
-          className="empty-main-area-mark"
-          src={logoUrl}
-          alt=""
-          aria-hidden="true"
-        />
-        <p className="empty-main-area-title">{t("noTabOpen.title")}</p>
-        <p className="empty-main-area-hint">{t("noTabOpen.hint")}</p>
-      </div>
-    </div>
-  );
-}
-
 export function App({
   control,
   session,
@@ -287,13 +145,10 @@ export function App({
   const terminalFont = useTerminalFontSize();
   const clipboardEdit = useClipboardEditEnabled();
   const [addOrgOpen, setAddOrgOpen] = useState(false);
-  const [crashLog, setCrashLog] = useState<string | null>(null);
+  const { crashLog, dismissCrash } = useCrashReport(crashApi);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
   const [panelStorage] = useState(() =>
     panelStorageProp === undefined ? defaultPanelStorage() : panelStorageProp,
-  );
-  const [selectedPanel, setSelectedPanel] = useState(() =>
-    loadSelectedPanel(panelStorage),
   );
   const [conversationTitles, setConversationTitles] = useState(() =>
     loadConversationTitles(panelStorage),
@@ -306,94 +161,10 @@ export function App({
         typeof window === "undefined" ? "" : window.location.search,
       ),
   );
+  const toggleDebug = useCallback(() => setDebug((v) => !v), []);
 
-  // Identifier of the active (focus-holding) panel. Follows the focused element up to
-  // the nearest data-panel and dims inactive panels.
-  // Initially treats the main area as active (avoids dimming every panel).
-  const [activePanel, setActivePanel] = useState("main");
-  const handlePanelFocus = useCallback((e: FocusEvent<HTMLElement>): void => {
-    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-panel]");
-    const id = el?.dataset.panel;
-    if (id !== undefined && id !== "") setActivePanel(id);
-  }, []);
-
-  // Switch the displayed panel by single selection via the footer icons. Persisted, and
-  // activePanel follows the selected panel so the sole displayed panel does not dim even
-  // on keyboard switches that do not move focus (consistent with the dimming behavior).
-  const handleSelectPanel = useCallback(
-    (id: PanelId): void => {
-      // Reselecting the displayed panel (re-clicking the icon / re-pressing the same key) closes it.
-      const next = selectedPanel === id ? null : id;
-      setSelectedPanel(next);
-      saveSelectedPanel(panelStorage, next);
-      // When closed, treat the now full-height SESSION LIST as active (do not dim it).
-      setActivePanel(next ?? "sessions");
-    },
-    [panelStorage, selectedPanel],
-  );
-
-  useEffect(() => {
-    if (crashApi === undefined) return;
-    let cancelled = false;
-    crashApi.last().then(
-      (log) => {
-        if (!cancelled && log !== null) setCrashLog(log);
-      },
-      () => undefined,
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, [crashApi]);
-
-  // Global switch shortcuts (Ctrl+Alt+<key>). They do not collide with the panel-local
-  // Ctrl-N/X (SessionListPanel) because the modifier keys differ.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (!e.ctrlKey || !e.altKey || e.metaKey) return;
-      // Pass through while a text input (search box, etc.) is focused (e.g. do not close
-      // help itself with Ctrl+Alt+H while searching within it). xterm is a textarea, so
-      // panel switching while the terminal is focused still works as before.
-      if (document.activeElement instanceof HTMLInputElement) return;
-      const def = PANEL_DEFS.find((d) => d.shortcutKey === e.key.toLowerCase());
-      if (def === undefined) return;
-      e.preventDefault();
-      handleSelectPanel(def.id);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleSelectPanel]);
-
-  // Toggle debug mode with Ctrl+Alt+D. Its key differs from the panel shortcuts
-  // Ctrl+Alt+E/F/G/S, so it does not collide (PANEL_DEFS has no d).
-  // Following "while xterm is focused, all keys go to the terminal," pass through while a textarea is being typed in.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const active = document.activeElement;
-      if (active instanceof HTMLTextAreaElement) return;
-      if (
-        e.ctrlKey &&
-        e.altKey &&
-        !e.metaKey &&
-        (e.key === "d" || e.key === "D")
-      ) {
-        e.preventDefault();
-        setDebug((v) => !v);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
-  // Suppress the WebView's (Tauri WKWebView) native right-click menu.
-  // Our custom menus (e.g. right-click on SESSION LIST) are unaffected since they are
-  // React-rendered, and the terminal's right-click word selection remains because it
-  // works via mouse events.
-  useEffect(() => {
-    const onContextMenu = (e: MouseEvent): void => e.preventDefault();
-    window.addEventListener("contextmenu", onContextMenu);
-    return () => window.removeEventListener("contextmenu", onContextMenu);
-  }, []);
+  const { selectedPanel, activePanel, handlePanelFocus, handleSelectPanel } =
+    usePanelSelection(panelStorage);
 
   // Interpreting control messages and their side effects (notifications, pty reconnect)
   // is separated into a store outside React; App only subscribes (useSyncExternalStore)
@@ -411,26 +182,16 @@ export function App({
     focusNonce,
     resizeNonce,
   } = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  // Set of seen ids for the unread badge (persisted in localStorage). Notifications are marked read individually by double-click.
-  const [seenIds, setSeenIds] = useState(() => loadSeenIds(panelStorage));
+
+  const { seenIds, markRead } = useSeenNotifications(
+    notifications,
+    panelStorage,
+  );
   const unread = unreadCount(notifications, seenIds);
   const updateVersion = updateAvailableVersion(notifications);
   // Number of sessions that have hit the usage limit (input for the footer warning).
   const limitedCount = sessions.filter((s) => s.limited === true).length;
-  const markRead = useCallback((id: string) => {
-    setSeenIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-  }, []);
-  // Drop seen ids for notifications that are gone (keeps localStorage from growing without bound).
-  useEffect(() => {
-    const live = new Set(notifications.map((n) => n.id));
-    setSeenIds((prev) => {
-      const next = prev.filter((id) => live.has(id));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [notifications]);
-  useEffect(() => {
-    saveSeenIds(panelStorage, seenIds);
-  }, [seenIds, panelStorage]);
+
   const controlStatus = useSyncExternalStore(
     useCallback((cb: () => void) => control.onStatus(() => cb()), [control]),
     () => control.getStatus(),
@@ -439,11 +200,17 @@ export function App({
     useCallback((cb: () => void) => session.onStatus(() => cb()), [session]),
     () => session.getStatus(),
   );
-  // The unified tab row of the main area. The single source of truth for what is open.
-  // Copy the store's selectedWindowId (open request) one-way into openTab, and derive the
-  // main-area display and terminal attach from the active session tab (kept one-way to avoid a loop).
-  const [tabsState, setTabsState] = useState(EMPTY_TABS);
-  const activeSess = activeSessionId(tabsState);
+
+  const {
+    tabsState,
+    activeSess,
+    activeViewerKey,
+    activateTabByKey,
+    closeTab,
+    reorderTabByKey,
+    openViewerTab,
+  } = useAppTabs(store, sessions, selectedWindowId);
+
   // Footer inputs for the active session tab (undefined for viewer/empty; usage null before a transcript).
   const activeSession =
     activeSess !== null
@@ -455,167 +222,48 @@ export function App({
       ? resolveOrgColor(activeSession.org, orgColors)
       : undefined;
 
-  // Viewer. One viewer tab = one buffer (key matches tab.id).
-  const [viewerBuffers, setViewerBuffers] = useState<ViewerBuffers>({});
-  const viewerBuffersRef = useRef(viewerBuffers);
-  viewerBuffersRef.current = viewerBuffers;
-  const active = activeTab(tabsState);
-  const activeViewerKey = active?.kind === "viewer" ? active.id : null;
+  const {
+    buffers: viewerBuffers,
+    ensureBuffer,
+    closeBuffer: closeViewerBuffer,
+    togglePreview: toggleViewerPreview,
+    pathOf: viewerPathOf,
+  } = useViewer(filesApi, activeViewerKey);
   const activeBuffer =
     activeViewerKey !== null ? (viewerBuffers[activeViewerKey] ?? null) : null;
 
-  // Opener: when the store requests a selection (new session, notification, list double-click),
-  // open that session's tab and make it active. The sole entry point for opening a tab.
-  useEffect(() => {
-    if (selectedWindowId === null) return;
-    setTabsState((prev) =>
-      openTab(prev, { kind: "session", id: selectedWindowId }),
-    );
-  }, [selectedWindowId]);
-
-  // Align: match the terminal attach (selectWindow -> session.select) and the store's
-  // selection request to the active tab. This is also the path that re-attaches the
-  // terminal when active moves to a neighbor on close/prune. selectedWindowId is read via
-  // a ref so it is not a dependency, breaking the round-trip with the Opener.
-  const selectedRef = useRef(selectedWindowId);
-  selectedRef.current = selectedWindowId;
-  useEffect(() => {
-    if (activeSess !== null) {
-      if (selectedRef.current !== activeSess) store.selectWindow(activeSess);
-    } else if (selectedRef.current !== null) {
-      store.deselect();
-    }
-  }, [activeSess, store]);
-
-  // Prune: when a session disappears via another client/CLI, thin out its tab too (if the
-  // active one is gone, move to the nearest surviving tab in original order). suspend/resume
-  // only looks at sessions.length.
-  useEffect(() => {
-    setTabsState((prev) =>
-      pruneSessions(
-        prev,
-        sessions.map((s) => s.windowId),
-      ),
-    );
-  }, [sessions]);
-
-  // Bootstrap: only on the first pass after startup, if the tabs are empty, open one
-  // tmux active window (suppresses empty-state flicker). Once only (does not revive on its
-  // own after the user closes all tabs).
-  const bootstrappedRef = useRef(false);
-  useEffect(() => {
-    if (bootstrappedRef.current) return;
-    if (tabsState.tabs.length > 0) {
-      bootstrappedRef.current = true;
-      return;
-    }
-    const w = sessions.find((s) => s.active) ?? sessions[0];
-    if (w !== undefined) {
-      bootstrappedRef.current = true;
-      store.selectWindow(w.windowId);
-    }
-  }, [sessions, tabsState.tabs.length, store]);
-
-  // Tab activation is funneled from a click (list/tab) into store.selectWindow and
-  // reflected into the tab via the Opener. The tab close button only removes the tab (does not kill the session).
-  const activateTabByKey = useCallback(
-    (key: string): void => {
-      const tab = tabsState.tabs.find((t) => tabKey(t) === key);
-      if (tab === undefined) return;
-      if (tab.kind === "session") store.selectWindow(tab.id);
-      else setTabsState((prev) => activateTab(prev, key));
-    },
-    [tabsState.tabs, store],
-  );
-  const doCloseTab = useCallback((key: string): void => {
-    setTabsState((prev) => closeTab(prev, key));
-    setViewerBuffers((prev) => closeBuffer(prev, key));
-  }, []);
-  const reorderTabByKey = useCallback(
-    (fromKey: string, toKey: string): void => {
-      setTabsState((prev) => moveTab(prev, fromKey, toKey));
-    },
-    [],
-  );
-  // Tab close: no unsaved-changes prompt since it is read-only (both session and viewer close immediately).
-  const closeTabByKey = doCloseTab;
-
-  // Generation of each file read (per key). Even if responses are reordered, only the
-  // latest generation's read is adopted so an older read does not overwrite newer content (ordering guard).
-  const readSeqRef = useRef<Record<string, number>>({});
-
-  // The common read path for open / refresh / polling. Always applies a timeout to read so
-  // the Promise settles even if it hangs (avoids getting stuck on "Loading…").
-  // silent=true (polling) swallows failures; false (open/refresh) only shows an error when
-  // not ready (a transient failure does not clear the currently displayed content).
-  const loadFile = useCallback(
-    (key: string, repoPath: string, relPath: string, silent: boolean) => {
-      const seq = (readSeqRef.current[key] ?? 0) + 1;
-      readSeqRef.current[key] = seq;
-      const ctrl = new AbortController();
-      const timer = window.setTimeout(() => ctrl.abort(), FILE_READ_TIMEOUT_MS);
-      return filesApi
-        .read(repoPath, relPath, ctrl.signal)
-        .then(
-          (content) =>
-            setViewerBuffers((cur) =>
-              readSeqRef.current[key] === seq
-                ? bufferLoaded(cur, key, content)
-                : cur,
-            ),
-          (e: unknown) =>
-            setViewerBuffers((cur) => {
-              if (readSeqRef.current[key] !== seq) return cur;
-              if (silent || cur[key]?.status === "ready") return cur;
-              return bufferFailed(cur, key, readErrorMessage(e));
-            }),
-        )
-        .finally(() => window.clearTimeout(timer));
-    },
-    [filesApi],
-  );
-
-  // Open a file as a viewer tab (from explorer/search). Fires a read if not yet loaded.
+  // Open a file as a viewer tab (from explorer/search). ensureBuffer fires a read if not yet loaded.
   const openViewer = useCallback(
     (repoPath: string, relPath: string): void => {
-      const key = viewerKey(repoPath, relPath);
-      setTabsState((prev) => openTab(prev, { kind: "viewer", id: key }));
-      let shouldLoad = false;
-      setViewerBuffers((prev) => {
-        if (prev[key] !== undefined) return prev;
-        shouldLoad = true;
-        return openBuffer(prev, repoPath, relPath);
-      });
-      if (shouldLoad) void loadFile(key, repoPath, relPath, false);
+      openViewerTab(ensureBuffer(repoPath, relPath));
     },
-    [loadFile],
+    [openViewerTab, ensureBuffer],
+  );
+  // Tab close removes both the tab and its viewer buffer immediately (read-only, no unsaved-changes prompt).
+  const closeTabByKey = useCallback(
+    (key: string): void => {
+      closeTab(key);
+      closeViewerBuffer(key);
+    },
+    [closeTab, closeViewerBuffer],
   );
 
-  const togglePreview = useCallback((key: string): void => {
-    setViewerBuffers((prev) => bufferTogglePreview(prev, key));
-  }, []);
+  const { copyToast, flashCopyToast } = useCopyToast();
+  const { copyResume, copyResumeByWindowId, copySessionIdByWindowId } =
+    useClipboardCopy(sessions, flashCopyToast);
 
-  // Realtime reflection: re-read the active file at a fixed interval. Since edits happen on
-  // the claude code side, external changes are picked up by polling and fed into the display
-  // (if the content is unchanged, bufferLoaded returns the same reference and does not re-render).
-  // inflight is kept local to this effect and discarded on key switch or unmount (not stuck
-  // globally). Failures are swallowed.
-  useEffect(() => {
-    if (activeViewerKey === null) return;
-    const key = activeViewerKey;
-    let inflight = false;
-    const tick = (): void => {
-      if (inflight) return;
-      const buf = viewerBuffersRef.current[key];
-      if (buf === undefined) return;
-      inflight = true;
-      void loadFile(key, buf.repoPath, buf.relPath, true).finally(() => {
-        inflight = false;
-      });
-    };
-    const id = window.setInterval(tick, FILE_POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
-  }, [activeViewerKey, loadFile]);
+  // Copy the absolute path of the file open in the viewer (the copy button at the left of the header).
+  const copyViewerPath = useCallback(
+    (key: string): void => {
+      const path = viewerPathOf(key);
+      if (path === null) return;
+      void navigator.clipboard?.writeText(path).then(
+        () => flashCopyToast(t("toast.pathCopied")),
+        () => undefined,
+      );
+    },
+    [viewerPathOf, flashCopyToast, t],
+  );
 
   // Commit the conversation header / tab title edit and persist it keyed by windowId (the owned-mode
   // session UUID, preserved across resume/restore). name (repository) is stored alongside for the
@@ -641,122 +289,17 @@ export function App({
     [store, control],
   );
 
-  // A transient toast shown only right after copying to the clipboard. null hides it.
-  const [copyToast, setCopyToast] = useState<string | null>(null);
-  const copyToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (copyToastTimer.current !== null) clearTimeout(copyToastTimer.current);
-    },
-    [],
-  );
-  const flashCopyToast = useCallback((message: string): void => {
-    setCopyToast(message);
-    if (copyToastTimer.current !== null) clearTimeout(copyToastTimer.current);
-    copyToastTimer.current = setTimeout(() => setCopyToast(null), 1800);
-  }, []);
-
-  // Copy the target session's resume command (claude --resume <sid>).
-  // Does nothing for a session without a sid (claude not started / undetectable) (the caller disables the menu).
-  const copyResume = useCallback(
-    (s: SessionInfo | null | undefined): void => {
-      const cmd = s == null ? null : resumeCommand(s);
-      if (cmd === null) return;
-      void navigator.clipboard?.writeText(cmd).then(
-        () => flashCopyToast(t("toast.resumeCopied")),
-        () => undefined,
-      );
-    },
-    [flashCopyToast, t],
-  );
-
-  // Copy the absolute path of the file open in the viewer (the copy button at the left of the header).
-  const copyViewerPath = useCallback(
-    (key: string): void => {
-      const buf = viewerBuffersRef.current[key];
-      if (buf === undefined) return;
-      void navigator.clipboard
-        ?.writeText(`${buf.repoPath}/${buf.relPath}`)
-        .then(
-          () => flashCopyToast(t("toast.pathCopied")),
-          () => undefined,
-        );
-    },
-    [flashCopyToast, t],
-  );
-
-  const copyResumeByWindowId = useCallback(
-    (windowId: string): void => {
-      copyResume(sessions.find((s) => s.windowId === windowId));
-    },
-    [copyResume, sessions],
-  );
-
-  // Copy the target session's Claude Code session id (sid) to the clipboard.
-  // Does nothing for a session without a sid (claude not started / undetectable) (the caller disables the menu).
-  const copySessionIdByWindowId = useCallback(
-    (windowId: string): void => {
-      const s = sessions.find((x) => x.windowId === windowId);
-      const sid = s == null ? null : claudeSessionId(s);
-      if (sid === null) return;
-      void navigator.clipboard?.writeText(sid).then(
-        () => flashCopyToast(t("toast.sessionIdCopied")),
-        () => undefined,
-      );
-    },
-    [flashCopyToast, sessions, t],
-  );
-
-  // Always capture Cmd+R for copying the resume command (suppressing reload). meta keys
-  // pass through to the browser even while the terminal is focused, so it works (same style
-  // as Cmd+N/W). Reload is stopped even when there is no target / no sid to copy (prevents an accidental page reload).
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== "r" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
-        return;
-      }
-      e.preventDefault();
-      const target = sessions.find((s) => s.windowId === activeSess) ?? null;
-      copyResume(target);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sessions, activeSess, copyResume]);
-
-  // With Cmd+N, create a new session in the org of the highlighted session. meta keys are
-  // not sent to the pty by xterm but pass through to the browser, so it works even while
-  // the terminal is focused (complements Ctrl-N, which only works when a panel is focused).
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== "n" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
-        return;
-      }
-      const org =
-        sessions.find((s) => s.windowId === activeSess)?.org ?? orgs[0];
-      if (org === undefined) return;
-      e.preventDefault();
-      newSession(org);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sessions, orgs, activeSess, newSession]);
-
-  // Close the active tab with Cmd+W (same closeTabByKey path as the tab close button; only removes the
-  // tab without killing the session). Like Cmd+N, meta keys pass through to the browser even
-  // while the terminal is focused, so it works.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key !== "w" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
-        return;
-      }
-      const key = tabsState.activeKey;
-      if (key === null) return;
-      e.preventDefault();
-      closeTabByKey(key);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [tabsState.activeKey, closeTabByKey]);
+  useAppKeyboardShortcuts({
+    sessions,
+    orgs,
+    activeSess,
+    activeKey: tabsState.activeKey,
+    handleSelectPanel,
+    toggleDebug,
+    newSession,
+    copyResume,
+    closeTabByKey,
+  });
 
   // When all sessions are removed, release the terminal and stop work regeneration via
   // reconnect. Suspend only on the transition to 0 after having had at least one session
@@ -932,7 +475,7 @@ export function App({
               <ViewerPanel
                 key={activeViewerKey}
                 buffer={activeBuffer}
-                onTogglePreview={() => togglePreview(activeViewerKey)}
+                onTogglePreview={() => toggleViewerPreview(activeViewerKey)}
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
                 inactive={activePanel !== "main"}
               />
@@ -1035,13 +578,7 @@ export function App({
         />
       )}
       {crashLog !== null && (
-        <CrashReportModal
-          log={crashLog}
-          onClose={() => {
-            setCrashLog(null);
-            void crashApi?.ack();
-          }}
-        />
+        <CrashReportModal log={crashLog} onClose={dismissCrash} />
       )}
       <Toaster notifications={notifications} />
       {copyToast !== null && (
