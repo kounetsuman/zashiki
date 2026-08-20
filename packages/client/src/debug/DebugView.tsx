@@ -1,7 +1,7 @@
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { TerminalSessionStatus } from "../session/terminal-session.js";
+import type { TermAttachStatus } from "../session/terminal-session.js";
 import type { ControlStatus } from "../ws/control.js";
 import {
   type ControlDebugSnapshot,
@@ -31,7 +31,7 @@ export interface DebugControl {
 
 export interface DebugSession {
   debugSnapshot(): TermDebugSnapshot;
-  onStatus(fn: (s: TerminalSessionStatus) => void): () => void;
+  onStatus(fn: (s: TermAttachStatus) => void): () => void;
 }
 
 export interface DebugViewProps {

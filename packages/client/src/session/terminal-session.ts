@@ -4,7 +4,7 @@ import { reconnectDelayMs } from "../lib/backoff.js";
 import type { ControlLike } from "../ws/control.js";
 import type { TermSocketHandle, TermSocketHandlers } from "../ws/term.js";
 
-export type TerminalSessionStatus =
+export type TermAttachStatus =
   | "idle"
   | "waiting-control"
   | "opening"
@@ -49,7 +49,7 @@ const MAX_SAME_TERM_REATTACHES = 4;
 export class TerminalSession {
   private readonly options: TerminalSessionOptions;
   private readonly offControlStatus: () => void;
-  private status: TerminalSessionStatus = "idle";
+  private status: TermAttachStatus = "idle";
   private cols = 80;
   private rows = 24;
   /** The cols/rows sent in the most recent term.open. Used to decide whether resize must be re-sent on attach. */
@@ -65,9 +65,7 @@ export class TerminalSession {
   /** State where no terminal is attached because there are 0 sessions (suppresses respawn). */
   private suspended = false;
   private readonly dataListeners = new Set<(data: string) => void>();
-  private readonly statusListeners = new Set<
-    (s: TerminalSessionStatus) => void
-  >();
+  private readonly statusListeners = new Set<(s: TermAttachStatus) => void>();
 
   constructor(options: TerminalSessionOptions) {
     this.options = options;
@@ -82,7 +80,7 @@ export class TerminalSession {
     });
   }
 
-  getStatus(): TerminalSessionStatus {
+  getStatus(): TermAttachStatus {
     return this.status;
   }
 
@@ -92,7 +90,7 @@ export class TerminalSession {
 
   /** Diagnostic snapshot for debug mode. */
   debugSnapshot(): {
-    status: TerminalSessionStatus;
+    status: TermAttachStatus;
     attempt: number;
     pendingAck: number;
     cockpitTerminalId: string | null;
@@ -114,7 +112,7 @@ export class TerminalSession {
     return () => this.dataListeners.delete(fn);
   }
 
-  onStatus(fn: (s: TerminalSessionStatus) => void): () => void {
+  onStatus(fn: (s: TermAttachStatus) => void): () => void {
     this.statusListeners.add(fn);
     return () => this.statusListeners.delete(fn);
   }
@@ -230,7 +228,7 @@ export class TerminalSession {
     this.setStatus("disposed");
   }
 
-  private setStatus(s: TerminalSessionStatus): void {
+  private setStatus(s: TermAttachStatus): void {
     if (this.status === s) return;
     this.status = s;
     for (const fn of this.statusListeners) fn(s);

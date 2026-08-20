@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import type { CockpitTerminalInfo, ServerMessage } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TerminalSessionStatus } from "../session/terminal-session.js";
+import type { TermAttachStatus } from "../session/terminal-session.js";
 import type { ControlStatus } from "../ws/control.js";
 import { DebugView } from "./DebugView.js";
 import type { ControlDebugSnapshot, TermDebugSnapshot } from "./debug-model.js";
@@ -54,7 +54,7 @@ function fakeSession(initial: TermDebugSnapshot) {
   return {
     session: {
       debugSnapshot: () => snap,
-      onStatus: (_fn: (s: TerminalSessionStatus) => void) => () => undefined,
+      onStatus: (_fn: (s: TermAttachStatus) => void) => () => undefined,
     },
   };
 }

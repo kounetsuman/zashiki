@@ -36,7 +36,7 @@ import {
 } from "./lib/conversation-title.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { pickAccountLimits } from "./session/status-footer.js";
-import type { TerminalSessionStatus } from "./session/terminal-session.js";
+import type { TermAttachStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
 import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
@@ -95,8 +95,8 @@ export interface AppControl {
 }
 
 export interface AppSession extends TerminalViewSession {
-  getStatus(): TerminalSessionStatus;
-  onStatus(fn: (s: TerminalSessionStatus) => void): () => void;
+  getStatus(): TermAttachStatus;
+  onStatus(fn: (s: TermAttachStatus) => void): () => void;
   /** Diagnostic display for debug mode. */
   debugSnapshot(): TermDebugSnapshot;
   select(cockpitTerminalId: string): void;
