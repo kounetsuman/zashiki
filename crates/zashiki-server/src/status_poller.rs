@@ -3,156 +3,29 @@
 //! changed. The infra (tmux capture / ps / jsonl reads) is injected via `PollerPorts`, and this module holds only
 //! the logic (timer driving and WS broadcast wiring come later).
 
-use std::collections::{BTreeMap, HashMap, HashSet};
-use std::future::Future;
+use std::collections::HashMap;
 
-use zashiki_core::process_tree::{build_process_maps, find_sid_in_tree, parse_ps_snapshot};
-use zashiki_core::repos::{org_names, org_of_cwd};
+use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
+use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
     apply_startup_grace, count_running_subagents, detect_state, fallback_state, is_limit_reached,
-    startup_grace_polls, subagent_fresh_within_sec, DetectStateOptions, CockpitTerminalState,
-    DEFAULT_LIMIT_MARKER,
+    startup_grace_polls, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
-use crate::jsonl::{first_user_title, last_user_or_assistant_event, SessionUsageData};
+use crate::jsonl::{first_user_title, last_user_or_assistant_event};
 use crate::protocol::{CockpitTerminalInfo, SessionUsage};
 use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
 
 const TITLE_MAX_CHARS: usize = 30;
 
-/// Pane material for a work window (material for the poller's decisions).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CockpitTerminalPane {
-    pub pane_id: String,
-    pub active: bool,
-    pub pid: i64,
-    pub left: i64,
-    pub in_mode: bool,
-    pub current_path: String,
-}
+pub use crate::poller_types::{
+    CockpitTerminal, CockpitTerminalPane, PollConfig, PollerPorts, Slices, StateSnapshot,
+};
 
-/// A work window (in owned mode, 1 session = 1 window and `cockpit_terminal_id` is the owned PTY's session id).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CockpitTerminal {
-    pub cockpit_terminal_id: String,
-    pub name: String,
-    pub active: bool,
-    pub panes: Vec<CockpitTerminalPane>,
-}
-
-/// The head/tail slices of jsonl plus the elapsed mtime seconds of the tail file (read by the infra).
-pub struct Slices {
-    pub head: String,
-    pub tail: String,
-    pub mtime_age_sec: f64,
-}
-
-/// The infra boundary the poller depends on (onion port). Implementations are the real-I/O adapter and test stubs.
-/// It requires `Send` on the returned futures so tasks can be spawned onto a timer-driven task (the impl side can
-/// still satisfy this as a plain `async fn`; RPITIT).
-pub trait PollerPorts {
-    fn list_work_windows(&self) -> impl Future<Output = Vec<CockpitTerminal>> + Send;
-    /// The visible screen of the capture target pane (pane_id for tmux). Empty string on failure.
-    fn capture_pane(&self, target: &str) -> impl Future<Output = String> + Send;
-    fn ps_snapshot(&self) -> impl Future<Output = String> + Send;
-    /// The head/tail slices of jsonl (None if the sid is unresolved or unread).
-    fn read_slices(&self, cwd: &str, sid: &str) -> impl Future<Output = Option<Slices>> + Send;
-    /// The elapsed mtime seconds of each subagents/*.jsonl file (material for the count).
-    fn subagent_ages(&self, cwd: &str, sid: &str) -> impl Future<Output = Vec<f64>> + Send;
-    /// Raw `lsof -F pfn -a -d 1` output for resident background-shell detection (parsed by `crate::shells`).
-    fn lsof_fd_outputs(&self) -> impl Future<Output = String> + Send;
-    /// The set of `toolUseResult.backgroundTaskId` in the transcript (separates bg shells from fg).
-    fn background_task_ids(&self, cwd: &str, sid: &str)
-        -> impl Future<Output = HashSet<String>> + Send;
-    /// Token/timing rollup for the status footer (None when there is no readable transcript).
-    /// Defaulted to None so stubs that do not exercise the footer need not implement it.
-    fn session_usage(
-        &self,
-        _cwd: &str,
-        _sid: &str,
-    ) -> impl Future<Output = Option<SessionUsageData>> + Send {
-        async { None }
-    }
-}
-
-/// Evaluation configuration (reposRoots is fixed at startup; colors can be read each time).
-pub struct PollConfig {
-    pub repos_roots: Vec<String>,
-    pub org_colors: BTreeMap<String, String>,
-    pub poll_sec: f64,
-    pub run_marker: Option<String>,
-    pub bg_agent_marker: Option<String>,
-    /// Text marker for the usage-limit banner (ZK_LIMIT_MARKER; empty/unset falls back to the default).
-    pub limit_marker: Option<String>,
-}
-
-/// The result of one evaluation (the shape distributed via state.sync; same shape as protocol's StateSync).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StateSnapshot {
-    pub sessions: Vec<CockpitTerminalInfo>,
-    pub orgs: Vec<String>,
-    pub org_colors: BTreeMap<String, String>,
-}
-
-/// The wire CockpitTerminalState string.
-fn state_wire(state: CockpitTerminalState) -> &'static str {
-    match state {
-        CockpitTerminalState::WaitingInput => "waiting_input",
-        CockpitTerminalState::Running => "running",
-        CockpitTerminalState::RunningBgAgent => "running_bg_agent",
-        CockpitTerminalState::Idle => "idle",
-        CockpitTerminalState::NoClaude => "no_claude",
-        CockpitTerminalState::Starting => "starting",
-        CockpitTerminalState::Unknown => "unknown",
-    }
-}
-
-/// Resolves the limit marker (empty/unset falls back to the default; same policy as detect_state's resolve).
-fn resolve_limit_marker(config: &PollConfig) -> &str {
-    match config.limit_marker.as_deref() {
-        Some(m) if !m.is_empty() => m,
-        _ => DEFAULT_LIMIT_MARKER,
-    }
-}
-
-/// The last segment of cwd (the repo name).
-fn last_path_segment(path: &str) -> &str {
-    path.split('/').rfind(|s| !s.is_empty()).unwrap_or(path)
-}
-
-/// Determines the capture target pane and sid. The first pane whose process tree contains claude(sid),
-/// or the leftmost pane (smallest left) if none. None if there are no panes.
-struct Picked {
-    pane_id: String,
-    cwd: String,
-    sid: Option<String>,
-    /// The root pid of the picked pane. Used to detect window rebuilds (pid change) from restore/kill.
-    pid: i64,
-}
-
-fn pick_pane(win: &CockpitTerminal, maps: &zashiki_core::process_tree::ProcessMaps) -> Option<Picked> {
-    let mut leftmost: Option<&CockpitTerminalPane> = None;
-    for pane in &win.panes {
-        if let Some(sid) = find_sid_in_tree(pane.pid, maps) {
-            return Some(Picked {
-                pane_id: pane.pane_id.clone(),
-                cwd: pane.current_path.clone(),
-                sid: Some(sid),
-                pid: pane.pid,
-            });
-        }
-        match leftmost {
-            Some(l) if pane.left >= l.left => {}
-            _ => leftmost = Some(pane),
-        }
-    }
-    leftmost.map(|p| Picked {
-        pane_id: p.pane_id.clone(),
-        cwd: p.current_path.clone(),
-        sid: None,
-        pid: p.pid,
-    })
-}
+use crate::poller_eval_helpers::{
+    build_orgs, is_pane_in_mode, last_path_segment, pick_pane, resolve_limit_marker, roots_ref,
+    state_wire,
+};
 
 /// The server-side state poller (the core evaluation logic). It holds the previous state for pane_in_mode skips
 /// and the title cache, keeping them across `evaluate` calls.
@@ -381,38 +254,10 @@ impl StatusPoller {
     }
 }
 
-/// Whether the picked pane is in_mode such as copy-mode (avoided because the capture becomes history and misjudges).
-fn is_pane_in_mode(win: &CockpitTerminal, pane_id: &str) -> bool {
-    win.panes
-        .iter()
-        .find(|p| p.pane_id == pane_id)
-        .is_some_and(|p| p.in_mode)
-}
-
-fn roots_ref(roots: &[String]) -> Vec<&str> {
-    roots.iter().map(String::as_str).collect()
-}
-
-/// All repos.conf orgs plus detected orgs, deduplicated in display order (orgs with 0 sessions are not dropped).
-fn build_orgs(repos_roots: &[String], sessions: &[CockpitTerminalInfo]) -> Vec<String> {
-    let roots = roots_ref(repos_roots);
-    let mut orgs = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for org in org_names(&roots)
-        .into_iter()
-        .map(str::to_string)
-        .chain(sessions.iter().map(|s| s.org.clone()))
-    {
-        if seen.insert(org.clone()) {
-            orgs.push(org);
-        }
-    }
-    orgs
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::{BTreeMap, HashSet};
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 
@@ -854,45 +699,6 @@ mod tests {
         let (snap, _) = poller.evaluate(&ports, &cfg).await;
         // repos.conf order (charlie, whiskey). The session's charlie is not added again.
         assert_eq!(snap.orgs, vec!["charlie".to_string(), "whiskey".to_string()]);
-    }
-
-    #[test]
-    fn pick_pane_prefers_pane_with_claude_over_leftmost() {
-        let maps = build_process_maps(&parse_ps_snapshot(&format!(
-            "  100    1 -zsh\n  300  200 claude --session-id {SID}\n"
-        )));
-        let win = window(
-            "@1",
-            "work",
-            vec![pane("%left", 100, 0, "/a"), pane("%claude", 200, 5, "/b")],
-        );
-        let picked = pick_pane(&win, &maps).unwrap();
-        assert_eq!(picked.pane_id, "%claude");
-        assert_eq!(picked.sid.as_deref(), Some(SID));
-    }
-
-    #[test]
-    fn pick_pane_falls_back_to_leftmost_without_claude() {
-        let maps = build_process_maps(&parse_ps_snapshot("  100    1 -zsh\n"));
-        let win = window(
-            "@1",
-            "work",
-            vec![pane("%right", 100, 9, "/a"), pane("%left", 101, 2, "/b")],
-        );
-        let picked = pick_pane(&win, &maps).unwrap();
-        assert_eq!(picked.pane_id, "%left");
-        assert!(picked.sid.is_none());
-    }
-
-    #[test]
-    fn pick_pane_tie_break_keeps_first_seen_at_same_left() {
-        let maps = build_process_maps(&parse_ps_snapshot("  100    1 -zsh\n"));
-        let win = window(
-            "@1",
-            "work",
-            vec![pane("%first", 100, 0, "/a"), pane("%second", 101, 0, "/b")],
-        );
-        assert_eq!(pick_pane(&win, &maps).unwrap().pane_id, "%first");
     }
 
     #[tokio::test]
