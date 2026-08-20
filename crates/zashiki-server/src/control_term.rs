@@ -10,7 +10,7 @@ pub(crate) async fn handle_term_open(
     socket: &mut WebSocket,
     services: &ControlServices,
     term_id: String,
-    window_id: Option<String>,
+    cockpit_terminal_id: Option<String>,
     cols: u32,
     rows: u32,
 ) -> bool {
@@ -20,7 +20,7 @@ pub(crate) async fn handle_term_open(
         return report_error(socket, &services.hub, "term_exists", &message).await;
     }
     let (cols, rows, _) = clamp_terminal_size(cols, rows);
-    let ok = open_owned_term(socket, services, term_id, window_id, cols, rows).await;
+    let ok = open_owned_term(socket, services, term_id, cockpit_terminal_id, cols, rows).await;
     let Some(()) = ok else {
         return false;
     };
@@ -32,21 +32,21 @@ pub(crate) async fn handle_term_open(
     socket.send(to_text(&reply)).await.is_ok()
 }
 
-/// The owned term.open. Without creating a tmux view session, it puts the windowId (UUID)
+/// The owned term.open. Without creating a tmux view session, it puts the cockpitTerminalId (UUID)
 /// directly into the term registry's session_id. The PTY was already spawned into SessionRegistry
-/// by session.new, and `/ws/term`'s `attach_owned_term` looks it up directly by session_id=windowId
-/// (1 PTY = 1 window; there is no select-window). When windowId is unspecified (unselected right
+/// by session.new, and `/ws/term`'s `attach_owned_term` looks it up directly by session_id=cockpitTerminalId
+/// (1 PTY = 1 window; there is no select-window). When cockpitTerminalId is unspecified (unselected right
 /// after startup), it is registered unbound with an empty session_id and bound later by term.select
 /// (the client always sends term.select after attaching). The reservation is already done. Always `Some(())`.
 async fn open_owned_term(
     _socket: &mut WebSocket,
     services: &ControlServices,
     term_id: String,
-    window_id: Option<String>,
+    cockpit_terminal_id: Option<String>,
     cols: u32,
     rows: u32,
 ) -> Option<()> {
-    let session_id = window_id.unwrap_or_default();
+    let session_id = cockpit_terminal_id.unwrap_or_default();
     services
         .terms
         .lock()

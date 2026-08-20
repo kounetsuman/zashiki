@@ -1,18 +1,22 @@
-import type { Notification, ServerMessage, SessionInfo } from "@zashiki/shared";
+import type {
+  CockpitTerminalInfo,
+  Notification,
+  ServerMessage,
+} from "@zashiki/shared";
 
 import i18n from "../i18n/index.js";
 import type { Notifier } from "../lib/notify.js";
 
 /** State the App uses for rendering (the useSyncExternalStore snapshot). */
 export interface AppState {
-  sessions: SessionInfo[];
+  sessions: CockpitTerminalInfo[];
   orgs: string[];
   /** org name -> display color (declared alongside repos.conf). Unspecified orgs are absent and rendered with the default color. */
   orgColors: Record<string, string>;
   /** In-app notifications. The server holds them and broadcasts the full set via notifications.sync. */
   notifications: Notification[];
   lastError: string | null;
-  selectedWindowId: string | null;
+  selectedCockpitTerminalId: string | null;
   /**
    * Counter for requests to focus the terminal. It increments only when a new
    * session is created and the view auto-switches to the new window. TerminalView detects the change and calls term.focus.
@@ -32,7 +36,7 @@ export interface AppState {
 export interface AppStoreDeps {
   control: { onMessage(fn: (m: ServerMessage) => void): () => void };
   session: {
-    select(windowId: string): void;
+    select(cockpitTerminalId: string): void;
     reconnect(): void;
     /** Id of the currently attached term (null if not open). Used to match against unknown_term. */
     getTermId(): string | null;
@@ -51,17 +55,17 @@ export interface AppStore {
   subscribe(cb: () => void): () => void;
   getSnapshot(): AppState;
   /** Focus jump shared by list clicks and notification clicks. */
-  selectWindow(windowId: string): void;
+  selectCockpitTerminal(cockpitTerminalId: string): void;
   /**
    * Request to move focus to the terminal (advances focusNonce). Called on a
    * list double-click/Enter to return key focus to the already-selected terminal.
-   * Kept separate from selectWindow so that selections from bootstrap/reordering do
+   * Kept separate from selectCockpitTerminal so that selections from bootstrap/reordering do
    * not steal focus (preserving the existing design).
    */
   focusTerminal(): void;
   /**
    * Deselects the currently displayed session. Called when all tabs are closed so
-   * that a conversation does not linger via the selectedWindowId fallback (the tmux active window).
+   * that a conversation does not linger via the selectedCockpitTerminalId fallback (the tmux active window).
    */
   deselect(): void;
   /**
@@ -74,35 +78,35 @@ export interface AppStore {
 }
 
 /**
- * Returns the "newest" windowId among the windows that are in next but not in prev
- * (i.e. newly added). Returns null if there is no addition. Because the windowId
+ * Returns the "newest" cockpitTerminalId among the windows that are in next but not in prev
+ * (i.e. newly added). Returns null if there is no addition. Because the cockpitTerminalId
  * shape differs by backend, the rule for "newest" differs too:
  * - tmux (`@N`): monotonically increasing, so the largest number = newest.
  * - owned (UUID): has no ordering, so for a single addition it is that one, and for
  *   multiple simultaneous additions the tail of next (the tail of the server ordering)
- *   is treated as newest. Because windowId became a UUID, number-based logic that assumes
+ *   is treated as newest. Because cockpitTerminalId became a UUID, number-based logic that assumes
  *   `@N` alone could not auto-select new sessions. The source of truth is app-store.test.ts.
  */
-export function newestAddedWindowId(
-  prev: readonly SessionInfo[],
-  next: readonly SessionInfo[],
+export function newestAddedCockpitTerminalId(
+  prev: readonly CockpitTerminalInfo[],
+  next: readonly CockpitTerminalInfo[],
 ): string | null {
-  const prevIds = new Set(prev.map((s) => s.windowId));
-  const added = next.filter((s) => !prevIds.has(s.windowId));
+  const prevIds = new Set(prev.map((s) => s.cockpitTerminalId));
+  const added = next.filter((s) => !prevIds.has(s.cockpitTerminalId));
   if (added.length === 0) return null;
-  if (added.every((s) => /^@\d+$/.test(s.windowId))) {
-    let best = added[0]?.windowId ?? null;
+  if (added.every((s) => /^@\d+$/.test(s.cockpitTerminalId))) {
+    let best = added[0]?.cockpitTerminalId ?? null;
     let bestNum = -1;
     for (const s of added) {
-      const n = Number(s.windowId.slice(1));
+      const n = Number(s.cockpitTerminalId.slice(1));
       if (n > bestNum) {
         bestNum = n;
-        best = s.windowId;
+        best = s.cockpitTerminalId;
       }
     }
     return best;
   }
-  return added[added.length - 1]?.windowId ?? null;
+  return added[added.length - 1]?.cockpitTerminalId ?? null;
 }
 
 const INITIAL_STATE: AppState = {
@@ -111,7 +115,7 @@ const INITIAL_STATE: AppState = {
   orgColors: {},
   notifications: [],
   lastError: null,
-  selectedWindowId: null,
+  selectedCockpitTerminalId: null,
   focusNonce: 0,
   resizeNonce: 0,
 };
@@ -132,12 +136,12 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     for (const fn of [...listeners]) fn();
   }
 
-  function selectWindow(windowId: string): void {
+  function selectCockpitTerminal(cockpitTerminalId: string): void {
     setState({
-      selectedWindowId: windowId,
+      selectedCockpitTerminalId: cockpitTerminalId,
       resizeNonce: state.resizeNonce + 1,
     });
-    deps.session.select(windowId);
+    deps.session.select(cockpitTerminalId);
   }
 
   function focusTerminal(): void {
@@ -145,8 +149,8 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
   }
 
   function deselect(): void {
-    if (state.selectedWindowId === null) return;
-    setState({ selectedWindowId: null });
+    if (state.selectedCockpitTerminalId === null) return;
+    setState({ selectedCockpitTerminalId: null });
   }
 
   function clearError(): void {
@@ -156,7 +160,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
   function handleMessage(m: ServerMessage): void {
     if (m.t === "state.sync") {
       const added = pendingNew
-        ? newestAddedWindowId(state.sessions, m.sessions)
+        ? newestAddedCockpitTerminalId(state.sessions, m.sessions)
         : null;
       if (added !== null) {
         pendingNew = false;
@@ -166,7 +170,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           sessions: m.sessions,
           orgs: m.orgs,
           orgColors: m.orgColors,
-          selectedWindowId: added,
+          selectedCockpitTerminalId: added,
           focusNonce: state.focusNonce + 1,
           resizeNonce: state.resizeNonce + 1,
         });
@@ -209,24 +213,29 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
       setState({ lastError });
     } else if (m.t === "notify") {
       // Web Notification + notification sound. Click brings to front + focus jump.
-      const info = state.sessions.find((s) => s.windowId === m.windowId);
+      const info = state.sessions.find(
+        (s) => s.cockpitTerminalId === m.cockpitTerminalId,
+      );
       deps.notifier.notify({
         kind: m.kind,
         title: `${i18n.t(m.kind === "waiting" ? "notification.waiting" : "notification.done")} ${m.title}`,
         body: info?.title ?? undefined,
-        tag: `zk-${m.windowId}`,
+        tag: `zk-${m.cockpitTerminalId}`,
         onClick: () => {
           (deps.focusWindow ?? (() => window.focus()))();
-          selectWindow(m.windowId);
+          selectCockpitTerminal(m.cockpitTerminalId);
         },
       });
     } else if (m.t === "select") {
       // External focus request (e.g. a clicked desktop notification via /api/focus):
       // bring the app to front and select the window, without a notification. Ignore
       // an already-closed window so we do not select a nonexistent session.
-      if (!state.sessions.some((s) => s.windowId === m.windowId)) return;
+      if (
+        !state.sessions.some((s) => s.cockpitTerminalId === m.cockpitTerminalId)
+      )
+        return;
       (deps.focusWindow ?? (() => window.focus()))();
-      selectWindow(m.windowId);
+      selectCockpitTerminal(m.cockpitTerminalId);
     }
   }
 
@@ -245,7 +254,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
       };
     },
     getSnapshot: () => state,
-    selectWindow,
+    selectCockpitTerminal,
     focusTerminal,
     deselect,
     markNewRequested() {

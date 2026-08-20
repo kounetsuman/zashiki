@@ -1,4 +1,4 @@
-import { resolveOrgColor, type SessionInfo } from "@zashiki/shared";
+import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
 import type React from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,10 +10,10 @@ import { ActivityChips, StateIcon } from "./SessionStateIcons.js";
 import { isFresh } from "./session-list-model.js";
 
 export interface SessionRowProps {
-  session: SessionInfo;
+  session: CockpitTerminalInfo;
   orgColors: Record<string, string>;
   conversationTitles: TitleMap;
-  selectedWindowId: string | null;
+  selectedCockpitTerminalId: string | null;
   isFocused: boolean;
   focusedRef: React.RefObject<HTMLButtonElement | null>;
   isRenaming: boolean;
@@ -24,10 +24,10 @@ export interface SessionRowProps {
   onSetRenameDraft(value: string): void;
   onCommitRename(): void;
   onCancelRename(): void;
-  onFocusRow(windowId: string): void;
-  onSelect(windowId: string): void;
-  onClose(windowId: string): void;
-  onConfirmClose(windowId: string): void;
+  onFocusRow(cockpitTerminalId: string): void;
+  onSelect(cockpitTerminalId: string): void;
+  onClose(cockpitTerminalId: string): void;
+  onConfirmClose(cockpitTerminalId: string): void;
   onCancelConfirm(): void;
 }
 
@@ -36,7 +36,7 @@ export function SessionRow({
   session: s,
   orgColors,
   conversationTitles,
-  selectedWindowId,
+  selectedCockpitTerminalId,
   isFocused,
   focusedRef,
   isRenaming,
@@ -102,7 +102,11 @@ export function SessionRow({
                 "--org-color": resolveOrgColor(s.org, orgColors),
               } as React.CSSProperties
             }
-            aria-current={s.windowId === selectedWindowId ? "true" : undefined}
+            aria-current={
+              s.cockpitTerminalId === selectedCockpitTerminalId
+                ? "true"
+                : undefined
+            }
             // Keep the window name in aria-label for row identification and a11y.
             // Pair it with the summary only when one exists; the visible label may
             // fall back to the name, but the aria-label must not repeat it.
@@ -111,8 +115,8 @@ export function SessionRow({
             }
             // Expand via double-click/Enter. A single click is the focus ring only (to prevent accidental triggering).
             title={t("sessionList.openHint")}
-            onClick={() => onFocusRow(s.windowId)}
-            onDoubleClick={() => onSelect(s.windowId)}
+            onClick={() => onFocusRow(s.cockpitTerminalId)}
+            onDoubleClick={() => onSelect(s.cockpitTerminalId)}
           >
             <StateIcon session={s} fresh={fresh} />
             <ActivityChips session={s} />
@@ -125,7 +129,7 @@ export function SessionRow({
             title={t("common.close")}
             onClick={(e) => {
               e.stopPropagation();
-              onClose(s.windowId);
+              onClose(s.cockpitTerminalId);
             }}
           >
             <span className="material-symbols-outlined" aria-hidden="true">
@@ -139,7 +143,7 @@ export function SessionRow({
                 className="session-confirm-ok"
                 aria-label={t("sessionList.closeRowConfirm", { name: s.name })}
                 title={t("common.close")}
-                onClick={() => onConfirmClose(s.windowId)}
+                onClick={() => onConfirmClose(s.cockpitTerminalId)}
               >
                 {t("common.close")}
               </button>

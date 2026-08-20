@@ -136,7 +136,7 @@ pub async fn handle_control(mut socket: WebSocket, services: ControlServices) {
 #[cfg(test)]
 mod tests {
     // Verifies that term.* works with just the owned PTY registry (a regression test). Confirms over
-    // a real WS that no error is returned and that the windowId (UUID) is correctly registered in the
+    // a real WS that no error is returned and that the cockpitTerminalId (UUID) is correctly registered in the
     // registry (so subsequent resize/select do not become unknown_term).
     mod owned_term_registry {
         use super::super::*;
@@ -310,12 +310,12 @@ mod tests {
 
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.open","termId":"t1","windowId":"sess-1","cols":80,"rows":24}),
+                serde_json::json!({"t":"term.open","termId":"t1","cockpitTerminalId":"sess-1","cols":80,"rows":24}),
             )
             .await;
             let reply = next_json(&mut ws).await.expect("reply");
             assert_eq!(reply["t"], "state.sync", "owned term.open must not error: {reply}");
-            // The registry holds the windowId (UUID sid) directly (not a tmux $N).
+            // The registry holds the cockpitTerminalId (UUID sid) directly (not a tmux $N).
             assert_eq!(terms.lock().unwrap().session_id("t1").as_deref(), Some("sess-1"));
         }
 
@@ -340,7 +340,7 @@ mod tests {
 
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.open","termId":"t1","windowId":"sess-1","cols":80,"rows":24}),
+                serde_json::json!({"t":"term.open","termId":"t1","cockpitTerminalId":"sess-1","cols":80,"rows":24}),
             )
             .await;
             assert_eq!(next_json(&mut ws).await.expect("open reply")["t"], "state.sync");
@@ -360,7 +360,7 @@ mod tests {
             // which does not arrive since the test has no poller). We check "no error is returned" and the registry rebind.
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.select","termId":"t1","windowId":"sess-2"}),
+                serde_json::json!({"t":"term.select","termId":"t1","cockpitTerminalId":"sess-2"}),
             )
             .await;
             assert!(
@@ -382,7 +382,7 @@ mod tests {
 
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.open","termId":"t1","windowId":"sess-1","cols":80,"rows":24}),
+                serde_json::json!({"t":"term.open","termId":"t1","cockpitTerminalId":"sess-1","cols":80,"rows":24}),
             )
             .await;
             assert_eq!(next_json(&mut ws).await.expect("open reply")["t"], "state.sync");
@@ -393,13 +393,13 @@ mod tests {
                 next_json(&mut ws).await.is_none(),
                 "owned term.close must not reply an error"
             );
-            // It drops from the registry but the PTY remains (the PTY lifecycle is on the SessionClose side).
+            // It drops from the registry but the PTY remains (the PTY lifecycle is on the CockpitTerminalClose side).
             assert!(terms.lock().unwrap().session_id("t1").is_none());
             assert!(sessions.get("sess-1").await.is_some());
         }
 
-        /// An owned term.open without windowId registers unbound (empty session_id) and is bound
-        /// later by term.select (the client opens with windowId still undetermined right after
+        /// An owned term.open without cockpitTerminalId registers unbound (empty session_id) and is bound
+        /// later by term.select (the client opens with cockpitTerminalId still undetermined right after
         /// startup, then selects after attaching).
         #[tokio::test]
         async fn term_open_without_window_registers_unbound_then_binds_on_select() {
@@ -419,7 +419,7 @@ mod tests {
             // term.select binds to the real sid (it does not touch tmux).
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.select","termId":"t1","windowId":"sess-1"}),
+                serde_json::json!({"t":"term.select","termId":"t1","cockpitTerminalId":"sess-1"}),
             )
             .await;
             assert!(

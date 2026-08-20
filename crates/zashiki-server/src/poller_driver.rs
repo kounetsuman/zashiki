@@ -80,20 +80,20 @@ mod tests {
     use super::*;
     use crate::control::ConfigView;
     use crate::protocol::ServerMessage;
-    use crate::status_poller::{Slices, StateSnapshot, WorkWindow, WorkWindowPane};
+    use crate::status_poller::{Slices, StateSnapshot, CockpitTerminal, CockpitTerminalPane};
     use std::collections::BTreeMap;
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
     const RUN_CAPTURE: &str = "✻ Simmering… (esc to interrupt · ctrl+t)";
 
     struct FakePorts {
-        windows: Vec<WorkWindow>,
+        windows: Vec<CockpitTerminal>,
         ps: String,
         capture: String,
     }
 
     impl PollerPorts for FakePorts {
-        async fn list_work_windows(&self) -> Vec<WorkWindow> {
+        async fn list_work_windows(&self) -> Vec<CockpitTerminal> {
             self.windows.clone()
         }
         async fn capture_pane(&self, _target: &str) -> String {
@@ -122,11 +122,11 @@ mod tests {
 
     fn one_running_window() -> FakePorts {
         FakePorts {
-            windows: vec![WorkWindow {
-                window_id: "@1".to_string(),
+            windows: vec![CockpitTerminal {
+                cockpit_terminal_id: "@1".to_string(),
                 name: "work".to_string(),
                 active: true,
-                panes: vec![WorkWindowPane {
+                panes: vec![CockpitTerminalPane {
                     pane_id: "%1".to_string(),
                     active: true,
                     pid: 100,
@@ -170,7 +170,7 @@ mod tests {
         evaluate_and_publish(&mut poller, &ports, &config(), &hub).await;
         match rx.try_recv().expect("state.sync on first change") {
             ServerMessage::StateSync { sessions, .. } => {
-                assert_eq!(sessions[0].window_id, "@1");
+                assert_eq!(sessions[0].cockpit_terminal_id, "@1");
                 assert_eq!(sessions[0].state, "running");
             }
             other => panic!("expected state.sync, got {other:?}"),
@@ -217,7 +217,7 @@ mod tests {
             .await
             .expect("reply within timeout")
             .expect("reply channel open");
-        assert_eq!(snapshot.sessions[0].window_id, "@1");
+        assert_eq!(snapshot.sessions[0].cockpit_terminal_id, "@1");
         handle.abort();
     }
 }

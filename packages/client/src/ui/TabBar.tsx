@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import {
   claudeSessionId,
   isUuidSid,
@@ -27,15 +27,15 @@ export interface TabBarProps {
   /** Composite key of the active tab (`kind:id`). null if none. */
   activeKey: string | null;
   /** Session list used to resolve titles (for session tabs). */
-  sessions: SessionInfo[];
+  sessions: CockpitTerminalInfo[];
   /** Used to resolve manually edited titles. Resolves for all tabs. */
   conversationTitles: TitleMap;
   /** org -> display color (explicit color from repos.conf). Unspecified orgs fall back to auto coloring. */
   orgColors?: Record<string, string>;
   onActivate(key: string): void;
   onClose(key: string): void;
-  /** Commits a double-click rename on a session tab. Commits with windowId + name. Rename is disabled when unspecified. */
-  onRename?(windowId: string, name: string, title: string): void;
+  /** Commits a double-click rename on a session tab. Commits with cockpitTerminalId + name. Rename is disabled when unspecified. */
+  onRename?(cockpitTerminalId: string, name: string, title: string): void;
   /** Reordering via drag & drop. Moves fromKey to the position of toKey. Reordering is disabled when unspecified. */
   onReorder?(fromKey: string, toKey: string): void;
   /** Apply a faint overlay when inactive. */
@@ -44,12 +44,12 @@ export interface TabBarProps {
    * Right-clicking a session tab copies the resume command (`claude --resume <sid>`)
    * (for branched sessions). No context menu is shown when unspecified.
    */
-  onCopyResume?(windowId: string): void;
+  onCopyResume?(cockpitTerminalId: string): void;
   /**
    * Right-clicking a session tab copies the Claude Code session id (`sid`) verbatim.
    * The context menu appears when either this or onCopyResume is provided.
    */
-  onCopySessionId?(windowId: string): void;
+  onCopySessionId?(cockpitTerminalId: string): void;
 }
 
 /**
@@ -58,11 +58,11 @@ export interface TabBarProps {
  */
 function tabLabel(
   tab: Tab,
-  sessions: SessionInfo[],
+  sessions: CockpitTerminalInfo[],
   titles: TitleMap,
 ): { label: string; title: string } {
   if (tab.kind === "session") {
-    const s = sessions.find((x) => x.windowId === tab.id);
+    const s = sessions.find((x) => x.cockpitTerminalId === tab.id);
     const label =
       s === undefined
         ? tab.id
@@ -96,11 +96,11 @@ export function TabBar({
   onCopySessionId,
 }: TabBarProps) {
   const { t } = useTranslation();
-  // For the tab being edited, remember its windowId/name at the start in addition to the key
+  // For the tab being edited, remember its cockpitTerminalId/name at the start in addition to the key
   // (to verify on commit that we don't mistakenly commit to a window other than the one displayed).
   const [editing, setEditing] = useState<{
     key: string;
-    windowId: string;
+    cockpitTerminalId: string;
     name: string;
   } | null>(null);
   const [draft, setDraft] = useState("");
@@ -109,7 +109,7 @@ export function TabBar({
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   // Right-click menu for session tabs (copy resume for branched sessions).
   const [menu, setMenu] = useState<{
-    windowId: string;
+    cockpitTerminalId: string;
     x: number;
     y: number;
   } | null>(null);
@@ -124,7 +124,7 @@ export function TabBar({
     const tab = tabs.find((t) => tabKey(t) === editing.key);
     const s =
       tab?.kind === "session"
-        ? sessions.find((x) => x.windowId === tab.id)
+        ? sessions.find((x) => x.cockpitTerminalId === tab.id)
         : undefined;
     if (s === undefined) {
       doneRef.current = true;
@@ -154,7 +154,7 @@ export function TabBar({
   const commit = (): void => {
     if (doneRef.current || editing === null) return;
     doneRef.current = true;
-    onRename?.(editing.windowId, editing.name, draft);
+    onRename?.(editing.cockpitTerminalId, editing.name, draft);
     setEditing(null);
   };
 
@@ -170,7 +170,7 @@ export function TabBar({
         const { label, title } = tabLabel(tab, sessions, conversationTitles);
         const session =
           tab.kind === "session"
-            ? sessions.find((x) => x.windowId === tab.id)
+            ? sessions.find((x) => x.cockpitTerminalId === tab.id)
             : undefined;
         const orgColor =
           session !== undefined
@@ -183,12 +183,16 @@ export function TabBar({
         const renamable =
           session !== undefined &&
           onRename !== undefined &&
-          isUuidSid(session.windowId);
+          isUuidSid(session.cockpitTerminalId);
         const startEdit = (): void => {
           if (!renamable) return;
           doneRef.current = false;
           setDraft(label);
-          setEditing({ key, windowId: session.windowId, name: session.name });
+          setEditing({
+            key,
+            cockpitTerminalId: session.cockpitTerminalId,
+            name: session.name,
+          });
         };
 
         // Drag & drop reordering is possible only when onReorder is present and not currently editing a rename.
@@ -268,7 +272,11 @@ export function TabBar({
                       e.clientY,
                       itemCount,
                     );
-                    setMenu({ windowId: session.windowId, x, y });
+                    setMenu({
+                      cockpitTerminalId: session.cockpitTerminalId,
+                      x,
+                      y,
+                    });
                   }
                 : undefined
             }
@@ -337,7 +345,9 @@ export function TabBar({
       {menu !== null &&
         (onCopyResume !== undefined || onCopySessionId !== undefined) &&
         (() => {
-          const target = sessions.find((s) => s.windowId === menu.windowId);
+          const target = sessions.find(
+            (s) => s.cockpitTerminalId === menu.cockpitTerminalId,
+          );
           const canResume =
             target !== undefined && resumeCommand(target) !== null;
           const canCopySessionId =
@@ -366,7 +376,7 @@ export function TabBar({
                     disabled={!canResume}
                     title={canResume ? undefined : t("common.cannotResume")}
                     onClick={() => {
-                      onCopyResume(menu.windowId);
+                      onCopyResume(menu.cockpitTerminalId);
                       setMenu(null);
                     }}
                   >
@@ -385,7 +395,7 @@ export function TabBar({
                         : t("common.cannotCopySessionId")
                     }
                     onClick={() => {
-                      onCopySessionId(menu.windowId);
+                      onCopySessionId(menu.cockpitTerminalId);
                       setMenu(null);
                     }}
                   >

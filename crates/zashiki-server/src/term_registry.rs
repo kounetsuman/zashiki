@@ -31,8 +31,8 @@ pub struct TermDiagnostics {
 #[derive(Debug, Clone)]
 pub struct TermEntry {
     pub term_id: String,
-    /// The attach-target session id (for owned, windowId=UUID sid). `attach_owned_term` uses this to
-    /// look up the PTY. If term.open had no windowId, it is registered with an empty string (unbound) and
+    /// The attach-target session id (for owned, cockpitTerminalId=UUID sid). `attach_owned_term` uses this to
+    /// look up the PTY. If term.open had no cockpitTerminalId, it is registered with an empty string (unbound) and
     /// later bound to a real sid by term.select (`rebind_session`).
     pub session_id: String,
     pub cols: u32,
@@ -130,7 +130,7 @@ impl TermRegistry {
             .map(|e| (e.cols as u16, e.rows as u16))
     }
 
-    /// owned term.select: bind / swap an existing term's attach target to the switch-target windowId
+    /// owned term.select: bind / swap an existing term's attach target to the switch-target cockpitTerminalId
     /// (UUID sid) (since one PTY = one window, this swaps the PTY rather than tmux's select-window). Wakes
     /// the attach waiting while unbound and the run_bridge that re-subscribes for live. false if
     /// unregistered. No notification if session_id is unchanged.

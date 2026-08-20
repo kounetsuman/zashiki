@@ -19,7 +19,7 @@ use crate::claude_projects::ClaudeProjectsAdapter;
 use crate::lsof::LsofAdapter;
 use crate::ps::PsAdapter;
 use crate::session_registry::SessionRegistry;
-use crate::status_poller::{PollerPorts, Slices, WorkWindow, WorkWindowPane};
+use crate::status_poller::{PollerPorts, Slices, CockpitTerminal, CockpitTerminalPane};
 
 /// PTY-owning implementation of `PollerPorts`. The capture screen comes from each [`PtySession`] in
 /// the [`SessionRegistry`], and ps / lsof / jsonl are delegated to the same adapters as the tmux version.
@@ -41,21 +41,21 @@ impl PtyPollerPorts {
     }
 }
 
-/// Maps each session in the registry to a [`WorkWindow`] of one window = one pane (the owned window
+/// Maps each session in the registry to a [`CockpitTerminal`] of one window = one pane (the owned window
 /// listing). The pane's pid is the session's child PID, and current_path is the cwd metadata held by
 /// the registry. The tmux-specific active / left / in_mode fields are fixed because there is a single
 /// pane (the PTY version has no copy-mode concept). Shared by the poller and by the owned resolution
 /// of hooks (the replacement supplier for the tmux version's `list_work_windows`).
-pub async fn owned_work_windows(registry: &SessionRegistry) -> Vec<WorkWindow> {
+pub async fn owned_work_windows(registry: &SessionRegistry) -> Vec<CockpitTerminal> {
     registry
         .entries()
         .await
         .into_iter()
-        .map(|(id, session, meta)| WorkWindow {
-            window_id: id.clone(),
+        .map(|(id, session, meta)| CockpitTerminal {
+            cockpit_terminal_id: id.clone(),
             name: meta.wname,
             active: true,
-            panes: vec![WorkWindowPane {
+            panes: vec![CockpitTerminalPane {
                 pane_id: id,
                 active: true,
                 pid: session.pid() as i64,
@@ -68,7 +68,7 @@ pub async fn owned_work_windows(registry: &SessionRegistry) -> Vec<WorkWindow> {
 }
 
 impl PollerPorts for PtyPollerPorts {
-    async fn list_work_windows(&self) -> Vec<WorkWindow> {
+    async fn list_work_windows(&self) -> Vec<CockpitTerminal> {
         owned_work_windows(&self.registry).await
     }
 
@@ -245,7 +245,7 @@ mod tests {
         let windows = ports.list_work_windows().await;
         assert_eq!(windows.len(), 1);
         let win = &windows[0];
-        assert_eq!(win.window_id, "%1");
+        assert_eq!(win.cockpit_terminal_id, "%1");
         assert_eq!(win.name, "%1");
         assert!(win.active);
         assert_eq!(win.panes.len(), 1);
@@ -274,7 +274,7 @@ mod tests {
             .list_work_windows()
             .await
             .into_iter()
-            .map(|w| w.window_id)
+            .map(|w| w.cockpit_terminal_id)
             .collect();
         assert_eq!(ids, vec!["%a".to_string(), "%b".to_string()]);
 

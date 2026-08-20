@@ -1,4 +1,4 @@
-import type { ServerMessage, SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo, ServerMessage } from "@zashiki/shared";
 import i18n from "../i18n/index.js";
 import type { TerminalSessionStatus } from "../session/terminal-session.js";
 import type { ControlStatus } from "../ws/control.js";
@@ -39,7 +39,7 @@ export interface TermDebugSnapshot {
   attempt: number;
   /** Number of unacked written characters (backpressure). */
   pendingAck: number;
-  windowId: string | null;
+  cockpitTerminalId: string | null;
   termId: string | null;
   suspended: boolean;
 }
@@ -96,11 +96,14 @@ export function footerAbnormalNotice(
 }
 
 /** Formats a state.sync snapshot for display as one line = one window. */
-export function summarizeSessions(
-  sessions: readonly SessionInfo[],
-): { windowId: string; label: string; active: boolean; state: string }[] {
+export function summarizeSessions(sessions: readonly CockpitTerminalInfo[]): {
+  cockpitTerminalId: string;
+  label: string;
+  active: boolean;
+  state: string;
+}[] {
   return sessions.map((s) => ({
-    windowId: s.windowId,
+    cockpitTerminalId: s.cockpitTerminalId,
     label: `${s.org}/${s.repo} ${s.name}`,
     active: s.active,
     state: s.state,
@@ -118,7 +121,7 @@ export function summarizeSessions(
 export function describeServerEvent(m: ServerMessage): string | null {
   switch (m.t) {
     case "notify":
-      return `notify ${m.kind} ${m.windowId} "${m.title}"`;
+      return `notify ${m.kind} ${m.cockpitTerminalId} "${m.title}"`;
     case "git.dirty":
       return "git.dirty";
     case "term.reconnect":

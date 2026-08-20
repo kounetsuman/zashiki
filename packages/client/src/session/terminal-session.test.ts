@@ -163,7 +163,7 @@ describe("TerminalSession", () => {
     sockets[0]?.handlers.onOpen?.();
     session.select("@5");
     expect(sentOfType(control, "term.select")).toEqual([
-      { t: "term.select", termId: "term-1", windowId: "@5" },
+      { t: "term.select", termId: "term-1", cockpitTerminalId: "@5" },
     ]);
 
     // Server-initiated disconnect -> reopen with a new termId after backoff
@@ -176,7 +176,7 @@ describe("TerminalSession", () => {
     expect(opens[1]).toEqual({
       t: "term.open",
       termId: "term-2",
-      windowId: "@5",
+      cockpitTerminalId: "@5",
       cols: 80,
       rows: 24,
     });
@@ -277,7 +277,7 @@ describe("TerminalSession", () => {
 
     sockets[0]?.handlers.onOpen?.();
     expect(sentOfType(control, "term.select")).toEqual([
-      { t: "term.select", termId: "term-1", windowId: "@7" },
+      { t: "term.select", termId: "term-1", cockpitTerminalId: "@7" },
     ]);
   });
 
@@ -396,7 +396,7 @@ describe("TerminalSession.reconnect (term.reconnect)", () => {
     vi.useRealTimers();
   });
 
-  it("closes the old socket and reopens with a new termId plus the currently displayed windowId", () => {
+  it("closes the old socket and reopens with a new termId plus the currently displayed cockpitTerminalId", () => {
     const { control, sockets, session } = setup();
     session.start(80, 24);
     sockets[0]?.handlers.onOpen?.();
@@ -408,7 +408,13 @@ describe("TerminalSession.reconnect (term.reconnect)", () => {
     expect(sockets).toHaveLength(2);
     const opens = sentOfType(control, "term.open");
     expect(opens).toEqual([
-      { t: "term.open", termId: "term-2", windowId: "@5", cols: 80, rows: 24 },
+      {
+        t: "term.open",
+        termId: "term-2",
+        cockpitTerminalId: "@5",
+        cols: 80,
+        rows: 24,
+      },
     ]);
     expect(session.getStatus()).toBe("opening");
 

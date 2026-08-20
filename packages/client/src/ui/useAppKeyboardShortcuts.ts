@@ -1,16 +1,16 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useEffect } from "react";
 import { PANEL_DEFS, type PanelId } from "./panels.js";
 
 export interface AppKeyboardShortcuts {
-  sessions: readonly SessionInfo[];
+  sessions: readonly CockpitTerminalInfo[];
   orgs: readonly string[];
   activeSess: string | null;
   activeKey: string | null;
   handleSelectPanel(id: PanelId): void;
   toggleDebug(): void;
   newSession(org: string): void;
-  copyResume(s: SessionInfo | null | undefined): void;
+  copyResume(s: CockpitTerminalInfo | null | undefined): void;
   closeTabByKey(key: string): void;
 }
 
@@ -74,7 +74,8 @@ export function useAppKeyboardShortcuts({
         return;
       }
       e.preventDefault();
-      const target = sessions.find((s) => s.windowId === activeSess) ?? null;
+      const target =
+        sessions.find((s) => s.cockpitTerminalId === activeSess) ?? null;
       copyResume(target);
     };
     window.addEventListener("keydown", onKeyDown);
@@ -87,7 +88,8 @@ export function useAppKeyboardShortcuts({
         return;
       }
       const org =
-        sessions.find((s) => s.windowId === activeSess)?.org ?? orgs[0];
+        sessions.find((s) => s.cockpitTerminalId === activeSess)?.org ??
+        orgs[0];
       if (org === undefined) return;
       e.preventDefault();
       newSession(org);

@@ -1,11 +1,11 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useEffect, useState } from "react";
 
 export interface ConfirmClose {
-  /** windowId awaiting inline close confirmation (null when none). */
+  /** cockpitTerminalId awaiting inline close confirmation (null when none). */
   confirmingClose: string | null;
-  requestClose(windowId: string): void;
-  confirmClose(windowId: string): void;
+  requestClose(cockpitTerminalId: string): void;
+  confirmClose(cockpitTerminalId: string): void;
   cancelClose(): void;
 }
 
@@ -14,25 +14,26 @@ export interface ConfirmClose {
  * target clears when the session disappears via another client/CLI or a refresh.
  */
 export function useConfirmClose(
-  sessions: SessionInfo[],
-  onClose: (windowId: string) => void,
+  sessions: CockpitTerminalInfo[],
+  onClose: (cockpitTerminalId: string) => void,
 ): ConfirmClose {
   const [confirmingClose, setConfirmingClose] = useState<string | null>(null);
 
   useEffect(() => {
     if (confirmingClose === null) return;
-    if (!sessions.some((s) => s.windowId === confirmingClose))
+    if (!sessions.some((s) => s.cockpitTerminalId === confirmingClose))
       setConfirmingClose(null);
   }, [sessions, confirmingClose]);
 
-  const confirmClose = (windowId: string): void => {
+  const confirmClose = (cockpitTerminalId: string): void => {
     setConfirmingClose(null);
-    onClose(windowId);
+    onClose(cockpitTerminalId);
   };
 
   return {
     confirmingClose,
-    requestClose: (windowId: string) => setConfirmingClose(windowId),
+    requestClose: (cockpitTerminalId: string) =>
+      setConfirmingClose(cockpitTerminalId),
     confirmClose,
     cancelClose: () => setConfirmingClose(null),
   };

@@ -60,8 +60,8 @@ mod ws_control_tests {
 
     fn snapshot(window: &str) -> StateSnapshot {
         StateSnapshot {
-            sessions: vec![crate::protocol::SessionInfo {
-                window_id: window.to_string(),
+            sessions: vec![crate::protocol::CockpitTerminalInfo {
+                cockpit_terminal_id: window.to_string(),
                 name: "repo".to_string(),
                 org: "org".to_string(),
                 repo: "repo".to_string(),
@@ -157,9 +157,9 @@ mod ws_control_tests {
         }
     }
 
-    fn session_info(state: &str, subagents: Option<u32>, shells: Option<u32>) -> crate::protocol::SessionInfo {
-        crate::protocol::SessionInfo {
-            window_id: "@1".to_string(),
+    fn session_info(state: &str, subagents: Option<u32>, shells: Option<u32>) -> crate::protocol::CockpitTerminalInfo {
+        crate::protocol::CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".to_string(),
             name: "repo".to_string(),
             org: "org".to_string(),
             repo: "repo".to_string(),
@@ -313,7 +313,7 @@ mod ws_control_tests {
         let mut ws = connect(port).await;
         drain_handshake(&mut ws).await;
 
-        ws.send(TMsg::Text(format!(r#"{{"t":"session.new","org":"{org}"}}"#)))
+        ws.send(TMsg::Text(format!(r#"{{"t":"cockpitTerminal.new","org":"{org}"}}"#)))
             .await
             .unwrap();
 
@@ -441,7 +441,7 @@ mod ws_control_tests {
         drain_handshake(&mut ws).await;
 
         ws.send(TMsg::Text(
-            r#"{"t":"session.new","org":"nope"}"#.to_string(),
+            r#"{"t":"cockpitTerminal.new","org":"nope"}"#.to_string(),
         ))
         .await
         .unwrap();
@@ -482,7 +482,7 @@ mod ws_control_tests {
 
         for msg in [
             r#"{"t":"term.resize","termId":"x","cols":80,"rows":24}"#,
-            r#"{"t":"term.select","termId":"x","windowId":"@2"}"#,
+            r#"{"t":"term.select","termId":"x","cockpitTerminalId":"@2"}"#,
             r#"{"t":"term.close","termId":"x"}"#,
         ] {
             ws.send(TMsg::Text(msg.to_string())).await.unwrap();
