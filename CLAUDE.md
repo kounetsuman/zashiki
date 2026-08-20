@@ -26,3 +26,23 @@ There is no dedicated design-documentation directory (`docs/`). Consolidate into
 ## Bilingual Markdown
 
 When you create a new Markdown document (README, guide, etc.), author it in both supported languages: English as the default `X.md` and Japanese as `X.ja.md`, cross-linked in the header — mirroring the root `README.md` / `README.ja.md` convention (`**English** | [日本語](./README.ja.md)` and `[English](./README.md) | **日本語**`).
+
+## Naming Conventions (Ubiquitous Language)
+
+Use the canonical domain terms below. Some code still carries legacy names (`windowId`, `SessionState`, `PanelId`, …); those are mechanical renames migrated as separate follow-ups. The full UI model tree lives in `packages/client/README.md`.
+
+**Terms**
+
+- **Area** — a layout region. **View** — the concept drawn into an Area; its contents vary per View. *"Panel" is retired* — name new surfaces `… View`.
+- **Cockpit Terminal** — the durable main-area unit (was `window` / `session`). Not "session": Ctrl+C ends the run but the terminal survives. `Terminal` alone collides with the xterm layer, so it is qualified.
+- **Claude Session** (`sid`) — the transient Claude run *inside* a Cockpit Terminal. "session" is scoped to `sid` only.
+- **Viewer** — read-only file viewer (vibe-coding cockpit; no editor planned). **Organization** (`org`) — a Cockpit Terminal belongs to one. **Background Activity** — umbrella for `runningSubagents` / `shellsRunning` / `limited`.
+- **term / termId** — the xterm.js render slot; kept, and distinct from Cockpit Terminal.
+
+**Casing**
+
+- Internal: `snake_case` (Rust) / `camelCase` (TS); Rust enum variants `PascalCase`; constants `UPPER_SNAKE`; files `kebab-case`.
+- Wire (serde `rename_all = "camelCase"` ↔ Zod, guarded by `protocol.test.ts`): fields `camelCase`; message type `t` is `namespace.verb`; enum wire values stay `snake_case`.
+- Prefer descriptive names even when verbose (`cockpitTerminalId`, `CockpitTerminalState`) — zero ambiguity beats brevity. Established short forms `org` / `repo` / `pty` / `term` / `sid` are kept.
+
+**Legacy → target** (separate follow-ups): `windowId`→`cockpitTerminalId`, `SessionState`→`CockpitTerminalState`, `SessionInfo`→`CockpitTerminalInfo`, `SessionListPanel`→`CockpitTerminalListView`, `TerminalSessionStatus`→`TermAttachStatus`, `PanelId` / `PANEL_DEFS` / `panel.*`→`ViewId` / `VIEW_DEFS` / `view.*`.
