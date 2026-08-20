@@ -31,14 +31,14 @@ export type TermId = z.infer<typeof termIdSchema>;
  * state.sync originating from owned, so new/restored sessions would never appear
  * in the list. The source of truth is protocol.test.ts).
  */
-export const windowIdSchema = z
+export const cockpitTerminalIdSchema = z
   .string()
   .regex(
     /^(@\d+|[A-Za-z0-9][A-Za-z0-9-]{0,127})$/,
-    "windowId must be a tmux window_id (@N) or an owned session id",
+    "cockpitTerminalId must be a tmux window_id (@N) or an owned session id",
   );
 
-export type WindowId = z.infer<typeof windowIdSchema>;
+export type CockpitTerminalId = z.infer<typeof cockpitTerminalIdSchema>;
 
 /**
  * Session (window) state (detection lives in shared/session-state.ts).
@@ -48,7 +48,7 @@ export type WindowId = z.infer<typeof windowIdSchema>;
  * the process tree (it resolves to "no_claude" once the grace period is exceeded).
  * "unknown" appears only when detection was skipped due to pane_in_mode (copy-mode etc.) and there is not yet a previous state to retain.
  */
-export const sessionStateSchema = z.enum([
+export const cockpitTerminalStateSchema = z.enum([
   "waiting_input",
   "running",
   "running_bg_agent",
@@ -58,7 +58,7 @@ export const sessionStateSchema = z.enum([
   "unknown",
 ]);
 
-export type SessionState = z.infer<typeof sessionStateSchema>;
+export type CockpitTerminalState = z.infer<typeof cockpitTerminalStateSchema>;
 
 /**
  * One account usage limit: the rounded used percentage and, when known, the epoch-ms reset time.
@@ -95,12 +95,12 @@ export const sessionUsageSchema = z.object({
 export type SessionUsage = z.infer<typeof sessionUsageSchema>;
 
 /** Per-window snapshot distributed via state.sync. */
-export const sessionInfoSchema = z.object({
-  windowId: windowIdSchema,
+export const cockpitTerminalInfoSchema = z.object({
+  cockpitTerminalId: cockpitTerminalIdSchema,
   name: z.string(),
   org: z.string(),
   repo: z.string(),
-  state: sessionStateSchema,
+  state: cockpitTerminalStateSchema,
   /** First 30 characters of the first user utterance in the jsonl (null when there is no utterance or it cannot be read). */
   title: z.string().nullable(),
   /**
@@ -136,7 +136,7 @@ export const sessionInfoSchema = z.object({
   usage: sessionUsageSchema.optional(),
 });
 
-export type SessionInfo = z.infer<typeof sessionInfoSchema>;
+export type CockpitTerminalInfo = z.infer<typeof cockpitTerminalInfoSchema>;
 
 /**
  * Builds the resume command for forking a session.
@@ -171,7 +171,7 @@ const rowsSchema = z.number().int().min(1).max(10000);
 export const termOpenSchema = z.object({
   t: z.literal("term.open"),
   termId: termIdSchema,
-  windowId: windowIdSchema.optional(),
+  cockpitTerminalId: cockpitTerminalIdSchema.optional(),
   cols: colsSchema,
   rows: rowsSchema,
 });
@@ -186,7 +186,7 @@ export const termResizeSchema = z.object({
 export const termSelectSchema = z.object({
   t: z.literal("term.select"),
   termId: termIdSchema,
-  windowId: windowIdSchema,
+  cockpitTerminalId: cockpitTerminalIdSchema,
 });
 
 export const termCloseSchema = z.object({
@@ -207,14 +207,14 @@ export const termAckSchema = z.object({
   bytes: z.number().int().min(0).max(1_000_000_000),
 });
 
-export const sessionNewSchema = z.object({
-  t: z.literal("session.new"),
+export const cockpitTerminalNewSchema = z.object({
+  t: z.literal("cockpitTerminal.new"),
   org: z.string().min(1),
 });
 
-export const sessionCloseSchema = z.object({
-  t: z.literal("session.close"),
-  windowId: windowIdSchema,
+export const cockpitTerminalCloseSchema = z.object({
+  t: z.literal("cockpitTerminal.close"),
+  cockpitTerminalId: cockpitTerminalIdSchema,
 });
 
 /** Manual refresh. The server re-evaluates immediately and returns state.sync to the requester. */
@@ -254,8 +254,8 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   termSelectSchema,
   termCloseSchema,
   termAckSchema,
-  sessionNewSchema,
-  sessionCloseSchema,
+  cockpitTerminalNewSchema,
+  cockpitTerminalCloseSchema,
   stateRefreshSchema,
   notificationDismissSchema,
   configUpdateSchema,
@@ -274,7 +274,7 @@ export type TermAckMessage = z.infer<typeof termAckSchema>;
 
 export const stateSyncSchema = z.object({
   t: z.literal("state.sync"),
-  sessions: z.array(sessionInfoSchema),
+  sessions: z.array(cockpitTerminalInfoSchema),
   /** All orgs from repos.conf plus detected orgs (in display order). Orgs with zero sessions are not removed. */
   orgs: z.array(z.string()),
   /**
@@ -296,7 +296,7 @@ export const gitDirtySchema = z.object({
 export const notifySchema = z.object({
   t: z.literal("notify"),
   kind: z.enum(["waiting", "done"]),
-  windowId: windowIdSchema,
+  cockpitTerminalId: cockpitTerminalIdSchema,
   title: z.string(),
 });
 
@@ -307,7 +307,7 @@ export const notifySchema = z.object({
  */
 export const selectSchema = z.object({
   t: z.literal("select"),
-  windowId: windowIdSchema,
+  cockpitTerminalId: cockpitTerminalIdSchema,
 });
 
 export const errorMessageSchema = z.object({
@@ -427,7 +427,7 @@ export const focusResponseSchema = z.object({
   /** Whether the request mapped to a live window (a `select` was broadcast only then). */
   resolved: z.boolean(),
   /** The resolved window id (absent when unresolved); lets the caller decide how to raise the app. */
-  windowId: windowIdSchema.optional(),
+  cockpitTerminalId: cockpitTerminalIdSchema.optional(),
 });
 
 export type FocusResponse = z.infer<typeof focusResponseSchema>;

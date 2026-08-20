@@ -103,9 +103,15 @@ export {
 } from "./process-tree.js";
 export {
   type ClientMessage,
+  type CockpitTerminalId,
+  type CockpitTerminalInfo,
+  type CockpitTerminalState,
   type ConfigSyncMessage,
   claudeSessionId,
   clientMessageSchema,
+  cockpitTerminalIdSchema,
+  cockpitTerminalInfoSchema,
+  cockpitTerminalStateSchema,
   configSyncSchema,
   type ErrorMessage,
   type FocusRequest,
@@ -129,8 +135,6 @@ export {
   resumeCommand,
   type SelectMessage,
   type ServerMessage,
-  type SessionInfo,
-  type SessionState,
   type SessionsRestoreRequest,
   type SessionsRestoreResponse,
   type SessionsSaveResponse,
@@ -138,8 +142,6 @@ export {
   type StateSyncMessage,
   selectSchema,
   serverMessageSchema,
-  sessionInfoSchema,
-  sessionStateSchema,
   sessionsRestoreRequestSchema,
   sessionsRestoreResponseSchema,
   sessionsSaveResponseSchema,
@@ -156,8 +158,6 @@ export {
   updateCheckSchema,
   usageLimitSchema,
   usageLimitsSchema,
-  type WindowId,
-  windowIdSchema,
 } from "./protocol.js";
 export {
   canCreatePty,

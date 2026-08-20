@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useEffect, useRef, useState } from "react";
 import {
   buildVisibleItems,
@@ -23,16 +23,16 @@ export interface SessionListFocus {
  */
 export function useSessionListFocus(
   orgList: string[],
-  sessions: SessionInfo[],
+  sessions: CockpitTerminalInfo[],
   collapsed: ReadonlySet<string>,
-  selectedWindowId: string | null,
+  selectedCockpitTerminalId: string | null,
 ): SessionListFocus {
   const [focused, setFocused] = useState<FocusTarget | null>(null);
   const focusedRef = useRef<HTMLButtonElement | null>(null);
   const visibleItems = buildVisibleItems(orgList, sessions, collapsed);
   const visibleKeys = visibleItems.map(focusKey);
   // The array is regenerated every render and can't be an effect dep, so hold a stable (string) form.
-  // The separator is a control character that never appears in org names/windowIds (avoids key-boundary collisions).
+  // The separator is a control character that never appears in org names/cockpitTerminalIds (avoids key-boundary collisions).
   const visibleKey = visibleKeys.join("\x1f");
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: visibleKey is the stable representation of the visible set (visibleKeys is regenerated every render)
@@ -49,7 +49,13 @@ export function useSessionListFocus(
   const moveFocus = (delta: number): void => {
     if (visibleItems.length === 0) return;
     setFocused(
-      nextFocusTarget(visibleItems, focused, selectedWindowId, sessions, delta),
+      nextFocusTarget(
+        visibleItems,
+        focused,
+        selectedCockpitTerminalId,
+        sessions,
+        delta,
+      ),
     );
   };
 

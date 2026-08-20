@@ -1,22 +1,22 @@
 import {
+  type CockpitTerminalInfo,
   claudeSessionId,
   resumeCommand,
-  type SessionInfo,
 } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 import type { ContextMenu } from "./session-list-model.js";
 
 export interface SessionContextMenuProps {
   menu: ContextMenu;
-  sessions: SessionInfo[];
+  sessions: CockpitTerminalInfo[];
   onNew(org: string): void;
-  onClose(windowId: string): void;
-  isRenamable(s: SessionInfo): boolean;
-  startRename(s: SessionInfo): void;
+  onClose(cockpitTerminalId: string): void;
+  isRenamable(s: CockpitTerminalInfo): boolean;
+  startRename(s: CockpitTerminalInfo): void;
   closeMenu(): void;
-  onRename?(windowId: string, name: string, title: string): void;
-  onCopyResume?(windowId: string): void;
-  onCopySessionId?(windowId: string): void;
+  onRename?(cockpitTerminalId: string, name: string, title: string): void;
+  onCopyResume?(cockpitTerminalId: string): void;
+  onCopySessionId?(cockpitTerminalId: string): void;
 }
 
 /** The right-click menu overlay: New for an org area; Rename/Copy/Delete for a session row. */
@@ -35,7 +35,7 @@ export function SessionContextMenu({
   const { t } = useTranslation();
   const target =
     menu.kind === "row"
-      ? sessions.find((s) => s.windowId === menu.windowId)
+      ? sessions.find((s) => s.cockpitTerminalId === menu.cockpitTerminalId)
       : undefined;
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: overlay purely for capturing clicks (Escape is handled by window keydown)
@@ -100,7 +100,7 @@ export function SessionContextMenu({
                     disabled={!canResume}
                     title={canResume ? undefined : t("common.cannotResume")}
                     onClick={() => {
-                      onCopyResume(menu.windowId);
+                      onCopyResume(menu.cockpitTerminalId);
                       closeMenu();
                     }}
                   >
@@ -124,7 +124,7 @@ export function SessionContextMenu({
                         : t("common.cannotCopySessionId")
                     }
                     onClick={() => {
-                      onCopySessionId(menu.windowId);
+                      onCopySessionId(menu.cockpitTerminalId);
                       closeMenu();
                     }}
                   >
@@ -137,7 +137,7 @@ export function SessionContextMenu({
               role="menuitem"
               className="session-context-item"
               onClick={() => {
-                onClose(menu.windowId);
+                onClose(menu.cockpitTerminalId);
                 closeMenu();
               }}
             >

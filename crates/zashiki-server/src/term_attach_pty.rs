@@ -76,7 +76,7 @@ fn apply_term_size(session: &PtySession, services: &ControlServices, term_id: &s
 
 /// Handle one `/ws/term` connection by subscribing to the owned PTY (tmux-independent).
 /// Upper bound for waiting on a term.select bind when attaching in an unbound state (term.open had no
-/// windowId). The client always sends term.select immediately after attach (onOpen), so it is normally
+/// cockpitTerminalId). The client always sends term.select immediately after attach (onOpen), so it is normally
 /// bound right away.
 const BIND_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -99,7 +99,7 @@ pub async fn attach_owned_term(mut socket: WebSocket, term_id: String, services:
         AttachOutcome::Ready { .. } => {}
     };
 
-    // If unbound (term.open had no windowId), wait for a term.select bind. Once bound, session_id
+    // If unbound (term.open had no cockpitTerminalId), wait for a term.select bind. Once bound, session_id
     // becomes a real sid and `resolve_bound_session` returns Some.
     let session = match resolve_bound_session(&term_id, &services).await {
         Some(session) => session,
@@ -690,7 +690,7 @@ mod tests {
         );
     }
 
-    /// Attaching an owned term.open with no windowId (unbound = empty session_id) does not close
+    /// Attaching an owned term.open with no cockpitTerminalId (unbound = empty session_id) does not close
     /// immediately; after a term.select-equivalent bind (rebind_session), it connects to the PTY and echo
     /// flows.
     #[tokio::test]

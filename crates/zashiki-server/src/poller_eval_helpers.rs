@@ -1,23 +1,23 @@
 //! The pure evaluation helpers of the status poller.
 
 use zashiki_core::repos::org_names;
-use zashiki_core::session_state::{SessionState, DEFAULT_LIMIT_MARKER};
+use zashiki_core::session_state::{CockpitTerminalState, DEFAULT_LIMIT_MARKER};
 
 use zashiki_core::process_tree::find_sid_in_tree;
 
-use crate::protocol::SessionInfo;
-use crate::status_poller::{PollConfig, WorkWindow, WorkWindowPane};
+use crate::protocol::CockpitTerminalInfo;
+use crate::status_poller::{CockpitTerminal, CockpitTerminalPane, PollConfig};
 
-/// The wire SessionState string.
-pub(crate) fn state_wire(state: SessionState) -> &'static str {
+/// The wire CockpitTerminalState string.
+pub(crate) fn state_wire(state: CockpitTerminalState) -> &'static str {
     match state {
-        SessionState::WaitingInput => "waiting_input",
-        SessionState::Running => "running",
-        SessionState::RunningBgAgent => "running_bg_agent",
-        SessionState::Idle => "idle",
-        SessionState::NoClaude => "no_claude",
-        SessionState::Starting => "starting",
-        SessionState::Unknown => "unknown",
+        CockpitTerminalState::WaitingInput => "waiting_input",
+        CockpitTerminalState::Running => "running",
+        CockpitTerminalState::RunningBgAgent => "running_bg_agent",
+        CockpitTerminalState::Idle => "idle",
+        CockpitTerminalState::NoClaude => "no_claude",
+        CockpitTerminalState::Starting => "starting",
+        CockpitTerminalState::Unknown => "unknown",
     }
 }
 
@@ -45,10 +45,10 @@ pub(crate) struct Picked {
 }
 
 pub(crate) fn pick_pane(
-    win: &WorkWindow,
+    win: &CockpitTerminal,
     maps: &zashiki_core::process_tree::ProcessMaps,
 ) -> Option<Picked> {
-    let mut leftmost: Option<&WorkWindowPane> = None;
+    let mut leftmost: Option<&CockpitTerminalPane> = None;
     for pane in &win.panes {
         if let Some(sid) = find_sid_in_tree(pane.pid, maps) {
             return Some(Picked {
@@ -72,7 +72,7 @@ pub(crate) fn pick_pane(
 }
 
 /// Whether the picked pane is in_mode such as copy-mode (avoided because the capture becomes history and misjudges).
-pub(crate) fn is_pane_in_mode(win: &WorkWindow, pane_id: &str) -> bool {
+pub(crate) fn is_pane_in_mode(win: &CockpitTerminal, pane_id: &str) -> bool {
     win.panes
         .iter()
         .find(|p| p.pane_id == pane_id)
@@ -84,7 +84,7 @@ pub(crate) fn roots_ref(roots: &[String]) -> Vec<&str> {
 }
 
 /// All repos.conf orgs plus detected orgs, deduplicated in display order (orgs with 0 sessions are not dropped).
-pub(crate) fn build_orgs(repos_roots: &[String], sessions: &[SessionInfo]) -> Vec<String> {
+pub(crate) fn build_orgs(repos_roots: &[String], sessions: &[CockpitTerminalInfo]) -> Vec<String> {
     let roots = roots_ref(repos_roots);
     let mut orgs = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -107,8 +107,8 @@ mod tests {
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 
-    fn pane(pane_id: &str, pid: i64, left: i64, cwd: &str) -> WorkWindowPane {
-        WorkWindowPane {
+    fn pane(pane_id: &str, pid: i64, left: i64, cwd: &str) -> CockpitTerminalPane {
+        CockpitTerminalPane {
             pane_id: pane_id.to_string(),
             active: true,
             pid,
@@ -118,9 +118,9 @@ mod tests {
         }
     }
 
-    fn window(window_id: &str, name: &str, panes: Vec<WorkWindowPane>) -> WorkWindow {
-        WorkWindow {
-            window_id: window_id.to_string(),
+    fn window(cockpit_terminal_id: &str, name: &str, panes: Vec<CockpitTerminalPane>) -> CockpitTerminal {
+        CockpitTerminal {
+            cockpit_terminal_id: cockpit_terminal_id.to_string(),
             name: name.to_string(),
             active: true,
             panes,

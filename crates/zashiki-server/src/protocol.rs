@@ -1,4 +1,4 @@
-//! Wire types for `/ws/control` (`ClientMessage` / `ServerMessage` / `SessionInfo`, using serde
+//! Wire types for `/ws/control` (`ClientMessage` / `ServerMessage` / `CockpitTerminalInfo`, using serde
 //! internally-tagged enums). The JSON shape is the contract the client depends on, so it must stay stable.
 
 use std::collections::BTreeMap;
@@ -44,9 +44,9 @@ pub struct SessionUsage {
 /// One window's snapshot distributed via state.sync.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SessionInfo {
+pub struct CockpitTerminalInfo {
     /// The id of the owned PTY session (the session UUID when owned).
-    pub window_id: String,
+    pub cockpit_terminal_id: String,
     pub name: String,
     pub org: String,
     pub repo: String,
@@ -93,7 +93,7 @@ pub enum ClientMessage {
     TermOpen {
         term_id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        window_id: Option<String>,
+        cockpit_terminal_id: Option<String>,
         cols: u32,
         rows: u32,
     },
@@ -104,16 +104,16 @@ pub enum ClientMessage {
         rows: u32,
     },
     #[serde(rename = "term.select", rename_all = "camelCase")]
-    TermSelect { term_id: String, window_id: String },
+    TermSelect { term_id: String, cockpit_terminal_id: String },
     #[serde(rename = "term.close", rename_all = "camelCase")]
     TermClose { term_id: String },
     /// Flow-control ACK. `bytes` is the amount xterm.js has finished writing (in UTF-16 code units).
     #[serde(rename = "term.ack", rename_all = "camelCase")]
     TermAck { term_id: String, bytes: u64 },
-    #[serde(rename = "session.new")]
-    SessionNew { org: String },
-    #[serde(rename = "session.close", rename_all = "camelCase")]
-    SessionClose { window_id: String },
+    #[serde(rename = "cockpitTerminal.new")]
+    CockpitTerminalNew { org: String },
+    #[serde(rename = "cockpitTerminal.close", rename_all = "camelCase")]
+    CockpitTerminalClose { cockpit_terminal_id: String },
     #[serde(rename = "state.refresh")]
     StateRefresh,
     /// Manual dismissal of a notification (the ✕ in the NOTIFICATION panel). Only dismissible
@@ -187,13 +187,13 @@ pub struct FocusRequest {
     pub cwd: Option<String>,
 }
 
-/// Response for `POST /api/focus`. `window_id` is present only when resolved.
+/// Response for `POST /api/focus`. `cockpit_terminal_id` is present only when resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FocusResponse {
     pub resolved: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub window_id: Option<String>,
+    pub cockpit_terminal_id: Option<String>,
 }
 
 /// In-app notification level.
@@ -234,7 +234,7 @@ pub struct Notification {
 pub enum ServerMessage {
     #[serde(rename = "state.sync", rename_all = "camelCase")]
     StateSync {
-        sessions: Vec<SessionInfo>,
+        sessions: Vec<CockpitTerminalInfo>,
         orgs: Vec<String>,
         /// org name -> display color. An empty map when omitted (tolerant of rolling updates).
         #[serde(default)]
@@ -247,12 +247,12 @@ pub enum ServerMessage {
     #[serde(rename = "notify", rename_all = "camelCase")]
     Notify {
         kind: NotifyKind,
-        window_id: String,
+        cockpit_terminal_id: String,
         title: String,
     },
     /// Selects a window without a notification. Broadcast on POST /api/focus.
     #[serde(rename = "select", rename_all = "camelCase")]
-    Select { window_id: String },
+    Select { cockpit_terminal_id: String },
     #[serde(rename = "error")]
     Error { code: String, message: String },
     /// Distribution of live-applied settings (to all control connections right after connecting and
@@ -290,13 +290,13 @@ mod tests {
 
     #[test]
     fn term_open_roundtrips_and_matches_wire() {
-        let json = r#"{"t":"term.open","termId":"abc","windowId":"@3","cols":80,"rows":24}"#;
+        let json = r#"{"t":"term.open","termId":"abc","cockpitTerminalId":"@3","cols":80,"rows":24}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(
             msg,
             ClientMessage::TermOpen {
                 term_id: "abc".into(),
-                window_id: Some("@3".into()),
+                cockpit_terminal_id: Some("@3".into()),
                 cols: 80,
                 rows: 24,
             }
@@ -305,17 +305,17 @@ mod tests {
     }
 
     #[test]
-    fn term_open_omits_absent_window_id() {
+    fn term_open_omits_absent_cockpit_terminal_id() {
         let json = r#"{"t":"term.open","termId":"abc","cols":80,"rows":24}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert!(matches!(
             msg,
             ClientMessage::TermOpen {
-                window_id: None,
+                cockpit_terminal_id: None,
                 ..
             }
         ));
-        assert_eq!(to_json(&msg), json); // windowId is omitted
+        assert_eq!(to_json(&msg), json); // cockpitTerminalId is omitted
     }
 
     #[test]
@@ -337,10 +337,10 @@ mod tests {
                 },
             ),
             (
-                r#"{"t":"term.select","termId":"t1","windowId":"@2"}"#,
+                r#"{"t":"term.select","termId":"t1","cockpitTerminalId":"@2"}"#,
                 ClientMessage::TermSelect {
                     term_id: "t1".into(),
-                    window_id: "@2".into(),
+                    cockpit_terminal_id: "@2".into(),
                 },
             ),
             (
@@ -350,15 +350,15 @@ mod tests {
                 },
             ),
             (
-                r#"{"t":"session.new","org":"charlie"}"#,
-                ClientMessage::SessionNew {
+                r#"{"t":"cockpitTerminal.new","org":"charlie"}"#,
+                ClientMessage::CockpitTerminalNew {
                     org: "charlie".into(),
                 },
             ),
             (
-                r#"{"t":"session.close","windowId":"@5"}"#,
-                ClientMessage::SessionClose {
-                    window_id: "@5".into(),
+                r#"{"t":"cockpitTerminal.close","cockpitTerminalId":"@5"}"#,
+                ClientMessage::CockpitTerminalClose {
+                    cockpit_terminal_id: "@5".into(),
                 },
             ),
             (r#"{"t":"state.refresh"}"#, ClientMessage::StateRefresh),
@@ -374,8 +374,8 @@ mod tests {
     #[test]
     fn state_sync_matches_wire() {
         let msg = ServerMessage::StateSync {
-            sessions: vec![SessionInfo {
-                window_id: "@1".into(),
+            sessions: vec![CockpitTerminalInfo {
+                cockpit_terminal_id: "@1".into(),
                 name: "repo".into(),
                 org: "org1".into(),
                 repo: "repo".into(),
@@ -391,7 +391,7 @@ mod tests {
             orgs: vec!["org1".into()],
             org_colors: BTreeMap::from([("org1".to_string(), "#7ec699".to_string())]),
         };
-        let json = r##"{"t":"state.sync","sessions":[{"windowId":"@1","name":"repo","org":"org1","repo":"repo","state":"running","title":null,"active":true}],"orgs":["org1"],"orgColors":{"org1":"#7ec699"}}"##;
+        let json = r##"{"t":"state.sync","sessions":[{"cockpitTerminalId":"@1","name":"repo","org":"org1","repo":"repo","state":"running","title":null,"active":true}],"orgs":["org1"],"orgColors":{"org1":"#7ec699"}}"##;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -422,17 +422,17 @@ mod tests {
             ),
             (r#"{"t":"git.dirty"}"#, ServerMessage::GitDirty),
             (
-                r#"{"t":"notify","kind":"waiting","windowId":"@1","title":"hi"}"#,
+                r#"{"t":"notify","kind":"waiting","cockpitTerminalId":"@1","title":"hi"}"#,
                 ServerMessage::Notify {
                     kind: NotifyKind::Waiting,
-                    window_id: "@1".into(),
+                    cockpit_terminal_id: "@1".into(),
                     title: "hi".into(),
                 },
             ),
             (
-                r#"{"t":"select","windowId":"@1"}"#,
+                r#"{"t":"select","cockpitTerminalId":"@1"}"#,
                 ServerMessage::Select {
-                    window_id: "@1".into(),
+                    cockpit_terminal_id: "@1".into(),
                 },
             ),
             (
@@ -449,18 +449,18 @@ mod tests {
     }
 
     #[test]
-    fn focus_response_omits_window_id_when_unresolved() {
+    fn focus_response_omits_cockpit_terminal_id_when_unresolved() {
         assert_eq!(
             to_json(&FocusResponse {
                 resolved: true,
-                window_id: Some("@1".into()),
+                cockpit_terminal_id: Some("@1".into()),
             }),
-            r#"{"resolved":true,"windowId":"@1"}"#
+            r#"{"resolved":true,"cockpitTerminalId":"@1"}"#
         );
         assert_eq!(
             to_json(&FocusResponse {
                 resolved: false,
-                window_id: None,
+                cockpit_terminal_id: None,
             }),
             r#"{"resolved":false}"#
         );
@@ -487,13 +487,13 @@ mod tests {
     }
 
     // ---- wire-shape coverage (notification.dismiss / config.sync /
-    //      notifications.sync / SessionInfo.runningSubagents) ----
+    //      notifications.sync / CockpitTerminalInfo.runningSubagents) ----
 
     #[test]
     fn session_info_serializes_running_subagents_when_present() {
         let msg = ServerMessage::StateSync {
-            sessions: vec![SessionInfo {
-                window_id: "@1".into(),
+            sessions: vec![CockpitTerminalInfo {
+                cockpit_terminal_id: "@1".into(),
                 name: "repo".into(),
                 org: "o".into(),
                 repo: "repo".into(),
@@ -509,15 +509,15 @@ mod tests {
             orgs: vec![],
             org_colors: BTreeMap::new(),
         };
-        let json = r#"{"t":"state.sync","sessions":[{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{}}"#;
+        let json = r#"{"t":"state.sync","sessions":[{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{}}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
 
     #[test]
     fn session_info_serializes_shells_running_when_present() {
-        let info = SessionInfo {
-            window_id: "@1".into(),
+        let info = CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".into(),
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
@@ -530,15 +530,15 @@ mod tests {
             limited: false,
             usage: None,
         };
-        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
         assert_eq!(to_json(&info), json);
-        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
     }
 
     #[test]
     fn session_info_omits_running_subagents_when_absent() {
-        let info = SessionInfo {
-            window_id: "@1".into(),
+        let info = CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".into(),
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
@@ -551,16 +551,16 @@ mod tests {
             limited: false,
             usage: None,
         };
-        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":false}"#;
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":false}"#;
         assert_eq!(to_json(&info), json);
         // Backward compatibility with older servers: a missing runningSubagents collapses to None.
-        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
     }
 
     #[test]
     fn session_info_serializes_sid_when_present() {
-        let info = SessionInfo {
-            window_id: "@1".into(),
+        let info = CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".into(),
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
@@ -573,15 +573,15 @@ mod tests {
             limited: false,
             usage: None,
         };
-        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"sid":"0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f","active":true}"#;
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"sid":"0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f","active":true}"#;
         assert_eq!(to_json(&info), json);
-        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
     }
 
     #[test]
     fn session_info_serializes_usage_with_limits() {
-        let info = SessionInfo {
-            window_id: "@1".into(),
+        let info = CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".into(),
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
@@ -609,15 +609,15 @@ mod tests {
                 }),
             }),
         };
-        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"usage":{"turnTokens":1200,"sessionTokens":3400000,"turnStartedAt":1700000000000,"sessionStartedAt":1699999000000,"limits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61}}}}"#;
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"usage":{"turnTokens":1200,"sessionTokens":3400000,"turnStartedAt":1700000000000,"sessionStartedAt":1699999000000,"limits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61}}}}"#;
         assert_eq!(to_json(&info), json);
-        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
     }
 
     #[test]
     fn session_info_usage_omits_limits_when_absent() {
-        let info = SessionInfo {
-            window_id: "@1".into(),
+        let info = CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".into(),
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
@@ -636,9 +636,9 @@ mod tests {
                 limits: None,
             }),
         };
-        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"turnStartedAt":10,"sessionStartedAt":10}}"#;
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"turnStartedAt":10,"sessionStartedAt":10}}"#;
         assert_eq!(to_json(&info), json);
-        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
     }
 
     #[test]

@@ -1,17 +1,17 @@
 /**
  * Persistence of user-edited titles for the conversation panel.
- * The key is the session's windowId. In owned mode the windowId is the session's
+ * The key is the session's cockpitTerminalId. In owned mode the cockpitTerminalId is the session's
  * stable UUID: it is generated at session.new, launched as `claude --session-id
- * <windowId>`, and preserved across resume/restore (the registry is rebuilt under
+ * <cockpitTerminalId>`, and preserved across resume/restore (the registry is rebuilt under
  * the same id). So a title stays attached for the whole life of the session,
  * independent of whether a claude process is detected at any given moment.
- * windowId is unique per session, so there is no cross-session "possession" risk.
- * We reject non-UUID windowIds (unbound/plain-shell windows that are never
+ * cockpitTerminalId is unique per session, so there is no cross-session "possession" risk.
+ * We reject non-UUID cockpitTerminalIds (unbound/plain-shell windows that are never
  * persisted); this also self-enforces the owned-mode assumption, since a legacy
- * tmux windowId (`@N`) is non-UUID and is simply treated as non-renamable. The
+ * tmux cockpitTerminalId (`@N`) is non-UUID and is simply treated as non-renamable. The
  * name (repository) is stored alongside the title to keep the storage format
  * stable and as a display-time consistency check (it normally always matches,
- * as windowId is unique). Follows the localStorage "zk.*" naming convention. When
+ * as cockpitTerminalId is unique). Follows the localStorage "zk.*" naming convention. When
  * unedited, it falls back to the automatic title (or the name if absent).
  */
 
@@ -27,19 +27,21 @@ export interface TitleEntry {
   name: string;
 }
 
-/** windowId → title entry. Empty titles are not kept (i.e. fall back to the automatic title). */
+/** cockpitTerminalId → title entry. Empty titles are not kept (i.e. fall back to the automatic title). */
 export type TitleMap = Record<string, TitleEntry>;
 
-/** Whether the windowId can be used as a custom-title key (rejects missing or non-UUID values). */
-function isKeyableWindowId(windowId: string | undefined): windowId is string {
-  return windowId !== undefined && isUuidSid(windowId);
+/** Whether the cockpitTerminalId can be used as a custom-title key (rejects missing or non-UUID values). */
+function isKeyableCockpitTerminalId(
+  cockpitTerminalId: string | undefined,
+): cockpitTerminalId is string {
+  return cockpitTerminalId !== undefined && isUuidSid(cockpitTerminalId);
 }
 
 /**
  * Reads the persisted title map. Malformed values, empty titles, and non-UUID
- * keys (unbound/plain-shell windows, or the retired windowId=@N format) are
- * dropped. A map keyed by old tmux windowIds cannot be mapped onto the current
- * UUID windowIds, so it is discarded wholesale during migration.
+ * keys (unbound/plain-shell windows, or the retired cockpitTerminalId=@N format) are
+ * dropped. A map keyed by old tmux cockpitTerminalIds cannot be mapped onto the current
+ * UUID cockpitTerminalIds, so it is discarded wholesale during migration.
  */
 export function loadConversationTitles(storage: StoragePart | null): TitleMap {
   if (storage === null) return {};
@@ -82,37 +84,37 @@ export function saveConversationTitles(
 }
 
 /**
- * Returns a new map with the edit committed (pure function). If the windowId is
+ * Returns a new map with the edit committed (pure function). If the cockpitTerminalId is
  * missing or non-UUID (an unbound/plain-shell window), it writes nothing and
  * returns the original map. If empty after trimming, it deletes the custom title
  * and falls back to the automatic one. The name is stored as a pair for matching.
  */
 export function commitTitle(
   titles: TitleMap,
-  windowId: string | undefined,
+  cockpitTerminalId: string | undefined,
   name: string,
   raw: string,
 ): TitleMap {
-  if (!isKeyableWindowId(windowId)) return titles;
+  if (!isKeyableCockpitTerminalId(cockpitTerminalId)) return titles;
   const trimmed = raw.trim();
   const next = { ...titles };
-  if (trimmed === "") delete next[windowId];
-  else next[windowId] = { title: trimmed, name };
+  if (trimmed === "") delete next[cockpitTerminalId];
+  else next[cockpitTerminalId] = { title: trimmed, name };
   return next;
 }
 
 /**
  * Returns the manual title in effect for the current session (undefined if
- * none). Not used if the windowId is missing or non-UUID. Only adopted when the
+ * none). Not used if the cockpitTerminalId is missing or non-UUID. Only adopted when the
  * name (repository) saved with it matches the current session (normally always
- * true since windowId is unique; a defensive display-time check).
+ * true since cockpitTerminalId is unique; a defensive display-time check).
  */
 export function effectiveCustomTitle(
   titles: TitleMap,
-  session: { windowId?: string | undefined; name: string },
+  session: { cockpitTerminalId?: string | undefined; name: string },
 ): string | undefined {
-  if (!isKeyableWindowId(session.windowId)) return undefined;
-  const entry = titles[session.windowId];
+  if (!isKeyableCockpitTerminalId(session.cockpitTerminalId)) return undefined;
+  const entry = titles[session.cockpitTerminalId];
   if (entry === undefined || entry.name !== session.name) return undefined;
   return entry.title === "" ? undefined : entry.title;
 }

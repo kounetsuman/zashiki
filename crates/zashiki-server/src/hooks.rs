@@ -1,6 +1,6 @@
 //! Pure functions behind the Claude Code hooks endpoint `POST /api/hooks/event`.
 //!
-//! Asynchronous fetching (refresh / listWorkWindows / ps snapshot) is done by the REST handler; here we
+//! Asynchronous fetching (refresh / listCockpitTerminals / ps snapshot) is done by the REST handler; here we
 //! keep only **window resolution ([`resolve_window`])** and **delivery decisions ([`notify_delivery`] / [`decide`])**
 //! as pure functions (separated into a testable form).
 //! The canonical source of behavior is the `tests` module at the end.
@@ -11,7 +11,7 @@ use serde_json::Value;
 use zashiki_core::process_tree::{build_process_maps, find_sid_in_tree, parse_ps_snapshot};
 
 use crate::protocol::{HookKind, NotifyKind, UsageLimit, UsageLimits};
-use crate::status_poller::WorkWindow;
+use crate::status_poller::CockpitTerminal;
 
 /// Reads one `{used_percentage, resets_at}` block Claude Code exposes to its statusLine.
 /// `used_percentage` rounds to an integer; `resets_at` is unix seconds, converted to epoch ms.
@@ -89,7 +89,7 @@ pub fn notify_delivery(mode: NotifyMode, client_count: usize) -> NotifyDelivery 
 /// A resolved window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedWindow {
-    pub window_id: String,
+    pub cockpit_terminal_id: String,
     pub name: String,
 }
 
@@ -98,7 +98,7 @@ pub struct ResolvedWindow {
 pub fn resolve_window(
     sid: Option<&str>,
     cwd: Option<&str>,
-    windows: &[WorkWindow],
+    windows: &[CockpitTerminal],
     ps_output: &str,
 ) -> Option<ResolvedWindow> {
     let sid = sid.map(|s| s.to_lowercase()).filter(|s| !s.is_empty());
@@ -108,7 +108,7 @@ pub fn resolve_window(
             for pane in &win.panes {
                 if find_sid_in_tree(pane.pid, &maps).as_deref() == Some(sid.as_str()) {
                     return Some(ResolvedWindow {
-                        window_id: win.window_id.clone(),
+                        cockpit_terminal_id: win.cockpit_terminal_id.clone(),
                         name: win.name.clone(),
                     });
                 }
@@ -119,7 +119,7 @@ pub fn resolve_window(
         for win in windows {
             if win.panes.iter().any(|p| p.current_path == cwd) {
                 return Some(ResolvedWindow {
-                    window_id: win.window_id.clone(),
+                    cockpit_terminal_id: win.cockpit_terminal_id.clone(),
                     name: win.name.clone(),
                 });
             }
@@ -151,7 +151,7 @@ pub struct HookActions {
     pub git_dirty: bool,
     /// Accumulate into NOTIFICATION (kind, window name). None when off.
     pub record: Option<(NotifyKind, String)>,
-    /// notify push over the control WS (kind, windowId, title).
+    /// notify push over the control WS (kind, cockpitTerminalId, title).
     pub push: Option<(NotifyKind, String, String)>,
     /// macOS notification.
     pub mac: Option<MacNotification>,
@@ -193,7 +193,7 @@ pub fn decide(
     }
     let delivery = notify_delivery(mode, client_count);
     if delivery.push {
-        actions.push = Some((nk, win.window_id.clone(), win.name.clone()));
+        actions.push = Some((nk, win.cockpit_terminal_id.clone(), win.name.clone()));
     }
     if delivery.mac {
         actions.mac = Some(MacNotification {
@@ -208,7 +208,7 @@ pub fn decide(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::status_poller::WorkWindowPane;
+    use crate::status_poller::CockpitTerminalPane;
     use serde_json::json;
 
     #[test]
@@ -248,8 +248,8 @@ mod tests {
         assert!(parse_statusline_limits(&json!({"session_id": "abc", "rate_limits": {}})).is_none());
     }
 
-    fn pane(pid: i64, cwd: &str) -> WorkWindowPane {
-        WorkWindowPane {
+    fn pane(pid: i64, cwd: &str) -> CockpitTerminalPane {
+        CockpitTerminalPane {
             pane_id: "%0".to_string(),
             active: true,
             pid,
@@ -259,9 +259,9 @@ mod tests {
         }
     }
 
-    fn window(id: &str, name: &str, panes: Vec<WorkWindowPane>) -> WorkWindow {
-        WorkWindow {
-            window_id: id.to_string(),
+    fn window(id: &str, name: &str, panes: Vec<CockpitTerminalPane>) -> CockpitTerminal {
+        CockpitTerminal {
+            cockpit_terminal_id: id.to_string(),
             name: name.to_string(),
             active: true,
             panes,
@@ -299,7 +299,7 @@ mod tests {
             window("@2", "repo-b", vec![pane(200, "/repos/b")]),
         ];
         let got = resolve_window(None, Some("/repos/b"), &windows, "");
-        assert_eq!(got.unwrap().window_id, "@2");
+        assert_eq!(got.unwrap().cockpit_terminal_id, "@2");
     }
 
     #[test]
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn decide_matched_web_pushes_and_records() {
         let win = ResolvedWindow {
-            window_id: "@1".to_string(),
+            cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
         let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, 2, Some("題名".to_string()));
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn decide_matched_web_no_clients_also_macs_with_snap_title() {
         let win = ResolvedWindow {
-            window_id: "@1".to_string(),
+            cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
         let a = decide(HookKind::Done, Some(&win), NotifyMode::Web, 0, Some("題名".to_string()));
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn decide_off_matched_but_no_record_no_delivery() {
         let win = ResolvedWindow {
-            window_id: "@1".to_string(),
+            cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
         let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Off, 0, None);

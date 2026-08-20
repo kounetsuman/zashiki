@@ -1,4 +1,7 @@
-import type { SessionInfo, SessionState } from "@zashiki/shared";
+import type {
+  CockpitTerminalInfo,
+  CockpitTerminalState,
+} from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 import {
   buildVisibleItems,
@@ -9,24 +12,24 @@ import {
 } from "./session-list-model.js";
 
 function session(
-  windowId: string,
+  cockpitTerminalId: string,
   org: string,
-  extra: Partial<SessionInfo> = {},
-): SessionInfo {
+  extra: Partial<CockpitTerminalInfo> = {},
+): CockpitTerminalInfo {
   return {
-    windowId,
+    cockpitTerminalId,
     org,
     name: org,
-    state: "idle" as SessionState,
+    state: "idle" as CockpitTerminalState,
     title: null,
     ...extra,
-  } as SessionInfo;
+  } as CockpitTerminalInfo;
 }
 
 describe("focusKey", () => {
   it("prefixes by kind so org and row keys never collide", () => {
     expect(focusKey({ kind: "org", org: "a" })).toBe("o:a");
-    expect(focusKey({ kind: "row", windowId: "a" })).toBe("r:a");
+    expect(focusKey({ kind: "row", cockpitTerminalId: "a" })).toBe("r:a");
   });
 });
 
@@ -60,10 +63,10 @@ describe("buildVisibleItems", () => {
   it("interleaves org headers with their rows in display order", () => {
     expect(buildVisibleItems(["a", "b"], sessions, new Set())).toEqual([
       { kind: "org", org: "a" },
-      { kind: "row", windowId: "w1" },
-      { kind: "row", windowId: "w2" },
+      { kind: "row", cockpitTerminalId: "w1" },
+      { kind: "row", cockpitTerminalId: "w2" },
       { kind: "org", org: "b" },
-      { kind: "row", windowId: "w3" },
+      { kind: "row", cockpitTerminalId: "w3" },
     ]);
   });
 
@@ -71,7 +74,7 @@ describe("buildVisibleItems", () => {
     expect(buildVisibleItems(["a", "b"], sessions, new Set(["a"]))).toEqual([
       { kind: "org", org: "a" },
       { kind: "org", org: "b" },
-      { kind: "row", windowId: "w3" },
+      { kind: "row", cockpitTerminalId: "w3" },
     ]);
   });
 });
@@ -83,14 +86,14 @@ describe("nextFocusTarget", () => {
   it("steps down from the current ring", () => {
     expect(
       nextFocusTarget(items, { kind: "org", org: "a" }, null, sessions, 1),
-    ).toEqual({ kind: "row", windowId: "w1" });
+    ).toEqual({ kind: "row", cockpitTerminalId: "w1" });
   });
 
   it("steps up from the current ring", () => {
     expect(
       nextFocusTarget(
         items,
-        { kind: "row", windowId: "w1" },
+        { kind: "row", cockpitTerminalId: "w1" },
         null,
         sessions,
         -1,
@@ -102,12 +105,12 @@ describe("nextFocusTarget", () => {
     expect(
       nextFocusTarget(
         items,
-        { kind: "row", windowId: "w2" },
+        { kind: "row", cockpitTerminalId: "w2" },
         null,
         sessions,
         1,
       ),
-    ).toEqual({ kind: "row", windowId: "w2" });
+    ).toEqual({ kind: "row", cockpitTerminalId: "w2" });
   });
 
   it("clamps at the top edge", () => {
@@ -126,7 +129,7 @@ describe("nextFocusTarget", () => {
   it("with no ring, anchors on the visible selected row", () => {
     expect(nextFocusTarget(items, null, "w1", sessions, 1)).toEqual({
       kind: "row",
-      windowId: "w2",
+      cockpitTerminalId: "w2",
     });
   });
 
@@ -148,7 +151,7 @@ describe("nextFocusTarget", () => {
   it("with no anchor, an up step lands on the last item", () => {
     expect(nextFocusTarget(items, null, null, sessions, -1)).toEqual({
       kind: "row",
-      windowId: "w2",
+      cockpitTerminalId: "w2",
     });
   });
 });

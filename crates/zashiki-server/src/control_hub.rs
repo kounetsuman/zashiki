@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
 
 use crate::control::ConfigView;
-use crate::protocol::{Notification, ServerMessage, SessionInfo, UsageLimits};
+use crate::protocol::{Notification, ServerMessage, CockpitTerminalInfo, UsageLimits};
 use crate::status_poller::StateSnapshot;
 
 struct HubState {
@@ -30,7 +30,7 @@ const RATE_LIMIT_TTL_MS: u64 = 30 * 60 * 1000;
 
 /// Attaches each session's bridge-reported limits (matched by sid) onto its footer usage. Sessions
 /// without transcript usage yet, or without a stored reading, are left untouched.
-fn merge_rate_limits(sessions: &mut [SessionInfo], store: &HashMap<String, RateLimitEntry>) {
+fn merge_rate_limits(sessions: &mut [CockpitTerminalInfo], store: &HashMap<String, RateLimitEntry>) {
     for session in sessions.iter_mut() {
         let Some(sid) = session.sid.as_deref() else {
             continue;
@@ -73,7 +73,7 @@ fn is_active_state(state: &str) -> bool {
     matches!(state, "running" | "running_bg_agent" | "waiting_input")
 }
 
-fn summarize_activity(sessions: &[SessionInfo]) -> ActivitySummary {
+fn summarize_activity(sessions: &[CockpitTerminalInfo]) -> ActivitySummary {
     let mut summary = ActivitySummary::default();
     for session in sessions {
         if is_active_state(&session.state) {
@@ -376,13 +376,13 @@ impl ControlHub {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::SessionInfo;
+    use crate::protocol::CockpitTerminalInfo;
     use std::collections::BTreeMap;
 
     fn snapshot_with(window: &str) -> StateSnapshot {
         StateSnapshot {
-            sessions: vec![SessionInfo {
-                window_id: window.to_string(),
+            sessions: vec![CockpitTerminalInfo {
+                cockpit_terminal_id: window.to_string(),
                 name: "repo".to_string(),
                 org: "org".to_string(),
                 repo: "repo".to_string(),
@@ -400,9 +400,9 @@ mod tests {
         }
     }
 
-    fn session(state: &str, subagents: Option<u32>, shells: Option<u32>) -> SessionInfo {
-        SessionInfo {
-            window_id: "@1".to_string(),
+    fn session(state: &str, subagents: Option<u32>, shells: Option<u32>) -> CockpitTerminalInfo {
+        CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".to_string(),
             name: "repo".to_string(),
             org: "org".to_string(),
             repo: "repo".to_string(),
@@ -464,7 +464,7 @@ mod tests {
         let got = rx.recv().await.unwrap();
         match got {
             ServerMessage::StateSync { sessions, .. } => {
-                assert_eq!(sessions[0].window_id, "@2");
+                assert_eq!(sessions[0].cockpit_terminal_id, "@2");
             }
             _ => panic!("expected state.sync"),
         }

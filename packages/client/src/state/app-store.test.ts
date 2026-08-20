@@ -1,9 +1,9 @@
-import type { ServerMessage, SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo, ServerMessage } from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 
 import i18n from "../i18n/index.js";
 import type { Notifier, NotifyOptions } from "../lib/notify.js";
-import { createAppStore, newestAddedWindowId } from "./app-store.js";
+import { createAppStore, newestAddedCockpitTerminalId } from "./app-store.js";
 
 function fakeControl() {
   const handlers = new Set<(m: ServerMessage) => void>();
@@ -32,8 +32,8 @@ function fakeNotifier() {
   return { notifier, notified };
 }
 
-const session: SessionInfo = {
-  windowId: "@1",
+const session: CockpitTerminalInfo = {
+  cockpitTerminalId: "@1",
   name: "myrepo",
   org: "o",
   repo: "myrepo",
@@ -42,8 +42,8 @@ const session: SessionInfo = {
   active: true,
 };
 
-function sessionWith(windowId: string): SessionInfo {
-  return { ...session, windowId };
+function sessionWith(cockpitTerminalId: string): CockpitTerminalInfo {
+  return { ...session, cockpitTerminalId };
 }
 
 function setup() {
@@ -80,10 +80,10 @@ function setup() {
   };
 }
 
-describe("newestAddedWindowId", () => {
+describe("newestAddedCockpitTerminalId", () => {
   it("returns the largest @N among newly added windows", () => {
     expect(
-      newestAddedWindowId(
+      newestAddedCockpitTerminalId(
         [sessionWith("@1")],
         [sessionWith("@1"), sessionWith("@3"), sessionWith("@10")],
       ),
@@ -92,28 +92,30 @@ describe("newestAddedWindowId", () => {
 
   it("returns null when there is no increment", () => {
     expect(
-      newestAddedWindowId([sessionWith("@1")], [sessionWith("@1")]),
+      newestAddedCockpitTerminalId([sessionWith("@1")], [sessionWith("@1")]),
     ).toBeNull();
   });
 
   it("returns null when windows only decreased", () => {
     expect(
-      newestAddedWindowId(
+      newestAddedCockpitTerminalId(
         [sessionWith("@1"), sessionWith("@2")],
         [sessionWith("@1")],
       ),
     ).toBeNull();
   });
 
-  it("returns the windowId for a single owned (UUID) addition (numeric @N assumptions cannot capture it)", () => {
+  it("returns the cockpitTerminalId for a single owned (UUID) addition (numeric @N assumptions cannot capture it)", () => {
     const uuid = "0954e103-14ff-4406-bc6c-325449ef07ba";
-    expect(newestAddedWindowId([], [sessionWith(uuid)])).toBe(uuid);
+    expect(newestAddedCockpitTerminalId([], [sessionWith(uuid)])).toBe(uuid);
   });
 
   it("treats the last of next as newest for multiple simultaneous owned (UUID) additions", () => {
     const a = "0954e103-14ff-4406-bc6c-325449ef07ba";
     const b = "9fc5a92f-2222-4333-8444-555566667777";
-    expect(newestAddedWindowId([], [sessionWith(a), sessionWith(b)])).toBe(b);
+    expect(
+      newestAddedCockpitTerminalId([], [sessionWith(a), sessionWith(b)]),
+    ).toBe(b);
   });
 });
 
@@ -201,10 +203,10 @@ describe("createAppStore", () => {
     expect(t.changes.length).toBeGreaterThan(before);
   });
 
-  it("selectWindow updates the selection state and calls session.select", () => {
+  it("selectCockpitTerminal updates the selection state and calls session.select", () => {
     const t = setup();
-    t.store.selectWindow("@2");
-    expect(t.store.getSnapshot().selectedWindowId).toBe("@2");
+    t.store.selectCockpitTerminal("@2");
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@2");
     expect(t.selected).toEqual(["@2"]);
   });
 
@@ -213,22 +215,22 @@ describe("createAppStore", () => {
     expect(t.store.getSnapshot().resizeNonce).toBe(0);
   });
 
-  it("selectWindow advances resizeNonce (on window switch, resends resize with the current view's actual size to reclaim a shared window)", () => {
+  it("selectCockpitTerminal advances resizeNonce (on window switch, resends resize with the current view's actual size to reclaim a shared window)", () => {
     const t = setup();
     expect(t.store.getSnapshot().resizeNonce).toBe(0);
-    t.store.selectWindow("@2");
+    t.store.selectCockpitTerminal("@2");
     expect(t.store.getSnapshot().resizeNonce).toBe(1);
-    t.store.selectWindow("@3");
+    t.store.selectCockpitTerminal("@3");
     expect(t.store.getSnapshot().resizeNonce).toBe(2);
   });
 
-  it("deselect resets selectedWindowId to null", () => {
+  it("deselect resets selectedCockpitTerminalId to null", () => {
     const t = setup();
-    t.store.selectWindow("@2");
-    expect(t.store.getSnapshot().selectedWindowId).toBe("@2");
+    t.store.selectCockpitTerminal("@2");
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@2");
     const before = t.changes.length;
     t.store.deselect();
-    expect(t.store.getSnapshot().selectedWindowId).toBeNull();
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
     expect(t.changes.length).toBeGreaterThan(before);
   });
 
@@ -256,7 +258,7 @@ describe("createAppStore", () => {
     t.control.emit({
       t: "notify",
       kind: "waiting",
-      windowId: "@1",
+      cockpitTerminalId: "@1",
       title: "myrepo",
     });
     expect(t.notified).toHaveLength(1);
@@ -270,14 +272,14 @@ describe("createAppStore", () => {
     t.control.emit({
       t: "notify",
       kind: "done",
-      windowId: "@1",
+      cockpitTerminalId: "@1",
       title: "myrepo",
     });
     expect(t.notified[0]?.title).toBe("✅ 完了 myrepo");
     t.notified[0]?.onClick?.();
     expect(t.focused).toEqual([1]);
     expect(t.selected).toEqual(["@1"]);
-    expect(t.store.getSnapshot().selectedWindowId).toBe("@1");
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@1");
   });
 
   it("brings to front and selects the window on select, without notifying", () => {
@@ -288,10 +290,10 @@ describe("createAppStore", () => {
       orgs: [],
       orgColors: {},
     });
-    t.control.emit({ t: "select", windowId: "@1" });
+    t.control.emit({ t: "select", cockpitTerminalId: "@1" });
     expect(t.focused).toEqual([1]);
     expect(t.selected).toEqual(["@1"]);
-    expect(t.store.getSnapshot().selectedWindowId).toBe("@1");
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@1");
     expect(t.notified).toHaveLength(0);
   });
 
@@ -303,10 +305,10 @@ describe("createAppStore", () => {
       orgs: [],
       orgColors: {},
     });
-    t.control.emit({ t: "select", windowId: "@2" });
+    t.control.emit({ t: "select", cockpitTerminalId: "@2" });
     expect(t.focused).toEqual([]);
     expect(t.selected).toEqual([]);
-    expect(t.store.getSnapshot().selectedWindowId).toBeNull();
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
   });
 
   it("auto-selects the newest added window on state.sync after markNewRequested", () => {
@@ -324,7 +326,7 @@ describe("createAppStore", () => {
       orgs: ["o"],
       orgColors: {},
     });
-    expect(t.store.getSnapshot().selectedWindowId).toBe("@5");
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@5");
     expect(t.selected).toEqual(["@5"]);
   });
 
@@ -343,7 +345,7 @@ describe("createAppStore", () => {
       orgs: ["o"],
       orgColors: {},
     });
-    expect(t.store.getSnapshot().selectedWindowId).toBe("@7");
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@7");
   });
 
   it("does not auto-select on state.sync without markNewRequested", () => {
@@ -360,7 +362,7 @@ describe("createAppStore", () => {
       orgs: ["o"],
       orgColors: {},
     });
-    expect(t.store.getSnapshot().selectedWindowId).toBeNull();
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
     expect(t.selected).toEqual([]);
   });
 
@@ -379,14 +381,14 @@ describe("createAppStore", () => {
       orgs: ["o"],
       orgColors: {},
     });
-    expect(t.store.getSnapshot().selectedWindowId).toBeNull();
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
     t.control.emit({
       t: "state.sync",
       sessions: [session, sessionWith("@9")],
       orgs: ["o"],
       orgColors: {},
     });
-    expect(t.store.getSnapshot().selectedWindowId).toBe("@9");
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@9");
   });
 
   it("clears the pending new request on receiving error (prevents mistaking a failed request)", () => {
@@ -405,7 +407,7 @@ describe("createAppStore", () => {
       orgs: ["o"],
       orgColors: {},
     });
-    expect(t.store.getSnapshot().selectedWindowId).toBeNull();
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
   });
 
   it("focusNonce is 0 in the initial snapshot", () => {
@@ -502,7 +504,7 @@ describe("createAppStore", () => {
     expect(t.store.getSnapshot().focusNonce).toBe(2);
   });
 
-  it("does not increment focusNonce on selectWindow (list/notification click)", () => {
+  it("does not increment focusNonce on selectCockpitTerminal (list/notification click)", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
@@ -510,7 +512,7 @@ describe("createAppStore", () => {
       orgs: ["o"],
       orgColors: {},
     });
-    t.store.selectWindow("@2");
+    t.store.selectCockpitTerminal("@2");
     expect(t.store.getSnapshot().focusNonce).toBe(0);
   });
 

@@ -9,8 +9,8 @@ import {
 } from "@testing-library/react";
 import type {
   ClientMessage,
+  CockpitTerminalInfo,
   ServerMessage,
-  SessionInfo,
 } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
@@ -121,7 +121,7 @@ function fakeAppSession() {
         status: "attached" as const,
         attempt: 0,
         pendingAck: 0,
-        windowId: null,
+        cockpitTerminalId: null,
         termId: null,
         suspended: false,
       }),
@@ -130,7 +130,8 @@ function fakeAppSession() {
       input: () => undefined,
       resize: () => undefined,
       notifyWritten: () => undefined,
-      select: (windowId: string) => void selected.push(windowId),
+      select: (cockpitTerminalId: string) =>
+        void selected.push(cockpitTerminalId),
       getTermId: () => "term-current",
       reconnect,
       suspend,
@@ -160,9 +161,9 @@ function fakeNotifier(permission: NotifyPermission = "granted") {
   return { notifier, notified, requestPermission };
 }
 
-const sessions: SessionInfo[] = [
+const sessions: CockpitTerminalInfo[] = [
   {
-    windowId: "@1",
+    cockpitTerminalId: "@1",
     name: "zashiki",
     org: "kilo",
     repo: "zashiki",
@@ -171,7 +172,7 @@ const sessions: SessionInfo[] = [
     active: true,
   },
   {
-    windowId: "@2",
+    cockpitTerminalId: "@2",
     name: "tango",
     org: "kilo",
     repo: "tango",
@@ -181,9 +182,9 @@ const sessions: SessionInfo[] = [
   },
 ];
 
-const twoOrgSessions: SessionInfo[] = [
+const twoOrgSessions: CockpitTerminalInfo[] = [
   {
-    windowId: "@1",
+    cockpitTerminalId: "@1",
     name: "zashiki",
     org: "kilo",
     repo: "zashiki",
@@ -192,7 +193,7 @@ const twoOrgSessions: SessionInfo[] = [
     active: true,
   },
   {
-    windowId: "@9",
+    cockpitTerminalId: "@9",
     name: "app",
     org: "delta",
     repo: "app",
@@ -454,8 +455,8 @@ describe("App", () => {
     );
     fireEvent.click(screen.getByRole("menuitem", { name: "削除" }));
     expect(control.sent).toEqual([
-      { t: "session.new", org: "kilo" },
-      { t: "session.close", windowId: "@2" },
+      { t: "cockpitTerminal.new", org: "kilo" },
+      { t: "cockpitTerminal.close", cockpitTerminalId: "@2" },
     ]);
   });
 
@@ -486,8 +487,8 @@ describe("App", () => {
     fireEvent.contextMenu(screen.getByText(/kilo \(/));
     fireEvent.click(screen.getByRole("menuitem", { name: "新規セッション" }));
     // When a state.sync containing the new window arrives, it auto-selects and bumps focusNonce by 1.
-    const newWindow: SessionInfo = {
-      windowId: "@42",
+    const newWindow: CockpitTerminalInfo = {
+      cockpitTerminalId: "@42",
       name: "zashiki",
       org: "kilo",
       repo: "zashiki",
@@ -557,13 +558,16 @@ describe("App", () => {
     // Default highlight = the active @1 (kilo).
     pressCmdN();
     expect(control.sent).toContainEqual({
-      t: "session.new",
+      t: "cockpitTerminal.new",
       org: "kilo",
     });
     // Selecting a delta session points Cmd+N at that org (expand via double click).
     fireEvent.doubleClick(screen.getByRole("button", { name: ROW_APP }));
     pressCmdN();
-    expect(control.sent).toContainEqual({ t: "session.new", org: "delta" });
+    expect(control.sent).toContainEqual({
+      t: "cockpitTerminal.new",
+      org: "delta",
+    });
   });
 
   it("when there are 0 orgs, Cmd+N does nothing", () => {
@@ -584,7 +588,7 @@ describe("App", () => {
       control.emit({ t: "state.sync", sessions: [], orgs: [], orgColors: {} }),
     );
     pressCmdN();
-    expect(control.sent.some((m) => m.t === "session.new")).toBe(false);
+    expect(control.sent.some((m) => m.t === "cockpitTerminal.new")).toBe(false);
   });
 
   it("Cmd+W closes the active tab (the tmux session is not killed, only the tab is removed)", () => {
@@ -614,7 +618,9 @@ describe("App", () => {
     expect(screen.queryByLabelText("tango のタブを閉じる")).toBeNull();
     expect(screen.getByLabelText("zashiki のタブを閉じる")).toBeTruthy();
     // The tmux session is not killed (no session.close is sent).
-    expect(control.sent.some((m) => m.t === "session.close")).toBe(false);
+    expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
+      false,
+    );
   });
 
   it("when there are no tabs, Cmd+W does nothing", () => {
@@ -635,7 +641,9 @@ describe("App", () => {
       control.emit({ t: "state.sync", sessions: [], orgs: [], orgColors: {} }),
     );
     expect(() => pressCmdW()).not.toThrow();
-    expect(control.sent.some((m) => m.t === "session.close")).toBe(false);
+    expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
+      false,
+    );
   });
 
   it("Cmd+R copies the resume command of the active session", async () => {
@@ -662,7 +670,7 @@ describe("App", () => {
           sessions: [
             { ...sessions[0], sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
             sessions[1],
-          ] as SessionInfo[],
+          ] as CockpitTerminalInfo[],
           orgs: ["kilo"],
           orgColors: {},
         }),
@@ -793,8 +801,8 @@ describe("App", () => {
       control.emit({
         t: "state.sync",
         sessions: [
-          sessions[0] as SessionInfo,
-          { ...(sessions[1] as SessionInfo), title: "PR を作る" },
+          sessions[0] as CockpitTerminalInfo,
+          { ...(sessions[1] as CockpitTerminalInfo), title: "PR を作る" },
         ],
         orgs: [],
         orgColors: {},
@@ -804,7 +812,7 @@ describe("App", () => {
       control.emit({
         t: "notify",
         kind: "waiting",
-        windowId: "@2",
+        cockpitTerminalId: "@2",
         title: "tango",
       }),
     );
@@ -845,7 +853,7 @@ describe("App", () => {
       control.emit({
         t: "notify",
         kind: "done",
-        windowId: "@1",
+        cockpitTerminalId: "@1",
         title: "zashiki",
       }),
     );

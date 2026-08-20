@@ -42,7 +42,7 @@ const MAX_SAME_TERM_REATTACHES = 4;
  * - On a server-initiated disconnect, reopen with a "new termId" after backoff
  *   (the old termId's server-side registration is cleaned up on disconnect
  *   detection; reusing the same ID is avoided because it hits the term_exists
- *   race). The visible window is preserved by carrying the windowId over in
+ *   race). The visible window is preserved by carrying the cockpitTerminalId over in
  *   term.open.
  * - ACKs accumulated while control is down are re-queued and flushed when control recovers
  */
@@ -55,7 +55,7 @@ export class TerminalSession {
   /** The cols/rows sent in the most recent term.open. Used to decide whether resize must be re-sent on attach. */
   private openedCols = 80;
   private openedRows = 24;
-  private windowId: string | null = null;
+  private cockpitTerminalId: string | null = null;
   private termId: string | null = null;
   private socket: TermSocketHandle | null = null;
   private pendingAck = 0;
@@ -95,7 +95,7 @@ export class TerminalSession {
     status: TerminalSessionStatus;
     attempt: number;
     pendingAck: number;
-    windowId: string | null;
+    cockpitTerminalId: string | null;
     termId: string | null;
     suspended: boolean;
   } {
@@ -103,7 +103,7 @@ export class TerminalSession {
       status: this.status,
       attempt: this.attempt,
       pendingAck: this.pendingAck,
-      windowId: this.windowId,
+      cockpitTerminalId: this.cockpitTerminalId,
       termId: this.termId,
       suspended: this.suspended,
     };
@@ -148,7 +148,7 @@ export class TerminalSession {
     this.socket = null;
     socket?.close();
     this.termId = null;
-    this.windowId = null;
+    this.cockpitTerminalId = null;
     this.pendingAck = 0;
     this.attempt = 0;
     this.setStatus("idle");
@@ -179,14 +179,14 @@ export class TerminalSession {
     }
   }
 
-  /** Window switch. Carried over via windowId across reconnects too. */
-  select(windowId: string): void {
-    this.windowId = windowId;
+  /** Window switch. Carried over via cockpitTerminalId across reconnects too. */
+  select(cockpitTerminalId: string): void {
+    this.cockpitTerminalId = cockpitTerminalId;
     if (this.termId && this.status === "attached") {
       this.options.control.send({
         t: "term.select",
         termId: this.termId,
-        windowId,
+        cockpitTerminalId,
       });
     }
   }
@@ -199,7 +199,7 @@ export class TerminalSession {
   /**
    * Server-initiated re-attach instruction (term.reconnect, e.g. after restore).
    * Discards the old connection and immediately reopens with a new termId + the
-   * currently visible windowId.
+   * currently visible cockpitTerminalId.
    */
   reconnect(): void {
     if (this.status === "disposed" || !this.started) return;
@@ -253,7 +253,9 @@ export class TerminalSession {
     const sent = this.options.control.send({
       t: "term.open",
       termId,
-      ...(this.windowId !== null ? { windowId: this.windowId } : {}),
+      ...(this.cockpitTerminalId !== null
+        ? { cockpitTerminalId: this.cockpitTerminalId }
+        : {}),
       cols: this.cols,
       rows: this.rows,
     });
@@ -289,11 +291,11 @@ export class TerminalSession {
         }
         // Reflect the window selected before attach (during opening)
         // (select-window is idempotent even if it was included in term.open)
-        if (this.windowId !== null) {
+        if (this.cockpitTerminalId !== null) {
           this.options.control.send({
             t: "term.select",
             termId,
-            windowId: this.windowId,
+            cockpitTerminalId: this.cockpitTerminalId,
           });
         }
       },

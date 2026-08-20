@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { clampMenuPos } from "./panels.js";
@@ -7,7 +7,7 @@ import type { ContextMenu } from "./session-list-model.js";
 export interface SessionContextMenuState {
   menu: ContextMenu | null;
   openOrgMenu(org: string): (e: React.MouseEvent) => void;
-  openRowMenu(s: SessionInfo): (e: React.MouseEvent) => void;
+  openRowMenu(s: CockpitTerminalInfo): (e: React.MouseEvent) => void;
   closeMenu(): void;
 }
 
@@ -29,12 +29,18 @@ export function useSessionContextMenu(
     };
 
   const openRowMenu =
-    (s: SessionInfo) =>
+    (s: CockpitTerminalInfo) =>
     (e: React.MouseEvent): void => {
       e.preventDefault();
       e.stopPropagation();
       const { x, y } = clampMenuPos(e.clientX, e.clientY, rowItemCount);
-      setMenu({ kind: "row", windowId: s.windowId, name: s.name, x, y });
+      setMenu({
+        kind: "row",
+        cockpitTerminalId: s.cockpitTerminalId,
+        name: s.name,
+        x,
+        y,
+      });
     };
 
   const closeMenu = (): void => setMenu(null);

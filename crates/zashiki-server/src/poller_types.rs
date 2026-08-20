@@ -4,11 +4,11 @@ use std::collections::{BTreeMap, HashSet};
 use std::future::Future;
 
 use crate::jsonl::SessionUsageData;
-use crate::protocol::SessionInfo;
+use crate::protocol::CockpitTerminalInfo;
 
 /// Pane material for a work window (material for the poller's decisions).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkWindowPane {
+pub struct CockpitTerminalPane {
     pub pane_id: String,
     pub active: bool,
     pub pid: i64,
@@ -17,13 +17,13 @@ pub struct WorkWindowPane {
     pub current_path: String,
 }
 
-/// A work window (in owned mode, 1 session = 1 window and `window_id` is the owned PTY's session id).
+/// A work window (in owned mode, 1 session = 1 window and `cockpit_terminal_id` is the owned PTY's session id).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkWindow {
-    pub window_id: String,
+pub struct CockpitTerminal {
+    pub cockpit_terminal_id: String,
     pub name: String,
     pub active: bool,
-    pub panes: Vec<WorkWindowPane>,
+    pub panes: Vec<CockpitTerminalPane>,
 }
 
 /// The head/tail slices of jsonl plus the elapsed mtime seconds of the tail file (read by the infra).
@@ -37,7 +37,7 @@ pub struct Slices {
 /// It requires `Send` on the returned futures so tasks can be spawned onto a timer-driven task (the impl side can
 /// still satisfy this as a plain `async fn`; RPITIT).
 pub trait PollerPorts {
-    fn list_work_windows(&self) -> impl Future<Output = Vec<WorkWindow>> + Send;
+    fn list_work_windows(&self) -> impl Future<Output = Vec<CockpitTerminal>> + Send;
     /// The visible screen of the capture target pane (pane_id for tmux). Empty string on failure.
     fn capture_pane(&self, target: &str) -> impl Future<Output = String> + Send;
     fn ps_snapshot(&self) -> impl Future<Output = String> + Send;
@@ -75,7 +75,7 @@ pub struct PollConfig {
 /// The result of one evaluation (the shape distributed via state.sync; same shape as protocol's StateSync).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateSnapshot {
-    pub sessions: Vec<SessionInfo>,
+    pub sessions: Vec<CockpitTerminalInfo>,
     pub orgs: Vec<String>,
     pub org_colors: BTreeMap<String, String>,
 }
