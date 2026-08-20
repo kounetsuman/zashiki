@@ -105,7 +105,7 @@ async fn main() {
         .unwrap_or_else(|| home().join(".zashiki/config.json"));
     let config = zashiki_server::config::read_config(&config_path);
 
-    // Defaults to ~/.claude/projects. Can be isolated via ZK_PROJECTS_ROOT so e2e/verification/demo runs don't read real transcripts.
+    // Defaults to ~/.claude/projects. Can be isolated via ZK_PROJECTS_ROOT so e2e / verification / sandbox runs don't read real transcripts.
     let projects_root = std::env::var_os("ZK_PROJECTS_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".claude/projects"));
@@ -137,8 +137,8 @@ async fn main() {
     // Grab the registry of owned sessions to be torn down on graceful shutdown, before handing control to the router.
     let registry = control.sessions.clone();
 
-    // Bind the port BEFORE restore/demo-seed spawn any PTYs. A double launch (port already taken) must fail
-    // here, not after we have spawned owned/demo sessions — portable-pty setsid's children away, so a later
+    // Bind the port BEFORE restore spawns any PTYs. A double launch (port already taken) must fail
+    // here, not after we have spawned owned sessions — portable-pty setsid's children away, so a later
     // panic would orphan them. Binding first makes a busy port a clean no-op exit. The token is written only
     // after a successful bind, so a failed double launch never clobbers the running instance's token.
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -194,22 +194,6 @@ async fn main() {
         control.hub.clone(),
         zashiki_server::scrollback_monitor::MONITOR_INTERVAL,
     );
-
-    // Demo sandbox seeding (`zashiki --demo`). When ZK_DEMO_SEED points to a seed JSON, stage the cockpit
-    // with state/title-annotated sessions without launching real claude (see demo_seed.rs). Isolated dirs
-    // are set up by the CLI, so this never touches real user data. A malformed/missing seed is logged and skipped.
-    if let Some(seed_path) = std::env::var_os("ZK_DEMO_SEED") {
-        match zashiki_server::demo_seed::load_seed(&seed_path) {
-            Ok(seed) => {
-                let shell = zashiki_server::session_restore::login_shell();
-                let n =
-                    zashiki_server::demo_seed::seed_demo_sessions(&registry, &projects_root, &shell, &seed)
-                        .await;
-                eprintln!("zashiki-server: demo セッションを {n} 件 seed しました");
-            }
-            Err(e) => eprintln!("zashiki-server: demo seed の読み込みに失敗しました: {e}"),
-        }
-    }
 
     let app = zashiki_server::build_router(zashiki_server::ServerConfig {
         expected_token: Some(token.clone()),
