@@ -1,0 +1,139 @@
+import type { RepoStatus } from "@zashiki/shared";
+import type { KeyboardEvent } from "react";
+import { useTranslation } from "react-i18next";
+import type { GitApi } from "../api/git.js";
+import { GitCommitBox } from "./GitCommitBox.js";
+import { GitFileRow } from "./GitFileRow.js";
+import { fileRowKey } from "./git-panel-model.js";
+
+/** Shared wiring for the git tree, threaded from GitPanel down through each repo block. */
+export interface GitTreeHandlers {
+  api: GitApi;
+  run(action: Promise<void>): void;
+  copy(text: string, rowKey: string): void;
+  copiedKey: string | null;
+  expanded: ReadonlySet<string>;
+  toggle(key: string): void;
+  messages: Record<string, string>;
+  setMessage(repoPath: string, value: string): void;
+  commit(repo: RepoStatus): void;
+  onCommitKeyDown(
+    repo: RepoStatus,
+    e: KeyboardEvent<HTMLTextAreaElement>,
+  ): void;
+}
+
+export interface GitRepoBlockProps {
+  repo: RepoStatus;
+  indented: boolean;
+  handlers: GitTreeHandlers;
+}
+
+/** A repo row (branch + staged/changed counts, stage-all/unstage-all) with its commit box and file lists. */
+export function GitRepoBlock({ repo, indented, handlers }: GitRepoBlockProps) {
+  const { t } = useTranslation();
+  const {
+    api,
+    run,
+    copy,
+    copiedKey,
+    expanded,
+    toggle,
+    messages,
+    setMessage,
+    commit,
+    onCommitKeyDown,
+  } = handlers;
+  const exp = expanded.has(repo.path);
+  return (
+    <div className={indented ? "git-repo git-indent" : "git-repo"}>
+      <div className="git-repo-line">
+        <button
+          type="button"
+          className="panel-row git-row git-repo-row"
+          onClick={() => toggle(repo.path)}
+        >
+          <span
+            className="panel-arrow material-symbols-outlined"
+            aria-hidden="true"
+          >
+            {exp ? "expand_more" : "chevron_right"}
+          </span>{" "}
+          <span className="git-repo-name">{repo.repo}</span>{" "}
+          <span className="git-branch">{repo.branch}</span>{" "}
+          {repo.staged.length > 0 && (
+            <span className="git-count-staged">●{repo.staged.length}</span>
+          )}
+          {repo.changed.length > 0 && (
+            <span className="git-count-changed">+{repo.changed.length}</span>
+          )}
+        </button>
+        <span className="git-row-actions">
+          <button
+            type="button"
+            aria-label={`stage-all ${repo.repo}`}
+            title={t("git.stageAll")}
+            onClick={() => run(api.stageAll(repo.path))}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              add
+            </span>
+          </button>
+          <button
+            type="button"
+            aria-label={`unstage-all ${repo.repo}`}
+            title={t("git.unstageAll")}
+            onClick={() => run(api.unstageAll(repo.path))}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              remove
+            </span>
+          </button>
+        </span>
+      </div>
+      {exp && (
+        <GitCommitBox
+          repo={repo}
+          message={messages[repo.path] ?? ""}
+          onChange={(value) => setMessage(repo.path, value)}
+          onCommit={() => commit(repo)}
+          onKeyDown={(e) => onCommitKeyDown(repo, e)}
+        />
+      )}
+      {exp && repo.staged.length > 0 && (
+        <div className="git-section">
+          <div className="git-section-header git-section-staged">STAGED</div>
+          {repo.staged.map((f) => (
+            <GitFileRow
+              key={fileRowKey(repo.path, true, f.code, f.path)}
+              api={api}
+              repo={repo}
+              staged
+              file={f}
+              copiedKey={copiedKey}
+              run={run}
+              copy={copy}
+            />
+          ))}
+        </div>
+      )}
+      {exp && repo.changed.length > 0 && (
+        <div className="git-section">
+          <div className="git-section-header git-section-changed">CHANGED</div>
+          {repo.changed.map((f) => (
+            <GitFileRow
+              key={fileRowKey(repo.path, false, f.code, f.path)}
+              api={api}
+              repo={repo}
+              staged={false}
+              file={f}
+              copiedKey={copiedKey}
+              run={run}
+              copy={copy}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
