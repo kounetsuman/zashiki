@@ -1,4 +1,4 @@
-import { resolveOrgColor, type SessionInfo } from "@zashiki/shared";
+import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
@@ -16,15 +16,15 @@ import { useSessionListFocus } from "./useSessionListFocus.js";
 import { useSessionRefresh } from "./useSessionRefresh.js";
 
 export interface SessionListPanelProps {
-  sessions: SessionInfo[];
+  sessions: CockpitTerminalInfo[];
   /** All orgs from repos.conf + detected orgs (in display order; not removed even at (0)). */
   orgs: string[];
   /** org name -> display color (as noted in repos.conf). Unspecified orgs use the default color (white). */
   orgColors?: Record<string, string>;
-  selectedWindowId: string | null;
-  onSelect(windowId: string): void;
+  selectedCockpitTerminalId: string | null;
+  onSelect(cockpitTerminalId: string): void;
   onNew(org: string): void;
-  onClose(windowId: string): void;
+  onClose(cockpitTerminalId: string): void;
   /**
    * Manual refresh. Returning a Promise reflects the spinner while fetching and then
    * success/error in the header icon (the App side sends state.refresh and resolves on
@@ -40,7 +40,7 @@ export interface SessionListPanelProps {
    */
   onFocusTerminal?(): void;
   /**
-   * Manually edited titles from the conversation header (windowId -> title). Reflected in the
+   * Manually edited titles from the conversation header (cockpitTerminalId -> title). Reflected in the
    * row display so header renames are mirrored into SESSION LIST immediately. Defaults to empty.
    */
   conversationTitles?: TitleMap;
@@ -57,18 +57,18 @@ export interface SessionListPanelProps {
    * Copy the target session's resume command (`claude --resume <sid>`) to the clipboard
    * (for branched sessions). If omitted, the item is not shown in the row menu.
    */
-  onCopyResume?(windowId: string): void;
+  onCopyResume?(cockpitTerminalId: string): void;
   /**
    * Copy the target session's Claude Code session id (`sid`) to the clipboard verbatim.
    * If omitted, the item is not shown in the row menu.
    */
-  onCopySessionId?(windowId: string): void;
+  onCopySessionId?(cockpitTerminalId: string): void;
   /**
-   * Inline-rename a row's title via the right-click "Rename" and commit it. Passes windowId + name +
+   * Inline-rename a row's title via the right-click "Rename" and commit it. Passes cockpitTerminalId + name +
    * value through the same commitTitle path as tab renaming. If omitted, Rename is not shown in the
    * row menu. Non-UUID windows (unbound/plain-shell) cannot be renamed since commitTitle is a no-op.
    */
-  onRename?(windowId: string, name: string, title: string): void;
+  onRename?(cockpitTerminalId: string, name: string, title: string): void;
 }
 
 /**
@@ -83,7 +83,7 @@ export function SessionListPanel({
   sessions,
   orgs,
   orgColors = {},
-  selectedWindowId,
+  selectedCockpitTerminalId,
   onSelect,
   onNew,
   onClose,
@@ -115,7 +115,12 @@ export function SessionListPanel({
   const { confirmingClose, requestClose, confirmClose, cancelClose } =
     useConfirmClose(sessions, onClose);
   const { focused, setFocused, focusedRef, visibleKeys, moveFocus } =
-    useSessionListFocus(orgList, sessions, collapsed, selectedWindowId);
+    useSessionListFocus(
+      orgList,
+      sessions,
+      collapsed,
+      selectedCockpitTerminalId,
+    );
 
   const toggleOrg = (org: string): void => {
     setCollapsed((prev) => {
@@ -127,22 +132,24 @@ export function SessionListPanel({
   };
 
   const selected =
-    sessions.find((s) => s.windowId === selectedWindowId) ?? null;
+    sessions.find((s) => s.cockpitTerminalId === selectedCockpitTerminalId) ??
+    null;
 
   // Terminal switch (double-click/Enter). Once committed, collapse the focus ring (delegated to the selection highlight).
   // Re-selecting the currently shown row is idempotent, but onSelect is not called to avoid side effects
   // (re-attach, etc.); focus is still returned to the terminal (ending the wrong behavior where the list stays active).
-  const select = (windowId: string): void => {
+  const select = (cockpitTerminalId: string): void => {
     setFocused(null);
-    if (windowId !== selectedWindowId) onSelect(windowId);
+    if (cockpitTerminalId !== selectedCockpitTerminalId)
+      onSelect(cockpitTerminalId);
     onFocusTerminal?.();
   };
 
   // A single click on a row just applies the focus ring (expansion is via double-click/Enter).
   // Re-clicking the already selected (shown) row is meaningless, so it's a no-op (focus doesn't move either).
-  const focusRow = (windowId: string): void => {
-    if (windowId === selectedWindowId) return;
-    setFocused({ kind: "row", windowId });
+  const focusRow = (cockpitTerminalId: string): void => {
+    if (cockpitTerminalId === selectedCockpitTerminalId) return;
+    setFocused({ kind: "row", cockpitTerminalId });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
@@ -175,7 +182,7 @@ export function SessionListPanel({
           }
         } else {
           e.preventDefault();
-          select(focused.windowId);
+          select(focused.cockpitTerminalId);
         }
       }
       return;
@@ -187,7 +194,7 @@ export function SessionListPanel({
       if (org !== undefined) onNew(org);
     } else if (e.key === "x") {
       e.preventDefault();
-      if (selected) requestClose(selected.windowId);
+      if (selected) requestClose(selected.cockpitTerminalId);
     }
   };
 
@@ -290,19 +297,22 @@ export function SessionListPanel({
               {!isCollapsed &&
                 orgSessions.map((s) => (
                   <SessionRow
-                    key={s.windowId}
+                    key={s.cockpitTerminalId}
                     session={s}
                     orgColors={orgColors}
                     conversationTitles={conversationTitles}
-                    selectedWindowId={selectedWindowId}
+                    selectedCockpitTerminalId={selectedCockpitTerminalId}
                     isFocused={
-                      focused?.kind === "row" && focused.windowId === s.windowId
+                      focused?.kind === "row" &&
+                      focused.cockpitTerminalId === s.cockpitTerminalId
                     }
                     focusedRef={focusedRef}
-                    isRenaming={rename.renaming?.windowId === s.windowId}
+                    isRenaming={
+                      rename.renaming?.cockpitTerminalId === s.cockpitTerminalId
+                    }
                     renameDraft={rename.renameDraft}
                     renameInputRef={rename.renameInputRef}
-                    confirming={confirmingClose === s.windowId}
+                    confirming={confirmingClose === s.cockpitTerminalId}
                     onContextMenu={openRowMenu(s)}
                     onSetRenameDraft={rename.setRenameDraft}
                     onCommitRename={rename.commitRename}

@@ -1,22 +1,31 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 
 /** Target of the right-click menu (an org area or a session row). */
 export type ContextMenu =
   | { kind: "org"; org: string; x: number; y: number }
-  | { kind: "row"; windowId: string; name: string; x: number; y: number };
+  | {
+      kind: "row";
+      cockpitTerminalId: string;
+      name: string;
+      x: number;
+      y: number;
+    };
 
 /** Target of ↑↓ focus = an org header row or a session row (treated as one flat sequence). */
 export type FocusTarget =
   | { kind: "org"; org: string }
-  | { kind: "row"; windowId: string };
+  | { kind: "row"; cockpitTerminalId: string };
 
 /** Unique key for equality checks, the visible-set key, and effect deps (the prefix separates the kind). */
 export function focusKey(t: FocusTarget): string {
-  return t.kind === "org" ? `o:${t.org}` : `r:${t.windowId}`;
+  return t.kind === "org" ? `o:${t.org}` : `r:${t.cockpitTerminalId}`;
 }
 
 /** Preserve the order of orgs while appending detected orgs not in orgs at the end. */
-export function displayOrgs(orgs: string[], sessions: SessionInfo[]): string[] {
+export function displayOrgs(
+  orgs: string[],
+  sessions: CockpitTerminalInfo[],
+): string[] {
   const result = [...orgs];
   const seen = new Set(orgs);
   for (const s of sessions) {
@@ -28,7 +37,10 @@ export function displayOrgs(orgs: string[], sessions: SessionInfo[]): string[] {
 }
 
 /** Idle with neither an automatic nor a manual title = a new/unused session. */
-export function isFresh(s: SessionInfo, custom: string | undefined): boolean {
+export function isFresh(
+  s: CockpitTerminalInfo,
+  custom: string | undefined,
+): boolean {
   return s.state === "idle" && s.title === null && custom === undefined;
 }
 
@@ -38,7 +50,7 @@ export function isFresh(s: SessionInfo, custom: string | undefined): boolean {
  */
 export function buildVisibleItems(
   orgList: string[],
-  sessions: SessionInfo[],
+  sessions: CockpitTerminalInfo[],
   collapsed: ReadonlySet<string>,
 ): FocusTarget[] {
   const items: FocusTarget[] = [];
@@ -46,7 +58,8 @@ export function buildVisibleItems(
     items.push({ kind: "org", org });
     if (collapsed.has(org)) continue;
     for (const s of sessions)
-      if (s.org === org) items.push({ kind: "row", windowId: s.windowId });
+      if (s.org === org)
+        items.push({ kind: "row", cockpitTerminalId: s.cockpitTerminalId });
   }
   return items;
 }
@@ -59,18 +72,23 @@ export function buildVisibleItems(
 export function nextFocusTarget(
   visibleItems: FocusTarget[],
   focused: FocusTarget | null,
-  selectedWindowId: string | null,
-  sessions: SessionInfo[],
+  selectedCockpitTerminalId: string | null,
+  sessions: CockpitTerminalInfo[],
   delta: number,
 ): FocusTarget | null {
   const visibleKeys = visibleItems.map(focusKey);
   let anchorKey: string | null = null;
   if (focused !== null) anchorKey = focusKey(focused);
-  else if (selectedWindowId !== null) {
-    const rowKey = focusKey({ kind: "row", windowId: selectedWindowId });
+  else if (selectedCockpitTerminalId !== null) {
+    const rowKey = focusKey({
+      kind: "row",
+      cockpitTerminalId: selectedCockpitTerminalId,
+    });
     if (visibleKeys.includes(rowKey)) anchorKey = rowKey;
     else {
-      const sel = sessions.find((s) => s.windowId === selectedWindowId);
+      const sel = sessions.find(
+        (s) => s.cockpitTerminalId === selectedCockpitTerminalId,
+      );
       if (sel !== undefined)
         anchorKey = focusKey({ kind: "org", org: sel.org });
     }

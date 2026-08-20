@@ -61,7 +61,7 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
         snap.as_ref()?
             .sessions
             .iter()
-            .find(|s| s.window_id == r.window_id)
+            .find(|s| s.cockpit_terminal_id == r.cockpit_terminal_id)
             .and_then(|s| s.title.clone())
     });
     let actions = hooks::decide(
@@ -80,10 +80,10 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
             .hub
             .record_activity(uuid::Uuid::new_v4().to_string(), kind, &name, now_ms());
     }
-    if let Some((kind, window_id, title)) = actions.push {
+    if let Some((kind, cockpit_terminal_id, title)) = actions.push {
         control.hub.broadcast(crate::protocol::ServerMessage::Notify {
             kind,
-            window_id,
+            cockpit_terminal_id,
             title,
         });
     }
@@ -136,18 +136,18 @@ pub(crate) async fn focus_session(
         Err((status, msg)) => return json_error(status, &msg),
     };
 
-    let window_id = hooks_resolve(control, req.sid.as_deref(), req.cwd.as_deref())
+    let cockpit_terminal_id = hooks_resolve(control, req.sid.as_deref(), req.cwd.as_deref())
         .await
-        .map(|r| r.window_id);
-    if let Some(window_id) = window_id.clone() {
+        .map(|r| r.cockpit_terminal_id);
+    if let Some(cockpit_terminal_id) = cockpit_terminal_id.clone() {
         control
             .hub
-            .broadcast(crate::protocol::ServerMessage::Select { window_id });
+            .broadcast(crate::protocol::ServerMessage::Select { cockpit_terminal_id });
     }
 
     Json(crate::protocol::FocusResponse {
-        resolved: window_id.is_some(),
-        window_id,
+        resolved: cockpit_terminal_id.is_some(),
+        cockpit_terminal_id,
     })
     .into_response()
 }
@@ -384,10 +384,10 @@ mod hooks_rest_tests {
     }
 
     /// Resolving a focus request by cwd broadcasts a `select` for the owned window and
-    /// echoes the resolved windowId (so a clicked notification can select the session).
+    /// echoes the resolved cockpitTerminalId (so a clicked notification can select the session).
     #[cfg(unix)]
     #[tokio::test]
-    async fn focus_resolved_broadcasts_select_with_window_id() {
+    async fn focus_resolved_broadcasts_select_with_cockpit_terminal_id() {
         use crate::session_launch::{plan_new_session, plan_to_config};
         use crate::session_registry::SessionMeta;
 
@@ -417,12 +417,12 @@ mod hooks_rest_tests {
         let (s, b) = send_focus(app(svc), r#"{"cwd":"/tmp"}"#).await;
         assert_eq!(s, StatusCode::OK);
         assert!(b.contains(r#""resolved":true"#), "body: {b}");
-        assert!(b.contains(&format!(r#""windowId":"{sid}""#)), "body: {b}");
+        assert!(b.contains(&format!(r#""cockpitTerminalId":"{sid}""#)), "body: {b}");
 
         let mut saw_select = false;
         while let Ok(msg) = rx.try_recv() {
-            if let ServerMessage::Select { window_id } = msg {
-                assert_eq!(window_id, sid);
+            if let ServerMessage::Select { cockpit_terminal_id } = msg {
+                assert_eq!(cockpit_terminal_id, sid);
                 saw_select = true;
             }
         }

@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TerminalSessionStatus } from "../session/terminal-session.js";
@@ -38,7 +38,7 @@ export interface DebugPanelProps {
   control: DebugControl;
   session: DebugSession;
   /** The latest state.sync snapshot (tmux window layout / state poller result). */
-  sessions: readonly SessionInfo[];
+  sessions: readonly CockpitTerminalInfo[];
   /** Clock source for tests (defaults to Date.now). */
   now?: () => number;
   onClose(): void;
@@ -130,8 +130,8 @@ export function DebugPanel({
           <dd>{termSnap.attempt}</dd>
           <dt>pendingAck</dt>
           <dd>{termSnap.pendingAck}</dd>
-          <dt>windowId</dt>
-          <dd>{termSnap.windowId ?? "-"}</dd>
+          <dt>cockpitTerminalId</dt>
+          <dd>{termSnap.cockpitTerminalId ?? "-"}</dd>
           <dt>termId</dt>
           <dd>{termSnap.termId ?? "-"}</dd>
           <dt>tmux</dt>
@@ -148,8 +148,9 @@ export function DebugPanel({
         ) : (
           <ul className="debug-list">
             {rows.map((r) => (
-              <li key={r.windowId}>
-                {r.active ? "▶" : "·"} {r.windowId} [{r.state}] {r.label}
+              <li key={r.cockpitTerminalId}>
+                {r.active ? "▶" : "·"} {r.cockpitTerminalId} [{r.state}]{" "}
+                {r.label}
               </li>
             ))}
           </ul>

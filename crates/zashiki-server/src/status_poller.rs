@@ -15,14 +15,14 @@ use zashiki_core::session_state::{
 };
 
 use crate::jsonl::{first_user_title, last_user_or_assistant_event, SessionUsageData};
-use crate::protocol::{SessionInfo, SessionUsage};
+use crate::protocol::{CockpitTerminalInfo, SessionUsage};
 use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
 
 const TITLE_MAX_CHARS: usize = 30;
 
 /// Pane material for a work window (material for the poller's decisions).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkWindowPane {
+pub struct CockpitTerminalPane {
     pub pane_id: String,
     pub active: bool,
     pub pid: i64,
@@ -31,13 +31,13 @@ pub struct WorkWindowPane {
     pub current_path: String,
 }
 
-/// A work window (in owned mode, 1 session = 1 window and `window_id` is the owned PTY's session id).
+/// A work window (in owned mode, 1 session = 1 window and `cockpit_terminal_id` is the owned PTY's session id).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkWindow {
-    pub window_id: String,
+pub struct CockpitTerminal {
+    pub cockpit_terminal_id: String,
     pub name: String,
     pub active: bool,
-    pub panes: Vec<WorkWindowPane>,
+    pub panes: Vec<CockpitTerminalPane>,
 }
 
 /// The head/tail slices of jsonl plus the elapsed mtime seconds of the tail file (read by the infra).
@@ -51,7 +51,7 @@ pub struct Slices {
 /// It requires `Send` on the returned futures so tasks can be spawned onto a timer-driven task (the impl side can
 /// still satisfy this as a plain `async fn`; RPITIT).
 pub trait PollerPorts {
-    fn list_work_windows(&self) -> impl Future<Output = Vec<WorkWindow>> + Send;
+    fn list_work_windows(&self) -> impl Future<Output = Vec<CockpitTerminal>> + Send;
     /// The visible screen of the capture target pane (pane_id for tmux). Empty string on failure.
     fn capture_pane(&self, target: &str) -> impl Future<Output = String> + Send;
     fn ps_snapshot(&self) -> impl Future<Output = String> + Send;
@@ -89,7 +89,7 @@ pub struct PollConfig {
 /// The result of one evaluation (the shape distributed via state.sync; same shape as protocol's StateSync).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateSnapshot {
-    pub sessions: Vec<SessionInfo>,
+    pub sessions: Vec<CockpitTerminalInfo>,
     pub orgs: Vec<String>,
     pub org_colors: BTreeMap<String, String>,
 }
@@ -130,8 +130,8 @@ struct Picked {
     pid: i64,
 }
 
-fn pick_pane(win: &WorkWindow, maps: &zashiki_core::process_tree::ProcessMaps) -> Option<Picked> {
-    let mut leftmost: Option<&WorkWindowPane> = None;
+fn pick_pane(win: &CockpitTerminal, maps: &zashiki_core::process_tree::ProcessMaps) -> Option<Picked> {
+    let mut leftmost: Option<&CockpitTerminalPane> = None;
     for pane in &win.panes {
         if let Some(sid) = find_sid_in_tree(pane.pid, maps) {
             return Some(Picked {
@@ -166,7 +166,7 @@ pub struct StatusPoller {
     /// The consecutive no_claude poll count per window (material for the startup grace decision). Reset to 0 on anything other than no_claude.
     no_claude_streak: HashMap<String, u32>,
     /// The most recent picked pane pid per window. The basis for detecting a window rebuild from restore/kill
-    /// (a pid change under the same window_id) and resetting the streak (closes the gap where stale carried-over state disables the grace).
+    /// (a pid change under the same cockpit_terminal_id) and resetting the streak (closes the gap where stale carried-over state disables the grace).
     last_pid: HashMap<String, i64>,
     /// `cwd\0sid` → the first user-utterance title (cached since it is immutable).
     title_cache: HashMap<String, String>,
@@ -210,7 +210,7 @@ impl StatusPoller {
 
         // Forget the previous state of vanished windows (prevents unbounded map growth).
         let live: std::collections::HashSet<&str> =
-            sessions.iter().map(|s| s.window_id.as_str()).collect();
+            sessions.iter().map(|s| s.cockpit_terminal_id.as_str()).collect();
         self.prev_states.retain(|id, _| live.contains(id.as_str()));
         self.prev_limited.retain(|id, _| live.contains(id.as_str()));
         self.no_claude_streak
@@ -229,12 +229,12 @@ impl StatusPoller {
 
     async fn evaluate_window<P: PollerPorts>(
         &mut self,
-        win: &WorkWindow,
+        win: &CockpitTerminal,
         maps: &zashiki_core::process_tree::ProcessMaps,
         shell_outputs: &[ShellOutput],
         ports: &P,
         config: &PollConfig,
-    ) -> Option<SessionInfo> {
+    ) -> Option<CockpitTerminalInfo> {
         let picked = pick_pane(win, maps)?;
         let cwd = picked.cwd;
         let sid = picked.sid;
@@ -250,11 +250,11 @@ impl StatusPoller {
         let (mut state, limited) = if in_mode {
             (
                 self.prev_states
-                    .get(&win.window_id)
+                    .get(&win.cockpit_terminal_id)
                     .copied()
                     .unwrap_or(SessionState::Unknown),
                 self.prev_limited
-                    .get(&win.window_id)
+                    .get(&win.cockpit_terminal_id)
                     .copied()
                     .unwrap_or(false),
             )
@@ -290,21 +290,21 @@ impl StatusPoller {
         // no_claude. Count the consecutive polls since no_claude began and fall back to Starting while within the
         // grace. in_mode has no decision (it carries over the previous state), so pass through without touching the streak.
         if !in_mode {
-            // A pid change under the same window_id signals that restore/kill rebuilt the window. Discard the
+            // A pid change under the same cockpit_terminal_id signals that restore/kill rebuilt the window. Discard the
             // carried-over streak (e.g. the previous claude already settled as no_claude) and apply the grace to the rebuilt window.
-            let rebuilt = self.last_pid.insert(win.window_id.clone(), pid) != Some(pid);
+            let rebuilt = self.last_pid.insert(win.cockpit_terminal_id.clone(), pid) != Some(pid);
             if rebuilt {
-                self.no_claude_streak.remove(&win.window_id);
+                self.no_claude_streak.remove(&win.cockpit_terminal_id);
             }
             let streak = if state == SessionState::NoClaude {
                 let entry = self
                     .no_claude_streak
-                    .entry(win.window_id.clone())
+                    .entry(win.cockpit_terminal_id.clone())
                     .or_insert(0);
                 *entry += 1;
                 *entry
             } else {
-                self.no_claude_streak.remove(&win.window_id);
+                self.no_claude_streak.remove(&win.cockpit_terminal_id);
                 0
             };
             state = apply_startup_grace(state, streak, startup_grace_polls(config.poll_sec));
@@ -362,10 +362,10 @@ impl StatusPoller {
             _ => None,
         };
 
-        self.prev_states.insert(win.window_id.clone(), state);
-        self.prev_limited.insert(win.window_id.clone(), limited);
-        Some(SessionInfo {
-            window_id: win.window_id.clone(),
+        self.prev_states.insert(win.cockpit_terminal_id.clone(), state);
+        self.prev_limited.insert(win.cockpit_terminal_id.clone(), limited);
+        Some(CockpitTerminalInfo {
+            cockpit_terminal_id: win.cockpit_terminal_id.clone(),
             name: win.name.clone(),
             org,
             repo: last_path_segment(&cwd).to_string(),
@@ -382,7 +382,7 @@ impl StatusPoller {
 }
 
 /// Whether the picked pane is in_mode such as copy-mode (avoided because the capture becomes history and misjudges).
-fn is_pane_in_mode(win: &WorkWindow, pane_id: &str) -> bool {
+fn is_pane_in_mode(win: &CockpitTerminal, pane_id: &str) -> bool {
     win.panes
         .iter()
         .find(|p| p.pane_id == pane_id)
@@ -394,7 +394,7 @@ fn roots_ref(roots: &[String]) -> Vec<&str> {
 }
 
 /// All repos.conf orgs plus detected orgs, deduplicated in display order (orgs with 0 sessions are not dropped).
-fn build_orgs(repos_roots: &[String], sessions: &[SessionInfo]) -> Vec<String> {
+fn build_orgs(repos_roots: &[String], sessions: &[CockpitTerminalInfo]) -> Vec<String> {
     let roots = roots_ref(repos_roots);
     let mut orgs = Vec::new();
     let mut seen = std::collections::HashSet::new();
@@ -416,8 +416,8 @@ mod tests {
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 
-    fn pane(pane_id: &str, pid: i64, left: i64, cwd: &str) -> WorkWindowPane {
-        WorkWindowPane {
+    fn pane(pane_id: &str, pid: i64, left: i64, cwd: &str) -> CockpitTerminalPane {
+        CockpitTerminalPane {
             pane_id: pane_id.to_string(),
             active: true,
             pid,
@@ -427,9 +427,9 @@ mod tests {
         }
     }
 
-    fn window(window_id: &str, name: &str, panes: Vec<WorkWindowPane>) -> WorkWindow {
-        WorkWindow {
-            window_id: window_id.to_string(),
+    fn window(cockpit_terminal_id: &str, name: &str, panes: Vec<CockpitTerminalPane>) -> CockpitTerminal {
+        CockpitTerminal {
+            cockpit_terminal_id: cockpit_terminal_id.to_string(),
             name: name.to_string(),
             active: true,
             panes,
@@ -438,7 +438,7 @@ mod tests {
 
     #[derive(Default)]
     struct FakePorts {
-        windows: Vec<WorkWindow>,
+        windows: Vec<CockpitTerminal>,
         ps: String,
         captures: HashMap<String, String>,
         slices: HashMap<String, Slices>,
@@ -448,7 +448,7 @@ mod tests {
     }
 
     impl PollerPorts for FakePorts {
-        async fn list_work_windows(&self) -> Vec<WorkWindow> {
+        async fn list_work_windows(&self) -> Vec<CockpitTerminal> {
             self.windows.clone()
         }
         async fn capture_pane(&self, target: &str) -> String {
@@ -518,7 +518,7 @@ mod tests {
         assert!(changed);
         assert_eq!(snap.sessions.len(), 1);
         let s = &snap.sessions[0];
-        assert_eq!(s.window_id, "@1");
+        assert_eq!(s.cockpit_terminal_id, "@1");
         assert_eq!(s.org, "charlie");
         assert_eq!(s.repo, "app");
         assert_eq!(s.state, "running");
@@ -651,7 +651,7 @@ mod tests {
     }
 
     /// If restore rebuilds a window that had "already settled as no_claude (streak beyond the grace)" under the same
-    /// window_id but a different pid, the carried-over streak is discarded and the grace is reapplied (it returns to starting).
+    /// cockpit_terminal_id but a different pid, the carried-over streak is discarded and the grace is reapplied (it returns to starting).
     /// With poll_sec=8, grace_polls=1.
     #[tokio::test]
     async fn rebuilt_window_resets_grace_even_if_prev_settled_no_claude() {
@@ -679,7 +679,7 @@ mod tests {
             "no_claude"
         );
 
-        // Same window_id, different pid (= rebuild) with claude not appearing → discard the stale streak and return to starting.
+        // Same cockpit_terminal_id, different pid (= rebuild) with claude not appearing → discard the stale streak and return to starting.
         assert_eq!(
             poller.evaluate(&dead(200), &cfg).await.0.sessions[0].state,
             "starting"
@@ -919,7 +919,7 @@ mod tests {
         };
         let mut poller = StatusPoller::new();
         let (snap, _) = poller.evaluate(&ports, &config()).await;
-        let ids: Vec<&str> = snap.sessions.iter().map(|s| s.window_id.as_str()).collect();
+        let ids: Vec<&str> = snap.sessions.iter().map(|s| s.cockpit_terminal_id.as_str()).collect();
         assert_eq!(ids, vec!["@1", "@2"]);
     }
 

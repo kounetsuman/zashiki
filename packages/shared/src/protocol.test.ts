@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   claudeSessionId,
   clientMessageSchema,
+  cockpitTerminalIdSchema,
+  cockpitTerminalInfoSchema,
   focusRequestSchema,
   focusResponseSchema,
   resumeCommand,
   serverMessageSchema,
-  sessionInfoSchema,
   termIdSchema,
-  windowIdSchema,
 } from "./protocol.js";
 
 describe("resumeCommand", () => {
@@ -56,32 +56,33 @@ describe("termIdSchema", () => {
   });
 });
 
-describe("windowIdSchema", () => {
+describe("cockpitTerminalIdSchema", () => {
   it("accepts tmux's @N", () => {
-    expect(windowIdSchema.safeParse("@0").success).toBe(true);
-    expect(windowIdSchema.safeParse("@42").success).toBe(true);
+    expect(cockpitTerminalIdSchema.safeParse("@0").success).toBe(true);
+    expect(cockpitTerminalIdSchema.safeParse("@42").success).toBe(true);
   });
 
   it("accepts an owned UUID", () => {
-    // The owned backend's windowId is a SessionRegistry UUID. Rejecting it here would
+    // The owned backend's cockpitTerminalId is a SessionRegistry UUID. Rejecting it here would
     // discard the entire state.sync originating from owned, so new/restored sessions would never appear in the list.
     expect(
-      windowIdSchema.safeParse("0954e103-14ff-4406-bc6c-325449ef07ba").success,
+      cockpitTerminalIdSchema.safeParse("0954e103-14ff-4406-bc6c-325449ef07ba")
+        .success,
     ).toBe(true);
   });
 
   it("rejects separator characters, empty, and a bare @", () => {
-    expect(windowIdSchema.safeParse("work:1").success).toBe(false);
-    expect(windowIdSchema.safeParse("@").success).toBe(false);
-    expect(windowIdSchema.safeParse("").success).toBe(false);
-    expect(windowIdSchema.safeParse("a b").success).toBe(false);
+    expect(cockpitTerminalIdSchema.safeParse("work:1").success).toBe(false);
+    expect(cockpitTerminalIdSchema.safeParse("@").success).toBe(false);
+    expect(cockpitTerminalIdSchema.safeParse("").success).toBe(false);
+    expect(cockpitTerminalIdSchema.safeParse("a b").success).toBe(false);
   });
 });
 
-describe("sessionInfoSchema", () => {
-  it("accepts SessionInfo (state includes unknown)", () => {
+describe("cockpitTerminalInfoSchema", () => {
+  it("accepts CockpitTerminalInfo (state includes unknown)", () => {
     const info = {
-      windowId: "@3",
+      cockpitTerminalId: "@3",
       name: "zashiki",
       org: "kilo",
       repo: "zashiki",
@@ -89,11 +90,11 @@ describe("sessionInfoSchema", () => {
       title: null,
       active: true,
     };
-    expect(sessionInfoSchema.parse(info)).toEqual(info);
+    expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
   });
   it("optionally accepts sid (the key for a custom title)", () => {
     const info = {
-      windowId: "@3",
+      cockpitTerminalId: "@3",
       name: "zashiki",
       org: "kilo",
       repo: "zashiki",
@@ -102,12 +103,12 @@ describe("sessionInfoSchema", () => {
       sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
       active: true,
     };
-    expect(sessionInfoSchema.parse(info)).toEqual(info);
+    expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
   });
   it("rejects an unknown state", () => {
     expect(
-      sessionInfoSchema.safeParse({
-        windowId: "@3",
+      cockpitTerminalInfoSchema.safeParse({
+        cockpitTerminalId: "@3",
         name: "x",
         org: "",
         repo: "x",
@@ -117,10 +118,10 @@ describe("sessionInfoSchema", () => {
       }).success,
     ).toBe(false);
   });
-  // Wire parity with the Rust server's SessionInfo.usage (crates/zashiki-server/src/protocol.rs).
+  // Wire parity with the Rust server's CockpitTerminalInfo.usage (crates/zashiki-server/src/protocol.rs).
   it("accepts the usage footer material with account limits", () => {
     const info = {
-      windowId: "@1",
+      cockpitTerminalId: "@1",
       name: "repo",
       org: "o",
       repo: "repo",
@@ -138,7 +139,7 @@ describe("sessionInfoSchema", () => {
         },
       },
     };
-    expect(sessionInfoSchema.parse(info)).toEqual(info);
+    expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
   });
 });
 
@@ -146,12 +147,12 @@ describe("clientMessageSchema", () => {
   const termId = "c0a8012e-1111-4222-8333-444455556666";
   it.each([
     [{ t: "term.open", termId, cols: 80, rows: 24 }],
-    [{ t: "term.open", termId, windowId: "@1", cols: 80, rows: 24 }],
+    [{ t: "term.open", termId, cockpitTerminalId: "@1", cols: 80, rows: 24 }],
     [{ t: "term.resize", termId, cols: 120, rows: 40 }],
-    [{ t: "term.select", termId, windowId: "@2" }],
+    [{ t: "term.select", termId, cockpitTerminalId: "@2" }],
     [{ t: "term.close", termId }],
-    [{ t: "session.new", org: "kilo" }],
-    [{ t: "session.close", windowId: "@5" }],
+    [{ t: "cockpitTerminal.new", org: "kilo" }],
+    [{ t: "cockpitTerminal.close", cockpitTerminalId: "@5" }],
     [{ t: "state.refresh" }],
     [{ t: "config.update", language: "ja" }],
     [{ t: "config.update", language: "en" }],
@@ -163,7 +164,7 @@ describe("clientMessageSchema", () => {
     [{ t: "term.open", termId }], // cols/rows missing
     [{ t: "term.open", termId, cols: 0, rows: 24 }], // cols out of range
     [{ t: "term.open", termId, cols: 80.5, rows: 24 }], // non-integer
-    [{ t: "term.select", termId, windowId: "work:1" }], // invalid windowId format (separator character)
+    [{ t: "term.select", termId, cockpitTerminalId: "work:1" }], // invalid cockpitTerminalId format (separator character)
     [{ t: "state.sync", sessions: [], orgs: [] }], // server→client message
     [{ t: "config.update", language: "fr" }], // unsupported language
     [{ t: "config.update" }], // language missing
@@ -182,7 +183,7 @@ describe("serverMessageSchema", () => {
         t: "state.sync",
         sessions: [
           {
-            windowId: "@1",
+            cockpitTerminalId: "@1",
             name: "zashiki",
             org: "kilo",
             repo: "zashiki",
@@ -196,13 +197,13 @@ describe("serverMessageSchema", () => {
       },
     ],
     [
-      // owned: a state.sync whose windowId is a UUID is also accepted in full (rejecting it
+      // owned: a state.sync whose cockpitTerminalId is a UUID is also accepted in full (rejecting it
       // would make decodeServerMessage discard the entire message, so new/restored sessions would not appear in the list).
       {
         t: "state.sync",
         sessions: [
           {
-            windowId: "0954e103-14ff-4406-bc6c-325449ef07ba",
+            cockpitTerminalId: "0954e103-14ff-4406-bc6c-325449ef07ba",
             name: "initech",
             org: "initech",
             repo: "initech",
@@ -223,10 +224,15 @@ describe("serverMessageSchema", () => {
       },
     ],
     [{ t: "git.dirty" }],
-    [{ t: "notify", kind: "waiting", windowId: "@1", title: "x" }],
-    [{ t: "notify", kind: "done", windowId: "@2", title: "" }],
-    [{ t: "select", windowId: "@3" }],
-    [{ t: "select", windowId: "0954e103-14ff-4406-bc6c-325449ef07ba" }],
+    [{ t: "notify", kind: "waiting", cockpitTerminalId: "@1", title: "x" }],
+    [{ t: "notify", kind: "done", cockpitTerminalId: "@2", title: "" }],
+    [{ t: "select", cockpitTerminalId: "@3" }],
+    [
+      {
+        t: "select",
+        cockpitTerminalId: "0954e103-14ff-4406-bc6c-325449ef07ba",
+      },
+    ],
     [{ t: "error", code: "work_not_found", message: "work session not found" }],
     [
       {
@@ -267,9 +273,9 @@ describe("serverMessageSchema", () => {
   });
 
   it.each([
-    [{ t: "notify", kind: "other", windowId: "@1", title: "x" }],
-    [{ t: "select" }], // windowId missing
-    [{ t: "select", windowId: "work:1" }], // invalid windowId format
+    [{ t: "notify", kind: "other", cockpitTerminalId: "@1", title: "x" }],
+    [{ t: "select" }], // cockpitTerminalId missing
+    [{ t: "select", cockpitTerminalId: "work:1" }], // invalid cockpitTerminalId format
     [{ t: "term.open", termId: "abc", cols: 80, rows: 24 }], // client→server message
     [{ t: "error", code: "x" }], // message missing
     [{ t: "config.sync", notifySound: true }], // debug missing
@@ -288,19 +294,21 @@ describe("focus request/response (POST /api/focus)", () => {
     expect(focusRequestSchema.safeParse({}).success).toBe(true);
   });
 
-  it("accepts a resolved response carrying the windowId and an unresolved one", () => {
+  it("accepts a resolved response carrying the cockpitTerminalId and an unresolved one", () => {
     expect(
-      focusResponseSchema.parse({ resolved: true, windowId: "@1" }),
-    ).toEqual({ resolved: true, windowId: "@1" });
+      focusResponseSchema.parse({ resolved: true, cockpitTerminalId: "@1" }),
+    ).toEqual({ resolved: true, cockpitTerminalId: "@1" });
     expect(focusResponseSchema.parse({ resolved: false })).toEqual({
       resolved: false,
     });
   });
 
-  it("rejects a response with a malformed windowId", () => {
+  it("rejects a response with a malformed cockpitTerminalId", () => {
     expect(
-      focusResponseSchema.safeParse({ resolved: true, windowId: "work:1" })
-        .success,
+      focusResponseSchema.safeParse({
+        resolved: true,
+        cockpitTerminalId: "work:1",
+      }).success,
     ).toBe(false);
   });
 });

@@ -6,7 +6,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SessionListPanel } from "./SessionListPanel.js";
@@ -15,9 +15,9 @@ const SID1 = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 const SID2 = "11111111-2222-4333-8444-555566667777";
 const SID3 = "22222222-3333-4444-8555-666677778888";
 
-const sessions: SessionInfo[] = [
+const sessions: CockpitTerminalInfo[] = [
   {
-    windowId: SID1,
+    cockpitTerminalId: SID1,
     name: "zashiki",
     org: "kilo",
     repo: "zashiki",
@@ -27,7 +27,7 @@ const sessions: SessionInfo[] = [
     active: true,
   },
   {
-    windowId: SID2,
+    cockpitTerminalId: SID2,
     name: "tango",
     org: "kilo",
     repo: "tango",
@@ -37,7 +37,7 @@ const sessions: SessionInfo[] = [
     active: false,
   },
   {
-    windowId: SID3,
+    cockpitTerminalId: SID3,
     name: "charlie-app",
     org: "charlie",
     repo: "charlie-app",
@@ -56,7 +56,7 @@ function renderPanel(
   const props = {
     sessions,
     orgs,
-    selectedWindowId: null as string | null,
+    selectedCockpitTerminalId: null as string | null,
     onSelect: vi.fn(),
     onNew: vi.fn(),
     onClose: vi.fn(),
@@ -85,7 +85,11 @@ describe("SessionListPanel: org collapsible group display", () => {
   it("shows sessions from an org not in orgs as a detected group", () => {
     renderPanel({
       sessions: [
-        { ...sessions[0], org: "scratch", windowId: "@9" } as SessionInfo,
+        {
+          ...sessions[0],
+          org: "scratch",
+          cockpitTerminalId: "@9",
+        } as CockpitTerminalInfo,
       ],
     });
     expect(screen.getByText("scratch (1)")).toBeTruthy();
@@ -139,7 +143,7 @@ describe("SessionListPanel: repos.conf not-configured guidance", () => {
   });
 
   it("does not show the guidance when a detected session's org exists even if orgs is empty", () => {
-    renderPanel({ sessions: [sessions[0] as SessionInfo], orgs: [] });
+    renderPanel({ sessions: [sessions[0] as CockpitTerminalInfo], orgs: [] });
     expect(screen.queryByText("~/.zashiki/repos.conf")).toBeNull();
     expect(screen.getByText("kilo (1)")).toBeTruthy();
   });
@@ -154,13 +158,13 @@ describe("SessionListPanel: session rows", () => {
   it("displays the state icon (Material Symbols) with a state class", () => {
     renderPanel({
       sessions: [
-        { ...sessions[0], state: "waiting_input" } as SessionInfo,
-        { ...sessions[1], state: "running" } as SessionInfo,
+        { ...sessions[0], state: "waiting_input" } as CockpitTerminalInfo,
+        { ...sessions[1], state: "running" } as CockpitTerminalInfo,
         {
           ...sessions[2],
           state: "no_claude",
           org: "kilo",
-        } as SessionInfo,
+        } as CockpitTerminalInfo,
       ],
     });
     const waiting = screen.getByText("add_alert");
@@ -174,7 +178,7 @@ describe("SessionListPanel: session rows", () => {
 
   it("displays the pending icon with a state class while starting", () => {
     renderPanel({
-      sessions: [{ ...sessions[0], state: "starting" } as SessionInfo],
+      sessions: [{ ...sessions[0], state: "starting" } as CockpitTerminalInfo],
     });
     const starting = screen.getByText("pending");
     expect(starting.className).toContain("state-starting");
@@ -183,7 +187,9 @@ describe("SessionListPanel: session rows", () => {
 
   it("keeps the state glyph clean and puts the subagent on a robot_2 activity chip", () => {
     renderPanel({
-      sessions: [{ ...sessions[1], state: "running_bg_agent" } as SessionInfo],
+      sessions: [
+        { ...sessions[1], state: "running_bg_agent" } as CockpitTerminalInfo,
+      ],
     });
     const base = screen.getByText("hourglass");
     expect(base.className).toContain("state-running_bg_agent");
@@ -199,7 +205,7 @@ describe("SessionListPanel: session rows", () => {
           ...sessions[1],
           state: "running_bg_agent",
           runningSubagents: 13,
-        } as SessionInfo,
+        } as CockpitTerminalInfo,
       ],
     });
     const chip = screen.getByText("robot_2").parentElement;
@@ -214,7 +220,7 @@ describe("SessionListPanel: session rows", () => {
           ...sessions[1],
           state: "running_bg_agent",
           runningSubagents: 0,
-        } as SessionInfo,
+        } as CockpitTerminalInfo,
       ],
     });
     expect(screen.getByText("robot_2").parentElement?.textContent).toBe(
@@ -229,7 +235,7 @@ describe("SessionListPanel: session rows", () => {
           ...sessions[0],
           state: "running",
           runningSubagents: 5,
-        } as SessionInfo,
+        } as CockpitTerminalInfo,
       ],
     });
     expect(screen.queryByText("robot_2")).toBeNull();
@@ -238,7 +244,11 @@ describe("SessionListPanel: session rows", () => {
   it("shows a terminal activity chip with the count for a bg shell in any state", () => {
     renderPanel({
       sessions: [
-        { ...sessions[0], state: "running", shellsRunning: 3 } as SessionInfo,
+        {
+          ...sessions[0],
+          state: "running",
+          shellsRunning: 3,
+        } as CockpitTerminalInfo,
       ],
     });
     const chip = screen.getByText("terminal").parentElement;
@@ -249,7 +259,11 @@ describe("SessionListPanel: session rows", () => {
   it("keeps an idle row's own glyph while a bg shell runs (no hourglass swap)", () => {
     renderPanel({
       sessions: [
-        { ...sessions[0], state: "idle", shellsRunning: 1 } as SessionInfo,
+        {
+          ...sessions[0],
+          state: "idle",
+          shellsRunning: 1,
+        } as CockpitTerminalInfo,
       ],
     });
     expect(screen.getByText("check").className).toContain("state-idle");
@@ -267,7 +281,7 @@ describe("SessionListPanel: session rows", () => {
           state: "running_bg_agent",
           runningSubagents: 9,
           shellsRunning: 3,
-        } as SessionInfo,
+        } as CockpitTerminalInfo,
       ],
     });
     const agentChip = screen.getByText("robot_2").parentElement;
@@ -281,8 +295,12 @@ describe("SessionListPanel: session rows", () => {
   it("shows no shell chip when shellsRunning is 0/undefined", () => {
     renderPanel({
       sessions: [
-        { ...sessions[0], state: "running", shellsRunning: 0 } as SessionInfo,
-        { ...sessions[1] } as SessionInfo,
+        {
+          ...sessions[0],
+          state: "running",
+          shellsRunning: 0,
+        } as CockpitTerminalInfo,
+        { ...sessions[1] } as CockpitTerminalInfo,
       ],
     });
     expect(screen.queryByText("terminal")).toBeNull();
@@ -291,7 +309,11 @@ describe("SessionListPanel: session rows", () => {
   it("overlays an error badge at the top-right for a row that hit the usage limit", () => {
     renderPanel({
       sessions: [
-        { ...sessions[0], state: "running", limited: true } as SessionInfo,
+        {
+          ...sessions[0],
+          state: "running",
+          limited: true,
+        } as CockpitTerminalInfo,
       ],
     });
     const badge = screen.getByText("error");
@@ -302,8 +324,12 @@ describe("SessionListPanel: session rows", () => {
   it("does not show the limit badge when limited is false/undefined", () => {
     renderPanel({
       sessions: [
-        { ...sessions[0], state: "running", limited: false } as SessionInfo,
-        { ...sessions[1] } as SessionInfo,
+        {
+          ...sessions[0],
+          state: "running",
+          limited: false,
+        } as CockpitTerminalInfo,
+        { ...sessions[1] } as CockpitTerminalInfo,
       ],
     });
     expect(screen.queryByText("error")).toBeNull();
@@ -311,14 +337,16 @@ describe("SessionListPanel: session rows", () => {
 
   it("displays idle with conversation history using check", () => {
     renderPanel({
-      sessions: [{ ...sessions[1], title: "調査タスク" } as SessionInfo],
+      sessions: [
+        { ...sessions[1], title: "調査タスク" } as CockpitTerminalInfo,
+      ],
     });
     expect(screen.getByText("check").className).toContain("state-idle");
   });
 
   it("distinguishes a new/unused session (idle with no title) using start", () => {
     // tango is idle with title:null (zero conversation history)
-    renderPanel({ sessions: [sessions[1] as SessionInfo] });
+    renderPanel({ sessions: [sessions[1] as CockpitTerminalInfo] });
     const fresh = screen.getByText("start");
     expect(fresh.className).toContain("state-fresh");
     expect(screen.queryByText("check")).toBeNull();
@@ -348,7 +376,7 @@ describe("SessionListPanel: session rows", () => {
   it("falls back to the window name in the row body until the title is resolved (e.g. right after resume)", () => {
     // tango is title:null; the visible label should show the window name (= org name for
     // owned sessions), matching the tab, instead of a blank row.
-    renderPanel({ sessions: [sessions[1] as SessionInfo] });
+    renderPanel({ sessions: [sessions[1] as CockpitTerminalInfo] });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -357,7 +385,9 @@ describe("SessionListPanel: session rows", () => {
 
   it("replaces the window-name fallback with the summary once the title resolves", () => {
     renderPanel({
-      sessions: [{ ...sessions[1], title: "調査タスク" } as SessionInfo],
+      sessions: [
+        { ...sessions[1], title: "調査タスク" } as CockpitTerminalInfo,
+      ],
     });
     const row = screen.getByRole("button", {
       name: /tango 調査タスク/,
@@ -368,7 +398,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("does not highlight unselected rows (only the selected row stands out)", () => {
-    renderPanel({ selectedWindowId: SID1 });
+    renderPanel({ selectedCockpitTerminalId: SID1 });
     const unselected = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -383,12 +413,12 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("marks the selected row with aria-current so it gets the strong highlight", () => {
-    renderPanel({ selectedWindowId: SID1 });
+    renderPanel({ selectedCockpitTerminalId: SID1 });
     const row = screen.getByRole("button", { name: /zashiki(?! を閉じる)/ });
     expect(row.getAttribute("aria-current")).toBe("true");
   });
 
-  it("calls onSelect(windowId) on double-click", () => {
+  it("calls onSelect(cockpitTerminalId) on double-click", () => {
     const props = renderPanel();
     fireEvent.doubleClick(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
@@ -407,7 +437,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("a single click on the selected row is a no-op (does not move the focus ring either)", () => {
-    const props = renderPanel({ selectedWindowId: SID2 });
+    const props = renderPanel({ selectedCockpitTerminalId: SID2 });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -428,7 +458,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("a double-click on the currently shown (selected) row does not resend onSelect (idempotency guard)", () => {
-    const props = renderPanel({ selectedWindowId: SID2 });
+    const props = renderPanel({ selectedCockpitTerminalId: SID2 });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -457,7 +487,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("adds aria-current to the selected row", () => {
-    renderPanel({ selectedWindowId: SID2 });
+    renderPanel({ selectedCockpitTerminalId: SID2 });
     expect(
       screen
         .getByRole("button", { name: /tango(?! を閉じる)/ })
@@ -534,7 +564,7 @@ describe("SessionListPanel: focusing the terminal on double-click/Enter", () => 
   });
 
   it("does not resend onSelect on double-clicking the shown session but still calls onFocusTerminal", () => {
-    const props = renderPanel({ selectedWindowId: SID2 });
+    const props = renderPanel({ selectedCockpitTerminalId: SID2 });
     fireEvent.doubleClick(rowFor("tango"));
     expect(props.onSelect).not.toHaveBeenCalled();
     expect(props.onFocusTerminal).toHaveBeenCalled();
@@ -602,7 +632,7 @@ describe("SessionListPanel: right-click menu", () => {
     ).toBeTruthy();
   });
 
-  it("calls onClose(windowId) immediately on clicking the row ✕ without a confirmation", () => {
+  it("calls onClose(cockpitTerminalId) immediately on clicking the row ✕ without a confirmation", () => {
     const props = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "tango を閉じる" }));
     expect(props.onClose).toHaveBeenCalledWith(SID2);
@@ -618,7 +648,7 @@ describe("SessionListPanel: right-click menu", () => {
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
-  it("wires each row's ✕ to its own row's windowId (no misconnection to another row)", () => {
+  it("wires each row's ✕ to its own row's cockpitTerminalId (no misconnection to another row)", () => {
     const props = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "zashiki を閉じる" }));
     expect(props.onClose).toHaveBeenCalledTimes(1);
@@ -643,7 +673,7 @@ describe("SessionListPanel: right-click menu", () => {
     ).toBeNull();
   });
 
-  it("right-clicking the row and choosing 'Delete' calls onClose(windowId) immediately without a confirmation", () => {
+  it("right-clicking the row and choosing 'Delete' calls onClose(cockpitTerminalId) immediately without a confirmation", () => {
     const props = renderPanel();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
@@ -684,10 +714,10 @@ describe("SessionListPanel: right-click menu", () => {
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
-  it("right-clicking a row with a sid and choosing 'Copy session (resume)' calls onCopyResume(windowId)", () => {
-    const withSid: SessionInfo[] = [
+  it("right-clicking a row with a sid and choosing 'Copy session (resume)' calls onCopyResume(cockpitTerminalId)", () => {
+    const withSid: CockpitTerminalInfo[] = [
       { ...sessions[1], sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
-    ] as SessionInfo[];
+    ] as CockpitTerminalInfo[];
     const props = renderPanel({
       sessions: withSid,
       onCopyResume: vi.fn(),
@@ -706,9 +736,9 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("disables 'Copy session (resume)' for a row without a sid", () => {
-    const noSid: SessionInfo[] = [
+    const noSid: CockpitTerminalInfo[] = [
       { ...sessions[1], sid: undefined },
-    ] as SessionInfo[];
+    ] as CockpitTerminalInfo[];
     renderPanel({ sessions: noSid, onCopyResume: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
@@ -730,7 +760,7 @@ describe("SessionListPanel: right-click menu", () => {
     expect(screen.getByRole("menuitem", { name: "削除" })).toBeTruthy();
   });
 
-  it("right-clicking a row with a sid and choosing 'Copy Claude Code session ID' calls onCopySessionId(windowId)", () => {
+  it("right-clicking a row with a sid and choosing 'Copy Claude Code session ID' calls onCopySessionId(cockpitTerminalId)", () => {
     const props = renderPanel({ onCopySessionId: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
@@ -745,9 +775,9 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("disables 'Copy Claude Code session ID' for a row without a sid", () => {
-    const noSid: SessionInfo[] = [
+    const noSid: CockpitTerminalInfo[] = [
       { ...sessions[1], sid: undefined },
-    ] as SessionInfo[];
+    ] as CockpitTerminalInfo[];
     renderPanel({ sessions: noSid, onCopySessionId: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
@@ -774,7 +804,7 @@ describe("SessionListPanel: right-click menu", () => {
     const props = {
       sessions,
       orgs,
-      selectedWindowId: SID2 as string | null,
+      selectedCockpitTerminalId: SID2 as string | null,
       onSelect: vi.fn(),
       onNew: vi.fn(),
       onClose: vi.fn(),
@@ -791,7 +821,7 @@ describe("SessionListPanel: right-click menu", () => {
       screen.getByRole("button", { name: "tango を閉じる（確定）" }),
     ).toBeTruthy();
     // @2 disappears -> the confirmation state is also cleared, and the confirmation bar isn't re-shown even if @2 returns
-    const without = sessions.filter((s) => s.windowId !== SID2);
+    const without = sessions.filter((s) => s.cockpitTerminalId !== SID2);
     rerender(<SessionListPanel {...props} sessions={without} />);
     rerender(<SessionListPanel {...props} sessions={sessions} />);
     expect(
@@ -851,7 +881,7 @@ describe("SessionListPanel: operations", () => {
   });
 
   it("Ctrl-N calls onNew with the selected session's org", () => {
-    const props = renderPanel({ selectedWindowId: SID3 });
+    const props = renderPanel({ selectedCockpitTerminalId: SID3 });
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "n",
       ctrlKey: true,
@@ -869,7 +899,7 @@ describe("SessionListPanel: operations", () => {
   });
 
   it("Ctrl-X opens the inline confirmation for the selected session and closes it on confirm", () => {
-    const props = renderPanel({ selectedWindowId: SID2 });
+    const props = renderPanel({ selectedCockpitTerminalId: SID2 });
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "x",
       ctrlKey: true,
@@ -972,13 +1002,13 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
   });
 
   it("anchors ↑↓ at the selected row when no focus is set (moves to the row after the selected one)", () => {
-    renderPanel({ selectedWindowId: SID2 });
+    renderPanel({ selectedCockpitTerminalId: SID2 });
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // next after @2 = org charlie
     expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
   });
 
   it("anchors ↑↓ at the org header when the selected row is inside a collapsed org with no focus (does not jump to the list edge)", () => {
-    renderPanel({ selectedWindowId: SID2 });
+    renderPanel({ selectedCockpitTerminalId: SID2 });
     fireEvent.click(screen.getByText("kilo (2)")); // collapse @2's org (focused=org kilo)
     fireEvent.doubleClick(rowFor("charlie-app")); // select(@3): reset focused=null (the selected prop stays @2)
     fireEvent.keyDown(panel(), { key: "ArrowDown" }); // anchor=org kilo -> next org charlie
@@ -1085,7 +1115,7 @@ describe("SessionListPanel: Rename", () => {
     expect(screen.queryByRole("menuitem", { name: "名前を変更" })).toBeNull();
   });
 
-  it("choosing 'Rename' shows an input prefilled with the current title, and Enter after changing the value calls onRename(windowId, name, value)", () => {
+  it("choosing 'Rename' shows an input prefilled with the current title, and Enter after changing the value calls onRename(cockpitTerminalId, name, value)", () => {
     const props = renderPanel({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("zashiki"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
@@ -1118,7 +1148,7 @@ describe("SessionListPanel: Rename", () => {
   it("uses the name as the initial value for a fresh row with neither a title nor a manual title", () => {
     renderPanel({
       onRename: vi.fn(),
-      sessions: [{ ...sessions[1], title: null } as SessionInfo],
+      sessions: [{ ...sessions[1], title: null } as CockpitTerminalInfo],
     });
     fireEvent.contextMenu(rowFor("tango"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
@@ -1156,7 +1186,12 @@ describe("SessionListPanel: Rename", () => {
   it("disables 'Rename' for a non-UUID window (unbound/plain-shell)", () => {
     renderPanel({
       onRename: vi.fn(),
-      sessions: [{ ...sessions[1], windowId: "shell:0:tango" } as SessionInfo],
+      sessions: [
+        {
+          ...sessions[1],
+          cockpitTerminalId: "shell:0:tango",
+        } as CockpitTerminalInfo,
+      ],
     });
     fireEvent.contextMenu(rowFor("tango"));
     const item = screen.getByRole("menuitem", { name: "名前を変更" });
@@ -1171,7 +1206,7 @@ describe("SessionListPanel: Rename", () => {
           ...sessions[1],
           state: "no_claude",
           sid: undefined,
-        } as SessionInfo,
+        } as CockpitTerminalInfo,
       ],
     });
     fireEvent.contextMenu(rowFor("tango"));
@@ -1196,7 +1231,7 @@ describe("SessionListPanel: Rename", () => {
     const props = {
       sessions,
       orgs,
-      selectedWindowId: null as string | null,
+      selectedCockpitTerminalId: null as string | null,
       onSelect: vi.fn(),
       onNew: vi.fn(),
       onClose: vi.fn(),
@@ -1209,7 +1244,7 @@ describe("SessionListPanel: Rename", () => {
     expect(
       screen.getByRole("textbox", { name: "セッションのタイトルを編集" }),
     ).toBeTruthy();
-    const without = sessions.filter((s) => s.windowId !== SID2);
+    const without = sessions.filter((s) => s.cockpitTerminalId !== SID2);
     rerender(<SessionListPanel {...props} sessions={without} />);
     expect(
       screen.queryByRole("textbox", { name: "セッションのタイトルを編集" }),

@@ -18,7 +18,7 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
 use std::collections::HashMap;
 
-use crate::protocol::{ClientMessage, Notification, ServerMessage, SessionInfo, UsageLimits};
+use crate::protocol::{ClientMessage, Notification, ServerMessage, CockpitTerminalInfo, UsageLimits};
 use crate::status_poller::StateSnapshot;
 use crate::term_registry::{TermEntry, TermRegistry};
 
@@ -92,7 +92,7 @@ const RATE_LIMIT_TTL_MS: u64 = 30 * 60 * 1000;
 
 /// Attaches each session's bridge-reported limits (matched by sid) onto its footer usage. Sessions
 /// without transcript usage yet, or without a stored reading, are left untouched.
-fn merge_rate_limits(sessions: &mut [SessionInfo], store: &HashMap<String, RateLimitEntry>) {
+fn merge_rate_limits(sessions: &mut [CockpitTerminalInfo], store: &HashMap<String, RateLimitEntry>) {
     for session in sessions.iter_mut() {
         let Some(sid) = session.sid.as_deref() else {
             continue;
@@ -135,7 +135,7 @@ fn is_active_state(state: &str) -> bool {
     matches!(state, "running" | "running_bg_agent" | "waiting_input")
 }
 
-fn summarize_activity(sessions: &[SessionInfo]) -> ActivitySummary {
+fn summarize_activity(sessions: &[CockpitTerminalInfo]) -> ActivitySummary {
     let mut summary = ActivitySummary::default();
     for session in sessions {
         if is_active_state(&session.state) {
@@ -584,20 +584,20 @@ async fn handle_client_message(
             };
             socket.send(to_text(&result)).await.is_ok()
         }
-        ClientMessage::SessionNew { org } => handle_session_new(socket, services, &org).await,
+        ClientMessage::CockpitTerminalNew { org } => handle_session_new(socket, services, &org).await,
         // For owned, the actual entity lives in SessionRegistry, so remove it from the registry.
         // remove aggregates killpg + reap + deregistration and is idempotent even when absent (the bool is discarded).
-        ClientMessage::SessionClose { window_id } => {
-            services.sessions.remove(&window_id).await;
+        ClientMessage::CockpitTerminalClose { cockpit_terminal_id } => {
+            services.sessions.remove(&cockpit_terminal_id).await;
             trigger_refresh(services).await;
             true
         }
         ClientMessage::TermOpen {
             term_id,
-            window_id,
+            cockpit_terminal_id,
             cols,
             rows,
-        } => handle_term_open(socket, services, term_id, window_id, cols, rows).await,
+        } => handle_term_open(socket, services, term_id, cockpit_terminal_id, cols, rows).await,
         // Hold the finalized size and, if currently attached, propagate it to the PTY as well (no-op if not attached).
         ClientMessage::TermResize {
             term_id,
@@ -624,14 +624,14 @@ async fn handle_client_message(
             }
         }
         // Since switching the view changes the window size and visible content, re-evaluate immediately after select.
-        // For owned, 1 PTY = 1 window. windowId is the session_id of the switch-target PTY, so
+        // For owned, 1 PTY = 1 window. cockpitTerminalId is the session_id of the switch-target PTY, so
         // rebind that term's registry session_id so that subsequent resize/attach look up the new PTY.
-        ClientMessage::TermSelect { term_id, window_id } => {
+        ClientMessage::TermSelect { term_id, cockpit_terminal_id } => {
             if services
                 .terms
                 .lock()
                 .unwrap()
-                .rebind_session(&term_id, &window_id)
+                .rebind_session(&term_id, &cockpit_terminal_id)
             {
                 trigger_refresh(services).await;
                 true
@@ -642,7 +642,7 @@ async fn handle_client_message(
         ClientMessage::TermClose { term_id } => {
             let entry = services.terms.lock().unwrap().take_for_teardown(&term_id);
             match entry {
-                // The PTY lifecycle is owned by the SessionRegistry on the SessionClose side, so
+                // The PTY lifecycle is owned by the SessionRegistry on the CockpitTerminalClose side, so
                 // here we only tear down the term registry (no double-free).
                 Some(_) => true,
                 None => send_unknown_term(socket, &services.hub, &term_id).await,
@@ -661,7 +661,7 @@ async fn handle_term_open(
     socket: &mut WebSocket,
     services: &ControlServices,
     term_id: String,
-    window_id: Option<String>,
+    cockpit_terminal_id: Option<String>,
     cols: u32,
     rows: u32,
 ) -> bool {
@@ -671,7 +671,7 @@ async fn handle_term_open(
         return report_error(socket, &services.hub, "term_exists", &message).await;
     }
     let (cols, rows, _) = clamp_terminal_size(cols, rows);
-    let ok = open_owned_term(socket, services, term_id, window_id, cols, rows).await;
+    let ok = open_owned_term(socket, services, term_id, cockpit_terminal_id, cols, rows).await;
     let Some(()) = ok else {
         return false;
     };
@@ -683,21 +683,21 @@ async fn handle_term_open(
     socket.send(to_text(&reply)).await.is_ok()
 }
 
-/// The owned term.open. Without creating a tmux view session, it puts the windowId (UUID)
+/// The owned term.open. Without creating a tmux view session, it puts the cockpitTerminalId (UUID)
 /// directly into the term registry's session_id. The PTY was already spawned into SessionRegistry
-/// by session.new, and `/ws/term`'s `attach_owned_term` looks it up directly by session_id=windowId
-/// (1 PTY = 1 window; there is no select-window). When windowId is unspecified (unselected right
+/// by session.new, and `/ws/term`'s `attach_owned_term` looks it up directly by session_id=cockpitTerminalId
+/// (1 PTY = 1 window; there is no select-window). When cockpitTerminalId is unspecified (unselected right
 /// after startup), it is registered unbound with an empty session_id and bound later by term.select
 /// (the client always sends term.select after attaching). The reservation is already done. Always `Some(())`.
 async fn open_owned_term(
     _socket: &mut WebSocket,
     services: &ControlServices,
     term_id: String,
-    window_id: Option<String>,
+    cockpit_terminal_id: Option<String>,
     cols: u32,
     rows: u32,
 ) -> Option<()> {
-    let session_id = window_id.unwrap_or_default();
+    let session_id = cockpit_terminal_id.unwrap_or_default();
     services
         .terms
         .lock()
@@ -832,13 +832,13 @@ async fn request_refresh(services: &ControlServices) -> Option<StateSnapshot> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::SessionInfo;
+    use crate::protocol::CockpitTerminalInfo;
     use std::collections::BTreeMap;
 
     fn snapshot_with(window: &str) -> StateSnapshot {
         StateSnapshot {
-            sessions: vec![SessionInfo {
-                window_id: window.to_string(),
+            sessions: vec![CockpitTerminalInfo {
+                cockpit_terminal_id: window.to_string(),
                 name: "repo".to_string(),
                 org: "org".to_string(),
                 repo: "repo".to_string(),
@@ -856,9 +856,9 @@ mod tests {
         }
     }
 
-    fn session(state: &str, subagents: Option<u32>, shells: Option<u32>) -> SessionInfo {
-        SessionInfo {
-            window_id: "@1".to_string(),
+    fn session(state: &str, subagents: Option<u32>, shells: Option<u32>) -> CockpitTerminalInfo {
+        CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".to_string(),
             name: "repo".to_string(),
             org: "org".to_string(),
             repo: "repo".to_string(),
@@ -920,7 +920,7 @@ mod tests {
         let got = rx.recv().await.unwrap();
         match got {
             ServerMessage::StateSync { sessions, .. } => {
-                assert_eq!(sessions[0].window_id, "@2");
+                assert_eq!(sessions[0].cockpit_terminal_id, "@2");
             }
             _ => panic!("expected state.sync"),
         }
@@ -1116,7 +1116,7 @@ mod tests {
     }
 
     // Verifies that term.* works with just the owned PTY registry (a regression test). Confirms over
-    // a real WS that no error is returned and that the windowId (UUID) is correctly registered in the
+    // a real WS that no error is returned and that the cockpitTerminalId (UUID) is correctly registered in the
     // registry (so subsequent resize/select do not become unknown_term).
     mod owned_term_registry {
         use super::super::*;
@@ -1290,12 +1290,12 @@ mod tests {
 
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.open","termId":"t1","windowId":"sess-1","cols":80,"rows":24}),
+                serde_json::json!({"t":"term.open","termId":"t1","cockpitTerminalId":"sess-1","cols":80,"rows":24}),
             )
             .await;
             let reply = next_json(&mut ws).await.expect("reply");
             assert_eq!(reply["t"], "state.sync", "owned term.open must not error: {reply}");
-            // The registry holds the windowId (UUID sid) directly (not a tmux $N).
+            // The registry holds the cockpitTerminalId (UUID sid) directly (not a tmux $N).
             assert_eq!(terms.lock().unwrap().session_id("t1").as_deref(), Some("sess-1"));
         }
 
@@ -1320,7 +1320,7 @@ mod tests {
 
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.open","termId":"t1","windowId":"sess-1","cols":80,"rows":24}),
+                serde_json::json!({"t":"term.open","termId":"t1","cockpitTerminalId":"sess-1","cols":80,"rows":24}),
             )
             .await;
             assert_eq!(next_json(&mut ws).await.expect("open reply")["t"], "state.sync");
@@ -1340,7 +1340,7 @@ mod tests {
             // which does not arrive since the test has no poller). We check "no error is returned" and the registry rebind.
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.select","termId":"t1","windowId":"sess-2"}),
+                serde_json::json!({"t":"term.select","termId":"t1","cockpitTerminalId":"sess-2"}),
             )
             .await;
             assert!(
@@ -1362,7 +1362,7 @@ mod tests {
 
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.open","termId":"t1","windowId":"sess-1","cols":80,"rows":24}),
+                serde_json::json!({"t":"term.open","termId":"t1","cockpitTerminalId":"sess-1","cols":80,"rows":24}),
             )
             .await;
             assert_eq!(next_json(&mut ws).await.expect("open reply")["t"], "state.sync");
@@ -1373,13 +1373,13 @@ mod tests {
                 next_json(&mut ws).await.is_none(),
                 "owned term.close must not reply an error"
             );
-            // It drops from the registry but the PTY remains (the PTY lifecycle is on the SessionClose side).
+            // It drops from the registry but the PTY remains (the PTY lifecycle is on the CockpitTerminalClose side).
             assert!(terms.lock().unwrap().session_id("t1").is_none());
             assert!(sessions.get("sess-1").await.is_some());
         }
 
-        /// An owned term.open without windowId registers unbound (empty session_id) and is bound
-        /// later by term.select (the client opens with windowId still undetermined right after
+        /// An owned term.open without cockpitTerminalId registers unbound (empty session_id) and is bound
+        /// later by term.select (the client opens with cockpitTerminalId still undetermined right after
         /// startup, then selects after attaching).
         #[tokio::test]
         async fn term_open_without_window_registers_unbound_then_binds_on_select() {
@@ -1399,7 +1399,7 @@ mod tests {
             // term.select binds to the real sid (it does not touch tmux).
             send(
                 &mut ws,
-                serde_json::json!({"t":"term.select","termId":"t1","windowId":"sess-1"}),
+                serde_json::json!({"t":"term.select","termId":"t1","cockpitTerminalId":"sess-1"}),
             )
             .await;
             assert!(
