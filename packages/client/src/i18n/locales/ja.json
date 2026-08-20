@@ -28,6 +28,12 @@
     "copied": "コピーしました",
     "report": "GitHub で報告"
   },
+  "clipboardEdit": {
+    "title": "クリップボード編集",
+    "help": "端末幅で折り返された1行コマンドをコピーすると改行が混入します。貼り付け前にここで改行を消し、OK でコピーし直せます。",
+    "ok": "OK",
+    "neverShow": "今後はこのモーダルを表示しない"
+  },
   "terminal": {
     "renderError": "ターミナルの描画でエラーが発生しました",
     "connectionProblem": "接続に問題があります（{{detail}}）",
@@ -179,7 +185,8 @@
     "updateChecking": "確認中…",
     "updateAvailable": "バージョン {{version}} が利用できます。",
     "updateUpToDate": "最新バージョンです。",
-    "updateError": "アップデートを確認できませんでした。"
+    "updateError": "アップデートを確認できませんでした。",
+    "clipboardEditModal": "コピー時にクリップボード編集を表示"
   },
   "addOrg": {
     "title": "組織を追加",

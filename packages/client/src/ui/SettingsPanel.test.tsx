@@ -133,6 +133,29 @@ describe("SettingsPanel", () => {
     ).toBeTruthy();
   });
 
+  it("hides the clipboard-edit toggle when onSetClipboardEditModal is omitted", () => {
+    render(<SettingsPanel language="ja" onSaveLanguage={() => {}} />);
+    expect(screen.queryByText("コピー時にクリップボード編集を表示")).toBeNull();
+  });
+
+  it("reflects and toggles the clipboard-edit setting", () => {
+    const onSetClipboardEditModal = vi.fn();
+    render(
+      <SettingsPanel
+        language="ja"
+        onSaveLanguage={() => {}}
+        clipboardEditModal={true}
+        onSetClipboardEditModal={onSetClipboardEditModal}
+      />,
+    );
+    const box = screen.getByRole("checkbox", {
+      name: "コピー時にクリップボード編集を表示",
+    }) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    fireEvent.click(box);
+    expect(onSetClipboardEditModal).toHaveBeenCalledWith(false);
+  });
+
   it("hides the update-check entry when onCheckForUpdates is omitted", () => {
     render(<SettingsPanel language="ja" onSaveLanguage={() => {}} />);
     expect(

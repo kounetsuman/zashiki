@@ -76,6 +76,7 @@ import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
 import { Toaster } from "./ui/Toaster.js";
 import { UpdateBanner } from "./ui/UpdateBanner.js";
+import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { ViewerPanel } from "./ui/ViewerPanel.js";
 import {
@@ -284,6 +285,7 @@ export function App({
 }: AppProps) {
   const { t } = useTranslation();
   const terminalFont = useTerminalFontSize();
+  const clipboardEdit = useClipboardEditEnabled();
   const [addOrgOpen, setAddOrgOpen] = useState(false);
   const [crashLog, setCrashLog] = useState<string | null>(null);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
@@ -915,6 +917,8 @@ export function App({
                 focusNonce={focusNonce}
                 resizeNonce={resizeNonce}
                 fontSize={terminalFont.fontSize}
+                clipboardEditEnabled={clipboardEdit.enabled}
+                onSetClipboardEditEnabled={clipboardEdit.setEnabled}
               />
             </ErrorBoundary>
             {controlStatus === "open" &&
@@ -1016,6 +1020,8 @@ export function App({
               canResetFontSize={terminalFont.canReset}
               onAddOrg={() => setAddOrgOpen(true)}
               onCheckForUpdates={checkForUpdates}
+              clipboardEditModal={clipboardEdit.enabled}
+              onSetClipboardEditModal={clipboardEdit.setEnabled}
               inactive={activePanel !== "settings"}
             />
           )}

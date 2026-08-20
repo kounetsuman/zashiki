@@ -1812,6 +1812,13 @@ body {
   color: #999;
 }
 
+.settings-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
 .settings-select {
   background: #1e1e1e;
   border: 1px solid #333;

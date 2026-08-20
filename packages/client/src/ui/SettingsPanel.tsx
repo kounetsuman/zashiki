@@ -42,6 +42,9 @@ export interface SettingsPanelProps {
    * Omit to hide the entry (e.g. in isolated tests without a control channel).
    */
   onCheckForUpdates?(): Promise<UpdateCheckResultMessage>;
+  /** Whether the clipboard-edit modal appears on a multi-line Cmd+C. Omit to hide the toggle. */
+  clipboardEditModal?: boolean;
+  onSetClipboardEditModal?(enabled: boolean): void;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
 }
@@ -67,6 +70,8 @@ export function SettingsPanel({
   canResetFontSize = true,
   onAddOrg,
   onCheckForUpdates,
+  clipboardEditModal,
+  onSetClipboardEditModal,
   inactive,
 }: SettingsPanelProps) {
   const { t } = useTranslation();
@@ -196,6 +201,18 @@ export function SettingsPanel({
               {t("settings.addOrg")}
             </button>
           </div>
+        )}
+        {onSetClipboardEditModal !== undefined && (
+          <label className="settings-field settings-toggle">
+            <input
+              type="checkbox"
+              checked={clipboardEditModal ?? true}
+              onChange={(e) => onSetClipboardEditModal(e.target.checked)}
+            />
+            <span className="settings-label">
+              {t("settings.clipboardEditModal")}
+            </span>
+          </label>
         )}
       </div>
     </section>

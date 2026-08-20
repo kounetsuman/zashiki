@@ -1,0 +1,87 @@
+.clip-edit-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.clip-edit-modal {
+  width: min(720px, 92vw);
+  padding: 16px 18px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  color: #ddd;
+}
+
+.clip-edit-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.clip-edit-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.clip-edit-help {
+  font-size: 18px;
+  color: #999;
+  cursor: help;
+}
+
+.clip-edit-help:hover {
+  color: #ddd;
+}
+
+.clip-edit-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: 40vh;
+  padding: 8px 10px;
+  background: #141414;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #cbd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.clip-edit-never {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 12px;
+  font-size: 12px;
+  color: #bbb;
+  cursor: pointer;
+}
+
+.clip-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.clip-edit-ok {
+  padding: 5px 16px;
+  background: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.clip-edit-ok:hover {
+  border-color: #4a7;
+}
