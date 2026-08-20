@@ -7,7 +7,7 @@
   "build": {
     "devUrl": "http://localhost:5173",
     "frontendDist": "http://127.0.0.1:8790",
-    "beforeDevCommand": "pnpm --filter @zashiki/shared build && cargo build --manifest-path ../../crates/zashiki-server/Cargo.toml && VITE_ZK_SERVER=http://127.0.0.1:8790 pnpm --filter @zashiki/client run dev"
+    "beforeDevCommand": "pnpm --filter @zashiki/shared build && cargo build --manifest-path ../../crates/zashiki-server/Cargo.toml && VITE_ZK_SERVER=http://127.0.0.1:${ZK_PORT:-8790} pnpm --filter @zashiki/client run dev"
   },
   "app": {
     "windows": [],

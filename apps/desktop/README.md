@@ -19,21 +19,21 @@ pnpm install
 pnpm -F @zashiki/desktop dev   # = tauri dev
 ```
 
-### Demo mode (for screen recordings)
+### Isolated sandbox instance
 
 ```sh
-pnpm -F @zashiki/desktop dev:demo
+pnpm -F @zashiki/desktop dev:sandbox
 ```
 
-`dev:demo` (`scripts/dev-demo.mjs`) launches `tauri dev` against a throwaway,
-isolated sandbox so you can hand-drive and screen-record the org cockpit **without
-real Claude**: it auto-generates color-coded orgs and state-annotated sessions
-(running / waiting_input / idle / no_claude, with titles) and never touches real
-user data (`~/.zashiki` / `~/.claude`); the temp sandbox is removed on exit. It runs
-on the same dev port (8790), so stop any running server first (it refuses to start if
-8790 is already occupied). Edit the printed `demo-spec.json` and rerun with `--config
-<path>` (or `ZASHIKI_DEMO_CONFIG`) to change the states/titles. This is a dev-only
-affordance and is intentionally **not** part of the published `zashiki` CLI.
+`dev:sandbox` (`scripts/dev-sandbox.mjs`) launches `tauri dev` against a throwaway,
+isolated sandbox so you can develop against a clean instance alongside a production
+app on 8790. It runs on its own dev port (8791), auto-generates color-coded orgs with
+a few git-initialized repos, seeds **no** sessions (empty SESSION LIST), and leaves
+real Claude on so new sessions launch Claude normally. It never touches real user data
+(`~/.zashiki` / `~/.claude`); the temp sandbox is removed on exit. Edit the printed
+`sandbox-spec.json` and rerun with `--config <path>` (or `ZASHIKI_SANDBOX_CONFIG`) to
+change the orgs/repos. This is a dev-only affordance and is intentionally **not** part
+of the published `zashiki` CLI.
 
 `tauri dev`, via `beforeDevCommand`, runs `cargo build` for the Rust server and
 starts the Vite dev server (:5173, `VITE_ZK_SERVER=http://127.0.0.1:8790`), and the
@@ -287,9 +287,10 @@ pnpm uninstall:app -- --yes --purge-user-data # the above + also deletes ~/.zash
   (graceful shutdown happens only on normal exit / SIGTERM/SIGINT). On the next shell
   startup it is detected via healthz and ridden on, so there is no double start. To
   take it down by hand, use `pkill -f 'server/dist/index.js'`.
-- **`tauri dev` assumes `ZK_PORT=8790`**: because `beforeDevCommand`'s
-  `VITE_ZK_SERVER=http://127.0.0.1:8790` is fixed, if you change the port in dev you
-  also need to match it in tauri.conf.json (in a build it follows `ZK_PORT`).
+- **`tauri dev` defaults to `ZK_PORT=8790`**: `beforeDevCommand` derives the client
+  URL from the port (`VITE_ZK_SERVER=http://127.0.0.1:${ZK_PORT:-8790}`), so setting
+  `ZK_PORT` moves both the server and the client together (this is how `dev:sandbox`
+  runs on 8791 alongside a production app on 8790).
 - The definition of green in an environment where the GUI does not launch goes up to
   `cargo check` / `cargo test` / `tauri build --debug` (actual GUI confirmation is the
   manual smoke above).

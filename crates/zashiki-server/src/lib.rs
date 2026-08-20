@@ -9,7 +9,6 @@ pub mod claude_projects;
 pub mod config;
 pub mod control;
 pub mod crash_report;
-pub mod demo_seed;
 pub mod file;
 pub mod fs;
 pub mod git;
