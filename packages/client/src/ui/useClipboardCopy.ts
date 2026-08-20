@@ -1,15 +1,15 @@
 import {
+  type CockpitTerminalInfo,
   claudeSessionId,
   resumeCommand,
-  type SessionInfo,
 } from "@zashiki/shared";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 
 export interface ClipboardCopy {
-  copyResume(s: SessionInfo | null | undefined): void;
-  copyResumeByWindowId(windowId: string): void;
-  copySessionIdByWindowId(windowId: string): void;
+  copyResume(s: CockpitTerminalInfo | null | undefined): void;
+  copyResumeByCockpitTerminalId(cockpitTerminalId: string): void;
+  copySessionIdByCockpitTerminalId(cockpitTerminalId: string): void;
 }
 
 /**
@@ -17,13 +17,13 @@ export interface ClipboardCopy {
  * session without a sid (claude not started / undetectable), so callers disable the corresponding menu.
  */
 export function useClipboardCopy(
-  sessions: readonly SessionInfo[],
+  sessions: readonly CockpitTerminalInfo[],
   flashCopyToast: (message: string) => void,
 ): ClipboardCopy {
   const { t } = useTranslation();
 
   const copyResume = useCallback(
-    (s: SessionInfo | null | undefined): void => {
+    (s: CockpitTerminalInfo | null | undefined): void => {
       const cmd = s == null ? null : resumeCommand(s);
       if (cmd === null) return;
       void navigator.clipboard?.writeText(cmd).then(
@@ -34,16 +34,18 @@ export function useClipboardCopy(
     [flashCopyToast, t],
   );
 
-  const copyResumeByWindowId = useCallback(
-    (windowId: string): void => {
-      copyResume(sessions.find((s) => s.windowId === windowId));
+  const copyResumeByCockpitTerminalId = useCallback(
+    (cockpitTerminalId: string): void => {
+      copyResume(
+        sessions.find((s) => s.cockpitTerminalId === cockpitTerminalId),
+      );
     },
     [copyResume, sessions],
   );
 
-  const copySessionIdByWindowId = useCallback(
-    (windowId: string): void => {
-      const s = sessions.find((x) => x.windowId === windowId);
+  const copySessionIdByCockpitTerminalId = useCallback(
+    (cockpitTerminalId: string): void => {
+      const s = sessions.find((x) => x.cockpitTerminalId === cockpitTerminalId);
       const sid = s == null ? null : claudeSessionId(s);
       if (sid === null) return;
       void navigator.clipboard?.writeText(sid).then(
@@ -54,5 +56,9 @@ export function useClipboardCopy(
     [flashCopyToast, sessions, t],
   );
 
-  return { copyResume, copyResumeByWindowId, copySessionIdByWindowId };
+  return {
+    copyResume,
+    copyResumeByCockpitTerminalId,
+    copySessionIdByCockpitTerminalId,
+  };
 }

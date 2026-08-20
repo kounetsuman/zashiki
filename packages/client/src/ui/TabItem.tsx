@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import type React from "react";
 import { useTranslation } from "react-i18next";
 import { type Tab, tabKey } from "../tabs/tab-model.js";
@@ -11,7 +11,7 @@ export interface TabItemProps {
   active: boolean;
   label: string;
   title: string;
-  session: SessionInfo | undefined;
+  session: CockpitTerminalInfo | undefined;
   orgColor: string | undefined;
   /** Whether reordering is enabled (onReorder provided by the caller). */
   reorderable: boolean;

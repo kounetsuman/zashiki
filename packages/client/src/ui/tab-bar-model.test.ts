@@ -1,21 +1,21 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 import type { TitleMap } from "../lib/conversation-title.js";
 import type { Tab } from "../tabs/tab-model.js";
 import { tabLabel } from "./tab-bar-model.js";
 
 function session(
-  windowId: string,
-  extra: Partial<SessionInfo> = {},
-): SessionInfo {
+  cockpitTerminalId: string,
+  extra: Partial<CockpitTerminalInfo> = {},
+): CockpitTerminalInfo {
   return {
-    windowId,
+    cockpitTerminalId,
     org: "acme",
     name: "acme",
     state: "idle",
     title: null,
     ...extra,
-  } as SessionInfo;
+  } as CockpitTerminalInfo;
 }
 
 describe("tabLabel", () => {

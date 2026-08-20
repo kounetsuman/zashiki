@@ -19,13 +19,13 @@ describe("encodeClientMessage", () => {
   });
 
   it("throws on schema violation (detected before sending)", () => {
-    // windowId is typed as string, but its format is validated at runtime with
+    // cockpitTerminalId is typed as string, but its format is validated at runtime with
     // zod (an @N or owned opaque id; values containing separators are invalid).
     expect(() =>
       encodeClientMessage({
         t: "term.select",
         termId: "abc",
-        windowId: "not a window",
+        cockpitTerminalId: "not a window",
       }),
     ).toThrow();
   });

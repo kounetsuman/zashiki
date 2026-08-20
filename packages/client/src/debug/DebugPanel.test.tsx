@@ -6,7 +6,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import type { ServerMessage, SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo, ServerMessage } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TerminalSessionStatus } from "../session/terminal-session.js";
 import type { ControlStatus } from "../ws/control.js";
@@ -69,14 +69,14 @@ const termSnap: TermDebugSnapshot = {
   status: "attached",
   attempt: 1,
   pendingAck: 128,
-  windowId: "@3",
+  cockpitTerminalId: "@3",
   termId: "term-xyz",
   suspended: false,
 };
 
-const sessions: SessionInfo[] = [
+const sessions: CockpitTerminalInfo[] = [
   {
-    windowId: "@1",
+    cockpitTerminalId: "@1",
     name: "zashiki",
     org: "kilo",
     repo: "zashiki",
@@ -153,7 +153,12 @@ describe("DebugPanel", () => {
       />,
     );
     act(() =>
-      c.msg({ t: "notify", kind: "waiting", windowId: "@1", title: "x" }),
+      c.msg({
+        t: "notify",
+        kind: "waiting",
+        cockpitTerminalId: "@1",
+        title: "x",
+      }),
     );
     act(() => c.msg({ t: "git.dirty" }));
     act(() =>

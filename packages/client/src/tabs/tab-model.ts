@@ -2,7 +2,7 @@
  * State and transitions for the main area's unified tab list (pure functions).
  * The tab list is the single source of truth for what is open, and session/viewer
  * tabs live in the same list. Identity uses a composite `kind:id` key
- * (session=windowId, viewer=fileKey) to avoid id collisions across kinds. When the
+ * (session=cockpitTerminalId, viewer=fileKey) to avoid id collisions across kinds. When the
  * active tab drops out due to being closed or removed, the nearest surviving tab in
  * the original order is chosen deterministically (even when several vanish at once).
  */
@@ -11,7 +11,7 @@ export type TabKind = "session" | "viewer";
 
 export interface Tab {
   readonly kind: TabKind;
-  /** Identifier unique within a kind (session=windowId, viewer=fileKey). */
+  /** Identifier unique within a kind (session=cockpitTerminalId, viewer=fileKey). */
   readonly id: string;
 }
 
@@ -43,7 +43,7 @@ export function activeTab(state: TabsState): Tab | null {
   return i === -1 ? null : (state.tabs[i] ?? null);
 }
 
-/** The active session tab's windowId, or null otherwise (viewer/empty). */
+/** The active session tab's cockpitTerminalId, or null otherwise (viewer/empty). */
 export function activeSessionId(state: TabsState): string | null {
   const t = activeTab(state);
   return t !== null && t.kind === "session" ? t.id : null;
@@ -126,15 +126,15 @@ export function moveTab(
 }
 
 /**
- * Prunes session tabs against the set of live windowIds (viewer tabs always stay).
+ * Prunes session tabs against the set of live cockpitTerminalIds (viewer tabs always stay).
  * If the active tab disappears, move to the nearest surviving tab in the original
  * order. Deterministic even when several vanish at once.
  */
 export function pruneSessions(
   state: TabsState,
-  liveWindowIds: readonly string[],
+  liveCockpitTerminalIds: readonly string[],
 ): TabsState {
-  const live = new Set(liveWindowIds);
+  const live = new Set(liveCockpitTerminalIds);
   const survives = (t: Tab): boolean => t.kind !== "session" || live.has(t.id);
   const tabs = state.tabs.filter(survives);
   if (tabs.length === state.tabs.length) return state;

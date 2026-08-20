@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Tab } from "../tabs/tab-model.js";
@@ -11,8 +11,8 @@ const SID2 = "11111111-2222-4333-8444-555566667777";
 const KEY = `session:${SID}`;
 const KEY2 = `session:${SID2}`;
 
-const session: SessionInfo = {
-  windowId: SID,
+const session: CockpitTerminalInfo = {
+  cockpitTerminalId: SID,
   name: "myrepo",
   org: "o",
   repo: "myrepo",
@@ -106,7 +106,10 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY2}
-        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
+        sessions={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -216,7 +219,7 @@ describe("TabBar", () => {
     expect(tab.style.borderTopColor).toBe("");
   });
 
-  it("enters rename editing on double-click and calls onRename(windowId, name, value) on Enter", () => {
+  it("enters rename editing on double-click and calls onRename(cockpitTerminalId, name, value) on Enter", () => {
     const onRename = vi.fn();
     render(
       <TabBar
@@ -242,7 +245,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s("shell:0:myrepo")]}
         activeKey="session:shell:0:myrepo"
-        sessions={[{ ...session, windowId: "shell:0:myrepo" }]}
+        sessions={[{ ...session, cockpitTerminalId: "shell:0:myrepo" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -366,7 +369,7 @@ describe("TabBar", () => {
         activeKey={KEY}
         sessions={[
           session,
-          { ...session, windowId: SID2, sid: SID2, name: "other" },
+          { ...session, cockpitTerminalId: SID2, sid: SID2, name: "other" },
         ]}
         conversationTitles={{}}
         onActivate={() => undefined}
@@ -383,7 +386,9 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID2)]}
         activeKey={KEY2}
-        sessions={[{ ...session, windowId: SID2, sid: SID2, name: "other" }]}
+        sessions={[
+          { ...session, cockpitTerminalId: SID2, sid: SID2, name: "other" },
+        ]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -400,7 +405,10 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
+        sessions={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -423,7 +431,10 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
+        sessions={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -449,7 +460,10 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
+        sessions={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -468,7 +482,10 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[session, { ...session, windowId: SID2, title: "二番目" }]}
+        sessions={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -495,7 +512,7 @@ describe("TabBar", () => {
     expect(tab.getAttribute("draggable")).toBe("false");
   });
 
-  it("keeps editing across a detected-sid change under the same windowId (the title is keyed by the stable windowId, not the transient sid)", () => {
+  it("keeps editing across a detected-sid change under the same cockpitTerminalId (the title is keyed by the stable cockpitTerminalId, not the transient sid)", () => {
     const onRename = vi.fn();
     const { rerender } = render(
       <TabBar
@@ -512,7 +529,7 @@ describe("TabBar", () => {
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "編集中の下書き" },
     });
-    // The detected sid changes (e.g. claude restarted) but the windowId is unchanged.
+    // The detected sid changes (e.g. claude restarted) but the cockpitTerminalId is unchanged.
     rerender(
       <TabBar
         tabs={[s(SID)]}
@@ -646,7 +663,7 @@ describe("TabBar", () => {
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
-  it("passes the windowId of the right-clicked window when there are multiple tabs (no mix-up)", () => {
+  it("passes the cockpitTerminalId of the right-clicked window when there are multiple tabs (no mix-up)", () => {
     const onCopyResume = vi.fn();
     render(
       <TabBar
@@ -656,7 +673,7 @@ describe("TabBar", () => {
           { ...session, sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
           {
             ...session,
-            windowId: SID2,
+            cockpitTerminalId: SID2,
             title: "二番目",
             sid: "11111111-2222-3333-4444-555555555555",
           },

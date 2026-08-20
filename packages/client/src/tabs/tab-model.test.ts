@@ -125,7 +125,7 @@ describe("pruneSessions", () => {
     expect(r.activeKey).toBe("session:@1");
   });
 
-  it("keeps viewer tabs regardless of the windowId set", () => {
+  it("keeps viewer tabs regardless of the cockpitTerminalId set", () => {
     const base = state([s("@1"), e("readme.md"), s("@2")], "viewer:readme.md");
     const r = pruneSessions(base, []);
     expect(r.tabs).toEqual([e("readme.md")]);

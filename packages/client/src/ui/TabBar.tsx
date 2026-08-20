@@ -1,4 +1,4 @@
-import { resolveOrgColor, type SessionInfo } from "@zashiki/shared";
+import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
 import { type Tab, tabKey } from "../tabs/tab-model.js";
@@ -15,15 +15,15 @@ export interface TabBarProps {
   /** Composite key of the active tab (`kind:id`). null if none. */
   activeKey: string | null;
   /** Session list used to resolve titles (for session tabs). */
-  sessions: SessionInfo[];
+  sessions: CockpitTerminalInfo[];
   /** Used to resolve manually edited titles. Resolves for all tabs. */
   conversationTitles: TitleMap;
   /** org -> display color (explicit color from repos.conf). Unspecified orgs fall back to auto coloring. */
   orgColors?: Record<string, string>;
   onActivate(key: string): void;
   onClose(key: string): void;
-  /** Commits a double-click rename on a session tab. Commits with windowId + name. Rename is disabled when unspecified. */
-  onRename?(windowId: string, name: string, title: string): void;
+  /** Commits a double-click rename on a session tab. Commits with cockpitTerminalId + name. Rename is disabled when unspecified. */
+  onRename?(cockpitTerminalId: string, name: string, title: string): void;
   /** Reordering via drag & drop. Moves fromKey to the position of toKey. Reordering is disabled when unspecified. */
   onReorder?(fromKey: string, toKey: string): void;
   /** Apply a faint overlay when inactive. */
@@ -32,12 +32,12 @@ export interface TabBarProps {
    * Right-clicking a session tab copies the resume command (`claude --resume <sid>`)
    * (for branched sessions). No context menu is shown when unspecified.
    */
-  onCopyResume?(windowId: string): void;
+  onCopyResume?(cockpitTerminalId: string): void;
   /**
    * Right-clicking a session tab copies the Claude Code session id (`sid`) verbatim.
    * The context menu appears when either this or onCopyResume is provided.
    */
-  onCopySessionId?(windowId: string): void;
+  onCopySessionId?(cockpitTerminalId: string): void;
 }
 
 /**
@@ -84,7 +84,7 @@ export function TabBar({
         const { label, title } = tabLabel(tab, sessions, conversationTitles);
         const session =
           tab.kind === "session"
-            ? sessions.find((x) => x.windowId === tab.id)
+            ? sessions.find((x) => x.cockpitTerminalId === tab.id)
             : undefined;
         const orgColor =
           session !== undefined

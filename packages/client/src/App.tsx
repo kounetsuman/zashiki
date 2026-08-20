@@ -97,7 +97,7 @@ export interface AppSession extends TerminalViewSession {
   onStatus(fn: (s: TerminalSessionStatus) => void): () => void;
   /** Diagnostic display for debug mode. */
   debugSnapshot(): TermDebugSnapshot;
-  select(windowId: string): void;
+  select(cockpitTerminalId: string): void;
   /** Id of the currently attached term (null if not open; used to match unknown_term). */
   getTermId(): string | null;
   /** Re-attaches the pty on term.reconnect (e.g. after a restore). */
@@ -178,7 +178,7 @@ export function App({
     orgColors,
     notifications,
     lastError,
-    selectedWindowId,
+    selectedCockpitTerminalId,
     focusNonce,
     resizeNonce,
   } = useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -209,12 +209,12 @@ export function App({
     closeTab,
     reorderTabByKey,
     openViewerTab,
-  } = useAppTabs(store, sessions, selectedWindowId);
+  } = useAppTabs(store, sessions, selectedCockpitTerminalId);
 
   // Footer inputs for the active session tab (undefined for viewer/empty; usage null before a transcript).
   const activeSession =
     activeSess !== null
-      ? sessions.find((s) => s.windowId === activeSess)
+      ? sessions.find((s) => s.cockpitTerminalId === activeSess)
       : undefined;
   const activeSessionUsage = activeSession?.usage ?? null;
   const activeSessionAccent =
@@ -249,8 +249,11 @@ export function App({
   );
 
   const { copyToast, flashCopyToast } = useCopyToast();
-  const { copyResume, copyResumeByWindowId, copySessionIdByWindowId } =
-    useClipboardCopy(sessions, flashCopyToast);
+  const {
+    copyResume,
+    copyResumeByCockpitTerminalId,
+    copySessionIdByCockpitTerminalId,
+  } = useClipboardCopy(sessions, flashCopyToast);
 
   // Copy the absolute path of the file open in the viewer (the copy button at the left of the header).
   const copyViewerPath = useCallback(
@@ -265,13 +268,13 @@ export function App({
     [viewerPathOf, flashCopyToast, t],
   );
 
-  // Commit the conversation header / tab title edit and persist it keyed by windowId (the owned-mode
+  // Commit the conversation header / tab title edit and persist it keyed by cockpitTerminalId (the owned-mode
   // session UUID, preserved across resume/restore). name (repository) is stored alongside for the
   // display-time match. For non-UUID windows (unbound/plain-shell), commitTitle is a no-op.
   const handleCommitConversationTitle = useCallback(
-    (windowId: string, name: string, value: string): void => {
+    (cockpitTerminalId: string, name: string, value: string): void => {
       setConversationTitles((prev) => {
-        const next = commitTitle(prev, windowId, name, value);
+        const next = commitTitle(prev, cockpitTerminalId, name, value);
         saveConversationTitles(panelStorage, next);
         return next;
       });
@@ -284,7 +287,7 @@ export function App({
   const newSession = useCallback(
     (org: string): void => {
       store.markNewRequested();
-      control.send({ t: "session.new", org });
+      control.send({ t: "cockpitTerminal.new", org });
     },
     [store, control],
   );
@@ -434,8 +437,8 @@ export function App({
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
             inactive={activePanel !== "main"}
-            onCopyResume={copyResumeByWindowId}
-            onCopySessionId={copySessionIdByWindowId}
+            onCopyResume={copyResumeByCockpitTerminalId}
+            onCopySessionId={copySessionIdByCockpitTerminalId}
           />
           <div className="tab-panel">
             <ErrorBoundary
@@ -495,19 +498,19 @@ export function App({
             orgColors={orgColors}
             conversationTitles={conversationTitles}
             connected={controlStatus === "open"}
-            selectedWindowId={activeSess}
-            onSelect={store.selectWindow}
+            selectedCockpitTerminalId={activeSess}
+            onSelect={store.selectCockpitTerminal}
             onFocusTerminal={store.focusTerminal}
             onNew={newSession}
-            onClose={(windowId) =>
-              control.send({ t: "session.close", windowId })
+            onClose={(cockpitTerminalId) =>
+              control.send({ t: "cockpitTerminal.close", cockpitTerminalId })
             }
             onRefresh={refreshSessions}
             onAddOrg={() => setAddOrgOpen(true)}
             inactive={activePanel !== "sessions"}
             full={selectedPanel === null}
-            onCopyResume={copyResumeByWindowId}
-            onCopySessionId={copySessionIdByWindowId}
+            onCopyResume={copyResumeByCockpitTerminalId}
+            onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}
           />
           {selectedPanel === "explorer" && (

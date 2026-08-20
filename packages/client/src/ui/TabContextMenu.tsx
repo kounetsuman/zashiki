@@ -1,16 +1,16 @@
 import {
+  type CockpitTerminalInfo,
   claudeSessionId,
   resumeCommand,
-  type SessionInfo,
 } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 export interface TabContextMenuProps {
-  menu: { windowId: string; x: number; y: number };
-  sessions: SessionInfo[];
+  menu: { cockpitTerminalId: string; x: number; y: number };
+  sessions: CockpitTerminalInfo[];
   closeMenu(): void;
-  onCopyResume?(windowId: string): void;
-  onCopySessionId?(windowId: string): void;
+  onCopyResume?(cockpitTerminalId: string): void;
+  onCopySessionId?(cockpitTerminalId: string): void;
 }
 
 /** Right-click menu overlay for a session tab: copy resume command / copy session id. */
@@ -22,7 +22,9 @@ export function TabContextMenu({
   onCopySessionId,
 }: TabContextMenuProps) {
   const { t } = useTranslation();
-  const target = sessions.find((s) => s.windowId === menu.windowId);
+  const target = sessions.find(
+    (s) => s.cockpitTerminalId === menu.cockpitTerminalId,
+  );
   const canResume = target !== undefined && resumeCommand(target) !== null;
   const canCopySessionId =
     target !== undefined && claudeSessionId(target) !== null;
@@ -50,7 +52,7 @@ export function TabContextMenu({
             disabled={!canResume}
             title={canResume ? undefined : t("common.cannotResume")}
             onClick={() => {
-              onCopyResume(menu.windowId);
+              onCopyResume(menu.cockpitTerminalId);
               closeMenu();
             }}
           >
@@ -67,7 +69,7 @@ export function TabContextMenu({
               canCopySessionId ? undefined : t("common.cannotCopySessionId")
             }
             onClick={() => {
-              onCopySessionId(menu.windowId);
+              onCopySessionId(menu.cockpitTerminalId);
               closeMenu();
             }}
           >

@@ -35,13 +35,13 @@ describe("loadConversationTitles", () => {
     expect(loadConversationTitles(s)).toEqual({});
   });
 
-  it("keeps only {title,name} for windowId (UUID) keys; drops empty titles, missing names, and non-UUID keys", () => {
+  it("keeps only {title,name} for cockpitTerminalId (UUID) keys; drops empty titles, missing names, and non-UUID keys", () => {
     const s = memStorage({
       [CONVERSATION_TITLES_KEY]: JSON.stringify({
         [WID_A]: { title: "作業A", name: "repoA" },
         [WID_B]: { title: "", name: "repoB" }, // empty title
         "22222222-3333-4444-8555-666677778888": { title: "x" }, // name missing
-        "@1": { title: "旧 tmux windowId キー", name: "repoC" }, // non-UUID key (retired format, discarded on migration)
+        "@1": { title: "旧 tmux cockpitTerminalId キー", name: "repoC" }, // non-UUID key (retired format, discarded on migration)
         "shell:0:repoD": { title: "y", name: "z" }, // plain-shell id (non-UUID)
         "33333333-4444-4555-8666-777788889999": "旧 string 形式",
       }),
@@ -51,7 +51,7 @@ describe("loadConversationTitles", () => {
     });
   });
 
-  it("discards the entire retired tmux windowId-key (@N) table on migration (empty)", () => {
+  it("discards the entire retired tmux cockpitTerminalId-key (@N) table on migration (empty)", () => {
     const s = memStorage({
       [CONVERSATION_TITLES_KEY]: JSON.stringify({
         "@1": { title: "作業A", name: "repoA" },
@@ -91,7 +91,7 @@ describe("saveConversationTitles", () => {
 });
 
 describe("commitTitle", () => {
-  it("sets the trimmed title as a windowId-key / name pair", () => {
+  it("sets the trimmed title as a cockpitTerminalId-key / name pair", () => {
     expect(commitTitle({}, WID_A, "repoA", "  作業A  ")).toEqual({
       [WID_A]: { title: "作業A", name: "repoA" },
     });
@@ -103,7 +103,7 @@ describe("commitTitle", () => {
     ).toEqual({});
   });
 
-  it("does not change titles of other windowIds (pure, non-destructive)", () => {
+  it("does not change titles of other cockpitTerminalIds (pure, non-destructive)", () => {
     const prev = {
       [WID_A]: { title: "A", name: "r1" },
       [WID_B]: { title: "B", name: "r2" },
@@ -119,11 +119,11 @@ describe("commitTitle", () => {
     });
   });
 
-  it("is a no-op when windowId is undefined", () => {
+  it("is a no-op when cockpitTerminalId is undefined", () => {
     expect(commitTitle({}, undefined, "repoA", "作業A")).toEqual({});
   });
 
-  it("is a no-op when windowId is not a UUID (unbound/plain-shell window)", () => {
+  it("is a no-op when cockpitTerminalId is not a UUID (unbound/plain-shell window)", () => {
     expect(commitTitle({}, "shell:0:repoA", "repoA", "作業A")).toEqual({});
     expect(commitTitle({}, "", "repoA", "作業A")).toEqual({});
   });
@@ -138,68 +138,71 @@ describe("commitTitle", () => {
 describe("effectiveCustomTitle", () => {
   const titles = { [WID_A]: { title: "手動", name: "repoA" } };
 
-  it("returns the manual title when both windowId and name match", () => {
+  it("returns the manual title when both cockpitTerminalId and name match", () => {
     expect(
-      effectiveCustomTitle(titles, { windowId: WID_A, name: "repoA" }),
+      effectiveCustomTitle(titles, { cockpitTerminalId: WID_A, name: "repoA" }),
     ).toBe("手動");
   });
 
-  it("does not adopt on name mismatch (windowId reused for a different repo) to prevent title possession", () => {
+  it("does not adopt on name mismatch (cockpitTerminalId reused for a different repo) to prevent title possession", () => {
     expect(
-      effectiveCustomTitle(titles, { windowId: WID_A, name: "repoB" }),
+      effectiveCustomTitle(titles, { cockpitTerminalId: WID_A, name: "repoB" }),
     ).toBeUndefined();
   });
 
   it("returns undefined when the entry is absent", () => {
     expect(
-      effectiveCustomTitle(titles, { windowId: WID_B, name: "repoA" }),
+      effectiveCustomTitle(titles, { cockpitTerminalId: WID_B, name: "repoA" }),
     ).toBeUndefined();
   });
 
-  it("returns undefined when windowId is undefined", () => {
+  it("returns undefined when cockpitTerminalId is undefined", () => {
     expect(
-      effectiveCustomTitle(titles, { windowId: undefined, name: "repoA" }),
-    ).toBeUndefined();
-  });
-
-  it("returns undefined when windowId is not a UUID (unbound/plain-shell window)", () => {
-    const leaked = {
-      "shell:0:repoA": { title: "漏洩", name: "repoA" },
-    } as unknown as typeof titles;
-    expect(
-      effectiveCustomTitle(leaked, {
-        windowId: "shell:0:repoA",
+      effectiveCustomTitle(titles, {
+        cockpitTerminalId: undefined,
         name: "repoA",
       }),
     ).toBeUndefined();
   });
 
-  it("uses distinct titles for the same cwd/name when the windowId differs", () => {
+  it("returns undefined when cockpitTerminalId is not a UUID (unbound/plain-shell window)", () => {
+    const leaked = {
+      "shell:0:repoA": { title: "漏洩", name: "repoA" },
+    } as unknown as typeof titles;
+    expect(
+      effectiveCustomTitle(leaked, {
+        cockpitTerminalId: "shell:0:repoA",
+        name: "repoA",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("uses distinct titles for the same cwd/name when the cockpitTerminalId differs", () => {
     const t = {
       [WID_A]: { title: "AのタイトルX", name: "repo" },
       [WID_B]: { title: "BのタイトルY", name: "repo" },
     };
-    expect(effectiveCustomTitle(t, { windowId: WID_A, name: "repo" })).toBe(
-      "AのタイトルX",
-    );
-    expect(effectiveCustomTitle(t, { windowId: WID_B, name: "repo" })).toBe(
-      "BのタイトルY",
-    );
+    expect(
+      effectiveCustomTitle(t, { cockpitTerminalId: WID_A, name: "repo" }),
+    ).toBe("AのタイトルX");
+    expect(
+      effectiveCustomTitle(t, { cockpitTerminalId: WID_B, name: "repo" }),
+    ).toBe("BのタイトルY");
   });
 
-  it("persists across resume/restore because the owned-mode windowId is preserved", () => {
-    // In owned mode, restore rebuilds the session under the same UUID windowId
-    // (and relaunches `claude --resume <windowId>`), so the title re-matches.
+  it("persists across resume/restore because the owned-mode cockpitTerminalId is preserved", () => {
+    // In owned mode, restore rebuilds the session under the same UUID cockpitTerminalId
+    // (and relaunches `claude --resume <cockpitTerminalId>`), so the title re-matches.
     const t = commitTitle({}, WID_A, "repoA", "復元後も残るタイトル");
-    const afterRestore = { windowId: WID_A, name: "repoA" };
+    const afterRestore = { cockpitTerminalId: WID_A, name: "repoA" };
     expect(effectiveCustomTitle(t, afterRestore)).toBe("復元後も残るタイトル");
   });
 
-  it("is renamable/adopted even when claude is not currently detected (state no_claude keeps its windowId)", () => {
+  it("is renamable/adopted even when claude is not currently detected (state no_claude keeps its cockpitTerminalId)", () => {
     const t = commitTitle({}, WID_A, "repoA", "claude 終了後も残る");
-    expect(effectiveCustomTitle(t, { windowId: WID_A, name: "repoA" })).toBe(
-      "claude 終了後も残る",
-    );
+    expect(
+      effectiveCustomTitle(t, { cockpitTerminalId: WID_A, name: "repoA" }),
+    ).toBe("claude 終了後も残る");
   });
 });
 

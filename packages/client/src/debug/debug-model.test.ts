@@ -1,4 +1,4 @@
-import type { ServerMessage, SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo, ServerMessage } from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -100,9 +100,9 @@ describe("footerAbnormalNotice", () => {
   });
 });
 
-const sessions: SessionInfo[] = [
+const sessions: CockpitTerminalInfo[] = [
   {
-    windowId: "@1",
+    cockpitTerminalId: "@1",
     name: "zashiki",
     org: "kilo",
     repo: "zashiki",
@@ -111,7 +111,7 @@ const sessions: SessionInfo[] = [
     active: true,
   },
   {
-    windowId: "@2",
+    cockpitTerminalId: "@2",
     name: "tango",
     org: "kilo",
     repo: "tango",
@@ -122,16 +122,16 @@ const sessions: SessionInfo[] = [
 ];
 
 describe("summarizeSessions", () => {
-  it("formats each window into windowId/label/active/state", () => {
+  it("formats each window into cockpitTerminalId/label/active/state", () => {
     expect(summarizeSessions(sessions)).toEqual([
       {
-        windowId: "@1",
+        cockpitTerminalId: "@1",
         label: "kilo/zashiki zashiki",
         active: true,
         state: "running",
       },
       {
-        windowId: "@2",
+        cockpitTerminalId: "@2",
         label: "kilo/tango tango",
         active: false,
         state: "idle",
@@ -145,7 +145,7 @@ describe("describeServerEvent", () => {
     const m: ServerMessage = {
       t: "notify",
       kind: "waiting",
-      windowId: "@1",
+      cockpitTerminalId: "@1",
       title: "zashiki",
     };
     expect(describeServerEvent(m)).toBe('notify waiting @1 "zashiki"');

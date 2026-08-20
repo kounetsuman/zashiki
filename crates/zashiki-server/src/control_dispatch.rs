@@ -96,20 +96,20 @@ pub(crate) async fn handle_client_message(
             };
             socket.send(to_text(&result)).await.is_ok()
         }
-        ClientMessage::SessionNew { org } => handle_session_new(socket, services, &org).await,
+        ClientMessage::CockpitTerminalNew { org } => handle_session_new(socket, services, &org).await,
         // For owned, the actual entity lives in SessionRegistry, so remove it from the registry.
         // remove aggregates killpg + reap + deregistration and is idempotent even when absent (the bool is discarded).
-        ClientMessage::SessionClose { window_id } => {
-            services.sessions.remove(&window_id).await;
+        ClientMessage::CockpitTerminalClose { cockpit_terminal_id } => {
+            services.sessions.remove(&cockpit_terminal_id).await;
             trigger_refresh(services).await;
             true
         }
         ClientMessage::TermOpen {
             term_id,
-            window_id,
+            cockpit_terminal_id,
             cols,
             rows,
-        } => handle_term_open(socket, services, term_id, window_id, cols, rows).await,
+        } => handle_term_open(socket, services, term_id, cockpit_terminal_id, cols, rows).await,
         // Hold the finalized size and, if currently attached, propagate it to the PTY as well (no-op if not attached).
         ClientMessage::TermResize {
             term_id,
@@ -136,14 +136,14 @@ pub(crate) async fn handle_client_message(
             }
         }
         // Since switching the view changes the window size and visible content, re-evaluate immediately after select.
-        // For owned, 1 PTY = 1 window. windowId is the session_id of the switch-target PTY, so
+        // For owned, 1 PTY = 1 window. cockpitTerminalId is the session_id of the switch-target PTY, so
         // rebind that term's registry session_id so that subsequent resize/attach look up the new PTY.
-        ClientMessage::TermSelect { term_id, window_id } => {
+        ClientMessage::TermSelect { term_id, cockpit_terminal_id } => {
             if services
                 .terms
                 .lock()
                 .unwrap()
-                .rebind_session(&term_id, &window_id)
+                .rebind_session(&term_id, &cockpit_terminal_id)
             {
                 trigger_refresh(services).await;
                 true
@@ -154,7 +154,7 @@ pub(crate) async fn handle_client_message(
         ClientMessage::TermClose { term_id } => {
             let entry = services.terms.lock().unwrap().take_for_teardown(&term_id);
             match entry {
-                // The PTY lifecycle is owned by the SessionRegistry on the SessionClose side, so
+                // The PTY lifecycle is owned by the SessionRegistry on the CockpitTerminalClose side, so
                 // here we only tear down the term registry (no double-free).
                 Some(_) => true,
                 None => send_unknown_term(socket, &services.hub, &term_id).await,

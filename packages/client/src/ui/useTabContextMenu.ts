@@ -1,11 +1,11 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { clampMenuPos } from "./panels.js";
 
 export interface TabContextMenuState {
-  menu: { windowId: string; x: number; y: number } | null;
-  openMenu(session: SessionInfo, e: React.MouseEvent): void;
+  menu: { cockpitTerminalId: string; x: number; y: number } | null;
+  openMenu(session: CockpitTerminalInfo, e: React.MouseEvent): void;
   closeMenu(): void;
 }
 
@@ -15,7 +15,7 @@ export interface TabContextMenuState {
  */
 export function useTabContextMenu(itemCount: number): TabContextMenuState {
   const [menu, setMenu] = useState<{
-    windowId: string;
+    cockpitTerminalId: string;
     x: number;
     y: number;
   } | null>(null);
@@ -29,10 +29,13 @@ export function useTabContextMenu(itemCount: number): TabContextMenuState {
     return () => window.removeEventListener("keydown", onKey);
   }, [menu]);
 
-  const openMenu = (session: SessionInfo, e: React.MouseEvent): void => {
+  const openMenu = (
+    session: CockpitTerminalInfo,
+    e: React.MouseEvent,
+  ): void => {
     e.preventDefault();
     const { x, y } = clampMenuPos(e.clientX, e.clientY, itemCount);
-    setMenu({ windowId: session.windowId, x, y });
+    setMenu({ cockpitTerminalId: session.cockpitTerminalId, x, y });
   };
 
   const closeMenu = (): void => setMenu(null);

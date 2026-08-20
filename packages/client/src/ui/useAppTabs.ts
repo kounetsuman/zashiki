@@ -1,4 +1,4 @@
-import type { SessionInfo } from "@zashiki/shared";
+import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppStore } from "../state/app-store.js";
 import {
@@ -16,7 +16,7 @@ import {
 
 export interface AppTabs {
   tabsState: TabsState;
-  /** windowId of the active session tab (null for a viewer/empty tab). */
+  /** cockpitTerminalId of the active session tab (null for a viewer/empty tab). */
   activeSess: string | null;
   /** Buffer key of the active viewer tab (null when the active tab is not a viewer). */
   activeViewerKey: string | null;
@@ -29,13 +29,13 @@ export interface AppTabs {
 
 /**
  * Owns the main-area tab row, the single source of truth for what is open. The store's
- * selectedWindowId (open request) flows one-way into the tabs, and the terminal attach flows
+ * selectedCockpitTerminalId (open request) flows one-way into the tabs, and the terminal attach flows
  * one-way back from the active session tab, so the round-trip does not loop.
  */
 export function useAppTabs(
   store: AppStore,
-  sessions: readonly SessionInfo[],
-  selectedWindowId: string | null,
+  sessions: readonly CockpitTerminalInfo[],
+  selectedCockpitTerminalId: string | null,
 ): AppTabs {
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
   const activeSess = activeSessionId(tabsState);
@@ -43,17 +43,18 @@ export function useAppTabs(
   const activeViewerKey = active?.kind === "viewer" ? active.id : null;
 
   useEffect(() => {
-    if (selectedWindowId === null) return;
+    if (selectedCockpitTerminalId === null) return;
     setTabsState((prev) =>
-      openTab(prev, { kind: "session", id: selectedWindowId }),
+      openTab(prev, { kind: "session", id: selectedCockpitTerminalId }),
     );
-  }, [selectedWindowId]);
+  }, [selectedCockpitTerminalId]);
 
-  const selectedRef = useRef(selectedWindowId);
-  selectedRef.current = selectedWindowId;
+  const selectedRef = useRef(selectedCockpitTerminalId);
+  selectedRef.current = selectedCockpitTerminalId;
   useEffect(() => {
     if (activeSess !== null) {
-      if (selectedRef.current !== activeSess) store.selectWindow(activeSess);
+      if (selectedRef.current !== activeSess)
+        store.selectCockpitTerminal(activeSess);
     } else if (selectedRef.current !== null) {
       store.deselect();
     }
@@ -63,7 +64,7 @@ export function useAppTabs(
     setTabsState((prev) =>
       pruneSessions(
         prev,
-        sessions.map((s) => s.windowId),
+        sessions.map((s) => s.cockpitTerminalId),
       ),
     );
   }, [sessions]);
@@ -78,7 +79,7 @@ export function useAppTabs(
     const w = sessions.find((s) => s.active) ?? sessions[0];
     if (w !== undefined) {
       bootstrappedRef.current = true;
-      store.selectWindow(w.windowId);
+      store.selectCockpitTerminal(w.cockpitTerminalId);
     }
   }, [sessions, tabsState.tabs.length, store]);
 
@@ -86,7 +87,7 @@ export function useAppTabs(
     (key: string): void => {
       const tab = tabsState.tabs.find((t) => tabKey(t) === key);
       if (tab === undefined) return;
-      if (tab.kind === "session") store.selectWindow(tab.id);
+      if (tab.kind === "session") store.selectCockpitTerminal(tab.id);
       else setTabsState((prev) => activateTab(prev, key));
     },
     [tabsState.tabs, store],

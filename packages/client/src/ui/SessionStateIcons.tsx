@@ -1,4 +1,4 @@
-import type { SessionInfo, SessionState } from "@zashiki/shared";
+import type { CockpitTerminalInfo, SessionState } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 // Material Symbols Outlined ligature names (the font is loaded in main.tsx; shared with the footer).
@@ -26,7 +26,7 @@ export function StateIcon({
   session,
   fresh,
 }: {
-  session: SessionInfo;
+  session: CockpitTerminalInfo;
   fresh: boolean;
 }) {
   const { t } = useTranslation();
@@ -56,7 +56,7 @@ export function StateIcon({
 }
 
 /** Concurrent background activity as chips: agent follows running_bg_agent, shell follows shellsRunning; both are independent so both can show. */
-export function ActivityChips({ session }: { session: SessionInfo }) {
+export function ActivityChips({ session }: { session: CockpitTerminalInfo }) {
   const { t } = useTranslation();
   const showAgent = session.state === "running_bg_agent";
   const agentCount = session.runningSubagents ?? 0;
