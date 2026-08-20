@@ -160,14 +160,17 @@ function demoRepoDirs(spec, root) {
 
 function parseArgs(argv) {
   let config = process.env.ZASHIKI_DEMO_CONFIG ?? null;
+  let noSeed = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--config") {
       config = argv[++i] ?? null;
     } else if (argv[i].startsWith("--config=")) {
       config = argv[i].slice("--config=".length);
+    } else if (argv[i] === "--no-seed") {
+      noSeed = true;
     }
   }
-  return { config };
+  return { config, noSeed };
 }
 
 function loadSpec(configPath) {
@@ -202,7 +205,7 @@ async function portOccupiedByServer(port) {
 }
 
 async function main() {
-  const { config } = parseArgs(process.argv.slice(2));
+  const { config, noSeed } = parseArgs(process.argv.slice(2));
   const spec = loadSpec(config);
 
   if (await portOccupiedByServer(DEV_PORT)) {
@@ -223,7 +226,11 @@ async function main() {
   const seedPath = join(root, "seed.json");
   const specPath = join(root, "demo-spec.json");
   writeFileSync(join(root, "repos.conf"), demoReposConf(spec, root));
-  writeFileSync(seedPath, `${JSON.stringify(demoSeed(spec, root), null, 2)}\n`);
+  if (!noSeed)
+    writeFileSync(
+      seedPath,
+      `${JSON.stringify(demoSeed(spec, root), null, 2)}\n`,
+    );
   writeFileSync(specPath, `${JSON.stringify(spec, null, 2)}\n`);
   writeFileSync(join(root, "config.json"), "{}\n");
 
@@ -235,13 +242,19 @@ async function main() {
     ZK_SAVES_DIR: join(root, "saves"),
     ZK_PROJECTS_ROOT: join(root, "projects"),
     ZK_CONFIG: join(root, "config.json"),
-    ZK_NO_CLAUDE: "1",
-    ZK_DEMO_SEED: seedPath,
+    // The seeded demo stages fake claude panes, so it suppresses real claude (ZK_NO_CLAUDE) and injects
+    // the seed. --no-seed is a usable isolated instance instead: empty SESSION LIST, real claude on new
+    // sessions, still pointed entirely at the throwaway sandbox.
+    ...(noSeed ? {} : { ZK_NO_CLAUDE: "1", ZK_DEMO_SEED: seedPath }),
   };
 
+  const mode = noSeed
+    ? "no-seed (empty SESSION LIST, real claude on new sessions)"
+    : "seeded demo (fake claude panes)";
   process.stdout.write(
     `zashiki demo sandbox: ${root} (removed on exit; real ~/.zashiki / ~/.claude untouched)\n` +
-      `zashiki demo: edit ${specPath} then rerun with --config <path> to change session states/titles\n` +
+      `zashiki demo: mode = ${mode}\n` +
+      `zashiki demo: edit ${specPath} then rerun with --config <path> to change orgs/repos\n` +
       "zashiki demo: launching `tauri dev` …\n",
   );
 

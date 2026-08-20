@@ -35,6 +35,12 @@ on its own dev port (8791), so it can run alongside a production app already on 
 <path>` (or `ZASHIKI_DEMO_CONFIG`) to change the states/titles. This is a dev-only
 affordance and is intentionally **not** part of the published `zashiki` CLI.
 
+For a usable isolated instance instead of a canned demo, run `dev:sandbox`
+(`dev-demo.mjs --no-seed`): same throwaway sandbox and 8791 port, but it seeds
+**no** sessions (empty SESSION LIST) and leaves real Claude on, so new sessions
+launch Claude normally. Use it to develop against a clean instance without
+touching your real `~/.zashiki` state.
+
 `tauri dev`, via `beforeDevCommand`, runs `cargo build` for the Rust server and
 starts the Vite dev server (:5173, `VITE_ZK_SERVER=http://127.0.0.1:8790`), and the
 shell then does the following:

@@ -33,6 +33,11 @@ pnpm -F @zashiki/desktop dev:demo
 出力される `demo-spec.json` を編集し `--config <path>`（または `ZASHIKI_DEMO_CONFIG`）で再実行すると
 状態・タイトルを変更できる。これは開発専用で、公開 `zashiki` CLI には**含めない**。
 
+作り物の demo ではなく実際に使える隔離インスタンスが欲しい場合は `dev:sandbox`
+（`dev-demo.mjs --no-seed`）を使う。使い捨てサンドボックス・8791 ポートは同じだが、セッションを
+**一切 seed せず**（空の SESSION LIST）、real Claude を有効なまま起動するので新規セッションで
+Claude が普通に立ち上がる。実際の `~/.zashiki` に触れずクリーンなインスタンスで開発できる。
+
 `tauri dev` が `beforeDevCommand` で Rust server の `cargo build` と Vite dev サーバ（:5173、
 `VITE_ZK_SERVER=http://127.0.0.1:8790`）を立ち上げ、シェルが以下を行う:
 
