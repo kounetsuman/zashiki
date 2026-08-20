@@ -13,6 +13,7 @@
     "postinstall": "node scripts/fix-node-pty-permissions.mjs",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
+    "dev:sandbox": "pnpm -F @zashiki/desktop dev:sandbox",
     "e2e": "pnpm -F @zashiki/e2e run e2e",
     "lint": "biome check .",
     "format": "biome check --write .",
