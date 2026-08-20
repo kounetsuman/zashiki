@@ -127,7 +127,7 @@ pub fn scrollback_pressure_notification(used_bytes: usize, created_at: u64) -> N
 /// Notification announcing that a newer stable release exists on GitHub than the running bundle (#26).
 /// The id is per-version (`update-available:<version>`) so the same latest version does not re-stack on
 /// every daily poll (singleton per version via upsert), while a genuinely newer version stacks as a new
-/// entry. Toast + panel, and manually dismissible.
+/// entry. Toast + panel; sticky so a pending update survives eviction under a notification storm, and manually dismissible.
 pub fn update_available_notification(version: &str, url: &str, created_at: u64) -> Notification {
     Notification {
         id: format!("update-available:{version}"),
@@ -137,7 +137,7 @@ pub fn update_available_notification(version: &str, url: &str, created_at: u64) 
             "最新の安定版 {version} が公開されています。更新は {url} を確認してください。"
         )),
         created_at,
-        sticky: false,
+        sticky: true,
         dismissible: true,
         toast: Some(true),
     }
@@ -272,7 +272,7 @@ mod tests {
         assert_eq!(n.id, "update-available:0.2.0");
         assert_eq!(n.level, NotificationLevel::Warn);
         assert_eq!(n.toast, Some(true));
-        assert!(n.dismissible && !n.sticky);
+        assert!(n.dismissible && n.sticky);
         assert!(n.body.as_deref().unwrap().contains("https://example.test/rel"));
         // Same version re-poll coalesces (singleton per version); a newer version stacks as a new entry.
         let same = upsert_notification(
@@ -282,6 +282,15 @@ mod tests {
         assert_eq!(same.len(), 1);
         let newer = upsert_notification(&same, update_available_notification("0.3.0", "u", 3));
         assert_eq!(newer.len(), 2);
+    }
+
+    #[test]
+    fn update_available_survives_eviction_under_a_notification_storm() {
+        let mut list = vec![update_available_notification("0.3.0", "u", 1)];
+        for i in 0..50u64 {
+            list = append_notification(&list, note(&format!("n{i}"), 100 + i), 5);
+        }
+        assert!(list.iter().any(|x| x.id == "update-available:0.3.0"));
     }
 
     #[test]

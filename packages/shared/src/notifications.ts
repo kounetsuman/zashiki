@@ -192,6 +192,22 @@ export function unreadCount(
   return list.reduce((acc, x) => (seen.has(x.id) ? acc : acc + 1), 0);
 }
 
+export const UPDATE_AVAILABLE_ID_PREFIX = "update-available:";
+
+/** GitHub releases page the update banner links to. */
+export const ZASHIKI_RELEASES_URL =
+  "https://github.com/kounetsuman/zashiki/releases/latest";
+
+/** Newest announced update version from the notifications, or null when none. */
+export function updateAvailableVersion(
+  list: readonly Notification[],
+): string | null {
+  const hit = list.find((x) => x.id.startsWith(UPDATE_AVAILABLE_ID_PREFIX));
+  if (hit === undefined) return null;
+  const version = hit.id.slice(UPDATE_AVAILABLE_ID_PREFIX.length);
+  return version.length > 0 ? version : null;
+}
+
 /**
  * Whether roots (the list of org root absolute paths) has changed since startup.
  * Compares order as well (reordering also affects org display order, and since

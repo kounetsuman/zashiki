@@ -149,6 +149,10 @@
       "weekTitle": "Weekly usage"
     }
   },
+  "update": {
+    "button": "Update",
+    "tooltip": "Version {{version}} is available — open the releases page"
+  },
   "panel": {
     "explorer": "Explorer",
     "search": "Search",

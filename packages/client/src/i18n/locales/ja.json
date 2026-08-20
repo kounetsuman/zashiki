@@ -149,6 +149,10 @@
       "weekTitle": "週間使用率"
     }
   },
+  "update": {
+    "button": "アップデート",
+    "tooltip": "バージョン {{version}} が利用できます — リリースページを開く"
+  },
   "panel": {
     "explorer": "エクスプローラー",
     "search": "検索",
