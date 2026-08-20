@@ -1,6 +1,6 @@
-//! Assembly of the control runtime (equivalent to the poller/hub startup in TS `index.ts`). It bundles
-//! the ported components (ControlHub / PtyPollerPorts / spawn_poller), starts the resident poller, and
-//! returns the `ControlServices` passed to `build_router`. Must be called within a `tokio` runtime.
+//! Assembly of the control runtime. It bundles the components (ControlHub / PtyPollerPorts /
+//! spawn_poller), starts the resident poller, and returns the `ControlServices` passed to
+//! `build_router`. Must be called within a `tokio` runtime.
 //!
 //! org colors (annotated in repos.conf) stay at their defaults for now (to be wired up later). For
 //! config.json (notifySound/debug), ControlHub starts with the initial value `config`, and if
@@ -32,7 +32,7 @@ pub struct ControlRuntimeConfig {
     pub bg_agent_marker: Option<String>,
     /// Text marker for the usage-limit banner (ZK_LIMIT_MARKER).
     pub limit_marker: Option<String>,
-    /// Whether session.new launches claude (TS launchClaude; defaults to true).
+    /// Whether session.new launches claude (defaults to true).
     pub launch_claude: bool,
     /// Initial value of the live-reload settings (the result of reading config.json at startup).
     pub config: ConfigView,

@@ -1,7 +1,5 @@
-//! Wire types for `/ws/control` (a port of `ClientMessage` / `ServerMessage` / `SessionInfo` from
-//! the TS `packages/shared/src/protocol.ts` using serde internally-tagged enums). The JSON is
-//! byte-equivalent to the TS, which is the condition for leaving the client unmodified. Not yet wired
-//! into the WS handler (only the type foundation; non-breaking).
+//! Wire types for `/ws/control` (`ClientMessage` / `ServerMessage` / `SessionInfo`, using serde
+//! internally-tagged enums). The JSON shape is the contract the client depends on, so it must stay stable.
 
 use std::collections::BTreeMap;
 
@@ -149,7 +147,7 @@ pub enum NotifyKind {
     Done,
 }
 
-/// The kind of Claude Code hook event (TS `hookEventKindSchema`).
+/// The kind of Claude Code hook event.
 /// prompt only refreshes (no notification), tool triggers git.dirty, and waiting/done deliver
 /// notifications.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,7 +159,7 @@ pub enum HookKind {
     Done,
 }
 
-/// Request for `POST /api/hooks/event` (TS `hookEventRequestSchema`).
+/// Request for `POST /api/hooks/event`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct HookEventRequest {
     pub kind: HookKind,
@@ -173,14 +171,14 @@ pub struct HookEventRequest {
     pub cwd: Option<String>,
 }
 
-/// Response for `POST /api/hooks/event` (TS `hookEventResponseSchema`). `ok` is always true.
+/// Response for `POST /api/hooks/event`. `ok` is always true.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HookEventResponse {
     pub ok: bool,
     pub matched: bool,
 }
 
-/// Request for `POST /api/focus` (TS `focusRequestSchema`). Resolved like a hook event (sid then cwd).
+/// Request for `POST /api/focus`. Resolved like a hook event (sid then cwd).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct FocusRequest {
     #[serde(default)]
@@ -189,7 +187,7 @@ pub struct FocusRequest {
     pub cwd: Option<String>,
 }
 
-/// Response for `POST /api/focus` (TS `focusResponseSchema`). `window_id` is present only when resolved.
+/// Response for `POST /api/focus`. `window_id` is present only when resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FocusResponse {
@@ -198,7 +196,7 @@ pub struct FocusResponse {
     pub window_id: Option<String>,
 }
 
-/// In-app notification level (TS `notificationLevelSchema` in `notifications.ts`).
+/// In-app notification level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum NotificationLevel {
@@ -207,8 +205,7 @@ pub enum NotificationLevel {
     Error,
 }
 
-/// An in-app notification (an element of notifications.sync). A port of `notificationSchema` in the
-/// TS `notifications.ts`. The field order matches the TS schema definition order = the wire order.
+/// An in-app notification (an element of notifications.sync). The field order is the wire order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Notification {
@@ -226,7 +223,7 @@ pub struct Notification {
     pub dismissible: bool,
     /// Whether to show it as a toast (true when omitted). An error that has a separate surface
     /// (ErrorDialog) uses `Some(false)` to avoid double display. It appears in the panel regardless of
-    /// this value (TS `notificationSchema.toast`).
+    /// this value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toast: Option<bool>,
 }
@@ -253,7 +250,7 @@ pub enum ServerMessage {
         window_id: String,
         title: String,
     },
-    /// Selects a window without a notification (TS `selectSchema`). Broadcast on POST /api/focus.
+    /// Selects a window without a notification. Broadcast on POST /api/focus.
     #[serde(rename = "select", rename_all = "camelCase")]
     Select { window_id: String },
     #[serde(rename = "error")]
@@ -289,7 +286,7 @@ mod tests {
         serde_json::to_string(v).unwrap()
     }
 
-    // ---- client -> server: byte-equivalent to the TS JSON shape (t tag + camelCase) ----
+    // ---- client -> server: the wire JSON shape (t tag + camelCase) ----
 
     #[test]
     fn term_open_roundtrips_and_matches_wire() {
@@ -489,7 +486,7 @@ mod tests {
         assert!(serde_json::from_str::<ClientMessage>(r#"{"t":"bogus"}"#).is_err());
     }
 
-    // ---- wire parity coverage (notification.dismiss / config.sync /
+    // ---- wire-shape coverage (notification.dismiss / config.sync /
     //      notifications.sync / SessionInfo.runningSubagents) ----
 
     #[test]

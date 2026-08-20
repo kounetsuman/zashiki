@@ -1,9 +1,8 @@
-//! A standalone Rust server that replaces the Node server (Phase A).
+//! A standalone Rust server: the HTTP/WS backend the Tauri sidecar launches.
 //!
-//! Current state of this crate: the wire endpoints (`/healthz`, `token-probe`, `/api/fs/repos`) +
-//! Host/Origin verification middleware + token auth for `/api/*` + static serving of the client dist + pure security functions.
-//! Porting of git status/WS/PTY and the poller comes later. Not yet wired into Tauri (non-destructive).
-//! The source of truth for the wire contract to preserve is `packages/shared/src/protocol.ts`.
+//! Serves the REST endpoints (git status/write, `/api/file`, `/api/fs`, hooks), the `/ws/control`
+//! and `/ws/term` channels, and the status poller, behind Host/Origin verification, token auth for
+//! `/api/*`, and static serving of the client dist.
 
 pub mod claude_projects;
 pub mod config;
@@ -60,8 +59,8 @@ use serde::{Deserialize, Serialize};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::services::ServeDir;
 
-/// Editor launch for `POST /api/git/open` (injected so tests can replace it; equivalent to TS's openFile).
-/// Arguments are (repoPath, file). Side-effect only; success/failure is ignored (TS likewise only checks spawn success and doesn't block).
+/// Editor launch for `POST /api/git/open` (injected so tests can replace it).
+/// Arguments are (repoPath, file). Side-effect only; success/failure is ignored (only spawn success is checked, and it doesn't block).
 pub type OpenFile = Arc<dyn Fn(String, String) + Send + Sync>;
 
 /// Server configuration. Passed to `build_router` from tests and main.
@@ -75,7 +74,7 @@ pub struct ServerConfig {
     pub repos_conf: Option<PathBuf>,
     /// Control services (if None, `/ws/control` is not wired = REST only).
     pub control: Option<ControlServices>,
-    /// Editor command (ZK_EDITOR). Default `cursor -g` (TS DEFAULT_EDITOR).
+    /// Editor command (ZK_EDITOR). Default `cursor -g`.
     pub editor: Option<String>,
     /// Replacement for the `POST /api/git/open` editor launch (for test injection; spawns the editor if None).
     pub open_file: Option<OpenFile>,
@@ -99,7 +98,7 @@ struct HealthResponse {
     pid: u32,
 }
 
-/// Response for `GET /api/zk-shell/token-probe` (TS: `{ ok: true }`).
+/// Response for `GET /api/zk-shell/token-probe` (`{ ok: true }`).
 #[derive(Serialize)]
 struct TokenProbeResponse {
     ok: bool,
@@ -111,7 +110,7 @@ struct LastCrashResponse {
     log: Option<String>,
 }
 
-/// Response for `GET /api/fs/repos` (TS: `FsReposResponse` in `packages/shared/src/fs-tree.ts`).
+/// Response for `GET /api/fs/repos` (`FsReposResponse`).
 #[derive(Serialize)]
 struct FsReposResponse {
     repos: Vec<FsRepo>,
@@ -141,7 +140,7 @@ struct AppState {
     open_file: Option<OpenFile>,
     file_max_bytes: u64,
     saves_dir: Arc<PathBuf>,
-    /// Serializes save/restore (a series of destructive operations) within the server (equivalent to TS's `runPersistExclusive`).
+    /// Serializes save/restore (a series of destructive operations) within the server.
     persist_lock: Arc<tokio::sync::Mutex<()>>,
     /// TTL cache for scan (the repos.conf walk).
     scan_cache: ScanCache,
@@ -149,14 +148,14 @@ struct AppState {
     last_crash: Arc<std::sync::Mutex<Option<String>>>,
 }
 
-/// Default destination for session save/restore (`~/.zashiki/saves`; matches TS's default).
+/// Default destination for session save/restore (`~/.zashiki/saves`).
 /// The startup restore and shutdown save in main.rs use the same resolution.
 pub fn default_saves_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     PathBuf::from(home).join(".zashiki").join("saves")
 }
 
-/// Splits `ZK_EDITOR` into argv (whitespace-separated; quotes are not interpreted; TS `parseEditorCommand`).
+/// Splits `ZK_EDITOR` into argv (whitespace-separated; quotes are not interpreted).
 fn parse_editor_command(editor: &str) -> Vec<String> {
     editor
         .split_whitespace()
@@ -212,9 +211,8 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/git/stage-all", post(git_stage_all))
         .route("/api/git/unstage-all", post(git_unstage_all))
         .route("/api/git/commit", post(git_commit))
-        // /api/file writes allow a larger body. TS passes maxBytes + 64KiB to parseBody
-        // (content = max + slack for the JSON envelope). With axum's default 2MiB limit, a max-size
-        // content would get a 413 at the transport layer, diverging from Node (200, or a content-based 413), so we align them.
+        // /api/file writes allow a larger body: maxBytes + 64KiB (content max + slack for the JSON
+        // envelope), overriding axum's default 2MiB so the 413 is content-based rather than transport-level.
         .route(
             "/api/file",
             get(file_read).post(file_write).layer(DefaultBodyLimit::max(
@@ -269,7 +267,7 @@ fn cors_layer() -> CorsLayer {
             axum::http::Method::POST,
             axum::http::Method::OPTIONS,
         ])
-        // The client's authHeaders send x-zashiki-token (packages/client/src/lib/token.ts).
+        // The client's authHeaders send x-zashiki-token.
         // This is a non-safelisted header = it triggers preflight, so unless it's allowed, dev requests are blocked.
         .allow_headers([
             header::AUTHORIZATION,
@@ -335,7 +333,7 @@ async fn scan(state: &AppState) -> Vec<repos::ScannedRepo> {
     repos
 }
 
-/// Response for `GET /api/repos/list` (TS: `ReposListResponse` in `packages/shared/src/repos-add.ts`).
+/// Response for `GET /api/repos/list` (`ReposListResponse`).
 #[derive(Serialize)]
 struct ReposListResponse {
     orgs: Vec<OrgRootEntry>,
@@ -392,16 +390,16 @@ async fn git_status(State(state): State<AppState>) -> Json<git::GitStatusRespons
     Json(git::GitStatusResponse { repos })
 }
 
-// ---- git write REST + /api/file (ported from TS git-routes.ts / file-routes.ts) ----
+// ---- git write REST + /api/file ----
 //
-// The error body is returned as `{"error": <msg>}` (JSON), same as TS's sendHttpError.
+// The error body is returned as `{"error": <msg>}` (JSON).
 
-/// JSON error response of `{"error": msg}` (TS `sendHttpError`).
+/// JSON error response of `{"error": msg}`.
 fn json_error(status: StatusCode, msg: &str) -> Response {
     (status, Json(serde_json::json!({ "error": msg }))).into_response()
 }
 
-/// JSON response of `{"ok": true}` (the success body of TS's stage/unstage/commit etc.).
+/// JSON response of `{"ok": true}` (the success body of stage/unstage/commit etc.).
 fn json_ok() -> Response {
     Json(serde_json::json!({ "ok": true })).into_response()
 }
@@ -506,15 +504,15 @@ async fn repos_add(State(state): State<AppState>, body: axum::body::Bytes) -> Re
     Json(serde_json::json!({ "org": org })).into_response()
 }
 
-// ---- session save/restore REST (the owned version of TS session-routes.ts) ----
+// ---- session save/restore REST ----
 
 #[derive(Deserialize)]
 struct SessionsRestoreBody {
     file: Option<String>,
 }
 
-/// JSON error response of `{"error": msg, "code": code}` (TS session-routes also returns a `code` for
-/// PersistError; unlike the git-side `json_error` that has `{error}` only, this is a persist-specific contract).
+/// JSON error response of `{"error": msg, "code": code}`. Unlike the git-side `json_error` that has
+/// `{error}` only, the `code` is a persist-specific contract for PersistError.
 fn json_error_with_code(status: StatusCode, msg: &str, code: &str) -> Response {
     (
         status,
@@ -523,7 +521,7 @@ fn json_error_with_code(status: StatusCode, msg: &str, code: &str) -> Response {
         .into_response()
 }
 
-/// Maps `session_persist::PersistError` to an HTTP status + `code` (TS `PERSIST_ERROR_STATUS`).
+/// Maps `session_persist::PersistError` to an HTTP status + `code`.
 fn persist_error_response(err: session_persist::PersistError) -> Response {
     use session_persist::PersistError::{Io, RestoreEmpty, RestoreFileNotFound, SaveEmpty};
     match err {
@@ -542,7 +540,7 @@ fn persist_error_response(err: session_persist::PersistError) -> Response {
             &format!("save file has no restorable entry: {path}"),
             "restore_empty",
         ),
-        // TS also uses `sendHttpError` for 500 (no code).
+        // 500 has no code.
         Io(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }
 }
@@ -608,10 +606,10 @@ async fn sessions_restore(State(state): State<AppState>, body: axum::body::Bytes
     }
 }
 
-// ---- Claude Code hooks intake REST (the owned version of TS hooks-routes.ts) ----
+// ---- Claude Code hooks intake REST ----
 
-/// Requests an immediate re-evaluation from the poller and receives the post-evaluation snapshot (None on no response =
-/// TS's `poller.refresh().catch(()=>null)`). Used for the mac notification body (session title).
+/// Requests an immediate re-evaluation from the poller and receives the post-evaluation snapshot
+/// (None on no response). Used for the mac notification body (session title).
 async fn hooks_refresh(control: &ControlServices) -> Option<crate::status_poller::StateSnapshot> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     if control
@@ -805,7 +803,7 @@ fn bad(msg: &str) -> GuardErr {
     (StatusCode::BAD_REQUEST, msg.to_string())
 }
 
-/// bytes to JSON. An empty body is treated as `{}` (TS `parseBody`). Failure is 400 `invalid JSON body`.
+/// bytes to JSON. An empty body is treated as `{}`. Failure is 400 `invalid JSON body`.
 fn parse_json_body<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, GuardErr> {
     let trimmed = std::str::from_utf8(body).unwrap_or("").trim();
     let value: serde_json::Value = if trimmed.is_empty() {
@@ -816,13 +814,13 @@ fn parse_json_body<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, Guard
     serde_json::from_value(value).map_err(|_| bad("request failed schema validation"))
 }
 
-/// Whether repoPath is in the scanned list (TS `isAllowedRepo`; judged by the scan at each request).
+/// Whether repoPath is in the scanned list (judged by the scan at each request).
 async fn is_allowed_repo(state: &AppState, repo_path: &str) -> bool {
     scan(state).await.iter().any(|r| r.path == repo_path)
 }
 
 /// Shared guard for file actions (stage/unstage/open). Order: schema -> safe path -> repo allowlist.
-/// The first half of TS `handleFileAction` (open additionally calls realpath verification).
+/// Open additionally calls realpath verification.
 async fn guard_file_action(state: &AppState, body: &[u8]) -> Result<(String, String), GuardErr> {
     let parsed: GitFileBody = parse_json_body(body)?;
     // gitFileRequestSchema: repoPath.min(1) / file.min(1). Empty or missing is a schema violation.
@@ -856,7 +854,7 @@ async fn guard_repo(state: &AppState, repo_path: &str) -> Result<(), GuardErr> {
     Ok(())
 }
 
-/// Maps a git mutation result to 200 `{ok:true}` / 500 `{error}` (TS: failures become 500 in the route's catch).
+/// Maps a git mutation result to 200 `{ok:true}` / 500 `{error}` (failures become 500).
 fn git_result(result: Result<(), git::GitError>) -> Response {
     match result {
         Ok(()) => json_ok(),
@@ -961,7 +959,7 @@ struct FileReadParams {
     file: Option<String>,
 }
 
-/// Allowlist + safe-path guard for `/api/file` (the first half of TS `guardedAbs`; from realpath onward it's file.rs).
+/// Allowlist + safe-path guard for `/api/file` (from realpath onward it's file.rs).
 async fn guard_file_path(state: &AppState, repo_path: &str, file: &str) -> Result<(), GuardErr> {
     if repo_path.is_empty() || file.is_empty() {
         return Err(bad("repoPath and file are required"));
@@ -1238,7 +1236,7 @@ async fn host_origin_guard(req: Request, next: Next) -> Response {
     next.run(req).await
 }
 
-// ---- Pure security functions (ported from TS packages/server/src/security.ts) ----
+// ---- Pure security functions ----
 
 const ALLOWED_HOSTNAMES: [&str; 3] = ["127.0.0.1", "localhost", "[::1]"];
 
@@ -1253,8 +1251,8 @@ fn is_port_suffix(s: &str) -> bool {
     matches!(s.strip_prefix(':'), Some(rest) if !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// Extracts the hostname from an authority (`host[:port]`). Equivalent to TS's Host regex
-/// `/^(\[[^\]]+\]|[^:]+)(:\d+)?$/`, it accepts only a bracketed IPv6 or a colon-free host + an optional `:port`,
+/// Extracts the hostname from an authority (`host[:port]`). Matches the Host regex
+/// `^(\[[^\]]+\]|[^:]+)(:\d+)?$`: it accepts only a bracketed IPv6 or a colon-free host + an optional `:port`,
 /// and returns None if there is extra content after `]` or at the port position (host/origin share the same rule).
 fn hostname_of_authority(authority: &str) -> Option<&str> {
     if authority.is_empty() {
@@ -1292,7 +1290,7 @@ pub fn is_allowed_host(host: Option<&str>) -> bool {
 }
 
 /// Origin header verification (absent is allowed; if present, only http(s) on the localhost family).
-/// TS uses `new URL(origin)`, but since an origin is the simple form `scheme://host[:port]`, we decompose it by hand.
+/// Rather than a full URL parse: an origin is the simple form `scheme://host[:port]`, so we decompose it by hand.
 /// Host extraction uses the same `hostname_of_authority` as `is_allowed_host` to keep the check consistent.
 pub fn is_allowed_origin(origin: Option<&str>) -> bool {
     let Some(origin) = origin else {
@@ -1319,7 +1317,7 @@ pub fn token_from_query(query: Option<&str>) -> Option<&str> {
         .filter(|t| !t.is_empty())
 }
 
-/// Timing-attack-resistant token comparison (TS `tokenMatches`; length mismatch or None is false).
+/// Timing-attack-resistant token comparison (length mismatch or None is false).
 pub fn token_matches(provided: Option<&str>, expected: &str) -> bool {
     match provided {
         None => false,
@@ -1450,7 +1448,7 @@ mod tests {
                 ("host", OK_HOST),
                 ("origin", "http://localhost:5173"),
                 ("access-control-request-method", "GET"),
-                // The auth header the client actually sends (token.ts's authHeaders).
+                // The auth header the client actually sends.
                 ("access-control-request-headers", "x-zashiki-token"),
             ],
             &[ACAO, ACAM, ACAH],
@@ -2500,7 +2498,7 @@ mod tests {
             let sessions = Arc::new(SessionRegistry::new());
             let (s, b) = send(app(dir.path(), sessions), "POST", "/api/sessions/save?token=t", "").await;
             assert_eq!(s, StatusCode::CONFLICT);
-            // TS session-routes also returns a `code` for PersistError (drop-in contract).
+            // PersistError responses carry a `code` (drop-in contract).
             assert!(b.contains(r#""code":"save_empty""#), "body: {b}");
         }
 

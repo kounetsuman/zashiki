@@ -1,4 +1,4 @@
-//! Claude transcript (jsonl) parser. Ported from TS `packages/shared/src/jsonl.ts`.
+//! Claude transcript (jsonl) parser.
 //! Since it involves JSON parsing, it lives in the server crate rather than core (which has zero dependencies).
 //! File I/O is infra's responsibility; this module only receives content strings and parses them.
 
@@ -75,7 +75,7 @@ pub fn last_user_or_assistant_event(jsonl_tail: &str) -> Option<TranscriptEvent>
 }
 
 /// Strips meta tags emitted when running skills/slash commands (command-name keeps its inner /foo).
-/// The opening and closing local-command tags match independently, as in the TS regex.
+/// The opening and closing local-command tags match independently.
 fn strip_command_tags(text: &str) -> String {
     static COMMAND_ARGS: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"<command-args>[^<]*</command-args>").unwrap());
@@ -324,7 +324,7 @@ mod tests {
         assert_eq!(ev.interrupted, interrupted);
     }
 
-    // ---- last_user_or_assistant_event (ported from inf_jsonl_last_event) ----
+    // ---- last_user_or_assistant_event ----
 
     #[test]
     fn picks_trailing_user_event() {
@@ -425,7 +425,7 @@ mod tests {
         );
     }
 
-    // ---- first_user_title (ported from inf_jsonl_title) ----
+    // ---- first_user_title ----
 
     #[test]
     fn title_takes_first_30_chars_of_first_user() {

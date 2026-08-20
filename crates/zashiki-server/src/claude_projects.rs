@@ -1,4 +1,4 @@
-//! Adapter for reading `~/.claude/projects` jsonl (port of TS `infra/claude-projects.ts`).
+//! Adapter for reading `~/.claude/projects` jsonl.
 //! Transcripts can grow large, so rather than reading the whole file we read only the
 //! head/tail slices (the title lives at the head, the most recent event at the tail).
 //! Parsing is the responsibility of the pure functions in `jsonl` / `status_poller`;
@@ -39,7 +39,7 @@ fn mtime_ms(meta: &fs::Metadata) -> u64 {
         .unwrap_or(0)
 }
 
-/// Elapsed seconds since mtime (floored, clamped to 0). TS `Math.max(0, Math.floor((now-mtimeMs)/1000))`.
+/// Elapsed seconds since mtime (floored, clamped to 0): `max(0, floor((now-mtimeMs)/1000))`.
 fn age_sec(now_ms_val: u64, mtime_ms_val: u64) -> f64 {
     (now_ms_val.saturating_sub(mtime_ms_val) / 1000) as f64
 }

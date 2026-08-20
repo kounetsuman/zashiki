@@ -1,5 +1,4 @@
-//! Cross-repo text search (the search panel). A port of TS `packages/shared/src/search.ts`
-//! (argument building and rg JSON parsing) plus `infra/search.ts` (running rg).
+//! Cross-repo text search (the search panel). Handles argument building, rg JSON parsing, and running rg.
 //! ripgrep runs as a single process over all target repos (the same search is never fired in parallel).
 
 use std::collections::HashMap;
@@ -9,7 +8,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
 
-/// Request body for POST /api/search (TS: `SearchRequest`).
+/// Request body for POST /api/search (`SearchRequest`).
 #[derive(Deserialize)]
 pub struct SearchRequest {
     pub query: String,

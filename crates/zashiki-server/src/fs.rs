@@ -1,7 +1,7 @@
-//! Implementation of `GET /api/fs/list` (a port of TS `packages/server/src/fs-routes.ts` + `infra/fs-list.ts`).
+//! Implementation of `GET /api/fs/list`.
 //! A read-only REST endpoint that enumerates a single level directly under a directory. Escapes out
-//! of the repo (`..` / symlink) are rejected by `is_safe_repo_relative_path` (already ported to
-//! zashiki-core) plus realpath containment.
+//! of the repo (`..` / symlink) are rejected by `is_safe_repo_relative_path` (in zashiki-core)
+//! plus realpath containment.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ use serde::Serialize;
 /// Upper bound on entries returned for one directory (guards against DoS / rendering stalls from node_modules etc.).
 pub const DEFAULT_ENTRY_LIMIT: usize = 2000;
 
-/// Response for `GET /api/fs/list` (TS: `FsListResponse`).
+/// Response for `GET /api/fs/list` (`FsListResponse`).
 #[derive(Serialize)]
 pub struct FsListResponse {
     pub entries: Vec<FsEntry>,
@@ -91,7 +91,7 @@ fn list_dir(abs: &Path, limit: usize) -> io::Result<(Vec<FsEntry>, bool)> {
     Ok((entries, truncated))
 }
 
-/// Directories first, then by name (an approximation of TS `sortFsEntries`; Intl.Collator is approximated by lowercasing).
+/// Directories first, then by name (Intl.Collator is approximated by lowercasing).
 fn sort_fs_entries(entries: &mut [FsEntry]) {
     let rank = |kind: &str| if kind == "dir" { 0 } else { 1 };
     entries.sort_by(|a, b| {

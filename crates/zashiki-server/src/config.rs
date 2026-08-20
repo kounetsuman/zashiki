@@ -1,16 +1,14 @@
-//! Reading and watching config.json (live-applied settings). Port of TS
-//! `packages/server/src/infra/config.ts` + `config-watch.ts`. Reads `notifySound`/`debug`,
-//! detects file changes, and publishes config.sync to `ControlHub` (TS `app.updateConfig`).
+//! Reading and watching config.json (live-applied settings). Reads `notifySound`/`debug`,
+//! detects file changes, and publishes config.sync to `ControlHub`.
 //!
-//! Defaults are notifySound=true / debug=false (TS `DEFAULT_CONFIG`). Missing, corrupt, or
-//! empty files fall back to defaults without panicking (the fallback contract of TS
-//! `parseConfig`). On corruption (ok=false) the previous value is kept and nothing is
-//! published. This port avoids the notify crate, using a tokio interval + mtime polling
-//! instead. The mtime approach catches inode replacement (atomic rename save) via a re-stat
-//! each tick, but misses writes that don't change the mtime and a second edit within the same
-//! second on 1-second-granularity filesystems (weaker detection than the fs.watch event
-//! approach in TS). This is harmless for the manual-save flow, a deliberate trade-off that
-//! prioritizes zero dependencies and implementation simplicity.
+//! Defaults are notifySound=true / debug=false. Missing, corrupt, or empty files fall back to
+//! defaults without panicking. On corruption (ok=false) the previous value is kept and nothing is
+//! published. To avoid the notify crate, watching uses a tokio interval + mtime polling. The mtime
+//! approach catches inode replacement (atomic rename save) via a re-stat each tick, but misses
+//! writes that don't change the mtime and a second edit within the same second on
+//! 1-second-granularity filesystems (weaker detection than an fs.watch-event approach). This is
+//! harmless for the manual-save flow, a deliberate trade-off that prioritizes zero dependencies
+//! and implementation simplicity.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -18,17 +16,17 @@ use std::time::{Duration, SystemTime};
 
 use crate::control::{ConfigView, ControlHub};
 
-/// Polling interval for config watching (equivalent to the TS directory watch + 150ms debounce).
+/// Polling interval for config watching.
 pub const CONFIG_POLL: Duration = Duration::from_millis(250);
 
-/// Read and parse JSON. Returns None if unreadable or corrupt (deferring to default filling; TS `readJson`).
+/// Read and parse JSON. Returns None if unreadable or corrupt (deferring to default filling).
 fn read_json(path: &Path) -> Option<serde_json::Value> {
     let text = std::fs::read_to_string(path).ok()?;
     serde_json::from_str(&text).ok()
 }
 
-/// Parse config.json. Individual fields fall back to defaults when not a bool (zod `.catch()`);
-/// a non-object or missing object yields all defaults (TS `parseConfig`).
+/// Parse config.json. Individual fields fall back to defaults when not a bool;
+/// a non-object or missing object yields all defaults.
 fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
     let obj = input.and_then(|v| v.as_object());
     let field = |key: &str, default: bool| {
@@ -37,7 +35,7 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
             .unwrap_or(default)
     };
     // The display language accepts only "ja"/"en"; unset or invalid values become None
-    // (deferring to the client's browser detection; equivalent to zod `.enum().nullable().catch(null)`).
+    // (deferring to the client's browser detection).
     let language = obj
         .and_then(|o| o.get("language"))
         .and_then(|v| v.as_str())
@@ -73,15 +71,15 @@ pub fn write_config_language(path: &Path, language: &str) -> std::io::Result<()>
     std::fs::rename(&tmp, path)
 }
 
-/// Read the live-applied settings along with whether they were read successfully (TS
-/// `readConfigResult`). ok=false means missing, corrupt, or empty (config is the
+/// Read the live-applied settings along with whether they were read successfully.
+/// ok=false means missing, corrupt, or empty (config is the
 /// default-filled value). The watcher keeps the previous value and does not publish when ok=false.
 pub fn read_config_result(path: &Path) -> (ConfigView, bool) {
     let json = read_json(path);
     (parse_config(json.as_ref()), json.is_some())
 }
 
-/// Read the live-applied settings (TS `readConfig`). Missing, corrupt, or empty yields defaults.
+/// Read the live-applied settings. Missing, corrupt, or empty yields defaults.
 pub fn read_config(path: &Path) -> ConfigView {
     read_config_result(path).0
 }
@@ -91,7 +89,7 @@ fn file_mtime(path: &Path) -> Option<SystemTime> {
 }
 
 /// Spawn a resident task that periodically polls config.json and, on mtime change, re-reads
-/// it and publishes config.sync to the hub (TS `watchConfig` → `onChange` → `updateConfig`).
+/// it and publishes config.sync to the hub.
 /// ok=false (missing or corrupt) keeps the previous value and does not publish. The mtime at
 /// startup is ignored as the initial value (the startup delivery is handled by connect_messages
 /// on control connect, so only subsequent changes are pushed). The baseline mtime is captured

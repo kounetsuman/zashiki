@@ -1,13 +1,7 @@
-//! A crate porting zashiki's core logic (pure functions) to Rust (the first increment).
+//! zashiki's core domain logic as pure, dependency-free (std-only) functions.
 //!
-//! A stepping stone toward "limit TypeScript to the view and move core logic into Rust".
-//! First it ports the side-effect-free, dependency-free domain pure functions (`save_file` /
-//! `process_tree` / `git` / `session_state` / `repos` / `flow`). They correspond 1:1 with the
-//! TS version (`packages/shared/src/*.ts`), and the vitest table tests are ported to `cargo test` too.
-//!
-//! At this stage nothing is wired into the runtime (Tauri/Node) yet (non-destructive). Runtime
-//! integration (turning it into a sidecar / FFI) and porting the remaining modules that need JSON
-//! parsing (jsonl etc.) are done in subsequent increments.
+//! Side-effect-free decision logic (`save_file` / `process_tree` / `git` / `session_state` /
+//! `repos` / `flow` / `terminal_size`); `cargo test` is the canonical spec.
 
 pub mod flow;
 pub mod git;

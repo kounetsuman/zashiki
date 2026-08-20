@@ -1,9 +1,9 @@
-//! Pure logic for determining org (organization) membership. Corresponds 1:1 with the TS version `packages/shared/src/repos.ts`.
+//! Pure logic for determining org (organization) membership.
 //! Reading, parsing, and absolutizing repos.conf are the responsibility of server/infra; this module only does string
 //! comparison over already-absolute root paths (org name = the last element of a root).
 
 /// The last element of a path. Strips a trailing slash and takes the last segment;
-/// if empty (all slashes / empty string), returns the trimmed string (equivalent to the TS basename).
+/// if empty (all slashes / empty string), returns the trimmed string.
 fn basename(path: &str) -> &str {
     let trimmed = path.trim_end_matches('/');
     let last = trimmed.rsplit('/').next().unwrap_or(trimmed);
@@ -109,7 +109,7 @@ mod tests {
         );
     }
 
-    // basename edge cases (verifying equivalence with the TS trailing-slash trim and empty input).
+    // basename edge cases (trailing-slash trim and empty input).
     #[test]
     fn basename_edges() {
         assert_eq!(org_of_cwd("/a/foo/", &[]), "foo"); // strips the trailing slash

@@ -119,8 +119,8 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # zashiki-core（純関数）と zashiki-server（#33 Phase A の Rust server scaffold）。
-  # いずれも GTK 不要。移植したテストをここで守る。
+  # zashiki-core（純関数）と zashiki-server（Rust server）。
+  # いずれも GTK 不要。テストをここで守る。
   # Rust 変更時・PR のみ（マージ後の main では回さない）。
   core-check:
     needs: changes
@@ -140,7 +140,7 @@ jobs:
       - name: Cargo test (zashiki-core)
         run: cargo test --manifest-path crates/zashiki-core/Cargo.toml --locked
 
-      - name: Cargo test (zashiki-server scaffold)
+      - name: Cargo test (zashiki-server)
         run: cargo test --manifest-path crates/zashiki-server/Cargo.toml --locked
 
   # Tauri シェル（apps/desktop）。ubuntu で cargo check/test まで
