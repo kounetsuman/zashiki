@@ -1,4 +1,4 @@
-//! Reading and scanning repos.conf (a port of TS `packages/server/src/infra/repos.ts`).
+//! Reading and scanning repos.conf.
 //! org = basename of the root line, repo = basename of a working tree that has `.git`, path = its absolute path.
 
 use std::collections::BTreeMap;
@@ -15,7 +15,7 @@ pub struct ScannedRepo {
     pub path: String,
 }
 
-/// Collapses `.` / `..` lexically (equivalent to Node `path.resolve`; does not resolve symlinks).
+/// Collapses `.` / `..` lexically (does not resolve symlinks).
 fn normalize_lexical(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for comp in path.components() {
@@ -40,7 +40,7 @@ pub struct ReposConf {
     pub color_by_org: BTreeMap<String, String>,
 }
 
-/// Whether the token is `#rgb` / `#rrggbb` (TS `COLOR_TOKEN`).
+/// Whether the token is `#rgb` / `#rrggbb`.
 fn is_color_token(token: &str) -> bool {
     match token.strip_prefix('#') {
         Some(hex) => {
@@ -69,7 +69,7 @@ fn expand_root(line: &str, home: &Path, cwd: &Path) -> Option<PathBuf> {
     Some(normalize_lexical(&expanded))
 }
 
-/// Parses the body of repos.conf into a list of roots plus org colors (pure function; TS `parseConfLine`/`readReposConf`).
+/// Parses the body of repos.conf into a list of roots plus org colors (pure function).
 /// Everything after `#` is a comment, but it is picked up as a color only when whitespace-separated and a valid color token (a `#` adjacent to the path is a comment).
 /// Internal whitespace in the path is preserved. The color is bound to org=basename, first occurrence wins.
 pub fn parse_conf(text: &str, home: &Path, cwd: &Path) -> ReposConf {

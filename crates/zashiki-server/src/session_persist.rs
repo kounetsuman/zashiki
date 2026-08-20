@@ -1,6 +1,6 @@
 //! Save/restore usecase for the session list (tmux removal; owned-only).
 //!
-//! Moves the tmux version's `POST /api/sessions/save` / `/restore` (`packages/server/src/usecase/persist.ts`)
+//! Moves the tmux version's `POST /api/sessions/save` / `/restore`
 //! onto the owned-mode `SessionRegistry`. The tmux version walked the process tree to pick up claude sids,
 //! but in owned mode **the registry id itself is the sid (UUID)** and meta holds wname/cwd, so no walk is needed.
 //! The destructive sequence (backup → remove all → rebuild) assumes it is serialized within the server (`persist_lock`).
@@ -25,7 +25,7 @@ use crate::session_restore::{plan_resume, plan_to_config as resume_plan_to_confi
 
 const LAST_FILE: &str = "last.tsv";
 
-/// Precondition errors for save/restore (shares the HTTP status map with TS `PersistError`).
+/// Precondition errors for save/restore.
 /// The tmux version's `work_not_found` does not occur in owned mode because there is no "work session" concept
 /// (the registry always exists, and if there is no registration holding claude it is [`PersistError::SaveEmpty`]).
 #[derive(Debug)]
@@ -40,7 +40,7 @@ pub enum PersistError {
     Io(io::Error),
 }
 
-/// Result of `POST /api/sessions/save` (TS `sessionsSaveResponseSchema`).
+/// Result of `POST /api/sessions/save`.
 #[derive(Debug)]
 pub struct SaveOutcome {
     pub saved: usize,
@@ -49,7 +49,7 @@ pub struct SaveOutcome {
     pub path: String,
 }
 
-/// Result of `POST /api/sessions/restore` (TS `sessionsRestoreResponseSchema`).
+/// Result of `POST /api/sessions/restore`.
 #[derive(Debug)]
 pub struct RestoreOutcome {
     pub restored: usize,
@@ -58,7 +58,7 @@ pub struct RestoreOutcome {
     pub backup_path: Option<String>,
 }
 
-/// Whether the name is valid as a file directly under `saves/` (TS `SAVE_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/`).
+/// Whether the name is valid as a file directly under `saves/` (must match `^[A-Za-z0-9][A-Za-z0-9._-]*$`).
 /// The first character is alphanumeric; the rest are only alphanumeric, `.`, `_`, `-`. It disallows `/`, so path escape is impossible.
 pub fn is_valid_save_filename(name: &str) -> bool {
     let mut chars = name.chars();
@@ -90,7 +90,7 @@ async fn collect_entries(registry: &SessionRegistry) -> (Vec<SaveEntry>, Vec<Str
     (entries, skipped)
 }
 
-/// Local time `YYYYMMDD-HHMMSS` (equivalent to TS `stampOf`; follows the cw archive naming).
+/// Local time `YYYYMMDD-HHMMSS` (follows the cw archive naming).
 fn stamp_now() -> String {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -116,7 +116,7 @@ fn stamp_of(secs: libc::time_t) -> String {
     )
 }
 
-/// Writes the same content to last.tsv and a timestamped backup (TS `writeLastAndBackup`). Both are atomic writes.
+/// Writes the same content to last.tsv and a timestamped backup. Both are atomic writes.
 fn write_last_and_backup(
     dir: &Path,
     entries: &[SaveEntry],
@@ -130,7 +130,7 @@ fn write_last_and_backup(
     Ok((last, backup))
 }
 
-/// Writes to a labeled backup (`YYYYMMDD-HHMMSS-<label>.tsv`) (TS `writeBackup`).
+/// Writes to a labeled backup (`YYYYMMDD-HHMMSS-<label>.tsv`).
 fn write_backup(dir: &Path, entries: &[SaveEntry], stamp: &str, label: &str) -> io::Result<PathBuf> {
     fs::create_dir_all(dir)?;
     let backup = dir.join(format!("{stamp}-{label}.tsv"));
@@ -148,7 +148,7 @@ fn save_path(dir: &Path, file: Option<&str>) -> PathBuf {
 }
 
 /// Saves the current registry to a `-prerestore` backup (`None` if there is nothing to save).
-/// Called before restore's destructive operation (remove all) to guarantee that the kill is non-destructive (TS `backupCurrentState`).
+/// Called before restore's destructive operation (remove all) to guarantee that the kill is non-destructive.
 async fn backup_current_state(
     registry: &SessionRegistry,
     dir: &Path,
@@ -161,7 +161,7 @@ async fn backup_current_state(
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// Rebuilds the registry from the save entries (the owned version of TS `buildWork`).
+/// Rebuilds the registry from the save entries.
 /// For a UUID sid with `launch_claude`, it creates the session with `claude --resume`; otherwise with a plain
 /// login shell (as in the tmux version, **it does not drop the tab** and instead warns about claude not launching).
 /// A UUID entry uses the sid as its id; a non-UUID entry uses a non-colliding synthetic id (`shell:<i>:<wname>`)

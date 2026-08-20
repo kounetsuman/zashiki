@@ -1,4 +1,4 @@
-//! Resident background-shell detection (port of TS `packages/shared/src/shells.ts`).
+//! Resident background-shell detection.
 //! Involves regex, so it lives in the server crate rather than core (which has zero dependencies).
 //! Running lsof / reading transcripts is infra's responsibility; here we only reconcile lsof output
 //! strings against the set of backgroundTaskIds. Detection contract lives in the tests below.

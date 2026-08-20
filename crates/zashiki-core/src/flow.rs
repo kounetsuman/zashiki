@@ -1,5 +1,4 @@
-//! Pure functions for client-side flow control (watermark scheme). Corresponds
-//! 1:1 with the TS version `packages/shared/src/flow.ts`.
+//! Pure functions for client-side flow control (watermark scheme).
 //!
 //! For the server→client pty stream, the client (xterm.js) reports completed
 //! writes via `term.ack`; the server pauses the pty once the unacked amount

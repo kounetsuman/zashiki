@@ -1,9 +1,8 @@
 //! Parsing of `git status --porcelain=v1` and path validation (decision-oriented pure functions).
-//! Does not invoke git. Corresponds 1:1 with the pure-function part of the TS `packages/shared/src/git.ts`, and
-//! the vitest table tests (`git.test.ts`) were also ported to `cargo test`.
+//! Does not invoke git. `cargo test` is the canonical spec.
 //!
-//! The zod schemas and REST types (wire types such as `RepoStatus`) belong to the view/protocol layer and stay in TS
-//! (only the decision logic is moved to Rust).
+//! Schema validation and REST wire types (e.g. `RepoStatus`) belong to the view/protocol layer;
+//! only the decision logic lives here.
 
 /// A pair of the display code and the display path. `code` is one character from the X/Y column (A/M/D/R…) or `"??"`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,7 +31,7 @@ fn find_arrow(chars: &[char]) -> Option<usize> {
 }
 
 /// Restore a C-quoted string (starting with `"`) and return the char position just after the closing `"`.
-/// As in the TS version, assemble a byte sequence and then decode it as UTF-8 (octal escapes can represent
+/// Assemble a byte sequence and then decode it as UTF-8 (octal escapes can represent
 /// intermediate bytes of a multi-byte character, so accumulate by byte rather than by char).
 fn parse_c_quoted(chars: &[char]) -> (String, usize) {
     let mut bytes: Vec<u8> = Vec::new();

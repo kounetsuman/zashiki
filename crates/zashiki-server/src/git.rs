@@ -1,5 +1,5 @@
-//! Implementation behind `GET /api/git/status` (ported from the TS `packages/server/src/git-routes.ts`).
-//! It only runs git (branch/porcelain); parsing the porcelain output reuses the already-ported
+//! Implementation behind `GET /api/git/status`.
+//! It only runs git (branch/porcelain); parsing the porcelain output reuses
 //! `zashiki_core::git::parse_git_status` (an example of wiring core + server together).
 
 use std::path::Path;
@@ -13,10 +13,10 @@ use tokio::task::JoinSet;
 
 use crate::repos::ScannedRepo;
 
-/// Number of git processes to run concurrently (TS's STATUS_CONCURRENCY=8; guards against resource exhaustion).
+/// Number of git processes to run concurrently (8; guards against resource exhaustion).
 const STATUS_CONCURRENCY: usize = 8;
 
-/// Response for `GET /api/git/status` (TS: `GitStatusResponse` in `packages/shared/src/git.ts`).
+/// Response for `GET /api/git/status` (`GitStatusResponse`).
 #[derive(Serialize)]
 pub struct GitStatusResponse {
     pub repos: Vec<RepoStatus>,
@@ -60,13 +60,13 @@ async fn git_output(path: &Path, args: &[&str]) -> String {
         .unwrap_or_default()
 }
 
-// ---- Write-side git execution (ported from the TS `packages/server/src/infra/git.ts`) ----
+// ---- Write-side git execution ----
 //
-// Like TS's `runGit`, we execute without a shell, with `core.quotepath=false` and
+// We execute without a shell, with `core.quotepath=false` and
 // `GIT_LITERAL_PATHSPECS=1`. File arguments are always passed after `--`, disabling
 // pathspec magic (leading `:`, `*` globs) to guarantee "that one file only".
 
-/// Timeout for commit (so it doesn't hang even while a GPG signing tool is locked. TS: 15s).
+/// Timeout for commit (so it doesn't hang even while a GPG signing tool is locked).
 const COMMIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// A git execution failure (non-zero exit or spawn failure).
@@ -133,7 +133,7 @@ pub async fn unstage_all(path: &Path) -> Result<(), GitError> {
 /// Whether there is at least one staged change (a diff against the index). Used to reject empty commits early.
 /// `diff --cached --quiet` exits non-zero when there is a diff -> true. No diff or a git error
 /// (e.g. not a repo) falls to false, so before calling, guarantee that the repo is in the scanned
-/// list (isAllowedRepo) (equivalent to TS `gitHasStaged`).
+/// list (isAllowedRepo).
 pub async fn has_staged(path: &Path) -> bool {
     match git_command(path, &["diff", "--cached", "--quiet"])
         .output()
@@ -145,7 +145,7 @@ pub async fn has_staged(path: &Path) -> bool {
 }
 
 /// Commit the staged changes. The message is passed via `-F -` (stdin) so even a leading `-` is safe.
-/// Times out after 15s so it doesn't hang while GPG signing is locked (TS: COMMIT_TIMEOUT_MS).
+/// Times out after 15s so it doesn't hang while GPG signing is locked.
 pub async fn commit(path: &Path, message: &str) -> Result<(), GitError> {
     use tokio::io::AsyncWriteExt;
 
@@ -233,7 +233,7 @@ pub async fn git_status(scanned: Vec<ScannedRepo>) -> Vec<RepoStatus> {
     indexed.into_iter().map(|(_, rs)| rs).collect()
 }
 
-/// Body validation for `POST /api/git/open` (TS `rejectOpenTarget`). Does not open files whose symlink
+/// Body validation for `POST /api/git/open`. Does not open files whose symlink
 /// points outside the repository. A realpath failure returns 404; resolving outside the repo returns 400; safe returns None.
 pub fn reject_open_target(repo_path: &str, file: &str) -> Option<(axum::http::StatusCode, String)> {
     use axum::http::StatusCode;

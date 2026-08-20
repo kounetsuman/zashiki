@@ -19,19 +19,20 @@ pnpm install
 pnpm -F @zashiki/desktop dev   # = tauri dev
 ```
 
-### デモモード（画面録画用）
+### 隔離サンドボックスインスタンス
 
 ```sh
-pnpm -F @zashiki/desktop dev:demo
+pnpm -F @zashiki/desktop dev:sandbox
 ```
 
-`dev:demo`（`scripts/dev-demo.mjs`）は、使い捨ての隔離サンドボックスに対して `tauri dev`
-を起動し、**real Claude 抜き**で org コックピットを手で触って録画できるようにする。色分けした
-複数 org と状態付きセッション（running / waiting_input / idle / no_claude、タイトル付き）を自動生成し、
-実ユーザーデータ（`~/.zashiki` / `~/.claude`）には一切触れない（temp は終了時に削除）。dev と同じ
-ポート 8790 を使うため、既存の server は先に停止すること（8790 が使用中なら起動を拒否する）。
-出力される `demo-spec.json` を編集し `--config <path>`（または `ZASHIKI_DEMO_CONFIG`）で再実行すると
-状態・タイトルを変更できる。これは開発専用で、公開 `zashiki` CLI には**含めない**。
+`dev:sandbox`（`scripts/dev-sandbox.mjs`）は、使い捨ての隔離サンドボックスに対して `tauri dev`
+を起動し、8790 で動く本番アプリと並走してクリーンなインスタンスで開発できるようにする。専用の
+ポート 8791 で動き、色分けした複数 org と git 初期化済みの repo をいくつか自動生成し、セッションは
+**一切 seed せず**（空の SESSION LIST）、real Claude を有効なまま起動するので新規セッションで
+Claude が普通に立ち上がる。実ユーザーデータ（`~/.zashiki` / `~/.claude`）には一切触れない
+（temp は終了時に削除）。出力される `sandbox-spec.json` を編集し `--config <path>`
+（または `ZASHIKI_SANDBOX_CONFIG`）で再実行すると org/repo を変更できる。これは開発専用で、
+公開 `zashiki` CLI には**含めない**。
 
 `tauri dev` が `beforeDevCommand` で Rust server の `cargo build` と Vite dev サーバ（:5173、
 `VITE_ZK_SERVER=http://127.0.0.1:8790`）を立ち上げ、シェルが以下を行う:
@@ -251,8 +252,8 @@ pnpm uninstall:app -- --yes --purge-user-data # 上記 + ~/.zashiki も削除
   shutdown は通常終了・SIGTERM/SIGINT 時のみ）。次回シェル起動時は healthz で検出して
   相乗りするため二重起動にはならない。手で落とす場合は
   `pkill -f 'server/dist/index.js'`。
-- **`tauri dev` は `ZK_PORT=8790` 前提**: `beforeDevCommand` の
-  `VITE_ZK_SERVER=http://127.0.0.1:8790` が固定のため、dev でポートを変える場合は
-  tauri.conf.json 側も合わせる必要がある（build では `ZK_PORT` に追従する）。
+- **`tauri dev` の既定は `ZK_PORT=8790`**: `beforeDevCommand` がポートからクライアント URL を
+  導出するため（`VITE_ZK_SERVER=http://127.0.0.1:${ZK_PORT:-8790}`）、`ZK_PORT` を設定すれば
+  server とクライアントが一緒に移動する（`dev:sandbox` が 8790 の本番と並走して 8791 で動く仕組み）。
 - GUI 起動しない環境での green 定義は `cargo check` / `cargo test` /
   `tauri build --debug` まで（GUI 実確認は上記手動スモーク）。

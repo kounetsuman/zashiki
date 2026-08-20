@@ -1,13 +1,13 @@
-//! Pure functions for in-app notifications (NOTIFICATION) (ported from the TS `packages/shared/src/notifications.ts`).
+//! Pure functions for in-app notifications (NOTIFICATION).
 //! The upsert, sorting, and eviction used for the hooks waiting/done accumulation, plus the notification builders.
-//! The canonical source of behavior is the `tests` module at the end (1:1 with the same-named TS tests).
+//! The canonical source of behavior is the `tests` module at the end.
 
 use crate::protocol::{Notification, NotificationLevel, NotifyKind};
 
-/// Default cap on the list (a safeguard so unique-id notifications don't accumulate without bound. TS `NOTIFICATIONS_MAX`).
+/// Default cap on the list (a safeguard so unique-id notifications don't accumulate without bound).
 pub const NOTIFICATIONS_MAX: usize = 100;
 
-/// Notification that pushes a server error (`{t:"error"}`) into NOTIFICATION (TS `errorNotification`). Accumulates with a
+/// Notification that pushes a server error (`{t:"error"}`) into NOTIFICATION. Accumulates with a
 /// unique id per occurrence. Uses code as the title and message as the body, and sets
 /// `toast: Some(false)` to avoid double-display with the ErrorDialog (it still appears in the panel).
 pub fn error_notification(id: String, code: &str, message: &str, created_at: u64) -> Notification {
@@ -43,7 +43,7 @@ pub fn warn_notification(
     }
 }
 
-/// Notification that pushes the hooks waiting/done into NOTIFICATION (TS `notifyNotification`; same wording as the toast).
+/// Notification that pushes the hooks waiting/done into NOTIFICATION (same wording as the toast).
 pub fn notify_notification(
     id: String,
     kind: NotifyKind,
@@ -69,8 +69,8 @@ pub fn notify_notification(
 /// Fixed id for the PTY-exhaustion notification. Coalesces consecutive failures into one entry (the upsert key).
 pub const PTY_EXHAUSTION_ID: &str = "pty-exhausted";
 
-/// Whether this is a PTY-exhaustion (ENXIO-family) message originating from tmux / portable-pty (ported from
-/// TS `isPtyExhaustionError`). A `fork failed` on EAGAIN alone (process-count limit) is a different cause, so it isn't caught.
+/// Whether this is a PTY-exhaustion (ENXIO-family) message originating from tmux / portable-pty.
+/// A `fork failed` on EAGAIN alone (process-count limit) is a different cause, so it isn't caught.
 pub fn is_pty_exhaustion(message: &str) -> bool {
     let m = message.to_lowercase();
     m.contains("device not configured")
@@ -143,12 +143,12 @@ pub fn update_available_notification(version: &str, url: &str, created_at: u64) 
     }
 }
 
-/// Newest-first ordering (createdAt descending; ties by id ascending). TS `byNewest`.
+/// Newest-first ordering (createdAt descending; ties by id ascending).
 fn by_newest(a: &Notification, b: &Notification) -> std::cmp::Ordering {
     b.created_at.cmp(&a.created_at).then_with(|| a.id.cmp(&b.id))
 }
 
-/// Replace an entry with the same id, or append if none, then return sorted newest-first (TS `upsertNotification`).
+/// Replace an entry with the same id, or append if none, then return sorted newest-first.
 pub fn upsert_notification(list: &[Notification], n: Notification) -> Vec<Notification> {
     let mut next: Vec<Notification> = list.iter().filter(|x| x.id != n.id).cloned().collect();
     next.push(n);
@@ -157,7 +157,7 @@ pub fn upsert_notification(list: &[Notification], n: Notification) -> Vec<Notifi
 }
 
 /// Upsert, sort newest-first, and evict oldest-first once `max` is exceeded. sticky or non-dismissible entries
-/// (those that should remain until resolved) are not evicted. `max == 0` means no cap (TS `appendNotification`).
+/// (those that should remain until resolved) are not evicted. `max == 0` means no cap.
 pub fn append_notification(list: &[Notification], n: Notification, max: usize) -> Vec<Notification> {
     let upserted = upsert_notification(list, n);
     if max == 0 || upserted.len() <= max {

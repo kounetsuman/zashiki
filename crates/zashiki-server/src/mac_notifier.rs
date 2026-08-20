@@ -1,4 +1,4 @@
-//! The executor for macOS notifications (a port of TS `infra/mac-notifier.ts`). A fallback path that
+//! The executor for macOS notifications. A fallback path that
 //! surfaces "awareness" via terminal-notifier when no browser is connected. Absence or failure is silently
 //! skipped (best-effort). No click navigation (-execute) is attached (the destination is handled by the browser's Web Notification).
 
@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use crate::protocol::NotifyKind;
 use crate::hooks::{MacNotification, MacNotify};
 
-/// Creates the executor that emits notifications via terminal-notifier (TS `createTerminalNotifier`).
+/// Creates the executor that emits notifications via terminal-notifier.
 pub fn terminal_notifier() -> MacNotify {
     std::sync::Arc::new(|n: MacNotification| {
         // Sounds: waiting=Funk / done=Glass.

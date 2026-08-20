@@ -1,15 +1,15 @@
-//! Implementation of `GET/POST /api/file` (a port of TS `packages/server/src/file-routes.ts`).
+//! Implementation of `GET/POST /api/file`.
 //! A file read/write REST endpoint for the editor. Path defense uses the same 3 layers as the
 //! explorer (fs.rs): scanRepos allowlist → is_safe_repo_relative_path → realpath escape detection.
 //! The allowlist check is done by the caller (lib.rs); this module handles file safety + realpath
-//! containment + the size limit + the actual I/O (the latter half of TS's guardedAbs).
+//! containment + the size limit + the actual I/O.
 
 use std::io;
 use std::path::{Path, PathBuf};
 
 use axum::http::StatusCode;
 
-/// Maximum byte size of a single file that read/write handles (TS `FILE_MAX_BYTES` = 2MiB).
+/// Maximum byte size of a single file that read/write handles (2MiB).
 pub const FILE_MAX_BYTES: u64 = 2 * 1024 * 1024;
 
 // ENOTDIR / ELOOP are not in stable ErrorKind, so pick them up via raw_os_error (same as fs.rs).
@@ -18,7 +18,7 @@ const ENOTDIR: i32 = 20;
 const ELOOP_LINUX: i32 = 40;
 const ELOOP_MACOS: i32 = 62;
 
-/// Maps fs errors to the error contract (TS `statusForFsError`: 404/400/403 + EISDIR/ENOTDIR/ELOOP).
+/// Maps fs errors to the error contract (404/400/403 + EISDIR/ENOTDIR/ELOOP).
 fn status_for_fs_error(e: &io::Error) -> (StatusCode, String) {
     let (code, msg) = match e.kind() {
         io::ErrorKind::NotFound => (StatusCode::NOT_FOUND, "file not found"),
@@ -36,7 +36,7 @@ fn status_for_fs_error(e: &io::Error) -> (StatusCode, String) {
 }
 
 /// Checks whether the resolved file stays within the repo (realpath comparison; rejects escaping symlinks). Returns the real path if it does.
-/// Equivalent to TS `resolveWithinRepo` (realpath failure falls to 404/400 via statusForFsError).
+/// On realpath failure, falls to 404/400 via statusForFsError.
 fn resolve_within_repo(repo_path: &str, file: &str) -> Result<PathBuf, (StatusCode, String)> {
     let real = std::fs::canonicalize(Path::new(repo_path).join(file))
         .map_err(|e| status_for_fs_error(&e))?;
@@ -52,7 +52,7 @@ fn resolve_within_repo(repo_path: &str, file: &str) -> Result<PathBuf, (StatusCo
 }
 
 /// Reads from an abs path that has passed the in-repo realpath check (blocking; callers use spawn_blocking).
-/// TS `handleRead`: statFile → 400 if !isFile, 413 if size>max, readTextFile → content.
+/// statFile → 400 if !isFile, 413 if size>max, readTextFile → content.
 pub fn read_within_repo(
     repo_path: &str,
     file: &str,
@@ -69,13 +69,13 @@ pub fn read_within_repo(
             "file too large to open in the editor".to_string(),
         ));
     }
-    // TS uses readTextFile (utf8). Non-UTF-8 bytes are replaced lossily (reads never fail).
+    // Content is read as UTF-8; non-UTF-8 bytes are replaced lossily (reads never fail).
     let bytes = std::fs::read(&abs).map_err(|e| status_for_fs_error(&e))?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Overwrites content to an abs path that has passed the in-repo realpath check (blocking).
-/// TS `handleWrite`: the byte length of content is validated before the call (413); this does realpath + write.
+/// The byte length of content is validated before the call (413); this does realpath + write.
 pub fn write_within_repo(
     repo_path: &str,
     file: &str,

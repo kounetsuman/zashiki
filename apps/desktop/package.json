@@ -7,7 +7,7 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
-    "dev:demo": "node scripts/dev-demo.mjs",
+    "dev:sandbox": "node scripts/dev-sandbox.mjs",
     "build:shell": "tauri build",
     "build:app": "bash ../../scripts/build-app.sh",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"

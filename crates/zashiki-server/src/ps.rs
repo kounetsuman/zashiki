@@ -1,4 +1,4 @@
-//! ps snapshot adapter (port of TS `infra/ps.ts`).
+//! ps snapshot adapter.
 //! Returns the raw output of `ps -Aww -o pid=,ppid=,args=`. Parsing lives in `zashiki_core::process_tree`.
 //! On failure (cannot spawn / non-zero exit) it falls back to an empty string, i.e. treated as no process tree (no claude).
 

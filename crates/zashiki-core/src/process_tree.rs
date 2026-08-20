@@ -1,7 +1,5 @@
 //! Parsing of ps output and tree traversal for the claude sid.
 //! Running ps is the responsibility of server/infra. This module handles only the ps output string and the tree traversal.
-//!
-//! Corresponds 1:1 with the TS `packages/shared/src/process-tree.ts` (ported together with its tests).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -27,7 +25,7 @@ fn is_uuid_shape(b: &[u8]) -> bool {
     true
 }
 
-/// If the start is a UUID, return the 36 characters (equivalent to TS's `(UUID)` group; trailing characters don't matter).
+/// If the start is a UUID, return the 36 characters (trailing characters don't matter).
 fn take_uuid_prefix(s: &str) -> Option<&str> {
     let b = s.as_bytes();
     // If the first 36 bytes have UUID shape they're all ASCII, so `s[..36]` is on a char boundary.
@@ -39,7 +37,7 @@ fn take_uuid_prefix(s: &str) -> Option<&str> {
 }
 
 /// Read the session id from claude's launch arguments (the UUID following `--session-id` / `--resume` / `-r`,
-/// lowercased; None if absent). Reproduces TS's `(?:--session-id|--resume|-r) +(UUID)`
+/// lowercased; None if absent). Follows `(?:--session-id|--resume|-r) +<UUID>`
 /// with leftmost semantics, taking only the first match.
 pub fn sid_from_args(args: &str) -> Option<String> {
     // At a position following `--resume`, `-r` isn't followed by whitespace+UUID and so fails to match; hence, regardless of order,
@@ -50,7 +48,7 @@ pub fn sid_from_args(args: &str) -> Option<String> {
         for tok in tokens {
             if let Some(after) = rest.strip_prefix(tok) {
                 let trimmed = after.trim_start_matches(' ');
-                // TS's ` +` (one or more spaces): at least one must have been consumed.
+                // ` +` (one or more spaces): at least one must have been consumed.
                 if trimmed.len() < after.len() {
                     if let Some(uuid) = take_uuid_prefix(trimmed) {
                         return Some(uuid.to_ascii_lowercase());
@@ -82,7 +80,7 @@ fn take_digits(s: &str) -> Option<(i64, &str)> {
 }
 
 /// Parse the output of `ps -Aww -o pid=,ppid=,args=` (skipping malformed lines).
-/// Equivalent to TS's `^\s*(\d+)\s+(\d+)\s+(.*)$`.
+/// Each valid line matches `^\s*(\d+)\s+(\d+)\s+(.*)$`.
 pub fn parse_ps_snapshot(ps_output: &str) -> Vec<ProcessEntry> {
     let mut entries = Vec::new();
     for line in ps_output.split('\n') {
@@ -128,7 +126,7 @@ pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
     let mut pid_to_sid = HashMap::new();
     let mut children_of: HashMap<i64, Vec<i64>> = HashMap::new();
     for e in entries {
-        // TS: /claude/i.test(args)
+        // case-insensitive match of `claude` in args
         if e.args.to_lowercase().contains("claude") {
             if let Some(sid) = sid_from_args(&e.args) {
                 pid_to_sid.insert(e.pid, sid);

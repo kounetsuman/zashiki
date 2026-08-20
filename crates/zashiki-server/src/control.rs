@@ -1,6 +1,5 @@
-//! Wiring for `/ws/control` (the JSON control channel). A port of the controlWss
-//! from the TS `app.ts`. On connect it delivers config.sync -> notifications.sync ->
-//! state.sync, and thereafter forwards the shared `ControlHub`'s broadcast to each
+//! Wiring for `/ws/control` (the JSON control channel). On connect it delivers
+//! config.sync -> notifications.sync -> state.sync, and thereafter forwards the shared `ControlHub`'s broadcast to each
 //! connection. ClientMessage handles state.refresh (requests an immediate
 //! re-evaluation from the poller with a guaranteed response) and notification.dismiss.
 //! Dispatch of session.new/close and term.* plus heartbeat come later.
@@ -12,7 +11,7 @@ use axum::extract::ws::{Message, WebSocket};
 use tokio::sync::{broadcast, mpsc, oneshot};
 use zashiki_core::terminal_size::clamp_terminal_size;
 
-/// The ping interval for WS liveness monitoring (the TS `app.ts` `HEARTBEAT_INTERVAL_MS`).
+/// The ping interval for WS liveness monitoring.
 /// A ping is sent after one interval with no response, and the connection is dropped if
 /// no pong returns before the next interval (effective timeout is one to two intervals).
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -51,13 +50,13 @@ pub struct ControlServices {
     /// Live repos.conf-derived roots/colors (org validation for session.new). Shared with the poller
     /// and the repos watcher so a newly added org is accepted without a restart.
     pub repos: crate::repos::SharedRepos,
-    /// Whether session.new launches `claude --session-id <uuid>` (the TS launchClaude).
+    /// Whether session.new launches `claude --session-id <uuid>`.
     pub launch_claude: bool,
     /// The registry of view terms that term.* refers to.
     pub terms: Arc<Mutex<TermRegistry>>,
     /// The owned PTY registry. `attach_owned_term` looks it up by session_id.
     pub sessions: Arc<crate::session_registry::SessionRegistry>,
-    /// The ping interval for WS liveness monitoring (the TS heartbeat; default `HEARTBEAT_INTERVAL`; tests shorten it).
+    /// The ping interval for WS liveness monitoring (default `HEARTBEAT_INTERVAL`; tests shorten it).
     pub heartbeat: Duration,
     /// The destination for hooks notifications (ZK_NOTIFY; default web).
     pub notify_mode: crate::hooks::NotifyMode,
@@ -200,7 +199,7 @@ impl ControlHub {
     }
 
     /// Manual dismissal (removes only dismissible notifications). Broadcasts notifications.sync
-    /// if anything changed. The TS `dismissNotification` (sticky/system notifications are kept).
+    /// if anything changed (sticky/system notifications are kept).
     pub fn dismiss_notification(&self, id: &str) {
         let changed = {
             let mut state = self.inner.write().unwrap();
@@ -292,7 +291,7 @@ impl ControlHub {
     }
 
     /// Enqueues hooks' waiting/done into NOTIFICATION and broadcasts notifications.sync to all
-    /// connections (the TS `pushNotification` + `notifyNotification`). createdAt is kept
+    /// connections. createdAt is kept
     /// monotonically increasing so that "prune oldest-first by occurrence order" holds even for
     /// bursts within the same millisecond.
     pub fn record_activity(
@@ -359,7 +358,7 @@ impl ControlHub {
     }
 
     /// Enqueues a server error into NOTIFICATION and broadcasts notifications.sync to all
-    /// connections (the accumulation side of the TS `reportError`). createdAt is kept
+    /// connections. createdAt is kept
     /// monotonically increasing via the same `last_notification_at` as `record_activity`.
     pub fn record_error(&self, id: String, code: &str, message: &str, now_ms: u64) {
         let items = {
@@ -450,7 +449,7 @@ pub async fn handle_control(mut socket: WebSocket, services: ControlServices) {
     }
 
     let mut rx = services.hub.subscribe();
-    // The first ping is one interval after connecting, not immediately (like the TS setInterval, the origin is after an interval).
+    // The first ping is one interval after connecting, not immediately.
     let mut heartbeat = tokio::time::interval_at(
         tokio::time::Instant::now() + services.heartbeat,
         services.heartbeat,
@@ -462,7 +461,7 @@ pub async fn handle_control(mut socket: WebSocket, services: ControlServices) {
         tokio::select! {
             _ = heartbeat.tick() => {
                 if !alive {
-                    break; // No pong returned for the previous interval's ping -> disconnect (the TS terminate).
+                    break; // No pong returned for the previous interval's ping -> disconnect.
                 }
                 alive = false;
                 if socket.send(Message::Ping(Vec::new())).await.is_err() {
@@ -657,7 +656,7 @@ async fn handle_client_message(
     }
 }
 
-/// Creates a view term and registers it in the registry (the TS handleTermOpen). PTY connection happens via `/ws/term`.
+/// Creates a view term and registers it in the registry. PTY connection happens via `/ws/term`.
 async fn handle_term_open(
     socket: &mut WebSocket,
     services: &ControlServices,
@@ -676,7 +675,7 @@ async fn handle_term_open(
     let Some(()) = ok else {
         return false;
     };
-    // As with manual refresh, on success return state.sync to the requester (the TS sendSnapshot).
+    // As with manual refresh, on success return state.sync to the requester.
     let snapshot = request_refresh(services).await;
     let reply = snapshot
         .map(|s| state_sync_of(&s))
@@ -707,7 +706,7 @@ async fn open_owned_term(
     Some(())
 }
 
-/// Validates the org and creates a new session (the TS session.new). Spawns an owned PTY and registers it.
+/// Validates the org and creates a new session. Spawns an owned PTY and registers it.
 async fn handle_session_new(socket: &mut WebSocket, services: &ControlServices, org: &str) -> bool {
     // Resolve to an owned String before any await: the read guard must not be held across await points.
     let root = {
@@ -776,7 +775,7 @@ async fn trigger_refresh(services: &ControlServices) {
 }
 
 /// Returns `{t:"error"}` (for the ErrorDialog) to the requester while also enqueuing the error
-/// notification globally and delivering it to all connections (the TS `reportError`). The id is
+/// notification globally and delivering it to all connections. The id is
 /// unique per occurrence (randomUUID).
 async fn report_error(socket: &mut WebSocket, hub: &ControlHub, code: &str, message: &str) -> bool {
     hub.record_error(uuid::Uuid::new_v4().to_string(), code, message, crate::now_ms());

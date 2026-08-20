@@ -1,7 +1,7 @@
 //! Startup entry point for zashiki-server. Launches the REST endpoints (healthz/token-probe/fs/git/search/sessions/hooks),
 //! the control runtime (a resident state poller + state.sync delivery over `/ws/control`), and `/ws/term`.
 //! The default is the owned PTY backend. It generates a token at startup and writes it to ZK_TOKEN_FILE,
-//! so the Tauri sidecar (`sidecar.rs`) can launch this binary instead of the Node server.
+//! so the Tauri sidecar (`sidecar.rs`) can launch this binary.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -51,7 +51,7 @@ async fn main() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8790);
-    // Drop-in for Node's index.ts: if ZK_TOKEN is not explicitly set, generate a random token at startup and,
+    // If ZK_TOKEN is not explicitly set, generate a random token at startup and,
     // for CLI/sidecar integration, write it with mode 0600 to ZK_TOKEN_FILE (default ~/.zashiki/token; the write happens after listen succeeds).
     let token = std::env::var("ZK_TOKEN")
         .ok()
@@ -69,7 +69,7 @@ async fn main() {
         .unwrap_or_else(|| home().join("Library/Logs/zashiki-server.err.log"));
     let prior_log_tail = zashiki_server::crash_report::read_tail(&err_log);
     let client_dist = std::env::var_os("ZK_CLIENT_DIST").map(PathBuf::from);
-    // repos.conf comes from ZK_REPOS_CONF, or ~/.zashiki/repos.conf if unset (per index.ts).
+    // repos.conf comes from ZK_REPOS_CONF, or ~/.zashiki/repos.conf if unset.
     let repos_conf = std::env::var_os("ZK_REPOS_CONF")
         .map(PathBuf::from)
         .or_else(|| Some(home().join(".zashiki/repos.conf")));
@@ -98,14 +98,14 @@ async fn main() {
     // ZK_NO_CLAUDE=1 suppresses claude auto-launch (the resume launch in save/restore also follows this).
     let launch_claude = std::env::var_os("ZK_NO_CLAUDE").is_none();
 
-    // The live-reload config comes from ZK_CONFIG, or ~/.zashiki/config.json if unset (per index.ts). It is read
+    // The live-reload config comes from ZK_CONFIG, or ~/.zashiki/config.json if unset. It is read
     // once at startup, and a resident watch task immediately reflects later changes as config.sync.
     let config_path = std::env::var_os("ZK_CONFIG")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".zashiki/config.json"));
     let config = zashiki_server::config::read_config(&config_path);
 
-    // Defaults to ~/.claude/projects. Can be isolated via ZK_PROJECTS_ROOT so e2e/verification/demo runs don't read real transcripts.
+    // Defaults to ~/.claude/projects. Can be isolated via ZK_PROJECTS_ROOT so e2e / verification / sandbox runs don't read real transcripts.
     let projects_root = std::env::var_os("ZK_PROJECTS_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".claude/projects"));
@@ -137,8 +137,8 @@ async fn main() {
     // Grab the registry of owned sessions to be torn down on graceful shutdown, before handing control to the router.
     let registry = control.sessions.clone();
 
-    // Bind the port BEFORE restore/demo-seed spawn any PTYs. A double launch (port already taken) must fail
-    // here, not after we have spawned owned/demo sessions — portable-pty setsid's children away, so a later
+    // Bind the port BEFORE restore spawns any PTYs. A double launch (port already taken) must fail
+    // here, not after we have spawned owned sessions — portable-pty setsid's children away, so a later
     // panic would orphan them. Binding first makes a busy port a clean no-op exit. The token is written only
     // after a successful bind, so a failed double launch never clobbers the running instance's token.
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -194,22 +194,6 @@ async fn main() {
         control.hub.clone(),
         zashiki_server::scrollback_monitor::MONITOR_INTERVAL,
     );
-
-    // Demo sandbox seeding (`zashiki --demo`). When ZK_DEMO_SEED points to a seed JSON, stage the cockpit
-    // with state/title-annotated sessions without launching real claude (see demo_seed.rs). Isolated dirs
-    // are set up by the CLI, so this never touches real user data. A malformed/missing seed is logged and skipped.
-    if let Some(seed_path) = std::env::var_os("ZK_DEMO_SEED") {
-        match zashiki_server::demo_seed::load_seed(&seed_path) {
-            Ok(seed) => {
-                let shell = zashiki_server::session_restore::login_shell();
-                let n =
-                    zashiki_server::demo_seed::seed_demo_sessions(&registry, &projects_root, &shell, &seed)
-                        .await;
-                eprintln!("zashiki-server: demo セッションを {n} 件 seed しました");
-            }
-            Err(e) => eprintln!("zashiki-server: demo seed の読み込みに失敗しました: {e}"),
-        }
-    }
 
     let app = zashiki_server::build_router(zashiki_server::ServerConfig {
         expected_token: Some(token.clone()),

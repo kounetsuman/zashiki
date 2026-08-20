@@ -1,10 +1,8 @@
 //! Session state detection (primarily by screen capture of the conversation pane, with a jsonl
-//! fallback). Corresponds 1:1 with the TS version `packages/shared/src/session-state.ts`, and the
-//! table tests (`session-state.test.ts`) were also ported to `cargo test`. These tests are the
-//! canonical spec.
+//! fallback). `cargo test` (the `session_state` table tests) is the canonical spec.
 //!
-//! Because of the zero-dependency policy, the TS side's regexes (e.g. `❯\s*[0-9]+\.`) are
-//! reproduced equivalently by hand-written scanning. Since the detection input is "screen text",
+//! Because of the zero-dependency policy, the detection regexes (e.g. `❯\s*[0-9]+\.`) are
+//! implemented by hand-written scanning. Since the detection input is "screen text",
 //! it can be fed to this same pure function from either tmux `capture-pane` or the headless vterm
 //! reconstruction (the detection side is unchanged even after removing tmux).
 
@@ -37,8 +35,8 @@ const BOTTOM_WINDOW_LINES: usize = 8;
 
 /// A whitespace test that exactly matches ECMAScript's `\s` (WhiteSpace ∪ LineTerminator).
 /// It differs from Rust's `char::is_whitespace` (Unicode White_Space) in just two points:
-/// NEL (U+0085) is non-whitespace in JS, and BOM/ZWNBSP (U+FEFF) is whitespace in JS. To keep the
-/// decision consistent with the TS version, the non-empty line check, numbered-line scanning, and
+/// NEL (U+0085) is non-whitespace in JS, and BOM/ZWNBSP (U+FEFF) is whitespace in JS. So the
+/// whitespace decision is well-defined, the non-empty line check, numbered-line scanning, and
 /// trim_start all use this predicate.
 fn is_js_whitespace(c: char) -> bool {
     matches!(
@@ -62,7 +60,7 @@ fn is_js_whitespace(c: char) -> bool {
     )
 }
 
-/// Equivalent to JS `String.prototype.trimStart` (removes the prefix using the `\s` set).
+/// Removes the leading whitespace prefix using the `\s` set (see `is_js_whitespace`).
 fn js_trim_start(s: &str) -> &str {
     s.trim_start_matches(is_js_whitespace)
 }
@@ -93,8 +91,8 @@ fn match_digits_letter(chars: &[char], start: usize, letter: char) -> Option<usi
     (chars.get(i) == Some(&letter)).then_some(i + 1)
 }
 
-/// Detects the new UI's live-timer line structurally (a hand-written equivalent of the TS
-/// `LIVE_SPINNER_TIMER` `/…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s[^)]*[·↓]/`). Treats a new spinner that
+/// Detects the new UI's live-timer line structurally (a hand-written scan equivalent to
+/// `/…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s[^)]*[·↓]/`). Treats a new spinner that
 /// lacks the `(esc to interrupt` marker (`✻ …… (8m 10s · ↓ …)`) as running. It requires a `·`/`↓`
 /// separator and rejects natural-language text like `… (ctrl+o…)` or `…(30s)` (which closes without a separator).
 fn has_live_spinner_timer(line: &str) -> bool {
@@ -370,7 +368,7 @@ pub fn apply_startup_grace(
 mod tests {
     use super::*;
 
-    // The fixtures are identical to the TS version session-state.test.ts (the real environment is not read).
+    // The real environment is not read; the fixtures are fixed inputs.
     const CAP_RUN: &str =
         "古い履歴行\n✻ Simmering… (esc to interrupt · ctrl+t)\n╭───╮\n│ ❯ │\n╰───╯";
     const CAP_MARKER_AT_8TH: &str = "(esc to interrupt)\n1行\n2行\n3行\n4行\n5行\n6行\n7行";
