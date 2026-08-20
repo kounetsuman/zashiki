@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-20
+
+### Added
+
+- A clipboard-edit modal for reviewing and repairing hard-wrapped commands before they run in a session (#90)
+- An always-visible account-usage indicator in the global status bar, showing the current 5-hour session and week aggregated across sessions from the statusLine bridge (#115)
+
+### Changed
+
+- The session status footer is now always shown and tinted with the org color (#81)
+- Session status is split into a lifecycle glyph and activity chips (#83)
+- SESSION LIST highlights only the selected session (#84)
+- The elapsed footer gains a day unit (`2d 3h 4m 5s`) and turns red once a full day has passed (#115)
+- Renamed the "Panel" UI concept to "View", and the Git panel to "Source Control" (#108)
+
 ## [0.5.0] - 2026-08-20
 
 ### Added
@@ -77,7 +92,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/kounetsuman/zashiki/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kounetsuman/zashiki/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kounetsuman/zashiki/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/kounetsuman/zashiki/compare/v0.2.0...v0.3.0
