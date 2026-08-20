@@ -22,7 +22,7 @@ export interface TabRename {
  */
 export function useTabRename(
   tabs: readonly Tab[],
-  sessions: CockpitTerminalInfo[],
+  cockpitTerminals: CockpitTerminalInfo[],
   onRename?: (cockpitTerminalId: string, name: string, title: string) => void,
 ): TabRename {
   const [editing, setEditing] = useState<{
@@ -38,7 +38,7 @@ export function useTabRename(
     const tab = tabs.find((t) => tabKey(t) === editing.key);
     const s =
       tab?.kind === "session"
-        ? sessions.find((x) => x.cockpitTerminalId === tab.id)
+        ? cockpitTerminals.find((x) => x.cockpitTerminalId === tab.id)
         : undefined;
     if (s === undefined) {
       doneRef.current = true;

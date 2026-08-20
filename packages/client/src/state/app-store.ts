@@ -9,7 +9,7 @@ import type { Notifier } from "../lib/notify.js";
 
 /** State the App uses for rendering (the useSyncExternalStore snapshot). */
 export interface AppState {
-  sessions: CockpitTerminalInfo[];
+  cockpitTerminals: CockpitTerminalInfo[];
   orgs: string[];
   /** org name -> display color (declared alongside repos.conf). Unspecified orgs are absent and rendered with the default color. */
   orgColors: Record<string, string>;
@@ -85,7 +85,7 @@ export interface AppStore {
  * - owned (UUID): has no ordering, so for a single addition it is that one, and for
  *   multiple simultaneous additions the tail of next (the tail of the server ordering)
  *   is treated as newest. Because cockpitTerminalId became a UUID, number-based logic that assumes
- *   `@N` alone could not auto-select new sessions. The source of truth is app-store.test.ts.
+ *   `@N` alone could not auto-select new cockpit terminals. The source of truth is app-store.test.ts.
  */
 export function newestAddedCockpitTerminalId(
   prev: readonly CockpitTerminalInfo[],
@@ -110,7 +110,7 @@ export function newestAddedCockpitTerminalId(
 }
 
 const INITIAL_STATE: AppState = {
-  sessions: [],
+  cockpitTerminals: [],
   orgs: [],
   orgColors: {},
   notifications: [],
@@ -160,14 +160,17 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
   function handleMessage(m: ServerMessage): void {
     if (m.t === "state.sync") {
       const added = pendingNew
-        ? newestAddedCockpitTerminalId(state.sessions, m.sessions)
+        ? newestAddedCockpitTerminalId(
+            state.cockpitTerminals,
+            m.cockpitTerminals,
+          )
         : null;
       if (added !== null) {
         pendingNew = false;
         // Move focus to the terminal the moment we auto-switch to the new window.
         // Advance the nonce at the same time as the auto-select so TerminalView reacts.
         setState({
-          sessions: m.sessions,
+          cockpitTerminals: m.cockpitTerminals,
           orgs: m.orgs,
           orgColors: m.orgColors,
           selectedCockpitTerminalId: added,
@@ -177,7 +180,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
         deps.session.select(added);
       } else {
         setState({
-          sessions: m.sessions,
+          cockpitTerminals: m.cockpitTerminals,
           orgs: m.orgs,
           orgColors: m.orgColors,
         });
@@ -213,7 +216,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
       setState({ lastError });
     } else if (m.t === "notify") {
       // Web Notification + notification sound. Click brings to front + focus jump.
-      const info = state.sessions.find(
+      const info = state.cockpitTerminals.find(
         (s) => s.cockpitTerminalId === m.cockpitTerminalId,
       );
       deps.notifier.notify({
@@ -231,7 +234,9 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
       // bring the app to front and select the window, without a notification. Ignore
       // an already-closed window so we do not select a nonexistent session.
       if (
-        !state.sessions.some((s) => s.cockpitTerminalId === m.cockpitTerminalId)
+        !state.cockpitTerminals.some(
+          (s) => s.cockpitTerminalId === m.cockpitTerminalId,
+        )
       )
         return;
       (deps.focusWindow ?? (() => window.focus()))();

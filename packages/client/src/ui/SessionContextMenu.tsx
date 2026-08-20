@@ -8,7 +8,7 @@ import type { ContextMenu } from "./session-list-model.js";
 
 export interface SessionContextMenuProps {
   menu: ContextMenu;
-  sessions: CockpitTerminalInfo[];
+  cockpitTerminals: CockpitTerminalInfo[];
   onNew(org: string): void;
   onClose(cockpitTerminalId: string): void;
   isRenamable(s: CockpitTerminalInfo): boolean;
@@ -22,7 +22,7 @@ export interface SessionContextMenuProps {
 /** The right-click menu overlay: New for an org area; Rename/Copy/Delete for a session row. */
 export function SessionContextMenu({
   menu,
-  sessions,
+  cockpitTerminals,
   onNew,
   onClose,
   isRenamable,
@@ -35,7 +35,9 @@ export function SessionContextMenu({
   const { t } = useTranslation();
   const target =
     menu.kind === "row"
-      ? sessions.find((s) => s.cockpitTerminalId === menu.cockpitTerminalId)
+      ? cockpitTerminals.find(
+          (s) => s.cockpitTerminalId === menu.cockpitTerminalId,
+        )
       : undefined;
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: overlay purely for capturing clicks (Escape is handled by window keydown)

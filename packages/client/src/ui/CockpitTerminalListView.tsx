@@ -16,7 +16,7 @@ import { ViewHeader } from "./ViewHeader.js";
 import { viewClass } from "./views.js";
 
 export interface CockpitTerminalListViewProps {
-  sessions: CockpitTerminalInfo[];
+  cockpitTerminals: CockpitTerminalInfo[];
   /** All orgs from repos.conf + detected orgs (in display order; not removed even at (0)). */
   orgs: string[];
   /** org name -> display color (as noted in repos.conf). Unspecified orgs use the default color (white). */
@@ -55,7 +55,7 @@ export interface CockpitTerminalListViewProps {
   full?: boolean;
   /**
    * Copy the target session's resume command (`claude --resume <sid>`) to the clipboard
-   * (for branched sessions). If omitted, the item is not shown in the row menu.
+   * (for branched cockpit terminals). If omitted, the item is not shown in the row menu.
    */
   onCopyResume?(cockpitTerminalId: string): void;
   /**
@@ -80,7 +80,7 @@ export interface CockpitTerminalListViewProps {
  * confirmation that does not depend on the native dialog.
  */
 export function CockpitTerminalListView({
-  sessions,
+  cockpitTerminals,
   orgs,
   orgColors = {},
   selectedCockpitTerminalId,
@@ -100,7 +100,7 @@ export function CockpitTerminalListView({
 }: CockpitTerminalListViewProps) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const orgList = displayOrgs(orgs, sessions);
+  const orgList = displayOrgs(orgs, cockpitTerminals);
 
   const refresh = useSessionRefresh(onRefresh);
   // The row menu has at most 4 items: Delete + (when provided) Rename + Copy resume + Copy session id.
@@ -111,13 +111,13 @@ export function CockpitTerminalListView({
     (onCopySessionId !== undefined ? 1 : 0);
   const { menu, openOrgMenu, openRowMenu, closeMenu } =
     useSessionContextMenu(rowItemCount);
-  const rename = useRowRename(sessions, conversationTitles, onRename);
+  const rename = useRowRename(cockpitTerminals, conversationTitles, onRename);
   const { confirmingClose, requestClose, confirmClose, cancelClose } =
-    useConfirmClose(sessions, onClose);
+    useConfirmClose(cockpitTerminals, onClose);
   const { focused, setFocused, focusedRef, visibleKeys, moveFocus } =
     useSessionListFocus(
       orgList,
-      sessions,
+      cockpitTerminals,
       collapsed,
       selectedCockpitTerminalId,
     );
@@ -132,8 +132,9 @@ export function CockpitTerminalListView({
   };
 
   const selected =
-    sessions.find((s) => s.cockpitTerminalId === selectedCockpitTerminalId) ??
-    null;
+    cockpitTerminals.find(
+      (s) => s.cockpitTerminalId === selectedCockpitTerminalId,
+    ) ?? null;
 
   // Terminal switch (double-click/Enter). Once committed, collapse the focus ring (delegated to the selection highlight).
   // Re-selecting the currently shown row is idempotent, but onSelect is not called to avoid side effects
@@ -236,7 +237,7 @@ export function CockpitTerminalListView({
       <div className="session-list-scroll">
         {connected && orgList.length === 0 && <ReposConfGuide />}
         {orgList.map((org) => {
-          const orgSessions = sessions.filter((s) => s.org === org);
+          const orgSessions = cockpitTerminals.filter((s) => s.org === org);
           const isCollapsed = collapsed.has(org);
           return (
             // biome-ignore lint/a11y/noStaticElementInteractions: right-click menu for the org area (keyboard is covered by Ctrl-N)
@@ -331,7 +332,7 @@ export function CockpitTerminalListView({
       {menu !== null && (
         <SessionContextMenu
           menu={menu}
-          sessions={sessions}
+          cockpitTerminals={cockpitTerminals}
           onNew={onNew}
           onClose={onClose}
           isRenamable={rename.isRenamable}

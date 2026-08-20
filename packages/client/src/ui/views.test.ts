@@ -22,7 +22,7 @@ function memStorage(initial: Record<string, string> = {}) {
 }
 
 describe("views pure logic", () => {
-  it("VIEW_DEFS has explorer/search/git/notification/help/settings with unique ids and shortcuts (sessions are always fixed and not included)", () => {
+  it("VIEW_DEFS has explorer/search/git/notification/help/settings with unique ids and shortcuts (cockpitTerminals are always fixed and not included)", () => {
     const ids = VIEW_DEFS.map((d: ViewDef) => d.id);
     const keys = VIEW_DEFS.map((d: ViewDef) => d.shortcutKey);
     expect(ids).toEqual([
@@ -66,7 +66,7 @@ describe("views pure logic", () => {
     expect(loadSelectedView(s)).toBe("sourceControl");
   });
 
-  it("loadSelectedView: values outside VIEW_DEFS fall back to explorer (legacy sessions, invalid values)", () => {
+  it("loadSelectedView: values outside VIEW_DEFS fall back to explorer (legacy cockpitTerminals, invalid values)", () => {
     expect(
       loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "sessions" })),
     ).toBe("explorer");

@@ -32,7 +32,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[]}
         activeKey={null}
-        sessions={[]}
+        cockpitTerminals={[]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -46,7 +46,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -60,7 +60,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{ [SID]: { title: "手動名", name: "myrepo" } }}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -76,7 +76,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[{ ...session, title: longTitle }]}
+        cockpitTerminals={[{ ...session, title: longTitle }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -92,7 +92,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[e(`/repo\n${rel}`)]}
         activeKey={`viewer:/repo\n${rel}`}
-        sessions={[]}
+        cockpitTerminals={[]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -106,7 +106,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY2}
-        sessions={[
+        cockpitTerminals={[
           session,
           { ...session, cockpitTerminalId: SID2, title: "二番目" },
         ]}
@@ -126,7 +126,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={null}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={onActivate}
         onClose={() => undefined}
@@ -143,7 +143,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={onActivate}
         onClose={onClose}
@@ -161,7 +161,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s("@9")]}
         activeKey="session:@9"
-        sessions={[]}
+        cockpitTerminals={[]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -175,7 +175,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[{ ...session, org: "whiskey" }]}
+        cockpitTerminals={[{ ...session, org: "whiskey" }]}
         conversationTitles={{}}
         orgColors={{ whiskey: "#123456" }}
         onActivate={() => undefined}
@@ -192,7 +192,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[{ ...session, org: "whiskey" }]}
+        cockpitTerminals={[{ ...session, org: "whiskey" }]}
         conversationTitles={{}}
         orgColors={{ whiskey: "#123456" }}
         onActivate={() => undefined}
@@ -208,7 +208,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={null}
-        sessions={[{ ...session, org: "whiskey" }]}
+        cockpitTerminals={[{ ...session, org: "whiskey" }]}
         conversationTitles={{}}
         orgColors={{ whiskey: "#123456" }}
         onActivate={() => undefined}
@@ -225,7 +225,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -245,7 +245,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s("shell:0:myrepo")]}
         activeKey="session:shell:0:myrepo"
-        sessions={[{ ...session, cockpitTerminalId: "shell:0:myrepo" }]}
+        cockpitTerminals={[{ ...session, cockpitTerminalId: "shell:0:myrepo" }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -263,7 +263,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[{ ...session, state: "no_claude", sid: undefined }]}
+        cockpitTerminals={[{ ...session, state: "no_claude", sid: undefined }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -283,7 +283,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -304,7 +304,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -324,7 +324,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -346,7 +346,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -367,7 +367,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[
+        cockpitTerminals={[
           session,
           { ...session, cockpitTerminalId: SID2, sid: SID2, name: "other" },
         ]}
@@ -386,7 +386,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID2)]}
         activeKey={KEY2}
-        sessions={[
+        cockpitTerminals={[
           { ...session, cockpitTerminalId: SID2, sid: SID2, name: "other" },
         ]}
         conversationTitles={{}}
@@ -405,7 +405,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[
+        cockpitTerminals={[
           session,
           { ...session, cockpitTerminalId: SID2, title: "二番目" },
         ]}
@@ -431,7 +431,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[
+        cockpitTerminals={[
           session,
           { ...session, cockpitTerminalId: SID2, title: "二番目" },
         ]}
@@ -460,7 +460,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[
+        cockpitTerminals={[
           session,
           { ...session, cockpitTerminalId: SID2, title: "二番目" },
         ]}
@@ -482,7 +482,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[
+        cockpitTerminals={[
           session,
           { ...session, cockpitTerminalId: SID2, title: "二番目" },
         ]}
@@ -502,7 +502,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -518,7 +518,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -534,7 +534,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[{ ...session, sid: SID2 }]}
+        cockpitTerminals={[{ ...session, sid: SID2 }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -553,7 +553,9 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[{ ...session, sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" }]}
+        cockpitTerminals={[
+          { ...session, sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
+        ]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -575,7 +577,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[{ ...session, sid: undefined }]}
+        cockpitTerminals={[{ ...session, sid: undefined }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -595,7 +597,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -617,7 +619,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[{ ...session, sid: undefined }]}
+        cockpitTerminals={[{ ...session, sid: undefined }]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -636,7 +638,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -653,7 +655,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID)]}
         activeKey={KEY}
-        sessions={[session]}
+        cockpitTerminals={[session]}
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
@@ -669,7 +671,7 @@ describe("TabBar", () => {
       <TabBar
         tabs={[s(SID), s(SID2)]}
         activeKey={KEY}
-        sessions={[
+        cockpitTerminals={[
           { ...session, sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
           {
             ...session,

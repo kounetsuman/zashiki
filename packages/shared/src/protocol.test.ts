@@ -64,7 +64,7 @@ describe("cockpitTerminalIdSchema", () => {
 
   it("accepts an owned UUID", () => {
     // The owned backend's cockpitTerminalId is a SessionRegistry UUID. Rejecting it here would
-    // discard the entire state.sync originating from owned, so new/restored sessions would never appear in the list.
+    // discard the entire state.sync originating from owned, so new/restored cockpit terminals would never appear in the list.
     expect(
       cockpitTerminalIdSchema.safeParse("0954e103-14ff-4406-bc6c-325449ef07ba")
         .success,
@@ -165,7 +165,7 @@ describe("clientMessageSchema", () => {
     [{ t: "term.open", termId, cols: 0, rows: 24 }], // cols out of range
     [{ t: "term.open", termId, cols: 80.5, rows: 24 }], // non-integer
     [{ t: "term.select", termId, cockpitTerminalId: "work:1" }], // invalid cockpitTerminalId format (separator character)
-    [{ t: "state.sync", sessions: [], orgs: [] }], // server→client message
+    [{ t: "state.sync", cockpitTerminals: [], orgs: [] }], // server→client message
     [{ t: "config.update", language: "fr" }], // unsupported language
     [{ t: "config.update" }], // language missing
     [{ t: "nope" }],
@@ -181,7 +181,7 @@ describe("serverMessageSchema", () => {
     [
       {
         t: "state.sync",
-        sessions: [
+        cockpitTerminals: [
           {
             cockpitTerminalId: "@1",
             name: "zashiki",
@@ -198,10 +198,10 @@ describe("serverMessageSchema", () => {
     ],
     [
       // owned: a state.sync whose cockpitTerminalId is a UUID is also accepted in full (rejecting it
-      // would make decodeServerMessage discard the entire message, so new/restored sessions would not appear in the list).
+      // would make decodeServerMessage discard the entire message, so new/restored cockpit terminals would not appear in the list).
       {
         t: "state.sync",
-        sessions: [
+        cockpitTerminals: [
           {
             cockpitTerminalId: "0954e103-14ff-4406-bc6c-325449ef07ba",
             name: "initech",

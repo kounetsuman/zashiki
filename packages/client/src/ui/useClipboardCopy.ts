@@ -17,7 +17,7 @@ export interface ClipboardCopy {
  * session without a sid (claude not started / undetectable), so callers disable the corresponding menu.
  */
 export function useClipboardCopy(
-  sessions: readonly CockpitTerminalInfo[],
+  cockpitTerminals: readonly CockpitTerminalInfo[],
   flashCopyToast: (message: string) => void,
 ): ClipboardCopy {
   const { t } = useTranslation();
@@ -37,15 +37,17 @@ export function useClipboardCopy(
   const copyResumeByCockpitTerminalId = useCallback(
     (cockpitTerminalId: string): void => {
       copyResume(
-        sessions.find((s) => s.cockpitTerminalId === cockpitTerminalId),
+        cockpitTerminals.find((s) => s.cockpitTerminalId === cockpitTerminalId),
       );
     },
-    [copyResume, sessions],
+    [copyResume, cockpitTerminals],
   );
 
   const copySessionIdByCockpitTerminalId = useCallback(
     (cockpitTerminalId: string): void => {
-      const s = sessions.find((x) => x.cockpitTerminalId === cockpitTerminalId);
+      const s = cockpitTerminals.find(
+        (x) => x.cockpitTerminalId === cockpitTerminalId,
+      );
       const sid = s == null ? null : claudeSessionId(s);
       if (sid === null) return;
       void navigator.clipboard?.writeText(sid).then(
@@ -53,7 +55,7 @@ export function useClipboardCopy(
         () => undefined,
       );
     },
-    [flashCopyToast, sessions, t],
+    [flashCopyToast, cockpitTerminals, t],
   );
 
   return {

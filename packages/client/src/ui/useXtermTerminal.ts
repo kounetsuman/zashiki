@@ -117,7 +117,7 @@ export function useXtermTerminal({
 
     // Unify start / resize on the measured actual size. If term.open runs at 80x24 while cells
     // are still unsettled, the pty=tmux window gets pinned to 80x24, and in window-size latest
-    // environments even other grouped sessions displaying the same window get dragged to 80x24,
+    // environments even other grouped cockpit terminals displaying the same window get dragged to 80x24,
     // causing Claude to flap on re-render (endless footer repetition). So we don't start until an actual size is available.
     const applySize = (): void => {
       const size = measure();

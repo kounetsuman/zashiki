@@ -62,7 +62,7 @@ export class TerminalSession {
   private attempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
-  /** State where no terminal is attached because there are 0 sessions (suppresses respawn). */
+  /** State where no terminal is attached because there are 0 cockpit terminals (suppresses respawn). */
   private suspended = false;
   private readonly dataListeners = new Set<(data: string) => void>();
   private readonly statusListeners = new Set<(s: TermAttachStatus) => void>();
@@ -127,7 +127,7 @@ export class TerminalSession {
   }
 
   /**
-   * When sessions drop to 0, release the terminal and stop reconnecting.
+   * When cockpit terminals drop to 0, release the terminal and stop reconnecting.
    * Prevents a reconnect right after killing a work from spawning a bare new
    * work. The visible window is gone, so forget it; on resume, re-attach to the
    * work's active window.

@@ -18,11 +18,11 @@ export const TAB_ICON: Record<TabKind, string> = {
  */
 export function tabLabel(
   tab: Tab,
-  sessions: CockpitTerminalInfo[],
+  cockpitTerminals: CockpitTerminalInfo[],
   titles: TitleMap,
 ): { label: string; title: string } {
   if (tab.kind === "session") {
-    const s = sessions.find((x) => x.cockpitTerminalId === tab.id);
+    const s = cockpitTerminals.find((x) => x.cockpitTerminalId === tab.id);
     const label =
       s === undefined
         ? tab.id

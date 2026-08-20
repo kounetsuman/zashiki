@@ -40,12 +40,17 @@ describe("decodeServerMessage", () => {
       decodeServerMessage(
         JSON.stringify({
           t: "state.sync",
-          sessions: [],
+          cockpitTerminals: [],
           orgs: [],
           orgColors: {},
         }),
       ),
-    ).toEqual({ t: "state.sync", sessions: [], orgs: [], orgColors: {} });
+    ).toEqual({
+      t: "state.sync",
+      cockpitTerminals: [],
+      orgs: [],
+      orgColors: {},
+    });
   });
 
   it("returns null for invalid JSON, schema violations, and non-strings (does not throw)", () => {

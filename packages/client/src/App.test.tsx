@@ -161,7 +161,7 @@ function fakeNotifier(permission: NotifyPermission = "granted") {
   return { notifier, notified, requestPermission };
 }
 
-const sessions: CockpitTerminalInfo[] = [
+const cockpitTerminals: CockpitTerminalInfo[] = [
   {
     cockpitTerminalId: "@1",
     name: "zashiki",
@@ -322,7 +322,7 @@ describe("App", () => {
     expect(i18n.language).toBe("en");
   });
 
-  it("on state.sync, renders sessions grouped by org in the session list view", () => {
+  it("on state.sync, renders cockpitTerminals grouped by org in the session list view", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -339,7 +339,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -349,7 +349,7 @@ describe("App", () => {
     expect(inList().getByRole("button", { name: ROW_TANGO })).toBeTruthy();
   });
 
-  it("orgs are shown even with 0 sessions (all orgs from repos.conf)", () => {
+  it("orgs are shown even with 0 cockpitTerminals (all orgs from repos.conf)", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -366,7 +366,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions: [],
+        cockpitTerminals: [],
         orgs: ["kilo", "delta"],
         orgColors: {},
       }),
@@ -389,7 +389,12 @@ describe("App", () => {
       />,
     );
     act(() =>
-      control.emit({ t: "state.sync", sessions, orgs: [], orgColors: {} }),
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals,
+        orgs: [],
+        orgColors: {},
+      }),
     );
     expect(
       inList()
@@ -413,7 +418,12 @@ describe("App", () => {
       />,
     );
     act(() =>
-      control.emit({ t: "state.sync", sessions, orgs: [], orgColors: {} }),
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals,
+        orgs: [],
+        orgColors: {},
+      }),
     );
     fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
     // On startup the tmux active window (@1) is auto-opened as one tab, so @1 comes
@@ -443,7 +453,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -477,7 +487,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -499,7 +509,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions: [...sessions, newWindow],
+        cockpitTerminals: [...cockpitTerminals, newWindow],
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -524,7 +534,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions: twoOrgSessions,
+        cockpitTerminals: twoOrgSessions,
         orgs: ["kilo", "delta"],
         orgColors: {},
       }),
@@ -550,7 +560,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions: twoOrgSessions,
+        cockpitTerminals: twoOrgSessions,
         orgs: ["kilo", "delta"],
         orgColors: {},
       }),
@@ -585,7 +595,12 @@ describe("App", () => {
       />,
     );
     act(() =>
-      control.emit({ t: "state.sync", sessions: [], orgs: [], orgColors: {} }),
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals: [],
+        orgs: [],
+        orgColors: {},
+      }),
     );
     pressCmdN();
     expect(control.sent.some((m) => m.t === "cockpitTerminal.new")).toBe(false);
@@ -606,7 +621,12 @@ describe("App", () => {
       />,
     );
     act(() =>
-      control.emit({ t: "state.sync", sessions, orgs: [], orgColors: {} }),
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals,
+        orgs: [],
+        orgColors: {},
+      }),
     );
     // bootstrap opens the @1 (zashiki) tab. Double-clicking tango opens @2 and makes it active.
     fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
@@ -638,7 +658,12 @@ describe("App", () => {
       />,
     );
     act(() =>
-      control.emit({ t: "state.sync", sessions: [], orgs: [], orgColors: {} }),
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals: [],
+        orgs: [],
+        orgColors: {},
+      }),
     );
     expect(() => pressCmdW()).not.toThrow();
     expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
@@ -667,9 +692,12 @@ describe("App", () => {
       act(() =>
         control.emit({
           t: "state.sync",
-          sessions: [
-            { ...sessions[0], sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
-            sessions[1],
+          cockpitTerminals: [
+            {
+              ...cockpitTerminals[0],
+              sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
+            },
+            cockpitTerminals[1],
           ] as CockpitTerminalInfo[],
           orgs: ["kilo"],
           orgColors: {},
@@ -704,11 +732,11 @@ describe("App", () => {
           reposApi={fakeReposApi}
         />,
       );
-      // @1 has no sid (sessions carry no sid).
+      // @1 has no sid (cockpit terminals carry no sid).
       act(() =>
         control.emit({
           t: "state.sync",
-          sessions,
+          cockpitTerminals,
           orgs: ["kilo"],
           orgColors: {},
         }),
@@ -800,9 +828,12 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions: [
-          sessions[0] as CockpitTerminalInfo,
-          { ...(sessions[1] as CockpitTerminalInfo), title: "PR を作る" },
+        cockpitTerminals: [
+          cockpitTerminals[0] as CockpitTerminalInfo,
+          {
+            ...(cockpitTerminals[1] as CockpitTerminalInfo),
+            title: "PR を作る",
+          },
         ],
         orgs: [],
         orgColors: {},
@@ -997,7 +1028,7 @@ describe("App", () => {
     expect(reconnect).toHaveBeenCalledTimes(1);
   });
 
-  it("with 0 sessions the main area shows the empty state, which clears when sessions arrive", () => {
+  it("with 0 cockpitTerminals the main area shows the empty state, which clears when cockpitTerminals arrive", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1011,12 +1042,12 @@ describe("App", () => {
         reposApi={fakeReposApi}
       />,
     );
-    // Initially (sessions empty, control open) the main area shows the empty state.
+    // Initially (cockpit terminals empty, control open) the main area shows the empty state.
     expect(screen.getByText("セッションがありません")).toBeTruthy();
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -1042,7 +1073,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -1080,7 +1111,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -1117,7 +1148,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -1149,7 +1180,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -1546,7 +1577,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -1554,7 +1585,7 @@ describe("App", () => {
     expect(inList().getByRole("button", { name: ROW_ZASHIKI })).toBeTruthy();
   });
 
-  it("suspends the terminal when all sessions are deleted and resumes it on revival (suppresses respawn)", () => {
+  it("suspends the terminal when all cockpitTerminals are deleted and resumes it on revival (suppresses respawn)", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();
     render(
@@ -1568,11 +1599,11 @@ describe("App", () => {
         reposApi={fakeReposApi}
       />,
     );
-    // Has sessions -> not suspended.
+    // Has cockpit terminals -> not suspended.
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -1582,7 +1613,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions: [],
+        cockpitTerminals: [],
         orgs: ["kilo"],
         orgColors: {},
       }),
@@ -1592,7 +1623,7 @@ describe("App", () => {
     act(() =>
       control.emit({
         t: "state.sync",
-        sessions,
+        cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
       }),

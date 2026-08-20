@@ -35,8 +35,8 @@ describe("focusKey", () => {
 
 describe("displayOrgs", () => {
   it("keeps the configured order and appends detected orgs at the end", () => {
-    const sessions = [session("w1", "z"), session("w2", "a")];
-    expect(displayOrgs(["a", "b"], sessions)).toEqual(["a", "b", "z"]);
+    const cockpitTerminals = [session("w1", "z"), session("w2", "a")];
+    expect(displayOrgs(["a", "b"], cockpitTerminals)).toEqual(["a", "b", "z"]);
   });
 
   it("does not duplicate a detected org already in the list", () => {
@@ -58,10 +58,14 @@ describe("isFresh", () => {
 });
 
 describe("buildVisibleItems", () => {
-  const sessions = [session("w1", "a"), session("w2", "a"), session("w3", "b")];
+  const cockpitTerminals = [
+    session("w1", "a"),
+    session("w2", "a"),
+    session("w3", "b"),
+  ];
 
   it("interleaves org headers with their rows in display order", () => {
-    expect(buildVisibleItems(["a", "b"], sessions, new Set())).toEqual([
+    expect(buildVisibleItems(["a", "b"], cockpitTerminals, new Set())).toEqual([
       { kind: "org", org: "a" },
       { kind: "row", cockpitTerminalId: "w1" },
       { kind: "row", cockpitTerminalId: "w2" },
@@ -71,7 +75,9 @@ describe("buildVisibleItems", () => {
   });
 
   it("keeps a collapsed org's header but drops its rows", () => {
-    expect(buildVisibleItems(["a", "b"], sessions, new Set(["a"]))).toEqual([
+    expect(
+      buildVisibleItems(["a", "b"], cockpitTerminals, new Set(["a"])),
+    ).toEqual([
       { kind: "org", org: "a" },
       { kind: "org", org: "b" },
       { kind: "row", cockpitTerminalId: "w3" },
@@ -80,12 +86,18 @@ describe("buildVisibleItems", () => {
 });
 
 describe("nextFocusTarget", () => {
-  const sessions = [session("w1", "a"), session("w2", "a")];
-  const items = buildVisibleItems(["a"], sessions, new Set());
+  const cockpitTerminals = [session("w1", "a"), session("w2", "a")];
+  const items = buildVisibleItems(["a"], cockpitTerminals, new Set());
 
   it("steps down from the current ring", () => {
     expect(
-      nextFocusTarget(items, { kind: "org", org: "a" }, null, sessions, 1),
+      nextFocusTarget(
+        items,
+        { kind: "org", org: "a" },
+        null,
+        cockpitTerminals,
+        1,
+      ),
     ).toEqual({ kind: "row", cockpitTerminalId: "w1" });
   });
 
@@ -95,7 +107,7 @@ describe("nextFocusTarget", () => {
         items,
         { kind: "row", cockpitTerminalId: "w1" },
         null,
-        sessions,
+        cockpitTerminals,
         -1,
       ),
     ).toEqual({ kind: "org", org: "a" });
@@ -107,7 +119,7 @@ describe("nextFocusTarget", () => {
         items,
         { kind: "row", cockpitTerminalId: "w2" },
         null,
-        sessions,
+        cockpitTerminals,
         1,
       ),
     ).toEqual({ kind: "row", cockpitTerminalId: "w2" });
@@ -115,41 +127,55 @@ describe("nextFocusTarget", () => {
 
   it("clamps at the top edge", () => {
     expect(
-      nextFocusTarget(items, { kind: "org", org: "a" }, null, sessions, -1),
+      nextFocusTarget(
+        items,
+        { kind: "org", org: "a" },
+        null,
+        cockpitTerminals,
+        -1,
+      ),
     ).toEqual({ kind: "org", org: "a" });
   });
 
   it("ignores a selected window that is not in the session list", () => {
-    expect(nextFocusTarget(items, null, "missing", sessions, 1)).toEqual({
+    expect(
+      nextFocusTarget(items, null, "missing", cockpitTerminals, 1),
+    ).toEqual({
       kind: "org",
       org: "a",
     });
   });
 
   it("with no ring, anchors on the visible selected row", () => {
-    expect(nextFocusTarget(items, null, "w1", sessions, 1)).toEqual({
+    expect(nextFocusTarget(items, null, "w1", cockpitTerminals, 1)).toEqual({
       kind: "row",
       cockpitTerminalId: "w2",
     });
   });
 
   it("with no ring and a collapsed selected row, anchors on its org header", () => {
-    const collapsedItems = buildVisibleItems(["a"], sessions, new Set(["a"]));
-    expect(nextFocusTarget(collapsedItems, null, "w1", sessions, 1)).toEqual({
+    const collapsedItems = buildVisibleItems(
+      ["a"],
+      cockpitTerminals,
+      new Set(["a"]),
+    );
+    expect(
+      nextFocusTarget(collapsedItems, null, "w1", cockpitTerminals, 1),
+    ).toEqual({
       kind: "org",
       org: "a",
     });
   });
 
   it("with no anchor, a down step lands on the first item", () => {
-    expect(nextFocusTarget(items, null, null, sessions, 1)).toEqual({
+    expect(nextFocusTarget(items, null, null, cockpitTerminals, 1)).toEqual({
       kind: "org",
       org: "a",
     });
   });
 
   it("with no anchor, an up step lands on the last item", () => {
-    expect(nextFocusTarget(items, null, null, sessions, -1)).toEqual({
+    expect(nextFocusTarget(items, null, null, cockpitTerminals, -1)).toEqual({
       kind: "row",
       cockpitTerminalId: "w2",
     });

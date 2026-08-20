@@ -234,7 +234,7 @@ pub struct Notification {
 pub enum ServerMessage {
     #[serde(rename = "state.sync", rename_all = "camelCase")]
     StateSync {
-        sessions: Vec<CockpitTerminalInfo>,
+        cockpit_terminals: Vec<CockpitTerminalInfo>,
         orgs: Vec<String>,
         /// org name -> display color. An empty map when omitted (tolerant of rolling updates).
         #[serde(default)]
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn state_sync_matches_wire() {
         let msg = ServerMessage::StateSync {
-            sessions: vec![CockpitTerminalInfo {
+            cockpit_terminals: vec![CockpitTerminalInfo {
                 cockpit_terminal_id: "@1".into(),
                 name: "repo".into(),
                 org: "org1".into(),
@@ -391,7 +391,7 @@ mod tests {
             orgs: vec!["org1".into()],
             org_colors: BTreeMap::from([("org1".to_string(), "#7ec699".to_string())]),
         };
-        let json = r##"{"t":"state.sync","sessions":[{"cockpitTerminalId":"@1","name":"repo","org":"org1","repo":"repo","state":"running","title":null,"active":true}],"orgs":["org1"],"orgColors":{"org1":"#7ec699"}}"##;
+        let json = r##"{"t":"state.sync","cockpitTerminals":[{"cockpitTerminalId":"@1","name":"repo","org":"org1","repo":"repo","state":"running","title":null,"active":true}],"orgs":["org1"],"orgColors":{"org1":"#7ec699"}}"##;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -399,12 +399,12 @@ mod tests {
     #[test]
     fn state_sync_accepts_missing_org_colors() {
         // Backward compatibility with older servers: a missing orgColors collapses to an empty map.
-        let json = r#"{"t":"state.sync","sessions":[],"orgs":[]}"#;
+        let json = r#"{"t":"state.sync","cockpitTerminals":[],"orgs":[]}"#;
         let msg: ServerMessage = serde_json::from_str(json).unwrap();
         assert_eq!(
             msg,
             ServerMessage::StateSync {
-                sessions: vec![],
+                cockpit_terminals: vec![],
                 orgs: vec![],
                 org_colors: BTreeMap::new(),
             }
@@ -492,7 +492,7 @@ mod tests {
     #[test]
     fn session_info_serializes_running_subagents_when_present() {
         let msg = ServerMessage::StateSync {
-            sessions: vec![CockpitTerminalInfo {
+            cockpit_terminals: vec![CockpitTerminalInfo {
                 cockpit_terminal_id: "@1".into(),
                 name: "repo".into(),
                 org: "o".into(),
@@ -509,7 +509,7 @@ mod tests {
             orgs: vec![],
             org_colors: BTreeMap::new(),
         };
-        let json = r#"{"t":"state.sync","sessions":[{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{}}"#;
+        let json = r#"{"t":"state.sync","cockpitTerminals":[{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{}}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

@@ -144,11 +144,11 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: { o: "#7aa2f7" },
     });
-    expect(t.store.getSnapshot().sessions).toEqual([session]);
+    expect(t.store.getSnapshot().cockpitTerminals).toEqual([session]);
     expect(t.store.getSnapshot().orgs).toEqual(["o"]);
     expect(t.store.getSnapshot().orgColors).toEqual({ o: "#7aa2f7" });
     t.control.emit({ t: "error", code: "x", message: "boom" });
@@ -251,7 +251,7 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: [],
       orgColors: {},
     });
@@ -286,7 +286,7 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: [],
       orgColors: {},
     });
@@ -301,7 +301,7 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: [],
       orgColors: {},
     });
@@ -315,14 +315,14 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
     t.store.markNewRequested();
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@5")],
+      cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -334,14 +334,14 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
     t.store.markNewRequested();
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@7"), sessionWith("@3")],
+      cockpitTerminals: [session, sessionWith("@7"), sessionWith("@3")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -352,13 +352,13 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@5")],
+      cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -370,21 +370,21 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
     t.store.markNewRequested();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
     expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@9")],
+      cockpitTerminals: [session, sessionWith("@9")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -395,7 +395,7 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
@@ -403,7 +403,7 @@ describe("createAppStore", () => {
     t.control.emit({ t: "error", code: "unknown_org", message: "x" });
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@5")],
+      cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -419,7 +419,7 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
@@ -427,7 +427,7 @@ describe("createAppStore", () => {
     t.store.markNewRequested();
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@5")],
+      cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -438,14 +438,14 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
     t.store.markNewRequested();
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@2")],
+      cockpitTerminals: [session, sessionWith("@2")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -453,7 +453,7 @@ describe("createAppStore", () => {
     t.store.markNewRequested();
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@2"), sessionWith("@3")],
+      cockpitTerminals: [session, sessionWith("@2"), sessionWith("@3")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -464,13 +464,13 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@5")],
+      cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -481,14 +481,14 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
     t.store.markNewRequested();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
@@ -508,7 +508,7 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@2")],
+      cockpitTerminals: [session, sessionWith("@2")],
       orgs: ["o"],
       orgColors: {},
     });
@@ -520,7 +520,7 @@ describe("createAppStore", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
-      sessions: [session],
+      cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
     });
@@ -528,7 +528,7 @@ describe("createAppStore", () => {
     t.control.emit({ t: "error", code: "unknown_org", message: "x" });
     t.control.emit({
       t: "state.sync",
-      sessions: [session, sessionWith("@5")],
+      cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
     });

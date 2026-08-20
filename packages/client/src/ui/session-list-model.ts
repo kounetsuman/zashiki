@@ -24,11 +24,11 @@ export function focusKey(t: FocusTarget): string {
 /** Preserve the order of orgs while appending detected orgs not in orgs at the end. */
 export function displayOrgs(
   orgs: string[],
-  sessions: CockpitTerminalInfo[],
+  cockpitTerminals: CockpitTerminalInfo[],
 ): string[] {
   const result = [...orgs];
   const seen = new Set(orgs);
-  for (const s of sessions) {
+  for (const s of cockpitTerminals) {
     if (seen.has(s.org)) continue;
     seen.add(s.org);
     result.push(s.org);
@@ -50,14 +50,14 @@ export function isFresh(
  */
 export function buildVisibleItems(
   orgList: string[],
-  sessions: CockpitTerminalInfo[],
+  cockpitTerminals: CockpitTerminalInfo[],
   collapsed: ReadonlySet<string>,
 ): FocusTarget[] {
   const items: FocusTarget[] = [];
   for (const org of orgList) {
     items.push({ kind: "org", org });
     if (collapsed.has(org)) continue;
-    for (const s of sessions)
+    for (const s of cockpitTerminals)
       if (s.org === org)
         items.push({ kind: "row", cockpitTerminalId: s.cockpitTerminalId });
   }
@@ -73,7 +73,7 @@ export function nextFocusTarget(
   visibleItems: FocusTarget[],
   focused: FocusTarget | null,
   selectedCockpitTerminalId: string | null,
-  sessions: CockpitTerminalInfo[],
+  cockpitTerminals: CockpitTerminalInfo[],
   delta: number,
 ): FocusTarget | null {
   const visibleKeys = visibleItems.map(focusKey);
@@ -86,7 +86,7 @@ export function nextFocusTarget(
     });
     if (visibleKeys.includes(rowKey)) anchorKey = rowKey;
     else {
-      const sel = sessions.find(
+      const sel = cockpitTerminals.find(
         (s) => s.cockpitTerminalId === selectedCockpitTerminalId,
       );
       if (sel !== undefined)

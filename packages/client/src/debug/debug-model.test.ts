@@ -74,7 +74,7 @@ describe("footerAbnormalNotice", () => {
         "attached",
       ),
     ).toBeNull();
-    // connecting right after startup / idle with 0 sessions are also normal
+    // connecting right after startup / idle with 0 cockpit terminals are also normal
     expect(
       footerAbnormalNotice(
         { status: "connecting", attempt: 0, lastCloseCode: null },
@@ -100,7 +100,7 @@ describe("footerAbnormalNotice", () => {
   });
 });
 
-const sessions: CockpitTerminalInfo[] = [
+const cockpitTerminals: CockpitTerminalInfo[] = [
   {
     cockpitTerminalId: "@1",
     name: "zashiki",
@@ -123,7 +123,7 @@ const sessions: CockpitTerminalInfo[] = [
 
 describe("summarizeSessions", () => {
   it("formats each window into cockpitTerminalId/label/active/state", () => {
-    expect(summarizeSessions(sessions)).toEqual([
+    expect(summarizeSessions(cockpitTerminals)).toEqual([
       {
         cockpitTerminalId: "@1",
         label: "kilo/zashiki zashiki",
@@ -162,7 +162,7 @@ describe("describeServerEvent", () => {
     expect(
       describeServerEvent({
         t: "state.sync",
-        sessions: [],
+        cockpitTerminals: [],
         orgs: [],
         orgColors: {},
       }),

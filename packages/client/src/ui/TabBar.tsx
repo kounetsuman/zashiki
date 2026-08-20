@@ -15,7 +15,7 @@ export interface TabBarProps {
   /** Composite key of the active tab (`kind:id`). null if none. */
   activeKey: string | null;
   /** Session list used to resolve titles (for session tabs). */
-  sessions: CockpitTerminalInfo[];
+  cockpitTerminals: CockpitTerminalInfo[];
   /** Used to resolve manually edited titles. Resolves for all tabs. */
   conversationTitles: TitleMap;
   /** org -> display color (explicit color from repos.conf). Unspecified orgs fall back to auto coloring. */
@@ -30,7 +30,7 @@ export interface TabBarProps {
   inactive?: boolean;
   /**
    * Right-clicking a session tab copies the resume command (`claude --resume <sid>`)
-   * (for branched sessions). No context menu is shown when unspecified.
+   * (for branched cockpit terminals). No context menu is shown when unspecified.
    */
   onCopyResume?(cockpitTerminalId: string): void;
   /**
@@ -41,7 +41,7 @@ export interface TabBarProps {
 }
 
 /**
- * Unified tab strip at the top of the main area. Shows open sessions/viewers
+ * Unified tab strip at the top of the main area. Shows open cockpit terminals/viewers
  * as side-by-side tabs; click to switch and the close button to close (does not kill the session).
  * org membership is shown by the leading color dot (no text). Session tabs
  * support inline rename on double-click (same commitTitle path as the conversation header).
@@ -50,7 +50,7 @@ export interface TabBarProps {
 export function TabBar({
   tabs,
   activeKey,
-  sessions,
+  cockpitTerminals,
   conversationTitles,
   orgColors = {},
   onActivate,
@@ -62,7 +62,7 @@ export function TabBar({
   onCopySessionId,
 }: TabBarProps) {
   const { t } = useTranslation();
-  const rename = useTabRename(tabs, sessions, onRename);
+  const rename = useTabRename(tabs, cockpitTerminals, onRename);
   const drag = useTabDrag(onReorder);
   const hasContextMenu =
     onCopyResume !== undefined || onCopySessionId !== undefined;
@@ -81,10 +81,14 @@ export function TabBar({
     >
       {tabs.map((tab) => {
         const key = tabKey(tab);
-        const { label, title } = tabLabel(tab, sessions, conversationTitles);
+        const { label, title } = tabLabel(
+          tab,
+          cockpitTerminals,
+          conversationTitles,
+        );
         const session =
           tab.kind === "session"
-            ? sessions.find((x) => x.cockpitTerminalId === tab.id)
+            ? cockpitTerminals.find((x) => x.cockpitTerminalId === tab.id)
             : undefined;
         const orgColor =
           session !== undefined
@@ -115,7 +119,7 @@ export function TabBar({
       {contextMenu.menu !== null && hasContextMenu && (
         <TabContextMenu
           menu={contextMenu.menu}
-          sessions={sessions}
+          cockpitTerminals={cockpitTerminals}
           closeMenu={contextMenu.closeMenu}
           onCopyResume={onCopyResume}
           onCopySessionId={onCopySessionId}
