@@ -18,7 +18,7 @@ export interface GitStatus {
 /**
  * Fetches repo status and keeps it fresh on git.dirty. A generation guard drops a stale response that
  * returns late so it cannot roll back a newer fetch's display; one bad repo is surfaced as skipped
- * rather than blanking the panel.
+ * rather than blanking the view.
  */
 export function useGitStatus(
   api: GitApi,

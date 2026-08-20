@@ -30,6 +30,6 @@ Locally, `reuseExistingServer` reuses an existing server.
 
 ## Scope (current)
 
-- Only the **happy path** is implemented (app shell boot, panel switching, session-list headings).
+- Only the **happy path** is implemented (app shell boot, view switching, session-list headings).
 - session-lifecycle / terminal-io requiring real tmux + fake claude, plus error and boundary cases, are follow-up issues.
 - IME composition and tmux-owned scrollback/copy cannot be faithfully reproduced in Playwright, so they are out of scope.

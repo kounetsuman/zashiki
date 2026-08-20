@@ -1,6 +1,6 @@
 # SESSION
 
-The main area shows the terminal (Claude's output) and conversation header for the selected session. Choose which session to show from the **SESSION LIST** (this panel has no open/close button of its own).
+The main area shows the terminal (Claude's output) and conversation header for the selected session. Choose which session to show from the **SESSION LIST** (this view has no open/close button of its own).
 
 ## Working in the terminal
 

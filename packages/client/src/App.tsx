@@ -20,7 +20,7 @@ import type { FsApi } from "./api/fs.js";
 import type { GitApi } from "./api/git.js";
 import type { ReposApi } from "./api/repos.js";
 import type { SearchApi } from "./api/search.js";
-import { DebugPanel } from "./debug/DebugPanel.js";
+import { DebugView } from "./debug/DebugView.js";
 import {
   type ControlDebugSnapshot,
   footerAbnormalNotice,
@@ -40,20 +40,20 @@ import type { TerminalSessionStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
 import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
+import { CockpitTerminalListView } from "./ui/CockpitTerminalListView.js";
 import { CrashReportModal } from "./ui/CrashReportModal.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ErrorDialog } from "./ui/ErrorDialog.js";
-import { ExplorerPanel } from "./ui/ExplorerPanel.js";
-import { FooterPanelTabs } from "./ui/FooterPanelTabs.js";
-import { GitPanel } from "./ui/GitPanel.js";
-import { HelpPanel } from "./ui/HelpPanel.js";
+import { ExplorerView } from "./ui/ExplorerView.js";
+import { FooterViewTabs } from "./ui/FooterViewTabs.js";
+import { HelpView } from "./ui/HelpView.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
 import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
-import { NotificationPanel } from "./ui/NotificationPanel.js";
-import { SearchPanel } from "./ui/SearchPanel.js";
-import { SessionListPanel } from "./ui/SessionListPanel.js";
+import { NotificationView } from "./ui/NotificationView.js";
+import { SearchView } from "./ui/SearchView.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
-import { SettingsPanel } from "./ui/SettingsPanel.js";
+import { SettingsView } from "./ui/SettingsView.js";
+import { SourceControlView } from "./ui/SourceControlView.js";
 import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
 import { Toaster } from "./ui/Toaster.js";
@@ -64,16 +64,16 @@ import { useClipboardCopy } from "./ui/useClipboardCopy.js";
 import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
 import { useCrashReport } from "./ui/useCrashReport.js";
-import { usePanelSelection } from "./ui/usePanelSelection.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useViewer } from "./ui/useViewer.js";
-import { ViewerPanel } from "./ui/ViewerPanel.js";
+import { useViewSelection } from "./ui/useViewSelection.js";
+import { Viewer } from "./ui/Viewer.js";
 import type { ControlStatus } from "./ws/control.js";
 
-type PanelStorage = Pick<Storage, "getItem" | "setItem">;
+type ViewStorage = Pick<Storage, "getItem" | "setItem">;
 
-function defaultPanelStorage(): PanelStorage | null {
+function defaultViewStorage(): ViewStorage | null {
   return typeof localStorage === "undefined" ? null : localStorage;
 }
 
@@ -124,8 +124,8 @@ export interface AppProps {
   crashApi?: CrashApi;
   /** Notification service (defaults to the real Web Notification + synthesized sound). */
   notifier?: Notifier;
-  /** Persistence target for panel selection state (defaults to localStorage). */
-  panelStorage?: PanelStorage | null;
+  /** Persistence target for view selection state (defaults to localStorage). */
+  viewStorage?: ViewStorage | null;
   /** Initial on/off for debug mode (resolved from env/URL when omitted). */
   debugInitial?: boolean;
 }
@@ -140,7 +140,7 @@ export function App({
   reposApi,
   crashApi,
   notifier: notifierProp,
-  panelStorage: panelStorageProp,
+  viewStorage: viewStorageProp,
   debugInitial,
 }: AppProps) {
   const { t } = useTranslation();
@@ -149,11 +149,11 @@ export function App({
   const [addOrgOpen, setAddOrgOpen] = useState(false);
   const { crashLog, dismissCrash } = useCrashReport(crashApi);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
-  const [panelStorage] = useState(() =>
-    panelStorageProp === undefined ? defaultPanelStorage() : panelStorageProp,
+  const [viewStorage] = useState(() =>
+    viewStorageProp === undefined ? defaultViewStorage() : viewStorageProp,
   );
   const [conversationTitles, setConversationTitles] = useState(() =>
-    loadConversationTitles(panelStorage),
+    loadConversationTitles(viewStorage),
   );
   const [debug, setDebug] = useState(
     () =>
@@ -165,8 +165,8 @@ export function App({
   );
   const toggleDebug = useCallback(() => setDebug((v) => !v), []);
 
-  const { selectedPanel, activePanel, handlePanelFocus, handleSelectPanel } =
-    usePanelSelection(panelStorage);
+  const { selectedView, activeView, handleViewFocus, handleSelectView } =
+    useViewSelection(viewStorage);
 
   // Interpreting control messages and their side effects (notifications, pty reconnect)
   // is separated into a store outside React; App only subscribes (useSyncExternalStore)
@@ -187,7 +187,7 @@ export function App({
 
   const { seenIds, markRead } = useSeenNotifications(
     notifications,
-    panelStorage,
+    viewStorage,
   );
   const unread = unreadCount(notifications, seenIds);
   const updateVersion = updateAvailableVersion(notifications);
@@ -279,11 +279,11 @@ export function App({
     (cockpitTerminalId: string, name: string, value: string): void => {
       setConversationTitles((prev) => {
         const next = commitTitle(prev, cockpitTerminalId, name, value);
-        saveConversationTitles(panelStorage, next);
+        saveConversationTitles(viewStorage, next);
         return next;
       });
     },
-    [panelStorage],
+    [viewStorage],
   );
 
   // Create a new session and, on the immediately following state.sync, auto-switch the
@@ -301,7 +301,7 @@ export function App({
     orgs,
     activeSess,
     activeKey: tabsState.activeKey,
-    handleSelectPanel,
+    handleSelectView,
     toggleDebug,
     newSession,
     copyResume,
@@ -345,7 +345,7 @@ export function App({
     [control],
   );
 
-  // Refetch trigger for the git panel (the hook is emitted server-side).
+  // Refetch trigger for the git view (the hook is emitted server-side).
   const onGitDirty = useCallback(
     (fn: () => void) =>
       control.onMessage((m) => {
@@ -356,7 +356,7 @@ export function App({
 
   // Manual SESSION LIST refresh: send state.refresh and treat receiving the state.sync
   // addressed to us as completion. Not connected (send=false) / no response (timeout) rejects
-  // and turns the panel's header icon into an error.
+  // and turns the view's header icon into an error.
   const refreshSessions = useCallback(
     (): Promise<void> =>
       new Promise((resolve, reject) => {
@@ -380,7 +380,7 @@ export function App({
   );
 
   // On-demand "Check for updates" (SETTINGS): send update.check and resolve with the server's
-  // update.check.result. Not connected (send=false) / no response (timeout) rejects so the panel
+  // update.check.result. Not connected (send=false) / no response (timeout) rejects so the view
   // shows an error. The 15s window covers the server's 10s GitHub request timeout.
   const checkForUpdates = useCallback(
     (): Promise<UpdateCheckResultMessage> =>
@@ -425,10 +425,10 @@ export function App({
   return (
     <div className="app">
       <UpdateBanner version={updateVersion} />
-      <div className="main-row" onFocusCapture={handlePanelFocus}>
+      <div className="main-row" onFocusCapture={handleViewFocus}>
         <div
-          className={`main-area${activePanel === "main" ? "" : " panel-inactive"}`}
-          data-panel="main"
+          className={`main-area${activeView === "main" ? "" : " view-inactive"}`}
+          data-view="main"
         >
           <TabBar
             tabs={tabsState.tabs}
@@ -440,11 +440,11 @@ export function App({
             onClose={closeTabByKey}
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
-            inactive={activePanel !== "main"}
+            inactive={activeView !== "main"}
             onCopyResume={copyResumeByCockpitTerminalId}
             onCopySessionId={copySessionIdByCockpitTerminalId}
           />
-          <div className="tab-panel">
+          <div className="tab-view">
             <ErrorBoundary
               fallback={(error, reset) => (
                 <div className="terminal-error" role="alert">
@@ -479,12 +479,12 @@ export function App({
               activeSess === null &&
               activeViewerKey === null && <NoTabOpen />}
             {activeBuffer !== null && activeViewerKey !== null && (
-              <ViewerPanel
+              <Viewer
                 key={activeViewerKey}
                 buffer={activeBuffer}
                 onTogglePreview={() => toggleViewerPreview(activeViewerKey)}
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
-                inactive={activePanel !== "main"}
+                inactive={activeView !== "main"}
               />
             )}
           </div>
@@ -496,7 +496,7 @@ export function App({
           )}
         </div>
         <aside className="side-column">
-          <SessionListPanel
+          <CockpitTerminalListView
             sessions={sessions}
             orgs={orgs}
             orgColors={orgColors}
@@ -511,54 +511,54 @@ export function App({
             }
             onRefresh={refreshSessions}
             onAddOrg={() => setAddOrgOpen(true)}
-            inactive={activePanel !== "sessions"}
-            full={selectedPanel === null}
+            inactive={activeView !== "sessions"}
+            full={selectedView === null}
             onCopyResume={copyResumeByCockpitTerminalId}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}
           />
-          {selectedPanel === "explorer" && (
-            <ExplorerPanel
+          {selectedView === "explorer" && (
+            <ExplorerView
               api={fsApi}
               orgColors={orgColors}
               onOpenFile={openViewer}
-              inactive={activePanel !== "explorer"}
+              inactive={activeView !== "explorer"}
             />
           )}
-          {selectedPanel === "search" && (
-            <SearchPanel
+          {selectedView === "search" && (
+            <SearchView
               api={searchApi}
               orgColors={orgColors}
               onOpen={(file, _line) =>
                 openViewer(repoPathOfSearchFile(file), file.relPath)
               }
-              inactive={activePanel !== "search"}
+              inactive={activeView !== "search"}
             />
           )}
-          {selectedPanel === "git" && (
-            <GitPanel
+          {selectedView === "sourceControl" && (
+            <SourceControlView
               api={gitApi}
               onGitDirty={onGitDirty}
               orgColors={orgColors}
-              inactive={activePanel !== "git"}
+              inactive={activeView !== "sourceControl"}
             />
           )}
-          {selectedPanel === "notification" && (
-            <NotificationPanel
+          {selectedView === "notification" && (
+            <NotificationView
               notifications={notifications}
               seenIds={seenIds}
               onDismiss={(id) =>
                 control.send({ t: "notification.dismiss", id })
               }
               onMarkRead={markRead}
-              inactive={activePanel !== "notification"}
+              inactive={activeView !== "notification"}
             />
           )}
-          {selectedPanel === "help" && (
-            <HelpPanel inactive={activePanel !== "help"} />
+          {selectedView === "help" && (
+            <HelpView inactive={activeView !== "help"} />
           )}
-          {selectedPanel === "settings" && (
-            <SettingsPanel
+          {selectedView === "settings" && (
+            <SettingsView
               language={i18n.language}
               onSaveLanguage={saveLanguage}
               fontSize={terminalFont.fontSize}
@@ -572,7 +572,7 @@ export function App({
               onCheckForUpdates={checkForUpdates}
               clipboardEditModal={clipboardEdit.enabled}
               onSetClipboardEditModal={clipboardEdit.setEnabled}
-              inactive={activePanel !== "settings"}
+              inactive={activeView !== "settings"}
             />
           )}
         </aside>
@@ -594,7 +594,7 @@ export function App({
         </div>
       )}
       {debug && (
-        <DebugPanel
+        <DebugView
           control={control}
           session={session}
           sessions={sessions}
@@ -605,9 +605,9 @@ export function App({
         <AccountUsageFooter limits={accountLimits} />
         {abnormal !== null && <span className="status-error">{abnormal}</span>}
         <LimitIndicator count={limitedCount} />
-        <FooterPanelTabs
-          selected={selectedPanel}
-          onSelect={handleSelectPanel}
+        <FooterViewTabs
+          selected={selectedView}
+          onSelect={handleSelectView}
           badges={{ notification: unread }}
         />
       </footer>

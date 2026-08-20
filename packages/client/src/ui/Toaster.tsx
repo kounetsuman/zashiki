@@ -30,7 +30,7 @@ export function visibleToasts(
 
 /**
  * Toast display stacked in a screen corner. Non-sticky toasts auto-dismiss after a while but
- * remain in the NOTIFICATION panel list (toast visibility != presence in the list). sticky ones
+ * remain in the NOTIFICATION view list (toast visibility != presence in the list). sticky ones
  * (restart-required) stay until the server withdraws them (= restart). Closing a toast does not remove it from the list.
  */
 export function Toaster({ notifications, autoHideMs = 6000 }: ToasterProps) {

@@ -9,11 +9,11 @@ import {
   type HelpTopic,
 } from "../help/help-model.js";
 import { MarkdownView } from "../help/MarkdownView.js";
-import { PanelEmpty } from "./PanelEmpty.js";
-import { PanelHeader } from "./PanelHeader.js";
-import { panelClass } from "./panels.js";
+import { ViewEmpty } from "./ViewEmpty.js";
+import { ViewHeader } from "./ViewHeader.js";
+import { viewClass } from "./views.js";
 
-export interface HelpPanelProps {
+export interface HelpViewProps {
   /** The help topics to display (defaults to the bundled content for the active locale). Replaceable in tests. */
   topics?: readonly HelpTopic[];
   /** Category classification (defaults to HELP_CATEGORIES). Replaceable in tests. */
@@ -23,17 +23,17 @@ export interface HelpPanelProps {
 }
 
 /**
- * User-facing help (one panel of NAVIGATION). Topics are imported one file =
+ * User-facing help (one view of NAVIGATION). Topics are imported one file =
  * one topic from content/<locale>/*.md for the active locale and grouped under
  * category headings. The header
  * search filters by title and body (keeping only categories that contain a
  * match), and clicking a heading expands its body as an accordion.
  */
-export function HelpPanel({
+export function HelpView({
   topics,
   categories = HELP_CATEGORIES,
   inactive,
-}: HelpPanelProps) {
+}: HelpViewProps) {
   const { t, i18n } = useTranslation();
   const localizedTopics = useMemo(
     () => topics ?? getHelpTopics(i18n.language),
@@ -49,8 +49,8 @@ export function HelpPanel({
     setOpenId((prev) => (prev === id ? null : id));
 
   return (
-    <section className={panelClass("help-panel", inactive)} data-panel="help">
-      <PanelHeader title="HELP" />
+    <section className={viewClass("help-view", inactive)} data-view="help">
+      <ViewHeader title="HELP" />
       <div className="help-input-row">
         <input
           className="help-input"
@@ -62,7 +62,7 @@ export function HelpPanel({
         />
       </div>
       {groups.length === 0 ? (
-        <PanelEmpty>{t("help.noResults")}</PanelEmpty>
+        <ViewEmpty>{t("help.noResults")}</ViewEmpty>
       ) : (
         <div className="help-categories">
           {groups.map((g) => {

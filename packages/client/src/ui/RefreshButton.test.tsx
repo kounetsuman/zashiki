@@ -19,7 +19,7 @@ describe("RefreshButton", () => {
     render(<RefreshButton state="loading" label="更新" onClick={() => {}} />);
     const btn = screen.getByRole("button", { name: "更新" });
     expect(btn.getAttribute("aria-busy")).toBe("true");
-    expect(btn.querySelector(".panel-refresh-spinner")).not.toBeNull();
+    expect(btn.querySelector(".view-refresh-spinner")).not.toBeNull();
     expect(btn.textContent).not.toContain("refresh");
     expect(btn.textContent).not.toContain("warning");
   });

@@ -42,9 +42,9 @@ body {
   line-height: 1;
 }
 
-/* ---- セッション一覧パネル（side-column 最上部・高さ 50% 固定） ---- */
+/* ---- セッション一覧ビュー（side-column 最上部・高さ 50% 固定） ---- */
 
-/* 最上部固定（issue #152）。下端ボーダーで下の選択パネルと区切る
+/* 最上部固定（issue #152）。下端ボーダーで下の選択ビューと区切る
  * （explorer/git は自前ボーダーを持たないため SESSION LIST 側で引く）。 */
 .session-list {
   flex: none;
@@ -56,7 +56,7 @@ body {
   outline: none;
 }
 
-/* 他パネル（.panel-tree 等）同様ヘッダを固定し、スクロールは内側容器に持たせる（issue #263）。
+/* 他ビュー（.view-tree 等）同様ヘッダを固定し、スクロールは内側容器に持たせる（issue #263）。
  * overscroll-behavior:contain で余白/タブ見出しのホイールが親へ連鎖しないよう封じる。 */
 .session-list-scroll {
   flex: 1;
@@ -66,7 +66,7 @@ body {
   padding: 4px 0;
 }
 
-/* 下段パネルを閉じた時は SESSION LIST が side-column を占有する（issue #188）。 */
+/* 下段ビューを閉じた時は SESSION LIST が side-column を占有する（issue #188）。 */
 .session-list-full {
   height: 100%;
 }
@@ -139,7 +139,7 @@ body {
 .session-org-toggle {
   background: transparent;
   border: none;
-  /* 既定は白（パネル文字色）。org 色は repos.conf 併記時に inline style で上書き（issue #107）。 */
+  /* 既定は白（ビュー文字色）。org 色は repos.conf 併記時に inline style で上書き（issue #107）。 */
   color: #ddd;
   cursor: pointer;
   font: inherit;
@@ -207,7 +207,7 @@ body {
     "opsz" 20;
 }
 
-/* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .panel-row。非選択行は
+/* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .view-row。非選択行は
  * 背景色と同色（ハイライトなし）で、選択行だけを目立たせる。 */
 .session-row-main {
   padding: 2px 8px;
@@ -218,7 +218,7 @@ body {
 }
 
 /* 選択（＝現在表示中）のセッションだけを強めにハイライトし、左端に org カラーの帯を出す。
- * hover より優先（explorer の .panel-row-selected と同規約）。border-box なので
+ * hover より優先（explorer の .view-row-selected と同規約）。border-box なので
  * border 分だけ padding-left を詰めて本文位置を非選択行と揃える。 */
 .session-row-main[aria-current="true"],
 .session-row-main[aria-current="true"]:hover {
@@ -433,10 +433,10 @@ body {
   background: #181818;
 }
 
-/* ---- フッタのパネル切替アイコン群（issue #133。単一選択切替） ---- */
+/* ---- フッタのビュー切替アイコン群（issue #133。単一選択切替） ---- */
 
 /* status-bar 内で右端寄せ（margin-left:auto）。既存の notify/debug（左）に触れない。 */
-.footer-panel-tabs {
+.footer-view-tabs {
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -444,7 +444,7 @@ body {
   margin-left: auto;
 }
 
-.footer-panel-tab {
+.footer-view-tab {
   position: relative;
   display: flex;
   align-items: center;
@@ -462,7 +462,7 @@ body {
 }
 
 /* 通知の未読件数バッジ（アイコン右上に重畳）。 */
-.footer-panel-badge {
+.footer-view-badge {
   position: absolute;
   top: -1px;
   right: -1px;
@@ -478,19 +478,19 @@ body {
   box-sizing: border-box;
 }
 
-.footer-panel-tab:hover {
+.footer-view-tab:hover {
   color: #ddd;
   background: #2a2a2a;
 }
 
-/* 選択中パネルのアイコンに色を付ける（下ボーダー + 文字色。issue #133） */
-.footer-panel-tab.is-active {
+/* 選択中ビューのアイコンに色を付ける（下ボーダー + 文字色。issue #133） */
+.footer-view-tab.is-active {
   color: #ddd;
   border-bottom-color: #4a6da7;
 }
 
 /* フッタ切替アイコンの Material Symbols（issue #90）。 */
-.footer-panel-tab .material-symbols-outlined {
+.footer-view-tab .material-symbols-outlined {
   font-size: 16px;
   line-height: 1;
   font-variation-settings:
@@ -500,15 +500,15 @@ body {
     "opsz" 20;
 }
 
-/* ---- 非アクティブパネルの薄いオーバーレイ（issue #92） ---- */
+/* ---- 非アクティブビューの薄いオーバーレイ（issue #92） ---- */
 
 /* pointer-events:none でクリック等を阻害しない。クリックでフォーカスが入れば
  * アクティブになりオーバーレイは消える。position:relative は ::after の基準。 */
-.panel-inactive {
+.view-inactive {
   position: relative;
 }
 
-.panel-inactive::after {
+.view-inactive::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -743,7 +743,7 @@ body {
 
 /* viewer タブ active の間、main area 本体にオーバーレイ表示（TerminalView を隠さずに
  * 被せる。xterm の fit/focus を壊さないため display:none にしない）。 */
-.viewer-panel {
+.viewer-view {
   position: absolute;
   inset: 0;
   z-index: 4;
@@ -869,7 +869,7 @@ body {
 }
 
 /* ヘッダ下の本体（ターミナル + 空状態オーバーレイの基準）。 */
-.tab-panel {
+.tab-view {
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -888,7 +888,7 @@ body {
   vertical-align: middle;
 }
 
-/* セッション 0 件時に会話パネルへ被せる空状態（issue #46） */
+/* セッション 0 件時に会話ビューへ被せる空状態（issue #46） */
 .empty-main-area {
   position: absolute;
   inset: 0;
@@ -932,7 +932,7 @@ body {
 .terminal-view {
   flex: 1;
   /* min-width:0 が無いと flex 既定の min-width:auto で xterm の描画幅未満に
-     縮まず、FitAddon+ResizeObserver の resize ループで側パネルを画面外へ
+     縮まず、FitAddon+ResizeObserver の resize ループで側ビューを画面外へ
      押し出す（issue #44）。overflow:hidden で余剰幅を min-content に含めない。 */
   min-width: 0;
   min-height: 0;
@@ -1123,9 +1123,9 @@ body {
   color: #e06c75;
 }
 
-/* デバッグパネル（issue #56。オーバーレイ・既定 off） */
+/* デバッグビュー（issue #56。オーバーレイ・既定 off） */
 
-.debug-panel {
+.debug-view {
   position: fixed;
   right: 8px;
   bottom: 34px;
@@ -1142,14 +1142,14 @@ body {
   padding: 8px 10px;
 }
 
-.debug-panel-head {
+.debug-view-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 4px;
 }
 
-.debug-panel-head button {
+.debug-view-head button {
   background: none;
   border: none;
   color: #888;
@@ -1158,7 +1158,7 @@ body {
   line-height: 1;
 }
 
-.debug-panel-head button:hover {
+.debug-view-head button:hover {
   color: #eee;
 }
 
@@ -1221,9 +1221,9 @@ body {
   font-size: 11px;
 }
 
-/* git パネル（色規約） */
+/* git ビュー（色規約） */
 
-.git-panel {
+.git-view {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1231,18 +1231,18 @@ body {
 }
 
 /*
- * 全パネル共通ツリー行スタイル（issue #85）。explorer / git / session の
+ * 全ビュー共通ツリー行スタイル（issue #85）。explorer / git / session の
  * ツリー行の装飾（色・hover・選択ハイライト・シェブロン色）をここへ寄せる。
  * レイアウト（block/flex/インデント）と機能差（code バッジ・stage ボタン・
- * 状態アイコン等）は各パネル固有クラスに残す。装飾専用に絞ることで、単一
+ * 状態アイコン等）は各ビュー固有クラスに残す。装飾専用に絞ることで、単一
  * クラス同士の詳細度同点による上書き崩れ（display/width/flex の後勝ち）を避ける。
  */
-.panel-tree {
+.view-tree {
   overflow-y: auto;
   padding: 4px 0;
 }
 
-.panel-row {
+.view-row {
   background: transparent;
   border: none;
   color: #ddd;
@@ -1254,29 +1254,29 @@ body {
   text-overflow: ellipsis;
 }
 
-.panel-row-hover:hover {
+.view-row-hover:hover {
   background: #242424;
 }
 
 /* 選択は hover より優先（選択行を hover しても選択色を維持。VSCode 相当）。 */
-.panel-row-selected,
-.panel-row-selected:hover {
+.view-row-selected,
+.view-row-selected:hover {
   background: #2c313a;
 }
 
-.panel-arrow {
+.view-arrow {
   color: #888;
 }
 
-/* パネル共通の空表示（issue #186）。文言はパネルごとに変え、デザインはここに一本化。 */
-.panel-empty {
+/* ビュー共通の空表示（issue #186）。文言はビューごとに変え、デザインはここに一本化。 */
+.view-empty {
   padding: 8px;
   color: #888;
   font-size: 12px;
 }
 
-/* 全パネル共通ヘッダ（issue #86。会話パネル #91 でも流用）。 */
-.panel-header {
+/* 全ビュー共通ヘッダ（issue #86。会話ビュー #91 でも流用）。 */
+.view-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1286,19 +1286,19 @@ body {
   flex: none;
 }
 
-.panel-title {
+.view-title {
   font-size: 11px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-.panel-header-actions {
+.view-header-actions {
   display: flex;
   align-items: center;
   gap: 2px;
 }
 
-.panel-header button {
+.view-header button {
   background: transparent;
   border: none;
   border-radius: 3px;
@@ -1317,22 +1317,22 @@ body {
   font-size: 16px;
 }
 
-.panel-header button:hover {
+.view-header button:hover {
   background: #2a2a2a;
   color: #fff;
 }
 
-/* パネルヘッダ更新ボタンの 3 状態（RefreshButton。issue #165）。 */
-.panel-refresh-error {
+/* ビューヘッダ更新ボタンの 3 状態（RefreshButton。issue #165）。 */
+.view-refresh-error {
   color: #e5c07b;
 }
 
-.panel-refresh-error:hover {
+.view-refresh-error:hover {
   color: #e5c07b;
 }
 
 /* 取得中の回転スピナー。keyframe（git-spin）は .loading-spinner と共通。 */
-.panel-refresh-spinner {
+.view-refresh-spinner {
   display: inline-block;
   width: 11px;
   height: 11px;
@@ -1344,7 +1344,7 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .panel-refresh-spinner {
+  .view-refresh-spinner {
     animation: none;
   }
 }
@@ -1438,7 +1438,7 @@ body {
   }
 }
 
-/* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .panel-row。 */
+/* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .view-row。 */
 .git-row {
   padding: 2px 8px;
   flex: 1;
@@ -1562,7 +1562,7 @@ body {
   color: #61afef; /* ??=青 */
 }
 
-/* レイアウトのみ。装飾は .panel-row。行 hover は .git-file-row 側に乗る。 */
+/* レイアウトのみ。装飾は .view-row。行 hover は .git-file-row 側に乗る。 */
 .git-file-name {
   padding: 2px 4px;
   flex: 1;
@@ -1570,11 +1570,11 @@ body {
   direction: rtl; /* 長パスは先頭側を省略しファイル名を常時表示 */
 }
 
-/* search パネル（VSCode SEARCH 相当。issue #59） */
+/* search ビュー（VSCode SEARCH 相当。issue #59） */
 
 /* SESSION LIST 50% 固定（#152）の下で残り 50% を埋める。旧 45% だと下端に
  * 5% の空白が残るため 50% に合わせる。 */
-.search-panel {
+.search-view {
   flex: 1;
   min-height: 0;
   max-height: 50%;
@@ -1753,8 +1753,8 @@ body {
   word-break: break-all;
 }
 
-/* explorer パネル（issue #60。git パネルと視覚を揃える） */
-.explorer-panel {
+/* explorer ビュー（issue #60。git ビューと視覚を揃える） */
+.explorer-view {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1767,7 +1767,7 @@ body {
   word-break: break-all;
 }
 
-/* レイアウト（block/幅/インデント基準 padding）のみ。装飾は .panel-row。 */
+/* レイアウト（block/幅/インデント基準 padding）のみ。装飾は .view-row。 */
 .explorer-row {
   display: block;
   width: 100%;
@@ -1786,9 +1786,9 @@ body {
   padding: 2px 8px;
 }
 
-/* ---- ヘルプパネル（issue #118） ---- */
+/* ---- ヘルプビュー（issue #118） ---- */
 
-.help-panel {
+.help-view {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1796,7 +1796,7 @@ body {
   border-bottom: 1px solid #333;
 }
 
-.settings-panel {
+.settings-view {
   flex: 1;
   min-height: 0;
   display: flex;
@@ -2042,9 +2042,9 @@ body {
   border-radius: 3px;
 }
 
-/* ---- NOTIFICATION パネル（issue #177） ---- */
+/* ---- NOTIFICATION ビュー（issue #177） ---- */
 
-.notification-panel {
+.notification-view {
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -2076,7 +2076,7 @@ body {
   color: #ddd;
 }
 
-/* 他パネル（.panel-tree 等）同様、スクロールは内側容器に持たせヘッダを固定する。 */
+/* 他ビュー（.view-tree 等）同様、スクロールは内側容器に持たせヘッダを固定する。 */
 .notification-scroll {
   flex: 1;
   min-height: 0;
@@ -2240,12 +2240,12 @@ body {
 }
 
 /* 記号グリフから移行した Material Symbols アイコンの寸法（issue #9）。
- * 折りたたみ矢印・パネルヘッダ/更新ボタン・行アクション・タブ閉じ等で共通。 */
-.panel-arrow.material-symbols-outlined,
+ * 折りたたみ矢印・ビューヘッダ/更新ボタン・行アクション・タブ閉じ等で共通。 */
+.view-arrow.material-symbols-outlined,
 .help-arrow.material-symbols-outlined,
 .search-arrow.material-symbols-outlined,
-.panel-header button .material-symbols-outlined,
-.panel-refresh .material-symbols-outlined {
+.view-header button .material-symbols-outlined,
+.view-refresh .material-symbols-outlined {
   font-size: 18px;
   line-height: 1;
   vertical-align: middle;

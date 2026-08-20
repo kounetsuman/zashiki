@@ -4,11 +4,11 @@ import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { SearchApi } from "../api/search.js";
-import { PanelEmpty } from "./PanelEmpty.js";
-import { PanelHeader } from "./PanelHeader.js";
-import { panelClass } from "./panels.js";
+import { ViewEmpty } from "./ViewEmpty.js";
+import { ViewHeader } from "./ViewHeader.js";
+import { viewClass } from "./views.js";
 
-export interface SearchPanelProps {
+export interface SearchViewProps {
   api: SearchApi;
   /** org → display color (explicit colors from repos.conf). Unspecified orgs get an auto-assigned color. */
   orgColors?: Record<string, string>;
@@ -38,12 +38,12 @@ function totalMatches(res: SearchResponse): number {
   return res.files.reduce((n, f) => n + f.matches.length, 0);
 }
 
-export function SearchPanel({
+export function SearchView({
   api,
   orgColors = {},
   onOpen,
   inactive,
-}: SearchPanelProps) {
+}: SearchViewProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<Options>(INITIAL_OPTIONS);
@@ -151,11 +151,8 @@ export function SearchPanel({
   };
 
   return (
-    <section
-      className={panelClass("search-panel", inactive)}
-      data-panel="search"
-    >
-      <PanelHeader title="SEARCH" />
+    <section className={viewClass("search-view", inactive)} data-view="search">
+      <ViewHeader title="SEARCH" />
       <div className="search-input-row">
         <input
           className="search-input"
@@ -177,7 +174,7 @@ export function SearchPanel({
       {error !== null && <div className="search-error">{error}</div>}
       {result !== null &&
         (result.files.length === 0 ? (
-          <PanelEmpty>{t("search.noResults")}</PanelEmpty>
+          <ViewEmpty>{t("search.noResults")}</ViewEmpty>
         ) : (
           <div className="search-summary">
             {`${t("search.summary", { matches: totalMatches(result), files: result.files.length })}${result.truncated ? t("search.andMore") : ""}`}

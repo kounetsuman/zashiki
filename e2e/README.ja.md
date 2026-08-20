@@ -30,6 +30,6 @@ pnpm e2e                   # ルートから e2e を実行（= playwright test�
 
 ## スコープ（現状）
 
-- 実装済みは**正常系のみ**（アプリシェル起動・パネル切替・セッション一覧の見出し）。
+- 実装済みは**正常系のみ**（アプリシェル起動・ビュー切替・セッション一覧の見出し）。
 - 実 tmux + fake claude を要する session-lifecycle / terminal-io、異常系・境界は後続 issue。
 - IME 合成・tmux 所有のスクロールバック/コピーは Playwright で忠実再現できないためスコープ外。

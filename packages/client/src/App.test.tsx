@@ -241,7 +241,7 @@ function pressCmdR(): KeyboardEvent {
 }
 
 // Tab labels can be identical to session names, so row-button queries are
-// scoped to the session list panel.
+// scoped to the session list view.
 function inList() {
   return within(screen.getByLabelText("セッション一覧"));
 }
@@ -322,7 +322,7 @@ describe("App", () => {
     expect(i18n.language).toBe("en");
   });
 
-  it("on state.sync, renders sessions grouped by org in the session list panel", () => {
+  it("on state.sync, renders sessions grouped by org in the session list view", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1036,7 +1036,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     act(() =>
@@ -1050,18 +1050,18 @@ describe("App", () => {
     // Always shown. The footer toggle icons have no session radio.
     expect(inList().getByRole("button", { name: ROW_ZASHIKI })).toBeTruthy();
     expect(screen.queryByRole("radio", { name: /セッション一覧/ })).toBeNull();
-    // The session list does not disappear when switching to another panel (git).
+    // The session list does not disappear when switching to another view (git).
     fireEvent.click(screen.getByRole("radio", { name: "ソース管理" }));
     expect(listVisible()).toBe(true);
   });
 
-  it("even if the old key zk.panels.visibility remains, it is not read and the default explorer is shown", () => {
+  it("even if the old key zk.views.visibility remains, it is not read and the default explorer is shown", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const storage = {
       getItem: (k: string) =>
-        k === "zk.panels.visibility"
-          ? JSON.stringify({ git: true, explorer: false })
+        k === "zk.views.visibility"
+          ? JSON.stringify({ sourceControl: true, explorer: false })
           : null,
       setItem: () => undefined,
     };
@@ -1074,7 +1074,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={storage}
+        viewStorage={storage}
       />,
     );
     act(() =>
@@ -1111,7 +1111,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     act(() =>
@@ -1131,7 +1131,7 @@ describe("App", () => {
     expect(listVisible()).toBe(true);
   });
 
-  it("the focused panel becomes active and dims the other panels", () => {
+  it("the focused view becomes active and dims the other views", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { container } = render(
@@ -1143,7 +1143,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     act(() =>
@@ -1154,18 +1154,18 @@ describe("App", () => {
         orgColors: {},
       }),
     );
-    const mainArea = container.querySelector('[data-panel="main"]');
-    const sessionList = container.querySelector('[data-panel="sessions"]');
+    const mainArea = container.querySelector('[data-view="main"]');
+    const sessionList = container.querySelector('[data-view="sessions"]');
     // Initially the main area is active (the session list is dimmed).
-    expect(mainArea?.classList.contains("panel-inactive")).toBe(false);
-    expect(sessionList?.classList.contains("panel-inactive")).toBe(true);
+    expect(mainArea?.classList.contains("view-inactive")).toBe(false);
+    expect(sessionList?.classList.contains("view-inactive")).toBe(true);
     // When the session list gains focus, active moves to it and the main area dims.
     act(() => (sessionList as HTMLElement).focus());
-    expect(sessionList?.classList.contains("panel-inactive")).toBe(false);
-    expect(mainArea?.classList.contains("panel-inactive")).toBe(true);
+    expect(sessionList?.classList.contains("view-inactive")).toBe(false);
+    expect(mainArea?.classList.contains("view-inactive")).toBe(true);
   });
 
-  it("single selection: only one selected panel is shown, and the session list stays permanently pinned", () => {
+  it("single selection: only one selected view is shown, and the session list stays permanently pinned", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     // Default is explorer. The footer toggle group (role=radiogroup) switches by single selection.
@@ -1178,14 +1178,14 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     // The side-column holds the session list and always remains.
     expect(container.querySelector(".side-column")).not.toBeNull();
     expect(listVisible()).toBe(true);
-    // The footer panel toggle group exists.
-    expect(screen.getByRole("radiogroup", { name: "パネル切替" })).toBeTruthy();
+    // The footer view toggle group exists.
+    expect(screen.getByRole("radiogroup", { name: "ビュー切替" })).toBeTruthy();
     // The default explorer is shown and git is hidden (single selection).
     expect(screen.getByText("EXPLORER")).toBeTruthy();
     expect(screen.queryByText("SOURCE CONTROL")).toBeNull();
@@ -1197,7 +1197,7 @@ describe("App", () => {
     expect(listVisible()).toBe(true);
   });
 
-  it("re-clicking the active icon closes the panel and the SESSION LIST becomes full height", () => {
+  it("re-clicking the active icon closes the view and the SESSION LIST becomes full height", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { container } = render(
@@ -1209,14 +1209,14 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     const sessionList = () => container.querySelector(".session-list");
     // The default explorer is open and SESSION LIST is not full height.
     expect(screen.getByText("EXPLORER")).toBeTruthy();
     expect(sessionList()?.classList.contains("session-list-full")).toBe(false);
-    // Re-click the active explorer icon -> the panel closes and all icons become inactive.
+    // Re-click the active explorer icon -> the view closes and all icons become inactive.
     fireEvent.click(screen.getByRole("radio", { name: "エクスプローラー" }));
     expect(screen.queryByText("EXPLORER")).toBeNull();
     expect(
@@ -1233,7 +1233,7 @@ describe("App", () => {
     expect(sessionList()?.classList.contains("session-list-full")).toBe(false);
   });
 
-  it("pressing Ctrl+Alt+E again closes the panel (the keyboard also toggles)", () => {
+  it("pressing Ctrl+Alt+E again closes the view (the keyboard also toggles)", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1245,7 +1245,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     expect(screen.getByText("EXPLORER")).toBeTruthy();
@@ -1263,7 +1263,7 @@ describe("App", () => {
     expect(screen.getByText("EXPLORER")).toBeTruthy();
   });
 
-  it("pressing a different icon from the closed state opens that panel and clears full height", () => {
+  it("pressing a different icon from the closed state opens that view and clears full height", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { container } = render(
@@ -1275,7 +1275,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     const sessionList = () => container.querySelector(".session-list");
@@ -1289,7 +1289,7 @@ describe("App", () => {
     expect(sessionList()?.classList.contains("session-list-full")).toBe(false);
   });
 
-  it("the SESSION LIST is rendered at the top of the side-column (before the selected panel)", () => {
+  it("the SESSION LIST is rendered at the top of the side-column (before the selected view)", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { container } = render(
@@ -1301,14 +1301,14 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     const sideColumn = container.querySelector(".side-column");
     if (sideColumn === null) throw new Error("side-column が無い");
     const sessionList = sideColumn.querySelector(".session-list");
     if (sessionList === null) throw new Error("session-list が無い");
-    // SESSION LIST is the first element of the side-column (before the selected panel).
+    // SESSION LIST is the first element of the side-column (before the selected view).
     expect(sideColumn.firstElementChild).toBe(sessionList);
   });
 
@@ -1324,7 +1324,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     // Default explorer
@@ -1345,7 +1345,7 @@ describe("App", () => {
     expect(screen.queryByText("SOURCE CONTROL")).toBeNull();
   });
 
-  it("after a footer switch, the sole visible panel does not dim", () => {
+  it("after a footer switch, the sole visible view does not dim", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { container } = render(
@@ -1357,20 +1357,22 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
-    // Move focus to the session list so activePanel is something other than explorer.
-    const sessionList = container.querySelector('[data-panel="sessions"]');
+    // Move focus to the session list so activeView is something other than explorer.
+    const sessionList = container.querySelector('[data-view="sessions"]');
     act(() => (sessionList as HTMLElement).focus());
-    // Switching to git makes activePanel follow to git at the same time, so it does not dim.
+    // Switching to git makes activeView follow to git at the same time, so it does not dim.
     fireEvent.click(screen.getByRole("radio", { name: "ソース管理" }));
-    const gitPanel = container.querySelector('[data-panel="git"]');
-    expect(gitPanel).not.toBeNull();
-    expect(gitPanel?.classList.contains("panel-inactive")).toBe(false);
+    const sourceControlView = container.querySelector(
+      '[data-view="sourceControl"]',
+    );
+    expect(sourceControlView).not.toBeNull();
+    expect(sourceControlView?.classList.contains("view-inactive")).toBe(false);
   });
 
-  it("selecting help with Ctrl+Alt+H displays the HelpPanel", () => {
+  it("selecting help with Ctrl+Alt+H displays the HelpView", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1382,7 +1384,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     expect(screen.queryByText("HELP")).toBeNull();
@@ -1436,7 +1438,7 @@ describe("App", () => {
     expect(screen.getByText(/接続に問題があります/)).toBeTruthy();
   });
 
-  it("config.sync can open and close the debug panel (moved to the config file)", () => {
+  it("config.sync can open and close the debug view (moved to the config file)", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1473,7 +1475,7 @@ describe("App", () => {
     expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();
   });
 
-  it("Ctrl+Alt+D remains as a temporary override for the debug panel", () => {
+  it("Ctrl+Alt+D remains as a temporary override for the debug view", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1500,7 +1502,7 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "デバッグ情報" })).toBeTruthy();
   });
 
-  it("with debugInitial=true the debug panel is shown from the start", () => {
+  it("with debugInitial=true the debug view is shown from the start", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1530,7 +1532,7 @@ describe("App", () => {
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
         reposApi={fakeReposApi}
-        panelStorage={null}
+        viewStorage={null}
       />,
     );
     expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();
@@ -1540,7 +1542,7 @@ describe("App", () => {
       );
     });
     expect(screen.getByRole("region", { name: "デバッグ情報" })).toBeTruthy();
-    // The default panel (session list) has not disappeared = it does not collide with the panel toggle.
+    // The default view (session list) has not disappeared = it does not collide with the view toggle.
     act(() =>
       control.emit({
         t: "state.sync",

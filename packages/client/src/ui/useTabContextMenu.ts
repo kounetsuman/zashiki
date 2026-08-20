@@ -1,7 +1,7 @@
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { clampMenuPos } from "./panels.js";
+import { clampMenuPos } from "./views.js";
 
 export interface TabContextMenuState {
   menu: { cockpitTerminalId: string; x: number; y: number } | null;

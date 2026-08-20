@@ -3,13 +3,13 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { UpdateCheckResultMessage } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsPanel } from "./SettingsPanel.js";
+import { SettingsView } from "./SettingsView.js";
 
 afterEach(cleanup);
 
-describe("SettingsPanel", () => {
+describe("SettingsView", () => {
   it("reflects the current language in the dropdown and disables Save when unchanged", () => {
-    render(<SettingsPanel language="ja" onSaveLanguage={() => {}} />);
+    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
     const select = screen.getByLabelText("表示言語") as HTMLSelectElement;
     expect(select.value).toBe("ja");
     const save = screen.getByRole("button", {
@@ -19,7 +19,7 @@ describe("SettingsPanel", () => {
   });
 
   it("renders the ja / en options", () => {
-    render(<SettingsPanel language="en" onSaveLanguage={() => {}} />);
+    render(<SettingsView language="en" onSaveLanguage={() => {}} />);
     expect(screen.getByRole("option", { name: "日本語" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "English" })).toBeTruthy();
   });
@@ -27,11 +27,11 @@ describe("SettingsPanel", () => {
   it("shows the add-org entry only when onAddOrg is provided and calls it on click", () => {
     const onAddOrg = vi.fn();
     const { rerender } = render(
-      <SettingsPanel language="ja" onSaveLanguage={() => {}} />,
+      <SettingsView language="ja" onSaveLanguage={() => {}} />,
     );
     expect(screen.queryByRole("button", { name: "組織を追加" })).toBeNull();
     rerender(
-      <SettingsPanel
+      <SettingsView
         language="ja"
         onSaveLanguage={() => {}}
         onAddOrg={onAddOrg}
@@ -43,7 +43,7 @@ describe("SettingsPanel", () => {
 
   it("calls onSaveLanguage with the selected language after changing it and saving", () => {
     const onSaveLanguage = vi.fn();
-    render(<SettingsPanel language="ja" onSaveLanguage={onSaveLanguage} />);
+    render(<SettingsView language="ja" onSaveLanguage={onSaveLanguage} />);
     fireEvent.change(screen.getByLabelText("表示言語"), {
       target: { value: "en" },
     });
@@ -56,7 +56,7 @@ describe("SettingsPanel", () => {
   });
 
   it("does not render the font-size controls when fontSize is omitted", () => {
-    render(<SettingsPanel language="ja" onSaveLanguage={() => {}} />);
+    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
     expect(screen.queryByText("ターミナルの文字サイズ")).toBeNull();
   });
 
@@ -65,7 +65,7 @@ describe("SettingsPanel", () => {
     const onDecreaseFontSize = vi.fn();
     const onResetFontSize = vi.fn();
     render(
-      <SettingsPanel
+      <SettingsView
         language="ja"
         onSaveLanguage={() => {}}
         fontSize={13}
@@ -85,7 +85,7 @@ describe("SettingsPanel", () => {
 
   it("disables A+ at the maximum and A- at the minimum", () => {
     render(
-      <SettingsPanel
+      <SettingsView
         language="ja"
         onSaveLanguage={() => {}}
         fontSize={32}
@@ -111,7 +111,7 @@ describe("SettingsPanel", () => {
 
   it("disables Reset when canResetFontSize is false", () => {
     render(
-      <SettingsPanel
+      <SettingsView
         language="ja"
         onSaveLanguage={() => {}}
         fontSize={13}
@@ -126,7 +126,7 @@ describe("SettingsPanel", () => {
 
   it("labels the font-size controls as a group", () => {
     render(
-      <SettingsPanel language="ja" onSaveLanguage={() => {}} fontSize={13} />,
+      <SettingsView language="ja" onSaveLanguage={() => {}} fontSize={13} />,
     );
     expect(
       screen.getByRole("group", { name: "ターミナルの文字サイズ" }),
@@ -134,14 +134,14 @@ describe("SettingsPanel", () => {
   });
 
   it("hides the clipboard-edit toggle when onSetClipboardEditModal is omitted", () => {
-    render(<SettingsPanel language="ja" onSaveLanguage={() => {}} />);
+    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
     expect(screen.queryByText("コピー時にクリップボード編集を表示")).toBeNull();
   });
 
   it("reflects and toggles the clipboard-edit setting", () => {
     const onSetClipboardEditModal = vi.fn();
     render(
-      <SettingsPanel
+      <SettingsView
         language="ja"
         onSaveLanguage={() => {}}
         clipboardEditModal={true}
@@ -157,7 +157,7 @@ describe("SettingsPanel", () => {
   });
 
   it("hides the update-check entry when onCheckForUpdates is omitted", () => {
-    render(<SettingsPanel language="ja" onSaveLanguage={() => {}} />);
+    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
     expect(
       screen.queryByRole("button", { name: "アップデートを確認" }),
     ).toBeNull();
@@ -170,7 +170,7 @@ describe("SettingsPanel", () => {
       version: "0.2.0",
     } satisfies UpdateCheckResultMessage);
     render(
-      <SettingsPanel
+      <SettingsView
         language="ja"
         onSaveLanguage={() => {}}
         onCheckForUpdates={onCheckForUpdates}
@@ -185,7 +185,7 @@ describe("SettingsPanel", () => {
 
   it("reports being up to date", async () => {
     render(
-      <SettingsPanel
+      <SettingsView
         language="ja"
         onSaveLanguage={() => {}}
         onCheckForUpdates={vi.fn().mockResolvedValue({
@@ -201,7 +201,7 @@ describe("SettingsPanel", () => {
 
   it("reports an error when the check rejects", async () => {
     render(
-      <SettingsPanel
+      <SettingsView
         language="ja"
         onSaveLanguage={() => {}}
         onCheckForUpdates={vi.fn().mockRejectedValue(new Error("offline"))}

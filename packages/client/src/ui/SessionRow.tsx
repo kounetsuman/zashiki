@@ -66,7 +66,7 @@ export function SessionRow({
     // biome-ignore lint/a11y/noStaticElementInteractions: right-click menu for the row (keyboard is covered by Ctrl-X)
     <div className="session-row" onContextMenu={onContextMenu}>
       {isRenaming ? (
-        <div className="panel-row session-row-main session-row-editing">
+        <div className="view-row session-row-main session-row-editing">
           <StateIcon session={s} fresh={fresh} />
           <input
             ref={renameInputRef}
@@ -94,7 +94,7 @@ export function SessionRow({
           <button
             type="button"
             ref={isFocused ? focusedRef : undefined}
-            className={`panel-row panel-row-hover session-row-main${
+            className={`view-row view-row-hover session-row-main${
               isFocused ? " session-row-focused" : ""
             }`}
             style={

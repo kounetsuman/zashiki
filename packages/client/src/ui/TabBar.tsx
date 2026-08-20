@@ -2,13 +2,13 @@ import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
 import { type Tab, tabKey } from "../tabs/tab-model.js";
-import { panelClass } from "./panels.js";
 import { TabContextMenu } from "./TabContextMenu.js";
 import { TabItem } from "./TabItem.js";
 import { tabLabel } from "./tab-bar-model.js";
 import { useTabContextMenu } from "./useTabContextMenu.js";
 import { useTabDrag } from "./useTabDrag.js";
 import { useTabRename } from "./useTabRename.js";
+import { viewClass } from "./views.js";
 
 export interface TabBarProps {
   tabs: readonly Tab[];
@@ -75,7 +75,7 @@ export function TabBar({
 
   return (
     <div
-      className={panelClass("tab-bar", inactive)}
+      className={viewClass("tab-bar", inactive)}
       role="tablist"
       aria-label={t("tabBar.ariaLabel")}
     >

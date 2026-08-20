@@ -1,8 +1,8 @@
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { clampMenuPos } from "./panels.js";
 import type { ContextMenu } from "./session-list-model.js";
+import { clampMenuPos } from "./views.js";
 
 export interface SessionContextMenuState {
   menu: ContextMenu | null;
