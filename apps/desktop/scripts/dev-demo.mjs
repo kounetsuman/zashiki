@@ -24,8 +24,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DESKTOP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
-/** The dev server port is pinned to 8790 because tauri.conf.json's beforeDevCommand hardcodes VITE_ZK_SERVER=http://127.0.0.1:8790. */
-const DEV_PORT = 8790;
+/** 8791, not 8790, so the demo sandbox runs alongside a production app already on 8790. Flows to the
+ *  sidecar (ZK_PORT) and to the Vite client via tauri.conf.json's `VITE_ZK_SERVER=…:${ZK_PORT:-8790}`. */
+const DEV_PORT = 8791;
 const DEMO_STATES = [
   "running",
   "waiting_input",

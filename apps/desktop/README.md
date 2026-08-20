@@ -30,8 +30,8 @@ isolated sandbox so you can hand-drive and screen-record the org cockpit **witho
 real Claude**: it auto-generates color-coded orgs and state-annotated sessions
 (running / waiting_input / idle / no_claude, with titles) and never touches real
 user data (`~/.zashiki` / `~/.claude`); the temp sandbox is removed on exit. It runs
-on the same dev port (8790), so stop any running server first (it refuses to start if
-8790 is already occupied). Edit the printed `demo-spec.json` and rerun with `--config
+on its own dev port (8791), so it can run alongside a production app already on 8790
+(it refuses to start only if another demo is already on 8791). Edit the printed `demo-spec.json` and rerun with `--config
 <path>` (or `ZASHIKI_DEMO_CONFIG`) to change the states/titles. This is a dev-only
 affordance and is intentionally **not** part of the published `zashiki` CLI.
 
@@ -287,9 +287,10 @@ pnpm uninstall:app -- --yes --purge-user-data # the above + also deletes ~/.zash
   (graceful shutdown happens only on normal exit / SIGTERM/SIGINT). On the next shell
   startup it is detected via healthz and ridden on, so there is no double start. To
   take it down by hand, use `pkill -f 'server/dist/index.js'`.
-- **`tauri dev` assumes `ZK_PORT=8790`**: because `beforeDevCommand`'s
-  `VITE_ZK_SERVER=http://127.0.0.1:8790` is fixed, if you change the port in dev you
-  also need to match it in tauri.conf.json (in a build it follows `ZK_PORT`).
+- **`tauri dev` defaults to `ZK_PORT=8790`**: `beforeDevCommand` derives the client
+  URL from the port (`VITE_ZK_SERVER=http://127.0.0.1:${ZK_PORT:-8790}`), so setting
+  `ZK_PORT` moves both the server and the client together (this is how `dev:demo` runs
+  on 8791 alongside a production app on 8790).
 - The definition of green in an environment where the GUI does not launch goes up to
   `cargo check` / `cargo test` / `tauri build --debug` (actual GUI confirmation is the
   manual smoke above).
