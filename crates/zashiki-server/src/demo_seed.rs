@@ -152,9 +152,10 @@ pub async fn seed_demo_sessions(
             None => {
                 // A real, interactive login shell (intentional — the human can touch this pane during the
                 // demo). It sources the user's shell rc, but only inside the isolated sandbox cwd; it never
-                // writes real user data. Keyed by a synthetic non-UUID id so it is not a claude session.
+                // writes real user data. no_claude comes from the empty process tree, so a UUID id (required
+                // by windowIdSchema, else the client drops the whole state.sync) never reads as claude.
                 let plan = plan_new_session(&format!("demo-shell-{i}"), &cwd, &wname, false, shell, "claude");
-                (format!("demo-shell:{i}:{wname}"), plan_to_config(&plan))
+                (Uuid::new_v4().to_string(), plan_to_config(&plan))
             }
         };
         if registry.create_with_meta(id, config, meta).await.is_ok() {
@@ -313,8 +314,10 @@ mod tests {
 
         // The screens need a moment to render; poll until the three claude-backed states settle.
         let mut by_repo = std::collections::HashMap::new();
+        let mut window_ids: Vec<String> = Vec::new();
         for _ in 0..50 {
             let (snap, _) = poller.evaluate(&ports, &config).await;
+            window_ids = snap.sessions.iter().map(|s| s.window_id.clone()).collect();
             by_repo = snap
                 .sessions
                 .iter()
@@ -338,6 +341,11 @@ mod tests {
         // no_claude is a plain shell: it carries no title (no transcript).
         assert!(by_repo.contains_key("legacy"));
         assert_eq!(by_repo["legacy"].1, None);
+
+        // Every windowId must satisfy the wire windowIdSchema (a UUID here); a non-conforming id (e.g. the
+        // no_claude shell) fails the client's zod parse and drops the entire state.sync, blanking the list.
+        assert_eq!(window_ids.len(), 4);
+        assert!(window_ids.iter().all(|w| Uuid::parse_str(w).is_ok()));
 
         registry.shutdown_all().await;
     }
