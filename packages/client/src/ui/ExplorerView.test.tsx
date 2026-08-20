@@ -11,7 +11,7 @@ import type { FsEntry, FsListResponse, FsReposResponse } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FsApi } from "../api/fs.js";
-import { ExplorerPanel } from "./ExplorerPanel.js";
+import { ExplorerView } from "./ExplorerView.js";
 
 afterEach(cleanup);
 
@@ -52,16 +52,16 @@ function createFakeFsApi(tree: Record<string, FsListResponse>): FakeFsApi {
   return api;
 }
 
-async function renderPanel(
+async function renderView(
   api: FakeFsApi,
   onOpenFile?: (r: string, f: string) => void,
 ) {
   await act(async () => {
-    render(<ExplorerPanel api={api} onOpenFile={onOpenFile} />);
+    render(<ExplorerView api={api} onOpenFile={onOpenFile} />);
   });
 }
 
-describe("ExplorerPanel", () => {
+describe("ExplorerView", () => {
   it("shows the root repo and lazily enumerates its direct children when expanded", async () => {
     const api = createFakeFsApi({
       "": resp([
@@ -69,7 +69,7 @@ describe("ExplorerPanel", () => {
         { name: "package.json", kind: "file" },
       ]),
     });
-    await renderPanel(api);
+    await renderView(api);
     // Wait until the repo row appears (repos resolves immediately).
     await waitFor(() => screen.getByText("repo-a"));
     // Do not call list before expanding (lazy expansion).
@@ -88,7 +88,7 @@ describe("ExplorerPanel", () => {
       "": resp([{ name: "src", kind: "dir" }]),
       src: resp([{ name: "app.ts", kind: "file" }]),
     });
-    await renderPanel(api);
+    await renderView(api);
     await waitFor(() => screen.getByText("repo-a"));
     await act(async () => {
       fireEvent.click(screen.getByText("repo-a"));
@@ -107,7 +107,7 @@ describe("ExplorerPanel", () => {
       "": resp([{ name: "src", kind: "dir" }]),
       src: resp([{ name: "app.ts", kind: "file" }]),
     });
-    await renderPanel(api, onOpen);
+    await renderView(api, onOpen);
     await waitFor(() => screen.getByText("repo-a"));
     await act(async () => {
       fireEvent.click(screen.getByText("repo-a"));
@@ -127,7 +127,7 @@ describe("ExplorerPanel", () => {
     const api = createFakeFsApi({
       "": resp([{ name: "a", kind: "file" }], true),
     });
-    await renderPanel(api);
+    await renderView(api);
     await waitFor(() => screen.getByText("repo-a"));
     await act(async () => {
       fireEvent.click(screen.getByText("repo-a"));
@@ -141,7 +141,7 @@ describe("ExplorerPanel", () => {
       api.listCalls.push([repoPath, dir]);
       return Promise.reject(new Error("permission denied"));
     };
-    await renderPanel(api);
+    await renderView(api);
     await waitFor(() => screen.getByText("repo-a"));
     await act(async () => {
       fireEvent.click(screen.getByText("repo-a"));
@@ -152,7 +152,7 @@ describe("ExplorerPanel", () => {
   it("does not revive from a stale response received while collapsed, even after reopening (generation tracking)", async () => {
     const api = createFakeFsApi({});
     api.deferred = new Map();
-    await renderPanel(api);
+    await renderView(api);
     await waitFor(() => screen.getByText("repo-a"));
 
     // First expansion (list is deferred).
@@ -172,11 +172,11 @@ describe("ExplorerPanel", () => {
     expect(screen.queryByText("stale.txt")).toBeNull();
   });
 
-  it("shows the header as EXPLORER (uppercase, shared panel-title)", async () => {
+  it("shows the header as EXPLORER (uppercase, shared view-title)", async () => {
     const api = createFakeFsApi({ "": resp([]) });
-    await renderPanel(api);
+    await renderView(api);
     const title = screen.getByText("EXPLORER");
     expect(title).toBeTruthy();
-    expect(title.className).toContain("panel-title");
+    expect(title.className).toContain("view-title");
   });
 });

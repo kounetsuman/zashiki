@@ -1,19 +1,19 @@
 import { useTranslation } from "react-i18next";
 
-import { PANEL_DEFS, type PanelDef, type PanelId } from "./panels.js";
+import { VIEW_DEFS, type ViewDef, type ViewId } from "./views.js";
 
-export interface FooterPanelTabsProps {
-  /** The currently shown panel (only this icon is colored). null means closed, with all icons inactive. */
-  selected: PanelId | null;
-  onSelect(id: PanelId): void;
-  /** Display order (defaults to PANEL_DEFS). Future panels are just added here. */
-  defs?: readonly PanelDef[];
-  /** Panel id -> badge number (0/unspecified is hidden). Used for things like unread notification counts. */
-  badges?: Partial<Record<PanelId, number>>;
+export interface FooterViewTabsProps {
+  /** The currently shown view (only this icon is colored). null means closed, with all icons inactive. */
+  selected: ViewId | null;
+  onSelect(id: ViewId): void;
+  /** Display order (defaults to VIEW_DEFS). Future views are just added here. */
+  defs?: readonly ViewDef[];
+  /** View id -> badge number (0/unspecified is hidden). Used for things like unread notification counts. */
+  badges?: Partial<Record<ViewId, number>>;
 }
 
 /**
- * The panel-switch icons at the footer's right edge. Switches between explorer,
+ * The view-switch icons at the footer's right edge. Switches between explorer,
  * search, git, and help as a single selection. tab/tabpanel is meant to be 1:1,
  * but here there is a single selection region and SESSION LIST also lives
  * alongside, so those semantics do not fit. Since this is exactly a mutually
@@ -23,18 +23,18 @@ export interface FooterPanelTabsProps {
  * is-active. Keyboard use is handled alongside the App-side global
  * Ctrl+Alt+<key> (this is the click UI).
  */
-export function FooterPanelTabs({
+export function FooterViewTabs({
   selected,
   onSelect,
-  defs = PANEL_DEFS,
+  defs = VIEW_DEFS,
   badges = {},
-}: FooterPanelTabsProps) {
+}: FooterViewTabsProps) {
   const { t } = useTranslation();
   return (
     <div
-      className="footer-panel-tabs"
+      className="footer-view-tabs"
       role="radiogroup"
-      aria-label={t("footer.panelSwitch")}
+      aria-label={t("footer.viewSwitch")}
     >
       {defs.map((d) => {
         const active = selected === d.id;
@@ -50,7 +50,7 @@ export function FooterPanelTabs({
             key={d.id}
             type="button"
             role="radio"
-            className={`footer-panel-tab${active ? " is-active" : ""}`}
+            className={`footer-view-tab${active ? " is-active" : ""}`}
             aria-checked={active}
             aria-label={label}
             title={t("footer.shortcutTitle", {
@@ -63,7 +63,7 @@ export function FooterPanelTabs({
               {d.icon}
             </span>
             {badge > 0 && (
-              <span className="footer-panel-badge" aria-hidden="true">
+              <span className="footer-view-badge" aria-hidden="true">
                 {badge > 99 ? "99+" : badge}
               </span>
             )}

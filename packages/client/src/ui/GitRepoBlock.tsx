@@ -4,9 +4,9 @@ import { useTranslation } from "react-i18next";
 import type { GitApi } from "../api/git.js";
 import { GitCommitBox } from "./GitCommitBox.js";
 import { GitFileRow } from "./GitFileRow.js";
-import { fileRowKey } from "./git-panel-model.js";
+import { fileRowKey } from "./source-control-model.js";
 
-/** Shared wiring for the git tree, threaded from GitPanel down through each repo block. */
+/** Shared wiring for the git tree, threaded from SourceControlView down through each repo block. */
 export interface GitTreeHandlers {
   api: GitApi;
   run(action: Promise<void>): void;
@@ -50,11 +50,11 @@ export function GitRepoBlock({ repo, indented, handlers }: GitRepoBlockProps) {
       <div className="git-repo-line">
         <button
           type="button"
-          className="panel-row git-row git-repo-row"
+          className="view-row git-row git-repo-row"
           onClick={() => toggle(repo.path)}
         >
           <span
-            className="panel-arrow material-symbols-outlined"
+            className="view-arrow material-symbols-outlined"
             aria-hidden="true"
           >
             {exp ? "expand_more" : "chevron_right"}

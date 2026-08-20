@@ -3,7 +3,7 @@ import { expect, gotoApp, test } from "../harness/app.js";
 // Feature: App shell startup and the token gate
 // Why guard this: the minimal conditions for browser e2e to work at all (the token
 // boundary and initial render). When this is green, the preconditions for the later
-// panel and list tests are in place.
+// view and list tests are in place.
 test.describe("App shell startup and the token gate", () => {
   // Story: an entry point with no token shows the guidance screen
   test("a URL with no token shows the guidance screen (reopen from ?token=)", async ({
@@ -15,15 +15,15 @@ test.describe("App shell startup and the token gate", () => {
   });
 
   // Story: a valid token boots the app itself
-  test("a valid token renders the SESSION LIST, panel switcher, and main area", async ({
+  test("a valid token renders the SESSION LIST, view switcher, and main area", async ({
     page,
   }) => {
     await gotoApp(page);
     await expect(page.getByText("SESSION LIST")).toBeVisible();
     await expect(
-      page.getByRole("radiogroup", { name: "Switch panel" }),
+      page.getByRole("radiogroup", { name: "Switch view" }),
     ).toBeVisible();
-    await expect(page.locator('[data-panel="main"]')).toBeVisible();
+    await expect(page.locator('[data-view="main"]')).toBeVisible();
   });
 
   // Story: the empty state of the main area when there are no sessions

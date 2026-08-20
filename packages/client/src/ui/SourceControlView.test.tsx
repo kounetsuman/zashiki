@@ -14,7 +14,7 @@ import type {
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { GitApi } from "../api/git.js";
-import { GitPanel } from "./GitPanel.js";
+import { SourceControlView } from "./SourceControlView.js";
 
 function repo(partial: Partial<RepoStatus>): RepoStatus {
   return {
@@ -85,12 +85,12 @@ interface Harness {
   copied: string[];
 }
 
-function renderPanel(repos: RepoStatus[]): Harness {
+function renderView(repos: RepoStatus[]): Harness {
   const api = createFakeGitApi(repos);
   const dirtyListeners = new Set<() => void>();
   const copied: string[] = [];
   render(
-    <GitPanel
+    <SourceControlView
       api={api}
       onGitDirty={(fn) => {
         dirtyListeners.add(fn);
@@ -129,9 +129,9 @@ async function expandToFiles(_h: Harness): Promise<void> {
 
 afterEach(cleanup);
 
-describe("GitPanel", () => {
+describe("SourceControlView", () => {
   it("fetches status on mount and renders org rows (collapsed)", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     const orgRow = await screen.findByRole("button", { name: /org1 \(2\)/ });
     expect(orgRow.textContent).toContain("org1 (2)");
     expect(h.api.statusCalls).toBe(1);
@@ -140,7 +140,7 @@ describe("GitPanel", () => {
   });
 
   it("shows repo rows (with branch and count badges) when an org is expanded", async () => {
-    renderPanel(twoRepoFixture());
+    renderView(twoRepoFixture());
     fireEvent.click(await screen.findByRole("button", { name: /org1 \(2\)/ }));
     const repoRow = rowButton("git-repo-row", "repo-a");
     const branch = repoRow.querySelector(".git-branch");
@@ -154,7 +154,7 @@ describe("GitPanel", () => {
   });
 
   it("shows STAGED/CHANGED sections and file rows (with color classes) when a repo is expanded", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     expect(screen.getByText("STAGED").className).toContain(
       "git-section-staged",
@@ -174,7 +174,7 @@ describe("GitPanel", () => {
   });
 
   it("calls stage and refetches via + on a changed file", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     const before = h.api.statusCalls;
     await act(async () => {
@@ -185,7 +185,7 @@ describe("GitPanel", () => {
   });
 
   it("calls unstage via the remove button on a staged file", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "unstage new.ts" }));
@@ -198,7 +198,7 @@ describe("GitPanel", () => {
   });
 
   it("opens the viewer (open) on file name click", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     await act(async () => {
       fireEvent.click(screen.getByText("app.ts"));
@@ -207,7 +207,7 @@ describe("GitPanel", () => {
   });
 
   it("copies the absolute path via the copy button", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "copy app.ts" }));
@@ -216,7 +216,7 @@ describe("GitPanel", () => {
   });
 
   it('shows a "copied!" popup on copy success', async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     expect(screen.queryByText("copied!")).toBeNull();
     await act(async () => {
@@ -226,7 +226,7 @@ describe("GitPanel", () => {
   });
 
   it("repo row add-all / reset-all", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     fireEvent.click(await screen.findByRole("button", { name: /org1 \(2\)/ }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "stage-all repo-a" }));
@@ -241,7 +241,7 @@ describe("GitPanel", () => {
   });
 
   it("repo row actions use add/remove icons and do not show add./reset. text", async () => {
-    renderPanel(twoRepoFixture());
+    renderView(twoRepoFixture());
     fireEvent.click(await screen.findByRole("button", { name: /org1 \(2\)/ }));
     expect(screen.queryByText("add .")).toBeNull();
     expect(screen.queryByText("reset .")).toBeNull();
@@ -254,13 +254,13 @@ describe("GitPanel", () => {
   });
 
   it("shows the header as SOURCE CONTROL (VSCode-style)", async () => {
-    renderPanel(twoRepoFixture());
+    renderView(twoRepoFixture());
     await screen.findByRole("button", { name: /org1 \(2\)/ });
     expect(screen.getByText("SOURCE CONTROL")).toBeTruthy();
   });
 
   it("shows a commit box on an expanded repo (not on an unexpanded repo)", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     expect(
       screen.getByRole("textbox", { name: "commit message repo-a" }),
@@ -272,7 +272,7 @@ describe("GitPanel", () => {
   });
 
   it("enables the Commit button when there are staged files and a message, and commits on press", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     const commitBtn = screen.getByRole("button", { name: "commit repo-a" });
     expect((commitBtn as HTMLButtonElement).disabled).toBe(true);
@@ -294,7 +294,7 @@ describe("GitPanel", () => {
   });
 
   it("commits with Cmd+Enter (ignores the Enter that confirms IME composition)", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await expandToFiles(h);
     const input = screen.getByRole("textbox", {
       name: "commit message repo-a",
@@ -314,7 +314,7 @@ describe("GitPanel", () => {
   });
 
   it("keeps Commit disabled on a repo with no staged files even when a message is entered", async () => {
-    renderPanel([
+    renderView([
       repo({ org: "solo", repo: "solo", path: "/ws/solo", staged: [] }),
     ]);
     const name = await screen.findByText("solo", {
@@ -328,7 +328,7 @@ describe("GitPanel", () => {
   });
 
   it("refetches on receiving git.dirty", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await screen.findByRole("button", { name: /org1 \(2\)/ });
     const before = h.api.statusCalls;
     await act(async () => {
@@ -338,7 +338,7 @@ describe("GitPanel", () => {
   });
 
   it("refetches via the manual refresh button", async () => {
-    const h = renderPanel(twoRepoFixture());
+    const h = renderView(twoRepoFixture());
     await screen.findByRole("button", { name: /org1 \(2\)/ });
     const before = h.api.statusCalls;
     await act(async () => {
@@ -359,7 +359,7 @@ describe("GitPanel", () => {
       commit: () => Promise.resolve(),
     };
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -376,7 +376,7 @@ describe("GitPanel", () => {
       fireEvent.click(btn);
     });
     expect(btn.getAttribute("aria-busy")).toBe("true");
-    expect(btn.querySelector(".panel-refresh-spinner")).not.toBeNull();
+    expect(btn.querySelector(".view-refresh-spinner")).not.toBeNull();
     // Settle -> cleared.
     await act(async () => {
       resolvers[1]?.({ repos: twoRepoFixture() });
@@ -397,7 +397,7 @@ describe("GitPanel", () => {
       commit: () => Promise.resolve(),
     };
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -426,7 +426,7 @@ describe("GitPanel", () => {
     };
     const dirty = new Set<() => void>();
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={(fn) => {
           dirty.add(fn);
@@ -469,15 +469,15 @@ describe("GitPanel", () => {
       commit: () => Promise.resolve(),
     };
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
       />,
     );
-    // Before fetch completes: the loading UI shows and there is no panel-tree.
+    // Before fetch completes: the loading UI shows and there is no view-tree.
     expect(screen.getByRole("status")).toBeTruthy();
-    expect(document.querySelector(".panel-tree")).toBeNull();
+    expect(document.querySelector(".view-tree")).toBeNull();
     // After fetch completes: the loading UI disappears and the tree shows.
     await act(async () => {
       resolvers[0]?.({ repos: twoRepoFixture() });
@@ -500,7 +500,7 @@ describe("GitPanel", () => {
       commit: () => Promise.resolve(),
     };
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -525,7 +525,7 @@ describe("GitPanel", () => {
       commit: () => Promise.resolve(),
     };
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -554,7 +554,7 @@ describe("GitPanel", () => {
       commit: () => Promise.resolve(),
     };
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -579,7 +579,7 @@ describe("GitPanel", () => {
       commit: () => Promise.resolve(),
     };
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -606,7 +606,7 @@ describe("GitPanel", () => {
     };
     const dirty = new Set<() => void>();
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={(fn) => {
           dirty.add(fn);
@@ -642,7 +642,7 @@ describe("GitPanel", () => {
     };
     const dirty = new Set<() => void>();
     render(
-      <GitPanel
+      <SourceControlView
         api={api}
         onGitDirty={(fn) => {
           dirty.add(fn);
@@ -671,7 +671,7 @@ describe("GitPanel", () => {
   });
 
   it("flattens an org whose root is itself a single repo and shows the repo row directly", async () => {
-    renderPanel([
+    renderView([
       repo({ org: "obsidian", repo: "obsidian", path: "/ws/obsidian" }),
     ]);
     const name = await screen.findByText("obsidian", {

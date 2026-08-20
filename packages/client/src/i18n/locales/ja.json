@@ -134,13 +134,13 @@
     "category": {
       "config": "設定ファイル",
       "general": "全般",
-      "subpanel": "サブパネル",
-      "mainpanel": "メインパネル",
+      "subview": "サブビュー",
+      "mainview": "メインビュー",
       "other": "その他"
     }
   },
   "footer": {
-    "panelSwitch": "パネル切替",
+    "viewSwitch": "ビュー切替",
     "unreadBadge": "{{label}}（未読 {{count}}）",
     "shortcutTitle": "{{label}}（Ctrl+Alt+{{key}}）",
     "status": {
@@ -159,10 +159,10 @@
     "button": "アップデート",
     "tooltip": "バージョン {{version}} が利用できます — リリースページを開く"
   },
-  "panel": {
+  "view": {
     "explorer": "エクスプローラー",
     "search": "検索",
-    "git": "ソース管理",
+    "sourceControl": "ソース管理",
     "notification": "通知",
     "help": "ヘルプ",
     "settings": "設定"
@@ -220,7 +220,7 @@
     "text": "{{count}} セッションが上限"
   },
   "debug": {
-    "panelLabel": "デバッグ情報",
+    "viewLabel": "デバッグ情報",
     "close": "デバッグを閉じる",
     "reconnectAttempt": "再接続 attempt",
     "lastCloseCode": "最終 close code",

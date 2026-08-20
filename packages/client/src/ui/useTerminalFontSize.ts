@@ -29,7 +29,7 @@ export interface TerminalFontSizeControl {
 /**
  * Owns the terminal font size for the whole app: initialized from the persisted value and
  * re-persisted on every change (storage injectable for tests). Lifting it here lets the SETTINGS
- * panel drive the A- / A+ controls while TerminalView (rendered elsewhere) reflects the same value.
+ * view drive the A- / A+ controls while TerminalView (rendered elsewhere) reflects the same value.
  * State updates use the functional form so rapid clicks never act on a stale size.
  */
 export function useTerminalFontSize(

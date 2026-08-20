@@ -15,7 +15,7 @@ import type {
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { SearchApi } from "../api/search.js";
-import { SearchPanel } from "./SearchPanel.js";
+import { SearchView } from "./SearchView.js";
 
 afterEach(cleanup);
 
@@ -53,7 +53,7 @@ function typeAndEnter(text: string): void {
   fireEvent.keyDown(input, { key: "Enter" });
 }
 
-describe("SearchPanel", () => {
+describe("SearchView", () => {
   it("searches on Enter and displays the result tree", async () => {
     const api = createFakeApi({
       truncated: false,
@@ -66,7 +66,7 @@ describe("SearchPanel", () => {
         }),
       ],
     });
-    render(<SearchPanel api={api} />);
+    render(<SearchView api={api} />);
     await act(async () => {
       typeAndEnter("foo");
     });
@@ -78,7 +78,7 @@ describe("SearchPanel", () => {
 
   it("does not call the API on an empty query", async () => {
     const api = createFakeApi({ truncated: false, files: [] });
-    render(<SearchPanel api={api} />);
+    render(<SearchView api={api} />);
     await act(async () => {
       typeAndEnter("   ");
     });
@@ -87,7 +87,7 @@ describe("SearchPanel", () => {
 
   it("reflects the option toggles in the search request", async () => {
     const api = createFakeApi({ truncated: false, files: [] });
-    render(<SearchPanel api={api} />);
+    render(<SearchView api={api} />);
     fireEvent.click(screen.getByLabelText("大文字と小文字を区別"));
     fireEvent.click(screen.getByLabelText("単語単位で一致"));
     fireEvent.click(screen.getByLabelText("正規表現を使用"));
@@ -105,7 +105,7 @@ describe("SearchPanel", () => {
 
   it("exposes the toggle pressed state via aria-pressed", () => {
     const api = createFakeApi({ truncated: false, files: [] });
-    render(<SearchPanel api={api} />);
+    render(<SearchView api={api} />);
     const btn = screen.getByLabelText("正規表現を使用");
     expect(btn.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(btn);
@@ -114,7 +114,7 @@ describe("SearchPanel", () => {
 
   it("displays 'No results' when there are 0 results", async () => {
     const api = createFakeApi({ truncated: false, files: [] });
-    render(<SearchPanel api={api} />);
+    render(<SearchView api={api} />);
     await act(async () => {
       typeAndEnter("nope");
     });
@@ -123,7 +123,7 @@ describe("SearchPanel", () => {
 
   it("appends 'or more' to the count when truncated", async () => {
     const api = createFakeApi({ truncated: true, files: [file({})] });
-    render(<SearchPanel api={api} />);
+    render(<SearchView api={api} />);
     await act(async () => {
       typeAndEnter("foo");
     });
@@ -132,7 +132,7 @@ describe("SearchPanel", () => {
 
   it("disables match rows when onOpen is not provided (display only)", async () => {
     const api = createFakeApi({ truncated: false, files: [file({})] });
-    render(<SearchPanel api={api} />);
+    render(<SearchView api={api} />);
     await act(async () => {
       typeAndEnter("foo");
     });
@@ -145,7 +145,7 @@ describe("SearchPanel", () => {
     const api = createFakeApi({ truncated: false, files: [file({})] });
     const opened: { relPath: string; line: number }[] = [];
     render(
-      <SearchPanel
+      <SearchView
         api={api}
         onOpen={(f, line) => opened.push({ relPath: f.relPath, line })}
       />,
@@ -158,11 +158,11 @@ describe("SearchPanel", () => {
     expect(opened).toEqual([{ relPath: "src/a.ts", line: 3 }]);
   });
 
-  it("labels the header SEARCH (uppercase, shared panel-title)", () => {
+  it("labels the header SEARCH (uppercase, shared view-title)", () => {
     const api = createFakeApi({ truncated: false, files: [] });
-    render(<SearchPanel api={api} />);
+    render(<SearchView api={api} />);
     const title = screen.getByText("SEARCH");
     expect(title).toBeTruthy();
-    expect(title.className).toContain("panel-title");
+    expect(title.className).toContain("view-title");
   });
 });

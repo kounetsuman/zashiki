@@ -6,7 +6,7 @@ import {
 
 import { authHeaders } from "../lib/token.js";
 
-/** The REST the search panel calls. Tests inject a fake. */
+/** The REST the search view calls. Tests inject a fake. */
 export interface SearchApi {
   search(req: SearchRequest): Promise<SearchResponse>;
 }

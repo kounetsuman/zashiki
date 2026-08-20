@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
-import { PanelHeader } from "./PanelHeader.js";
-import { panelClass } from "./panels.js";
+import { ViewHeader } from "./ViewHeader.js";
+import { viewClass } from "./views.js";
 
 type UpdateCheckState =
   | { phase: "idle" }
@@ -13,14 +13,14 @@ type UpdateCheckState =
   | { phase: "upToDate" }
   | { phase: "error" };
 
-export interface SettingsPanelProps {
+export interface SettingsViewProps {
   /** Current display language (i18n.language). */
   language: string;
   /** Apply the language and persist it to config.json (Save). */
   onSaveLanguage(language: Locale): void;
   /**
    * Current terminal font size (px). When omitted, the font-size field is not shown
-   * (keeps the panel usable without the terminal font-size wiring, e.g. in isolated tests).
+   * (keeps the view usable without the terminal font-size wiring, e.g. in isolated tests).
    */
   fontSize?: number;
   /** Enlarge the terminal font by one step (A+). */
@@ -54,11 +54,11 @@ function toLocale(lang: string): Locale {
 }
 
 /**
- * Settings panel (the gear in NAVIGATION). Currently only a display-language dropdown.
+ * Settings view (the gear in NAVIGATION). Currently only a display-language dropdown.
  * Save applies the selection and persists it to config.json (while unsaved, the draft
  * is kept and Save stays enabled).
  */
-export function SettingsPanel({
+export function SettingsView({
   language,
   onSaveLanguage,
   fontSize,
@@ -73,7 +73,7 @@ export function SettingsPanel({
   clipboardEditModal,
   onSetClipboardEditModal,
   inactive,
-}: SettingsPanelProps) {
+}: SettingsViewProps) {
   const { t } = useTranslation();
   const current = toLocale(language);
   const [draft, setDraft] = useState<Locale>(current);
@@ -101,10 +101,10 @@ export function SettingsPanel({
 
   return (
     <section
-      className={panelClass("settings-panel", inactive)}
-      data-panel="settings"
+      className={viewClass("settings-view", inactive)}
+      data-view="settings"
     >
-      <PanelHeader title="SETTINGS" />
+      <ViewHeader title="SETTINGS" />
       <div className="settings-body">
         <label className="settings-field">
           <span className="settings-label">{t("settings.language")}</span>

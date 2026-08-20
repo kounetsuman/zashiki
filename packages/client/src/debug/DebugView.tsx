@@ -17,8 +17,8 @@ const MAX_PROTOCOL_TAIL = 40;
 const MAX_EVENT_LOG = 40;
 
 /**
- * The minimal interface DebugPanel reads from the control side.
- * Carved out separately from App's AppControl so DebugPanel can be unit-tested.
+ * The minimal interface DebugView reads from the control side.
+ * Carved out separately from App's AppControl so DebugView can be unit-tested.
  */
 export interface DebugControl {
   debugSnapshot(): ControlDebugSnapshot;
@@ -34,7 +34,7 @@ export interface DebugSession {
   onStatus(fn: (s: TerminalSessionStatus) => void): () => void;
 }
 
-export interface DebugPanelProps {
+export interface DebugViewProps {
   control: DebugControl;
   session: DebugSession;
   /** The latest state.sync snapshot (tmux window layout / state poller result). */
@@ -45,16 +45,16 @@ export interface DebugPanelProps {
 }
 
 /**
- * The debug-mode overlay panel. Exhaustively shows the current state when things get stuck.
+ * The debug-mode overlay view. Exhaustively shows the current state when things get stuck.
  * Display formatting is pushed into debug-model.ts pure functions; this only subscribes and renders.
  */
-export function DebugPanel({
+export function DebugView({
   control,
   session,
   sessions,
   now = Date.now,
   onClose,
-}: DebugPanelProps) {
+}: DebugViewProps) {
   const { t } = useTranslation();
   const [controlSnap, setControlSnap] = useState<ControlDebugSnapshot>(() =>
     control.debugSnapshot(),
@@ -101,8 +101,8 @@ export function DebugPanel({
   const rows = summarizeSessions(sessions);
 
   return (
-    <section className="debug-panel" aria-label={t("debug.panelLabel")}>
-      <div className="debug-panel-head">
+    <section className="debug-view" aria-label={t("debug.viewLabel")}>
+      <div className="debug-view-head">
         <strong>debug</strong>
         <button type="button" onClick={onClose} aria-label={t("debug.close")}>
           ×

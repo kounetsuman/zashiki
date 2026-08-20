@@ -2,11 +2,11 @@ import type { Notification, NotificationLevel } from "@zashiki/shared";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { PanelEmpty } from "./PanelEmpty.js";
-import { PanelHeader } from "./PanelHeader.js";
-import { panelClass } from "./panels.js";
+import { ViewEmpty } from "./ViewEmpty.js";
+import { ViewHeader } from "./ViewHeader.js";
+import { viewClass } from "./views.js";
 
-export interface NotificationPanelProps {
+export interface NotificationViewProps {
   notifications: readonly Notification[];
   /** Set of read ids (used to split into the unread/read tabs). */
   seenIds: readonly string[];
@@ -45,29 +45,29 @@ export function partitionBySeen(
 }
 
 /**
- * List of in-app notifications (one panel of NAVIGATION). All notifications
+ * List of in-app notifications (one view of NAVIGATION). All notifications
  * (error / awaiting response / done / restart required / PTY pressure) accumulate
  * newest-first. Switch via the unread/read tabs; double-click an item to mark it
  * read, and dismissible notifications can be cleared with the close button. Read state is managed
  * in localStorage.
  */
-export function NotificationPanel({
+export function NotificationView({
   notifications,
   seenIds,
   onDismiss,
   onMarkRead,
   inactive,
-}: NotificationPanelProps) {
+}: NotificationViewProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("unread");
   const { unread, read } = partitionBySeen(notifications, seenIds);
   const shown = tab === "unread" ? unread : read;
   return (
     <section
-      className={panelClass("notification-panel", inactive)}
-      data-panel="notification"
+      className={viewClass("notification-view", inactive)}
+      data-view="notification"
     >
-      <PanelHeader title="NOTIFICATION" />
+      <ViewHeader title="NOTIFICATION" />
       <div className="notification-tabs" role="tablist">
         <button
           type="button"
@@ -92,11 +92,11 @@ export function NotificationPanel({
       </div>
       <div className="notification-scroll">
         {shown.length === 0 ? (
-          <PanelEmpty>
+          <ViewEmpty>
             {tab === "unread"
               ? t("notification.emptyUnread")
               : t("notification.emptyRead")}
-          </PanelEmpty>
+          </ViewEmpty>
         ) : (
           <ul className="notification-list">
             {shown.map((n) => (

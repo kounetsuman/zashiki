@@ -10,7 +10,7 @@ import type { CockpitTerminalInfo, ServerMessage } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TerminalSessionStatus } from "../session/terminal-session.js";
 import type { ControlStatus } from "../ws/control.js";
-import { DebugPanel } from "./DebugPanel.js";
+import { DebugView } from "./DebugView.js";
 import type { ControlDebugSnapshot, TermDebugSnapshot } from "./debug-model.js";
 
 afterEach(cleanup);
@@ -86,12 +86,12 @@ const sessions: CockpitTerminalInfo[] = [
   },
 ];
 
-describe("DebugPanel", () => {
+describe("DebugView", () => {
   it("displays the control / term diagnostic values and the tmux session name", () => {
     const c = fakeControl(controlSnap);
     const { session } = fakeSession(termSnap);
     render(
-      <DebugPanel
+      <DebugView
         control={c.control}
         session={session}
         sessions={sessions}
@@ -112,7 +112,7 @@ describe("DebugPanel", () => {
     const c = fakeControl(controlSnap);
     const { session } = fakeSession(termSnap);
     render(
-      <DebugPanel
+      <DebugView
         control={c.control}
         session={session}
         sessions={[]}
@@ -128,7 +128,7 @@ describe("DebugPanel", () => {
     const c = fakeControl(controlSnap);
     const { session } = fakeSession(termSnap);
     render(
-      <DebugPanel
+      <DebugView
         control={c.control}
         session={session}
         sessions={[]}
@@ -145,7 +145,7 @@ describe("DebugPanel", () => {
     const c = fakeControl(controlSnap);
     const { session } = fakeSession(termSnap);
     render(
-      <DebugPanel
+      <DebugView
         control={c.control}
         session={session}
         sessions={[]}
@@ -172,7 +172,7 @@ describe("DebugPanel", () => {
     const c = fakeControl(controlSnap);
     const { session } = fakeSession(termSnap);
     render(
-      <DebugPanel
+      <DebugView
         control={c.control}
         session={session}
         sessions={[]}
@@ -189,7 +189,7 @@ describe("DebugPanel", () => {
     const { session } = fakeSession(termSnap);
     const onClose = vi.fn();
     render(
-      <DebugPanel
+      <DebugView
         control={c.control}
         session={session}
         sessions={[]}

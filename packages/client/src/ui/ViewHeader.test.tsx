@@ -3,31 +3,31 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PanelHeader } from "./PanelHeader.js";
+import { ViewHeader } from "./ViewHeader.js";
 
 afterEach(cleanup);
 
-describe("PanelHeader", () => {
-  it("renders the title with the shared panel-header/panel-title markup", () => {
-    render(<PanelHeader title="SOURCE CONTROL" />);
+describe("ViewHeader", () => {
+  it("renders the title with the shared view-header/view-title markup", () => {
+    render(<ViewHeader title="SOURCE CONTROL" />);
     const title = screen.getByText("SOURCE CONTROL");
-    expect(title.className).toBe("panel-title");
+    expect(title.className).toBe("view-title");
     const header = title.closest("header");
-    expect(header?.className).toBe("panel-header");
+    expect(header?.className).toBe("view-header");
   });
 
   it("renders the right-side action (children) after the title", () => {
     render(
-      <PanelHeader title="SEARCH">
+      <ViewHeader title="SEARCH">
         <button type="button">action</button>
-      </PanelHeader>,
+      </ViewHeader>,
     );
     expect(screen.getByRole("button", { name: "action" })).toBeTruthy();
   });
 
-  it("appends className to panel-header (for derived panels)", () => {
-    render(<PanelHeader title="SESSION" className="extra-panel" />);
+  it("appends className to view-header (for derived views)", () => {
+    render(<ViewHeader title="SESSION" className="extra-view" />);
     const header = screen.getByText("SESSION").closest("header");
-    expect(header?.className).toBe("panel-header extra-panel");
+    expect(header?.className).toBe("view-header extra-view");
   });
 });

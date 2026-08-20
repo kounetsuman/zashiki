@@ -14,7 +14,7 @@ import {
   type TitleMap,
 } from "../lib/conversation-title.js";
 import { type Tab, type TabKind, tabKey } from "../tabs/tab-model.js";
-import { clampMenuPos, panelClass } from "./panels.js";
+import { clampMenuPos, viewClass } from "./views.js";
 
 /** Icon per tab kind (Material Symbols Outlined ligature). */
 const TAB_ICON: Record<TabKind, string> = {
@@ -160,7 +160,7 @@ export function TabBar({
 
   return (
     <div
-      className={panelClass("tab-bar", inactive)}
+      className={viewClass("tab-bar", inactive)}
       role="tablist"
       aria-label={t("tabBar.ariaLabel")}
     >

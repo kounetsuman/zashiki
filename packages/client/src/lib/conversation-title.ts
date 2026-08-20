@@ -1,5 +1,5 @@
 /**
- * Persistence of user-edited titles for the conversation panel.
+ * Persistence of user-edited titles for the conversation view.
  * The key is the session's cockpitTerminalId. In owned mode the cockpitTerminalId is the session's
  * stable UUID: it is generated at session.new, launched as `claude --session-id
  * <cockpitTerminalId>`, and preserved across resume/restore (the registry is rebuilt under

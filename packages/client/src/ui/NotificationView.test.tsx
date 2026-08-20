@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { Notification } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NotificationPanel, partitionBySeen } from "./NotificationPanel.js";
+import { NotificationView, partitionBySeen } from "./NotificationView.js";
 
 afterEach(cleanup);
 
@@ -21,11 +21,11 @@ function note(over: Partial<Notification> = {}): Notification {
   };
 }
 
-function renderPanel(
-  props: Partial<Parameters<typeof NotificationPanel>[0]> = {},
+function renderView(
+  props: Partial<Parameters<typeof NotificationView>[0]> = {},
 ) {
   return render(
-    <NotificationPanel
+    <NotificationView
       notifications={props.notifications ?? []}
       seenIds={props.seenIds ?? []}
       onDismiss={props.onDismiss ?? (() => undefined)}
@@ -44,30 +44,28 @@ describe("partitionBySeen", () => {
   });
 });
 
-describe("NotificationPanel", () => {
+describe("NotificationView", () => {
   it("shows the unread tab empty when there are no unread notifications", () => {
-    renderPanel();
+    renderView();
     expect(screen.getByText("未読の通知はありません")).toBeTruthy();
   });
 
-  it("renders the NOTIFICATION header with the shared panel-header", () => {
-    renderPanel();
+  it("renders the NOTIFICATION header with the shared view-header", () => {
+    renderView();
     const title = screen.getByText("NOTIFICATION");
-    expect(title.closest("header")?.className).toBe("panel-header");
+    expect(title.closest("header")?.className).toBe("view-header");
   });
 
   it("places the header outside the scroll container (directly under root) so it stays fixed", () => {
-    const { container } = renderPanel({ notifications: [note()] });
-    const root = container.querySelector(".notification-panel");
-    expect(root?.querySelector(":scope > .panel-header")).toBeTruthy();
+    const { container } = renderView({ notifications: [note()] });
+    const root = container.querySelector(".notification-view");
+    expect(root?.querySelector(":scope > .view-header")).toBeTruthy();
     expect(root?.querySelector(":scope > .notification-scroll")).toBeTruthy();
-    expect(
-      root?.querySelector(".notification-scroll .panel-header"),
-    ).toBeNull();
+    expect(root?.querySelector(".notification-scroll .view-header")).toBeNull();
   });
 
   it("renders the title and body", () => {
-    renderPanel({
+    renderView({
       notifications: [note({ title: "設定変更", body: "再起動して" })],
     });
     expect(screen.getByText("設定変更")).toBeTruthy();
@@ -76,7 +74,7 @@ describe("NotificationPanel", () => {
 
   it("renders ✕ for a dismissible notification and calls onDismiss(id) on click", () => {
     const onDismiss = vi.fn();
-    renderPanel({
+    renderView({
       notifications: [note({ id: "abc", dismissible: true })],
       onDismiss,
     });
@@ -85,14 +83,14 @@ describe("NotificationPanel", () => {
   });
 
   it("does not render ✕ for a non-dismissible notification (sticky, restart required)", () => {
-    renderPanel({
+    renderView({
       notifications: [note({ sticky: true, dismissible: false })],
     });
     expect(screen.queryByRole("button", { name: "通知を消す" })).toBeNull();
   });
 
   it("shows only unread on the unread tab and only read on the read tab", () => {
-    renderPanel({
+    renderView({
       notifications: [
         note({ id: "u", title: "未読通知" }),
         note({ id: "r", title: "既読通知" }),
@@ -109,7 +107,7 @@ describe("NotificationPanel", () => {
   });
 
   it("shows the count on each tab", () => {
-    renderPanel({
+    renderView({
       notifications: [note({ id: "a" }), note({ id: "b" }), note({ id: "c" })],
       seenIds: ["c"],
     });
@@ -119,7 +117,7 @@ describe("NotificationPanel", () => {
 
   it("calls onMarkRead(id) on double-clicking an item", () => {
     const onMarkRead = vi.fn();
-    renderPanel({
+    renderView({
       notifications: [note({ id: "x", title: "既読にする" })],
       onMarkRead,
     });

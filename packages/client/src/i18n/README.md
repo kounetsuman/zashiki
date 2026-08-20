@@ -16,13 +16,13 @@ cases, and untranslated keys all fall back to `en` (`fallbackLng: en`). There is
   For copy containing inline elements, use `<Trans i18nKey="..." components={{ code: <code /> }} />`.
 - Non-React modules (store / pure functions): `import i18n from "../i18n"` → `i18n.t(...)`.
   Do not call `t()` in module top-level constants (avoid evaluation before init). Constants hold a
-  **key** such as `labelKey`, which the render side resolves via `t(key)` (e.g. `labelKey` in `ui/panels.ts`).
+  **key** such as `labelKey`, which the render side resolves via `t(key)` (e.g. `labelKey` in `ui/views.ts`).
 
 ## Key Design Guidelines
 
 - A single namespace (default `translation`) plus nested keys grouped by feature, `.`-separated.
   Groups roughly correspond to "screen / feature" (`sessionList` / `tabBar` / `notification` / `search` /
-  `git` / `viewer` / `explorer` / `help` / `footer` / `panel` / `debug`, etc.).
+  `git` / `viewer` / `explorer` / `help` / `footer` / `view` / `debug`, etc.).
   Generic terms shared across multiple places go in `common` (`close` / `cancel` / `retry` …).
 - Leaf keys are lowerCamelCase. Dynamic values use `{{name}}` interpolation (do not split sentences).
 - To add a language, add `locales/<lng>.json` and register it in `resources` in `index.ts` and

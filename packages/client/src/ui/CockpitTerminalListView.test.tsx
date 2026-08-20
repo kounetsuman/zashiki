@@ -9,7 +9,7 @@ import {
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SessionListPanel } from "./SessionListPanel.js";
+import { CockpitTerminalListView } from "./CockpitTerminalListView.js";
 
 const SID1 = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 const SID2 = "11111111-2222-4333-8444-555566667777";
@@ -50,8 +50,8 @@ const sessions: CockpitTerminalInfo[] = [
 
 const orgs = ["kilo", "charlie", "delta"];
 
-function renderPanel(
-  overrides: Partial<Parameters<typeof SessionListPanel>[0]> = {},
+function renderView(
+  overrides: Partial<Parameters<typeof CockpitTerminalListView>[0]> = {},
 ) {
   const props = {
     sessions,
@@ -64,26 +64,26 @@ function renderPanel(
     onFocusTerminal: vi.fn(),
     ...overrides,
   };
-  render(<SessionListPanel {...props} />);
+  render(<CockpitTerminalListView {...props} />);
   return props;
 }
 
 afterEach(cleanup);
 
-describe("SessionListPanel: org collapsible group display", () => {
+describe("CockpitTerminalListView: org collapsible group display", () => {
   it("groups by org under an org (count) header", () => {
-    renderPanel();
+    renderView();
     expect(screen.getByText("kilo (2)")).toBeTruthy();
     expect(screen.getByText("charlie (1)")).toBeTruthy();
   });
 
   it("always shows an org with 0 sessions as (0) too (all orgs from repos.conf)", () => {
-    renderPanel();
+    renderView();
     expect(screen.getByText("delta (0)")).toBeTruthy();
   });
 
   it("shows sessions from an org not in orgs as a detected group", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[0],
@@ -96,7 +96,7 @@ describe("SessionListPanel: org collapsible group display", () => {
   });
 
   it("collapses on clicking the org header, hiding the session rows", () => {
-    renderPanel();
+    renderView();
     const header = () => screen.getByRole("button", { name: "kilo (2)" });
     expect(header().getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(screen.getByText("kilo (2)"));
@@ -109,15 +109,15 @@ describe("SessionListPanel: org collapsible group display", () => {
   });
 });
 
-describe("SessionListPanel: org header color", () => {
+describe("CockpitTerminalListView: org header color", () => {
   it("colors the org header via auto-coloring even without orgColors", () => {
-    renderPanel();
+    renderView();
     const header = screen.getByRole("button", { name: "kilo (2)" });
     expect(header.style.color).not.toBe("");
   });
 
   it("prefers an explicit repos.conf color over auto-coloring", () => {
-    renderPanel({ orgColors: { charlie: "#98c379" } });
+    renderView({ orgColors: { charlie: "#98c379" } });
     const charlie = screen.getByRole("button", { name: "charlie (1)" });
     const kilo = screen.getByRole("button", { name: "kilo (2)" });
     expect(charlie.style.color).toBe("rgb(152, 195, 121)");
@@ -126,9 +126,9 @@ describe("SessionListPanel: org header color", () => {
   });
 });
 
-describe("SessionListPanel: repos.conf not-configured guidance", () => {
-  it("shows guidance to create repos.conf instead of an empty panel when there are 0 orgs", () => {
-    renderPanel({ sessions: [], orgs: [] });
+describe("CockpitTerminalListView: repos.conf not-configured guidance", () => {
+  it("shows guidance to create repos.conf instead of an empty view when there are 0 orgs", () => {
+    renderView({ sessions: [], orgs: [] });
     expect(screen.getByText("~/.zashiki/repos.conf")).toBeTruthy();
     // Includes an example in the one-path-per-line format
     expect(screen.getByText(/1行1パス/)).toBeTruthy();
@@ -138,25 +138,25 @@ describe("SessionListPanel: repos.conf not-configured guidance", () => {
   });
 
   it("does not show the guidance when there is at least one org", () => {
-    renderPanel({ sessions: [], orgs: ["kilo"] });
+    renderView({ sessions: [], orgs: ["kilo"] });
     expect(screen.queryByText("~/.zashiki/repos.conf")).toBeNull();
   });
 
   it("does not show the guidance when a detected session's org exists even if orgs is empty", () => {
-    renderPanel({ sessions: [sessions[0] as CockpitTerminalInfo], orgs: [] });
+    renderView({ sessions: [sessions[0] as CockpitTerminalInfo], orgs: [] });
     expect(screen.queryByText("~/.zashiki/repos.conf")).toBeNull();
     expect(screen.getByText("kilo (1)")).toBeTruthy();
   });
 
   it("does not show the guidance even with 0 orgs when control is disconnected (avoids confusion with a connection issue)", () => {
-    renderPanel({ sessions: [], orgs: [], connected: false });
+    renderView({ sessions: [], orgs: [], connected: false });
     expect(screen.queryByText("~/.zashiki/repos.conf")).toBeNull();
   });
 });
 
-describe("SessionListPanel: session rows", () => {
+describe("CockpitTerminalListView: session rows", () => {
   it("displays the state icon (Material Symbols) with a state class", () => {
-    renderPanel({
+    renderView({
       sessions: [
         { ...sessions[0], state: "waiting_input" } as CockpitTerminalInfo,
         { ...sessions[1], state: "running" } as CockpitTerminalInfo,
@@ -177,7 +177,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("displays the pending icon with a state class while starting", () => {
-    renderPanel({
+    renderView({
       sessions: [{ ...sessions[0], state: "starting" } as CockpitTerminalInfo],
     });
     const starting = screen.getByText("pending");
@@ -186,7 +186,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("keeps the state glyph clean and puts the subagent on a robot_2 activity chip", () => {
-    renderPanel({
+    renderView({
       sessions: [
         { ...sessions[1], state: "running_bg_agent" } as CockpitTerminalInfo,
       ],
@@ -199,7 +199,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("appends the running subagent total to the agent chip", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[1],
@@ -214,7 +214,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("shows the agent chip glyph only (no number) when the subagent count is 0/unknown", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[1],
@@ -229,7 +229,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("shows no agent chip outside a bg-agent state", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[0],
@@ -242,7 +242,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("shows a terminal activity chip with the count for a bg shell in any state", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[0],
@@ -257,7 +257,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("keeps an idle row's own glyph while a bg shell runs (no hourglass swap)", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[0],
@@ -274,7 +274,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("shows the agent and shell chips together while a subagent and a shell run concurrently", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[0],
@@ -293,7 +293,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("shows no shell chip when shellsRunning is 0/undefined", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[0],
@@ -307,7 +307,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("overlays an error badge at the top-right for a row that hit the usage limit", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[0],
@@ -322,7 +322,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("does not show the limit badge when limited is false/undefined", () => {
-    renderPanel({
+    renderView({
       sessions: [
         {
           ...sessions[0],
@@ -336,7 +336,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("displays idle with conversation history using check", () => {
-    renderPanel({
+    renderView({
       sessions: [
         { ...sessions[1], title: "調査タスク" } as CockpitTerminalInfo,
       ],
@@ -346,14 +346,14 @@ describe("SessionListPanel: session rows", () => {
 
   it("distinguishes a new/unused session (idle with no title) using start", () => {
     // tango is idle with title:null (zero conversation history)
-    renderPanel({ sessions: [sessions[1] as CockpitTerminalInfo] });
+    renderView({ sessions: [sessions[1] as CockpitTerminalInfo] });
     const fresh = screen.getByText("start");
     expect(fresh.className).toContain("state-fresh");
     expect(screen.queryByText("check")).toBeNull();
   });
 
   it("shows the summary title in the row and does not visibly show the redundant org name (name)", () => {
-    renderPanel();
+    renderView();
     // The title is shown visibly
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
     // The name, obvious from the collapse header, is not shown in the row body (not in textContent)
@@ -366,7 +366,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("makes the aria-label the window name only for a row without a title", () => {
-    renderPanel();
+    renderView();
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -376,7 +376,7 @@ describe("SessionListPanel: session rows", () => {
   it("falls back to the window name in the row body until the title is resolved (e.g. right after resume)", () => {
     // tango is title:null; the visible label should show the window name (= org name for
     // owned sessions), matching the tab, instead of a blank row.
-    renderPanel({ sessions: [sessions[1] as CockpitTerminalInfo] });
+    renderView({ sessions: [sessions[1] as CockpitTerminalInfo] });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -384,7 +384,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("replaces the window-name fallback with the summary once the title resolves", () => {
-    renderPanel({
+    renderView({
       sessions: [
         { ...sessions[1], title: "調査タスク" } as CockpitTerminalInfo,
       ],
@@ -398,7 +398,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("does not highlight unselected rows (only the selected row stands out)", () => {
-    renderPanel({ selectedCockpitTerminalId: SID1 });
+    renderView({ selectedCockpitTerminalId: SID1 });
     const unselected = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -407,19 +407,19 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("exposes the org color as a CSS var on each row (for the selected-row left bar)", () => {
-    renderPanel();
+    renderView();
     const row = screen.getByRole("button", { name: /zashiki(?! を閉じる)/ });
     expect(row.style.getPropertyValue("--org-color")).not.toBe("");
   });
 
   it("marks the selected row with aria-current so it gets the strong highlight", () => {
-    renderPanel({ selectedCockpitTerminalId: SID1 });
+    renderView({ selectedCockpitTerminalId: SID1 });
     const row = screen.getByRole("button", { name: /zashiki(?! を閉じる)/ });
     expect(row.getAttribute("aria-current")).toBe("true");
   });
 
   it("calls onSelect(cockpitTerminalId) on double-click", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.doubleClick(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -427,7 +427,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("does not expand on a single click (does not call onSelect); only applies the focus ring", () => {
-    const props = renderPanel();
+    const props = renderView();
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -437,7 +437,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("a single click on the selected row is a no-op (does not move the focus ring either)", () => {
-    const props = renderPanel({ selectedCockpitTerminalId: SID2 });
+    const props = renderView({ selectedCockpitTerminalId: SID2 });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -447,7 +447,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("does not expand on two consecutive single clicks on the same row (not treated as a double-click); core of misfire prevention", () => {
-    const props = renderPanel();
+    const props = renderView();
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -458,7 +458,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("a double-click on the currently shown (selected) row does not resend onSelect (idempotency guard)", () => {
-    const props = renderPanel({ selectedCockpitTerminalId: SID2 });
+    const props = renderView({ selectedCockpitTerminalId: SID2 });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -467,7 +467,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("shows a discoverability title on the row button (double-click/Enter)", () => {
-    renderPanel();
+    renderView();
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -475,7 +475,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("collapses the focus ring after expanding on double-click (delegates to the selection highlight)", () => {
-    renderPanel();
+    renderView();
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -487,7 +487,7 @@ describe("SessionListPanel: session rows", () => {
   });
 
   it("adds aria-current to the selected row", () => {
-    renderPanel({ selectedCockpitTerminalId: SID2 });
+    renderView({ selectedCockpitTerminalId: SID2 });
     expect(
       screen
         .getByRole("button", { name: /tango(?! を閉じる)/ })
@@ -496,9 +496,9 @@ describe("SessionListPanel: session rows", () => {
   });
 });
 
-describe("SessionListPanel: applying manual titles", () => {
+describe("CockpitTerminalListView: applying manual titles", () => {
   it("visibly shows the manual title from conversationTitles in the row (immediate reflection of header rename)", () => {
-    renderPanel({
+    renderView({
       conversationTitles: {
         [SID2]: { title: "デプロイ調査", name: "tango" },
       },
@@ -507,7 +507,7 @@ describe("SessionListPanel: applying manual titles", () => {
   });
 
   it("prefers the manual title over the automatic title", () => {
-    renderPanel({
+    renderView({
       conversationTitles: {
         [SID1]: { title: "手で付けた名前", name: "zashiki" },
       },
@@ -517,7 +517,7 @@ describe("SessionListPanel: applying manual titles", () => {
   });
 
   it("reflects the manual title in the aria-label too", () => {
-    renderPanel({
+    renderView({
       conversationTitles: {
         [SID1]: { title: "手で付けた名前", name: "zashiki" },
       },
@@ -527,7 +527,7 @@ describe("SessionListPanel: applying manual titles", () => {
   });
 
   it("does not apply a manual title whose saved name does not match the current session (a safeguard for sid collisions and duplicate resumes)", () => {
-    renderPanel({
+    renderView({
       conversationTitles: {
         [SID1]: { title: "別リポの名残", name: "other-repo" },
       },
@@ -538,7 +538,7 @@ describe("SessionListPanel: applying manual titles", () => {
 
   it("removes the fresh (start) treatment when a manual title is given to a fresh session (idle, no title)", () => {
     // tango is idle with title:null (originally fresh = start icon)
-    renderPanel({
+    renderView({
       conversationTitles: {
         [SID2]: { title: "新しい調査", name: "tango" },
       },
@@ -549,41 +549,41 @@ describe("SessionListPanel: applying manual titles", () => {
   });
 });
 
-describe("SessionListPanel: focusing the terminal on double-click/Enter", () => {
-  const panel = () => screen.getByRole("complementary");
+describe("CockpitTerminalListView: focusing the terminal on double-click/Enter", () => {
+  const view = () => screen.getByRole("complementary");
   const rowFor = (name: string) =>
     screen.getByRole("button", {
       name: new RegExp(`${name}(?! を閉じる)`),
     }) as HTMLElement;
 
   it("calls onSelect and onFocusTerminal on double-clicking a different session", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.doubleClick(rowFor("tango"));
     expect(props.onSelect).toHaveBeenCalledWith(SID2);
     expect(props.onFocusTerminal).toHaveBeenCalled();
   });
 
   it("does not resend onSelect on double-clicking the shown session but still calls onFocusTerminal", () => {
-    const props = renderPanel({ selectedCockpitTerminalId: SID2 });
+    const props = renderView({ selectedCockpitTerminalId: SID2 });
     fireEvent.doubleClick(rowFor("tango"));
     expect(props.onSelect).not.toHaveBeenCalled();
     expect(props.onFocusTerminal).toHaveBeenCalled();
   });
 
   it("calls onFocusTerminal when opening the focused row with Enter too", () => {
-    const props = renderPanel();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @2
-    fireEvent.keyDown(panel(), { key: "Enter" });
+    const props = renderView();
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // org kilo
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @1
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @2
+    fireEvent.keyDown(view(), { key: "Enter" });
     expect(props.onSelect).toHaveBeenCalledWith(SID2);
     expect(props.onFocusTerminal).toHaveBeenCalled();
   });
 });
 
-describe("SessionListPanel: right-click menu", () => {
+describe("CockpitTerminalListView: right-click menu", () => {
   it("always shows a visible + new button on each org header (including empty orgs)", () => {
-    renderPanel();
+    renderView();
     expect(
       screen.getByRole("button", { name: "kilo に新規セッション" }),
     ).toBeTruthy();
@@ -597,7 +597,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("calls onNew(org) for that org on clicking the + on the org header", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.click(
       screen.getByRole("button", { name: "charlie に新規セッション" }),
     );
@@ -605,7 +605,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("clicking the + on the org header does not propagate to the collapse toggle (does not change the collapse state)", () => {
-    renderPanel();
+    renderView();
     // Precondition: kilo is expanded and its session rows are visible
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
     fireEvent.click(
@@ -617,7 +617,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("clicking the + on the org header does not trigger row selection (onSelect)", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.click(
       screen.getByRole("button", { name: "kilo に新規セッション" }),
     );
@@ -625,7 +625,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("shows a ✕ button at the right end of each row", () => {
-    renderPanel();
+    renderView();
     expect(screen.getByRole("button", { name: "tango を閉じる" })).toBeTruthy();
     expect(
       screen.getByRole("button", { name: "zashiki を閉じる" }),
@@ -633,7 +633,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("calls onClose(cockpitTerminalId) immediately on clicking the row ✕ without a confirmation", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.click(screen.getByRole("button", { name: "tango を閉じる" }));
     expect(props.onClose).toHaveBeenCalledWith(SID2);
     // Does not show the confirmation bar (same behavior as right-click Delete)
@@ -643,27 +643,27 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("clicking the row ✕ does not trigger row selection (onSelect)", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.click(screen.getByRole("button", { name: "tango を閉じる" }));
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it("wires each row's ✕ to its own row's cockpitTerminalId (no misconnection to another row)", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.click(screen.getByRole("button", { name: "zashiki を閉じる" }));
     expect(props.onClose).toHaveBeenCalledTimes(1);
     expect(props.onClose).toHaveBeenCalledWith(SID1);
   });
 
   it("right-clicking the org header and choosing 'New session' calls onNew(org)", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.contextMenu(screen.getByText("charlie (1)"));
     fireEvent.click(screen.getByRole("menuitem", { name: "新規セッション" }));
     expect(props.onNew).toHaveBeenCalledWith("charlie");
   });
 
   it("shows 'Delete' but not 'New session' in the row right-click menu", () => {
-    renderPanel();
+    renderView();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -674,7 +674,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("right-clicking the row and choosing 'Delete' calls onClose(cockpitTerminalId) immediately without a confirmation", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -687,7 +687,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("closes the menu after choosing Delete", () => {
-    renderPanel();
+    renderView();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -696,14 +696,14 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("closes the menu after choosing a menu item", () => {
-    renderPanel();
+    renderView();
     fireEvent.contextMenu(screen.getByText("charlie (1)"));
     fireEvent.click(screen.getByRole("menuitem", { name: "新規セッション" }));
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
   it("closes the menu on a background click", () => {
-    renderPanel();
+    renderView();
     fireEvent.contextMenu(screen.getByText("charlie (1)"));
     expect(
       screen.getByRole("menuitem", { name: "新規セッション" }),
@@ -718,7 +718,7 @@ describe("SessionListPanel: right-click menu", () => {
     const withSid: CockpitTerminalInfo[] = [
       { ...sessions[1], sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
     ] as CockpitTerminalInfo[];
-    const props = renderPanel({
+    const props = renderView({
       sessions: withSid,
       onCopyResume: vi.fn(),
     });
@@ -739,7 +739,7 @@ describe("SessionListPanel: right-click menu", () => {
     const noSid: CockpitTerminalInfo[] = [
       { ...sessions[1], sid: undefined },
     ] as CockpitTerminalInfo[];
-    renderPanel({ sessions: noSid, onCopyResume: vi.fn() });
+    renderView({ sessions: noSid, onCopyResume: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -750,7 +750,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("does not show the resume item when onCopyResume is not provided (backward compatibility)", () => {
-    renderPanel();
+    renderView();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -761,7 +761,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("right-clicking a row with a sid and choosing 'Copy Claude Code session ID' calls onCopySessionId(cockpitTerminalId)", () => {
-    const props = renderPanel({ onCopySessionId: vi.fn() });
+    const props = renderView({ onCopySessionId: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -778,7 +778,7 @@ describe("SessionListPanel: right-click menu", () => {
     const noSid: CockpitTerminalInfo[] = [
       { ...sessions[1], sid: undefined },
     ] as CockpitTerminalInfo[];
-    renderPanel({ sessions: noSid, onCopySessionId: vi.fn() });
+    renderView({ sessions: noSid, onCopySessionId: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -789,7 +789,7 @@ describe("SessionListPanel: right-click menu", () => {
   });
 
   it("does not show the copy-session-id item when onCopySessionId is not provided (backward compatibility)", () => {
-    renderPanel();
+    renderView();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -812,7 +812,7 @@ describe("SessionListPanel: right-click menu", () => {
       onSave: vi.fn(),
       onRestore: vi.fn(),
     };
-    const { rerender } = render(<SessionListPanel {...props} />);
+    const { rerender } = render(<CockpitTerminalListView {...props} />);
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "x",
       ctrlKey: true,
@@ -822,23 +822,23 @@ describe("SessionListPanel: right-click menu", () => {
     ).toBeTruthy();
     // @2 disappears -> the confirmation state is also cleared, and the confirmation bar isn't re-shown even if @2 returns
     const without = sessions.filter((s) => s.cockpitTerminalId !== SID2);
-    rerender(<SessionListPanel {...props} sessions={without} />);
-    rerender(<SessionListPanel {...props} sessions={sessions} />);
+    rerender(<CockpitTerminalListView {...props} sessions={without} />);
+    rerender(<CockpitTerminalListView {...props} sessions={sessions} />);
     expect(
       screen.queryByRole("button", { name: "tango を閉じる（確定）" }),
     ).toBeNull();
   });
 });
 
-describe("SessionListPanel: operations", () => {
+describe("CockpitTerminalListView: operations", () => {
   it("calls onRefresh via the refresh button", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.click(screen.getByRole("button", { name: "一覧を更新" }));
     expect(props.onRefresh).toHaveBeenCalled();
   });
 
   it("does not show a status when onRefresh returns void (synchronous), keeping fire-and-forget compatibility", () => {
-    const props = renderPanel({ onRefresh: vi.fn() });
+    const props = renderView({ onRefresh: vi.fn() });
     const btn = screen.getByRole("button", { name: "一覧を更新" });
     fireEvent.click(btn);
     expect(props.onRefresh).toHaveBeenCalled();
@@ -852,11 +852,11 @@ describe("SessionListPanel: operations", () => {
       new Promise<void>((r) => {
         resolve = r;
       });
-    renderPanel({ onRefresh });
+    renderView({ onRefresh });
     const btn = screen.getByRole("button", { name: "一覧を更新" });
     fireEvent.click(btn);
     expect(btn.getAttribute("aria-busy")).toBe("true");
-    expect(btn.querySelector(".panel-refresh-spinner")).not.toBeNull();
+    expect(btn.querySelector(".view-refresh-spinner")).not.toBeNull();
     await act(async () => {
       resolve?.();
     });
@@ -870,7 +870,7 @@ describe("SessionListPanel: operations", () => {
       new Promise<void>((_resolve, r) => {
         reject = r;
       });
-    renderPanel({ onRefresh });
+    renderView({ onRefresh });
     const btn = screen.getByRole("button", { name: "一覧を更新" });
     fireEvent.click(btn);
     await act(async () => {
@@ -881,7 +881,7 @@ describe("SessionListPanel: operations", () => {
   });
 
   it("Ctrl-N calls onNew with the selected session's org", () => {
-    const props = renderPanel({ selectedCockpitTerminalId: SID3 });
+    const props = renderView({ selectedCockpitTerminalId: SID3 });
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "n",
       ctrlKey: true,
@@ -890,7 +890,7 @@ describe("SessionListPanel: operations", () => {
   });
 
   it("Ctrl-N calls onNew with the first org when nothing is selected", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "n",
       ctrlKey: true,
@@ -899,7 +899,7 @@ describe("SessionListPanel: operations", () => {
   });
 
   it("Ctrl-X opens the inline confirmation for the selected session and closes it on confirm", () => {
-    const props = renderPanel({ selectedCockpitTerminalId: SID2 });
+    const props = renderView({ selectedCockpitTerminalId: SID2 });
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "x",
       ctrlKey: true,
@@ -912,7 +912,7 @@ describe("SessionListPanel: operations", () => {
   });
 
   it("Ctrl-X does nothing when nothing is selected", () => {
-    const props = renderPanel();
+    const props = renderView();
     fireEvent.keyDown(screen.getByRole("complementary"), {
       key: "x",
       ctrlKey: true,
@@ -921,8 +921,8 @@ describe("SessionListPanel: operations", () => {
   });
 });
 
-describe("SessionListPanel: arrow-key navigation (flattened)", () => {
-  const panel = () => screen.getByRole("complementary");
+describe("CockpitTerminalListView: arrow-key navigation (flattened)", () => {
+  const view = () => screen.getByRole("complementary");
   const rowFor = (name: string) =>
     screen.getByRole("button", {
       name: new RegExp(`${name}(?! を閉じる)`),
@@ -931,62 +931,62 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
     screen.getByRole("button", { name: label }) as HTMLElement;
 
   it("the first ↓ move puts the focus ring on the first org header (does not switch the terminal)", () => {
-    const props = renderPanel();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" });
+    const props = renderView();
+    fireEvent.keyDown(view(), { key: "ArrowDown" });
     expect(orgHeader("kilo (2)").className).toContain("session-org-focused");
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it("↓ moves flatly and continuously across org headers and their rows (org→@1→@2→org(charlie)→@3)", () => {
-    renderPanel();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
+    renderView();
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // org kilo
     expect(orgHeader("kilo (2)").className).toContain("session-org-focused");
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @1
     expect(rowFor("zashiki").className).toContain("session-row-focused");
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @2
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @2
     expect(rowFor("tango").className).toContain("session-row-focused");
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org charlie
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // org charlie
     expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @3
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @3
     expect(rowFor("charlie-app").className).toContain("session-row-focused");
   });
 
   it("calls onSelect on Enter while a session row is focused", () => {
-    const props = renderPanel();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @2
-    fireEvent.keyDown(panel(), { key: "Enter" });
+    const props = renderView();
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // org kilo
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @1
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @2
+    fireEvent.keyDown(view(), { key: "Enter" });
     expect(props.onSelect).toHaveBeenCalledWith(SID2);
   });
 
   it("toggles the collapse on Enter while an org header is focused (does not call onSelect)", () => {
-    const props = renderPanel();
+    const props = renderView();
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
-    fireEvent.keyDown(panel(), { key: "Enter" }); // collapse
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // org kilo
+    fireEvent.keyDown(view(), { key: "Enter" }); // collapse
     expect(orgHeader("kilo (2)").getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("issue #5 を実装して")).toBeNull();
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it("expands a collapsed org header on Enter while it is focused", () => {
-    renderPanel();
+    renderView();
     fireEvent.click(screen.getByText("kilo (2)")); // collapse (clicking also moves focused to the org)
     expect(screen.queryByText("issue #5 を実装して")).toBeNull();
-    fireEvent.keyDown(panel(), { key: "Enter" }); // expand the already-focused org
+    fireEvent.keyDown(view(), { key: "Enter" }); // expand the already-focused org
     expect(screen.getByText("issue #5 を実装して")).toBeTruthy();
   });
 
   it("puts the focus ring (session-org-focused) on clicking the org header", () => {
-    renderPanel();
+    renderView();
     fireEvent.click(screen.getByText("charlie (1)")); // collapse + focus ring
     expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
   });
 
   it("does not toggle on the aside side for an Enter arriving directly on the org header button (delegated to the native click to prevent a double toggle)", () => {
-    renderPanel();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // focused=org kilo (expanded)
+    renderView();
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // focused=org kilo (expanded)
     // Simulate the real DOM focus being on the org button, and send Enter with the button as target.
     // If the aside handles it, it opens together with the native click and immediately closes, so the aside skips it.
     fireEvent.keyDown(orgHeader("kilo (2)"), { key: "Enter" });
@@ -995,70 +995,70 @@ describe("SessionListPanel: arrow-key navigation (flattened)", () => {
   });
 
   it("adds aria-expanded (expansion state) to the org header", () => {
-    renderPanel();
+    renderView();
     expect(orgHeader("kilo (2)").getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(screen.getByText("kilo (2)"));
     expect(orgHeader("kilo (2)").getAttribute("aria-expanded")).toBe("false");
   });
 
   it("anchors ↑↓ at the selected row when no focus is set (moves to the row after the selected one)", () => {
-    renderPanel({ selectedCockpitTerminalId: SID2 });
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // next after @2 = org charlie
+    renderView({ selectedCockpitTerminalId: SID2 });
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // next after @2 = org charlie
     expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
   });
 
   it("anchors ↑↓ at the org header when the selected row is inside a collapsed org with no focus (does not jump to the list edge)", () => {
-    renderPanel({ selectedCockpitTerminalId: SID2 });
+    renderView({ selectedCockpitTerminalId: SID2 });
     fireEvent.click(screen.getByText("kilo (2)")); // collapse @2's org (focused=org kilo)
     fireEvent.doubleClick(rowFor("charlie-app")); // select(@3): reset focused=null (the selected prop stays @2)
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // anchor=org kilo -> next org charlie
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // anchor=org kilo -> next org charlie
     expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
   });
 
   it("↑ at the top stays at the top (the first org header); clamps at the edge", () => {
-    renderPanel();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
-    fireEvent.keyDown(panel(), { key: "ArrowUp" }); // stays at the top
+    renderView();
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // org kilo
+    fireEvent.keyDown(view(), { key: "ArrowUp" }); // stays at the top
     expect(orgHeader("kilo (2)").className).toContain("session-org-focused");
   });
 
   it("excludes rows under a collapsed org from focus movement (the header remains)", () => {
-    renderPanel();
+    renderView();
     fireEvent.click(screen.getByText("kilo (2)")); // collapse @1/@2, focused=org kilo
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // skip the child rows to the next org charlie
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // skip the child rows to the next org charlie
     expect(orgHeader("charlie (1)").className).toContain("session-org-focused");
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @3
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @3
     expect(rowFor("charlie-app").className).toContain("session-row-focused");
   });
 
   it("Enter does nothing when nothing is focused", () => {
-    const props = renderPanel();
-    fireEvent.keyDown(panel(), { key: "Enter" });
+    const props = renderView();
+    fireEvent.keyDown(view(), { key: "Enter" });
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it("does not select the focused row on Enter after collapsing its org (misfire prevention)", () => {
-    const props = renderPanel();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @2
+    const props = renderView();
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // org kilo
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @1
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @2
     fireEvent.click(screen.getByText("kilo (2)")); // collapse -> @2 invisible, focused moves to the org
-    fireEvent.keyDown(panel(), { key: "Enter" }); // expands the org, not selects @2
+    fireEvent.keyDown(view(), { key: "Enter" }); // expands the org, not selects @2
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 
   it("does not select on the IME composition-confirming Enter (isComposing)", () => {
-    const props = renderPanel();
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // org kilo
-    fireEvent.keyDown(panel(), { key: "ArrowDown" }); // @1 row
-    fireEvent.keyDown(panel(), { key: "Enter", isComposing: true });
+    const props = renderView();
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // org kilo
+    fireEvent.keyDown(view(), { key: "ArrowDown" }); // @1 row
+    fireEvent.keyDown(view(), { key: "Enter", isComposing: true });
     expect(props.onSelect).not.toHaveBeenCalled();
   });
 });
 
-describe("SessionListPanel: header", () => {
+describe("CockpitTerminalListView: header", () => {
   it("labels the header SESSION LIST (no save/restore buttons; already automated)", () => {
-    renderPanel();
+    renderView();
     expect(screen.getByText("SESSION LIST")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: "セッションを保存" }),
@@ -1069,31 +1069,31 @@ describe("SessionListPanel: header", () => {
   });
 });
 
-describe("SessionListPanel: empty state", () => {
+describe("CockpitTerminalListView: empty state", () => {
   it("does not show an empty state in the list even with 0 sessions (moved to the main area)", () => {
-    renderPanel({ sessions: [], orgs: ["kilo"] });
+    renderView({ sessions: [], orgs: ["kilo"] });
     expect(screen.queryByText("セッションがありません")).toBeNull();
     // Show org headers (the right-click entry point for new sessions) as before
     expect(screen.getByText("kilo (0)")).toBeTruthy();
   });
 });
 
-describe("SessionListPanel: add-org header button", () => {
+describe("CockpitTerminalListView: add-org header button", () => {
   it("renders the plus button only when onAddOrg is given and calls it on click", () => {
     const onAddOrg = vi.fn();
-    renderPanel({ onAddOrg });
+    renderView({ onAddOrg });
     const btn = screen.getByRole("button", { name: "組織を追加" });
     fireEvent.click(btn);
     expect(onAddOrg).toHaveBeenCalled();
   });
 
   it("hides the plus button when onAddOrg is omitted", () => {
-    renderPanel();
+    renderView();
     expect(screen.queryByRole("button", { name: "組織を追加" })).toBeNull();
   });
 });
 
-describe("SessionListPanel: Rename", () => {
+describe("CockpitTerminalListView: Rename", () => {
   const rowFor = (name: string) =>
     screen.getByRole("button", {
       name: new RegExp(`${name}(?! を閉じる)`),
@@ -1104,19 +1104,19 @@ describe("SessionListPanel: Rename", () => {
     }) as HTMLInputElement;
 
   it("shows 'Rename' in the row right-click menu when onRename is provided", () => {
-    renderPanel({ onRename: vi.fn() });
+    renderView({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
     expect(screen.getByRole("menuitem", { name: "名前を変更" })).toBeTruthy();
   });
 
   it("does not show 'Rename' when onRename is not provided (backward compatibility)", () => {
-    renderPanel();
+    renderView();
     fireEvent.contextMenu(rowFor("tango"));
     expect(screen.queryByRole("menuitem", { name: "名前を変更" })).toBeNull();
   });
 
   it("choosing 'Rename' shows an input prefilled with the current title, and Enter after changing the value calls onRename(cockpitTerminalId, name, value)", () => {
-    const props = renderPanel({ onRename: vi.fn() });
+    const props = renderView({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("zashiki"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     const input = renameInput();
@@ -1131,7 +1131,7 @@ describe("SessionListPanel: Rename", () => {
   });
 
   it("prefills the input with the manual title for a row that has one", () => {
-    const props = renderPanel({
+    const props = renderView({
       onRename: vi.fn(),
       conversationTitles: {
         [SID2]: { title: "手で付けた名前", name: "tango" },
@@ -1146,7 +1146,7 @@ describe("SessionListPanel: Rename", () => {
   });
 
   it("uses the name as the initial value for a fresh row with neither a title nor a manual title", () => {
-    renderPanel({
+    renderView({
       onRename: vi.fn(),
       sessions: [{ ...sessions[1], title: null } as CockpitTerminalInfo],
     });
@@ -1156,7 +1156,7 @@ describe("SessionListPanel: Rename", () => {
   });
 
   it("cancels on Escape (does not call onRename; the input disappears)", () => {
-    const props = renderPanel({ onRename: vi.fn() });
+    const props = renderView({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     fireEvent.change(renameInput(), { target: { value: "捨てる名前" } });
@@ -1168,7 +1168,7 @@ describe("SessionListPanel: Rename", () => {
   });
 
   it("commits on blur", () => {
-    const props = renderPanel({ onRename: vi.fn() });
+    const props = renderView({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     fireEvent.change(renameInput(), { target: { value: "確定名" } });
@@ -1177,14 +1177,14 @@ describe("SessionListPanel: Rename", () => {
   });
 
   it("closes the menu after choosing 'Rename'", () => {
-    renderPanel({ onRename: vi.fn() });
+    renderView({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
   it("disables 'Rename' for a non-UUID window (unbound/plain-shell)", () => {
-    renderPanel({
+    renderView({
       onRename: vi.fn(),
       sessions: [
         {
@@ -1199,7 +1199,7 @@ describe("SessionListPanel: Rename", () => {
   });
 
   it("keeps 'Rename' enabled for a UUID window even when claude is not detected (state no_claude, sid absent)", () => {
-    const props = renderPanel({
+    const props = renderView({
       onRename: vi.fn(),
       sessions: [
         {
@@ -1219,7 +1219,7 @@ describe("SessionListPanel: Rename", () => {
   });
 
   it("does not propagate Enter during editing to row selection (onSelect)", () => {
-    const props = renderPanel({ onRename: vi.fn() });
+    const props = renderView({ onRename: vi.fn() });
     fireEvent.contextMenu(rowFor("tango"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     fireEvent.change(renameInput(), { target: { value: "名前" } });
@@ -1238,14 +1238,14 @@ describe("SessionListPanel: Rename", () => {
       onRefresh: vi.fn(),
       onRename: vi.fn(),
     };
-    const { rerender } = render(<SessionListPanel {...props} />);
+    const { rerender } = render(<CockpitTerminalListView {...props} />);
     fireEvent.contextMenu(rowFor("tango"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
     expect(
       screen.getByRole("textbox", { name: "セッションのタイトルを編集" }),
     ).toBeTruthy();
     const without = sessions.filter((s) => s.cockpitTerminalId !== SID2);
-    rerender(<SessionListPanel {...props} sessions={without} />);
+    rerender(<CockpitTerminalListView {...props} sessions={without} />);
     expect(
       screen.queryByRole("textbox", { name: "セッションのタイトルを編集" }),
     ).toBeNull();

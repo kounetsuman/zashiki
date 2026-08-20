@@ -2,8 +2,6 @@ import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
-import { PanelHeader } from "./PanelHeader.js";
-import { panelClass } from "./panels.js";
 import { RefreshButton } from "./RefreshButton.js";
 import { ReposConfGuide } from "./ReposConfGuide.js";
 import { SessionContextMenu } from "./SessionContextMenu.js";
@@ -14,8 +12,10 @@ import { useRowRename } from "./useRowRename.js";
 import { useSessionContextMenu } from "./useSessionContextMenu.js";
 import { useSessionListFocus } from "./useSessionListFocus.js";
 import { useSessionRefresh } from "./useSessionRefresh.js";
+import { ViewHeader } from "./ViewHeader.js";
+import { viewClass } from "./views.js";
 
-export interface SessionListPanelProps {
+export interface CockpitTerminalListViewProps {
   sessions: CockpitTerminalInfo[];
   /** All orgs from repos.conf + detected orgs (in display order; not removed even at (0)). */
   orgs: string[];
@@ -51,7 +51,7 @@ export interface SessionListPanelProps {
   connected?: boolean;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
-  /** Render at full height (height:100%) when the bottom panel is closed. */
+  /** Render at full height (height:100%) when the bottom view is closed. */
   full?: boolean;
   /**
    * Copy the target session's resume command (`claude --resume <sid>`) to the clipboard
@@ -72,14 +72,14 @@ export interface SessionListPanelProps {
 }
 
 /**
- * Session list panel. Collapsible org groups + state-icon rows.
+ * Session list view. Collapsible org groups + state-icon rows.
  * ↑↓ moves flatly across org header rows and their child rows (a collapsed org skips only its
  * child rows), and Enter toggles collapse on an org header or switches the terminal on a session
  * row. Double-click also switches. New/close are handled via the right-click menu (org area -> new,
  * row -> Delete closes immediately) plus keybindings (Ctrl-N/X). Ctrl-X goes through an inline
  * confirmation that does not depend on the native dialog.
  */
-export function SessionListPanel({
+export function CockpitTerminalListView({
   sessions,
   orgs,
   orgColors = {},
@@ -97,7 +97,7 @@ export function SessionListPanel({
   onCopyResume,
   onCopySessionId,
   onRename,
-}: SessionListPanelProps) {
+}: CockpitTerminalListViewProps) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const orgList = displayOrgs(orgs, sessions);
@@ -168,7 +168,7 @@ export function SessionListPanel({
       return;
     }
     if (e.key === "Enter") {
-      // Don't use the Enter that confirms IME conversion for selection (same convention as the git panel's ⌘Enter).
+      // Don't use the Enter that confirms IME conversion for selection (same convention as the git view's ⌘Enter).
       if (e.nativeEvent.isComposing) return;
       if (focused !== null && visibleKeys.includes(focusKey(focused))) {
         // An org header toggles collapse; a session row opens the terminal. On an org header,
@@ -200,17 +200,17 @@ export function SessionListPanel({
 
   return (
     <aside
-      className={`${panelClass("session-list", inactive)}${
+      className={`${viewClass("session-list", inactive)}${
         full ? " session-list-full" : ""
       }`}
-      data-panel="sessions"
+      data-view="sessions"
       aria-label={t("sessionList.ariaLabel")}
-      // biome-ignore lint/a11y/noNoninteractiveTabindex: receiver for the keybindings (Ctrl-N/X) when the panel is focused
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: receiver for the keybindings (Ctrl-N/X) when the view is focused
       tabIndex={0}
       onKeyDown={handleKeyDown}
     >
-      <PanelHeader title="SESSION LIST">
-        <div className="panel-header-actions">
+      <ViewHeader title="SESSION LIST">
+        <div className="view-header-actions">
           {onAddOrg !== undefined && (
             <button
               type="button"
@@ -231,8 +231,8 @@ export function SessionListPanel({
             onClick={refresh.refresh}
           />
         </div>
-      </PanelHeader>
-      {/* Like other panels, keep the header fixed and let the inner container handle scrolling. */}
+      </ViewHeader>
+      {/* Like other views, keep the header fixed and let the inner container handle scrolling. */}
       <div className="session-list-scroll">
         {connected && orgList.length === 0 && <ReposConfGuide />}
         {orgList.map((org) => {
@@ -267,7 +267,7 @@ export function SessionListPanel({
                   title={t("sessionList.orgToggleTitle", { org })}
                 >
                   <span
-                    className="panel-arrow material-symbols-outlined"
+                    className="view-arrow material-symbols-outlined"
                     aria-hidden="true"
                   >
                     {isCollapsed ? "chevron_right" : "expand_more"}

@@ -1,7 +1,7 @@
 import type { GitFileEntry, RepoStatus } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 import type { GitApi } from "../api/git.js";
-import { codeClass, fileRowKey } from "./git-panel-model.js";
+import { codeClass, fileRowKey } from "./source-control-model.js";
 
 export interface GitFileRowProps {
   api: GitApi;
@@ -30,7 +30,7 @@ export function GitFileRow({
       <span className={codeClass(file.code)}>{file.code}</span>
       <button
         type="button"
-        className="panel-row git-file-name"
+        className="view-row git-file-name"
         title={file.path}
         onClick={() => run(api.open(repo.path, file.path))}
       >

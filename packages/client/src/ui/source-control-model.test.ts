@@ -5,7 +5,7 @@ import {
   fileRowKey,
   groupByOrg,
   isFlatOrg,
-} from "./git-panel-model.js";
+} from "./source-control-model.js";
 
 function repo(org: string, name: string): RepoStatus {
   return {

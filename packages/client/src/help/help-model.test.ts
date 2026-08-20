@@ -79,7 +79,7 @@ describe("groupTopics", () => {
       titleKey: "全般",
       topicIds: ["keybindings", "navigation"],
     },
-    { id: "sub", titleKey: "サブパネル", topicIds: ["explorer", "search"] },
+    { id: "sub", titleKey: "サブビュー", topicIds: ["explorer", "search"] },
   ];
 
   it("groups in the order of the category definitions and orders within a category by the id list", () => {
@@ -97,7 +97,7 @@ describe("groupTopics", () => {
     expect(groups.map((g) => g.titleKey)).toEqual([
       "設定ファイル",
       "全般",
-      "サブパネル",
+      "サブビュー",
     ]);
     expect(groups.map((g) => g.topics.map((t) => t.id))).toEqual([
       ["repos-conf"],
@@ -147,7 +147,7 @@ describe("groupTopics", () => {
 
   it("does not fail when a defined id is absent from the input (picks up only what exists)", () => {
     const groups = groupTopics([mk("explorer")], defs);
-    expect(groups.map((g) => g.titleKey)).toEqual(["サブパネル"]);
+    expect(groups.map((g) => g.titleKey)).toEqual(["サブビュー"]);
     expect(groups[0]?.topics.map((t) => t.id)).toEqual(["explorer"]);
   });
 });

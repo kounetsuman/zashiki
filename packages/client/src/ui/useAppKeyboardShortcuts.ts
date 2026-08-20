@@ -1,13 +1,13 @@
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useEffect } from "react";
-import { PANEL_DEFS, type PanelId } from "./panels.js";
+import { VIEW_DEFS, type ViewId } from "./views.js";
 
 export interface AppKeyboardShortcuts {
   sessions: readonly CockpitTerminalInfo[];
   orgs: readonly string[];
   activeSess: string | null;
   activeKey: string | null;
-  handleSelectPanel(id: PanelId): void;
+  handleSelectView(id: ViewId): void;
   toggleDebug(): void;
   newSession(org: string): void;
   copyResume(s: CockpitTerminalInfo | null | undefined): void;
@@ -15,8 +15,8 @@ export interface AppKeyboardShortcuts {
 }
 
 /**
- * Wires the global keyboard shortcuts. The panel switches use Ctrl+Alt+<key> and the actions use
- * meta keys (Cmd+R/N/W), so they do not collide with each other or with the panel-local Ctrl-N/X.
+ * Wires the global keyboard shortcuts. The view switches use Ctrl+Alt+<key> and the actions use
+ * meta keys (Cmd+R/N/W), so they do not collide with each other or with the view-local Ctrl-N/X.
  * Meta keys pass through to the browser even while the terminal is focused, so the actions work there;
  * the Ctrl+Alt switches pass through only while a text input/terminal is not being typed in.
  */
@@ -25,7 +25,7 @@ export function useAppKeyboardShortcuts({
   orgs,
   activeSess,
   activeKey,
-  handleSelectPanel,
+  handleSelectView,
   toggleDebug,
   newSession,
   copyResume,
@@ -35,14 +35,14 @@ export function useAppKeyboardShortcuts({
     const onKeyDown = (e: KeyboardEvent): void => {
       if (!e.ctrlKey || !e.altKey || e.metaKey) return;
       if (document.activeElement instanceof HTMLInputElement) return;
-      const def = PANEL_DEFS.find((d) => d.shortcutKey === e.key.toLowerCase());
+      const def = VIEW_DEFS.find((d) => d.shortcutKey === e.key.toLowerCase());
       if (def === undefined) return;
       e.preventDefault();
-      handleSelectPanel(def.id);
+      handleSelectView(def.id);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleSelectPanel]);
+  }, [handleSelectView]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

@@ -9,8 +9,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { FsApi } from "../api/fs.js";
-import { PanelHeader } from "./PanelHeader.js";
-import { panelClass } from "./panels.js";
+import { ViewHeader } from "./ViewHeader.js";
+import { viewClass } from "./views.js";
 
 /**
  * Key for the expanded set and cache (repoPath and the repo-relative dir joined
@@ -26,7 +26,7 @@ interface DirData {
   truncated: boolean;
 }
 
-export interface ExplorerPanelProps {
+export interface ExplorerViewProps {
   api: FsApi;
   /** org -> display color (explicit color from repos.conf). Unspecified orgs get an auto color. */
   orgColors?: Record<string, string>;
@@ -39,12 +39,12 @@ export interface ExplorerPanelProps {
   inactive?: boolean;
 }
 
-export function ExplorerPanel({
+export function ExplorerView({
   api,
   orgColors = {},
   onOpenFile,
   inactive,
-}: ExplorerPanelProps) {
+}: ExplorerViewProps) {
   const { t } = useTranslation();
   const [repos, setRepos] = useState<FsRepo[]>([]);
   const [rootError, setRootError] = useState<string | null>(null);
@@ -141,12 +141,12 @@ export function ExplorerPanel({
               <div key={childKey}>
                 <button
                   type="button"
-                  className="panel-row panel-row-hover explorer-row explorer-dir"
+                  className="view-row view-row-hover explorer-row explorer-dir"
                   style={{ paddingLeft: `${depth * 12 + 8}px` }}
                   onClick={() => toggleDir(repoPath, childDir)}
                 >
                   <span
-                    className="panel-arrow material-symbols-outlined"
+                    className="view-arrow material-symbols-outlined"
                     aria-hidden="true"
                   >
                     {exp ? "expand_more" : "chevron_right"}
@@ -163,8 +163,8 @@ export function ExplorerPanel({
               type="button"
               className={
                 selected === childKey
-                  ? "panel-row panel-row-hover panel-row-selected explorer-row explorer-file"
-                  : "panel-row panel-row-hover explorer-row explorer-file"
+                  ? "view-row view-row-hover view-row-selected explorer-row explorer-file"
+                  : "view-row view-row-hover explorer-row explorer-file"
               }
               style={{ paddingLeft: `${depth * 12 + 20}px` }}
               title={childDir}
@@ -189,10 +189,10 @@ export function ExplorerPanel({
 
   return (
     <section
-      className={panelClass("explorer-panel", inactive)}
-      data-panel="explorer"
+      className={viewClass("explorer-view", inactive)}
+      data-view="explorer"
     >
-      <PanelHeader title="EXPLORER">
+      <ViewHeader title="EXPLORER">
         <button
           type="button"
           aria-label="refresh"
@@ -203,9 +203,9 @@ export function ExplorerPanel({
             refresh
           </span>
         </button>
-      </PanelHeader>
+      </ViewHeader>
       {rootError !== null && <div className="explorer-error">{rootError}</div>}
-      <div className="panel-tree">
+      <div className="view-tree">
         {repos.map((r) => {
           const rootDir = "";
           const key = dirKey(r.path, rootDir);
@@ -214,11 +214,11 @@ export function ExplorerPanel({
             <div key={r.path} className="explorer-repo">
               <button
                 type="button"
-                className="panel-row panel-row-hover explorer-row explorer-repo-row"
+                className="view-row view-row-hover explorer-row explorer-repo-row"
                 onClick={() => toggleDir(r.path, rootDir)}
               >
                 <span
-                  className="panel-arrow material-symbols-outlined"
+                  className="view-arrow material-symbols-outlined"
                   aria-hidden="true"
                 >
                   {exp ? "expand_more" : "chevron_right"}

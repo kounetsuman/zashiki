@@ -3,17 +3,21 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { GitApi } from "../api/git.js";
 import { GitRepoBlock, type GitTreeHandlers } from "./GitRepoBlock.js";
-import { groupByOrg, isFlatOrg, type OrgGroup } from "./git-panel-model.js";
 import { Loading } from "./Loading.js";
-import { PanelEmpty } from "./PanelEmpty.js";
-import { PanelHeader } from "./PanelHeader.js";
-import { panelClass } from "./panels.js";
 import { RefreshButton, type RefreshState } from "./RefreshButton.js";
+import {
+  groupByOrg,
+  isFlatOrg,
+  type OrgGroup,
+} from "./source-control-model.js";
 import { useCommitDraft } from "./useCommitDraft.js";
 import { useGitCopyFeedback } from "./useGitCopyFeedback.js";
 import { useGitStatus } from "./useGitStatus.js";
+import { ViewEmpty } from "./ViewEmpty.js";
+import { ViewHeader } from "./ViewHeader.js";
+import { viewClass } from "./views.js";
 
-export interface GitPanelProps {
+export interface SourceControlViewProps {
   api: GitApi;
   /** Subscribe to git.dirty on the control WS (returns an unsubscribe). Triggers refetch. */
   onGitDirty(fn: () => void): () => void;
@@ -25,13 +29,13 @@ export interface GitPanelProps {
   inactive?: boolean;
 }
 
-export function GitPanel({
+export function SourceControlView({
   api,
   onGitDirty,
   orgColors = {},
   copyText,
   inactive,
-}: GitPanelProps) {
+}: SourceControlViewProps) {
   const { t } = useTranslation();
   const { repos, skipped, error, loading, refreshing, refetch, setError } =
     useGitStatus(api, onGitDirty);
@@ -90,11 +94,11 @@ export function GitPanel({
       <div key={key} className="git-org">
         <button
           type="button"
-          className="panel-row panel-row-hover git-row git-org-row"
+          className="view-row view-row-hover git-row git-org-row"
           onClick={() => toggle(key)}
         >
           <span
-            className="panel-arrow material-symbols-outlined"
+            className="view-arrow material-symbols-outlined"
             aria-hidden="true"
           >
             {exp ? "expand_more" : "chevron_right"}
@@ -123,15 +127,18 @@ export function GitPanel({
       : "idle";
 
   return (
-    <section className={panelClass("git-panel", inactive)} data-panel="git">
-      <PanelHeader title="SOURCE CONTROL">
+    <section
+      className={viewClass("git-view", inactive)}
+      data-view="sourceControl"
+    >
+      <ViewHeader title="SOURCE CONTROL">
         <RefreshButton
           state={refreshState}
           label="refresh"
           error={error}
           onClick={() => void refetch()}
         />
-      </PanelHeader>
+      </ViewHeader>
       {error !== null && <div className="git-error">{error}</div>}
       {error === null && loading && <Loading />}
       {error === null && !loading && skipped.length > 0 && (
@@ -142,9 +149,9 @@ export function GitPanel({
       {error === null &&
         !loading &&
         repos.length === 0 &&
-        skipped.length === 0 && <PanelEmpty>{t("git.noChanges")}</PanelEmpty>}
+        skipped.length === 0 && <ViewEmpty>{t("git.noChanges")}</ViewEmpty>}
       {error === null && !loading && repos.length > 0 && (
-        <div className="panel-tree">{groupByOrg(repos).map(orgBlock)}</div>
+        <div className="view-tree">{groupByOrg(repos).map(orgBlock)}</div>
       )}
     </section>
   );

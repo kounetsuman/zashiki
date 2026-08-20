@@ -2,7 +2,7 @@ import { type GitStatusResult, parseGitStatusResponse } from "@zashiki/shared";
 
 import { authHeaders } from "../lib/token.js";
 
-/** The REST the git panel calls. Tests inject a fake. */
+/** The REST the git view calls. Tests inject a fake. */
 export interface GitApi {
   status(): Promise<GitStatusResult>;
   stage(repoPath: string, file: string): Promise<void>;

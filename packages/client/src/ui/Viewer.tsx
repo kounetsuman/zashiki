@@ -10,11 +10,11 @@ import { useTranslation } from "react-i18next";
 
 import { isMarkdown, type ViewerBuffer } from "../viewer/viewer-model.js";
 import { Loading } from "./Loading.js";
-import { panelClass } from "./panels.js";
+import { viewClass } from "./views.js";
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
 
-export interface ViewerPanelProps {
+export interface ViewerProps {
   buffer: ViewerBuffer;
   onTogglePreview(): void;
   /** The copy button at the header's left edge copies the file's absolute path. */
@@ -27,7 +27,7 @@ export interface ViewerPanelProps {
  * changes the content, the doc is swapped out. Editing is disabled, so cursor
  * position is not a concern.
  */
-function CodeMirrorHost({ buffer }: Pick<ViewerPanelProps, "buffer">) {
+function CodeMirrorHost({ buffer }: Pick<ViewerProps, "buffer">) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   // Read the initial doc via a ref so the closure is fixed at view creation
@@ -93,12 +93,12 @@ function CodeMirrorHost({ buffer }: Pick<ViewerPanelProps, "buffer">) {
  * and preview. File editing is delegated to claude code and is not done here
  * (realtime updates come from polling on the App side).
  */
-export function ViewerPanel({
+export function Viewer({
   buffer,
   onTogglePreview,
   onCopyPath,
   inactive,
-}: ViewerPanelProps) {
+}: ViewerProps) {
   const { t } = useTranslation();
   const md5 = isMarkdown(buffer.relPath);
   const showPreview = md5 && buffer.preview;
@@ -109,8 +109,8 @@ export function ViewerPanel({
 
   return (
     <section
-      className={panelClass("viewer-panel", inactive)}
-      data-panel="main"
+      className={viewClass("viewer-view", inactive)}
+      data-view="main"
       aria-label={t("viewer.viewerLabel", { path: buffer.relPath })}
     >
       <div className="viewer-toolbar">

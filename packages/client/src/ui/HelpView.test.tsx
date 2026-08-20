@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { HelpCategoryDef, HelpTopic } from "../help/help-model.js";
-import { HelpPanel } from "./HelpPanel.js";
+import { HelpView } from "./HelpView.js";
 
 const topics: HelpTopic[] = [
   {
@@ -27,16 +27,16 @@ const categories: HelpCategoryDef[] = [
 
 afterEach(cleanup);
 
-describe("HelpPanel", () => {
+describe("HelpView", () => {
   it("shows the HELP header and every item's title", () => {
-    render(<HelpPanel topics={topics} />);
+    render(<HelpView topics={topics} />);
     expect(screen.getByText("HELP")).toBeTruthy();
     expect(screen.getByText("repos.conf と org の色")).toBeTruthy();
     expect(screen.getByText("キーバインド")).toBeTruthy();
   });
 
   it("accordion-expands the body on heading click (markdown rendering)", () => {
-    render(<HelpPanel topics={topics} />);
+    render(<HelpView topics={topics} />);
     // Collapsed by default, so the body is not shown.
     expect(screen.queryByText(/色未指定は白/)).toBeNull();
     fireEvent.click(screen.getByText("repos.conf と org の色"));
@@ -47,7 +47,7 @@ describe("HelpPanel", () => {
   });
 
   it("filters by title and body via search (case-insensitive)", () => {
-    render(<HelpPanel topics={topics} />);
+    render(<HelpView topics={topics} />);
     fireEvent.change(screen.getByLabelText("ヘルプを検索"), {
       target: { value: "CTRL-N" },
     });
@@ -56,7 +56,7 @@ describe("HelpPanel", () => {
   });
 
   it("auto-expands matching items during search and shows the body without clicking", () => {
-    render(<HelpPanel topics={topics} />);
+    render(<HelpView topics={topics} />);
     fireEvent.change(screen.getByLabelText("ヘルプを検索"), {
       target: { value: "ctrl-n" },
     });
@@ -64,7 +64,7 @@ describe("HelpPanel", () => {
   });
 
   it("shows the empty state when there are no matches", () => {
-    render(<HelpPanel topics={topics} />);
+    render(<HelpView topics={topics} />);
     fireEvent.change(screen.getByLabelText("ヘルプを検索"), {
       target: { value: "存在しない語" },
     });
@@ -72,7 +72,7 @@ describe("HelpPanel", () => {
   });
 
   it("shows category headings and arranges each topic under it", () => {
-    render(<HelpPanel topics={topics} categories={categories} />);
+    render(<HelpView topics={topics} categories={categories} />);
     const config = screen.getByRole("region", { name: "設定ファイル" });
     const general = screen.getByRole("region", { name: "全般" });
     expect(config.textContent).toContain("repos.conf と org の色");
@@ -81,7 +81,7 @@ describe("HelpPanel", () => {
   });
 
   it("search keeps only categories containing a matching topic", () => {
-    render(<HelpPanel topics={topics} categories={categories} />);
+    render(<HelpView topics={topics} categories={categories} />);
     fireEvent.change(screen.getByLabelText("ヘルプを検索"), {
       target: { value: "Ctrl-N" },
     });
@@ -90,7 +90,7 @@ describe("HelpPanel", () => {
   });
 
   it("can render with the default topics (content/*.md)", () => {
-    render(<HelpPanel />);
+    render(<HelpView />);
     expect(screen.getByText("HELP")).toBeTruthy();
     // The seed repos.conf topic is included.
     expect(screen.getByText(/repos\.conf/)).toBeTruthy();

@@ -7,7 +7,7 @@ import {
 
 import { authHeaders } from "../lib/token.js";
 
-/** The read-only REST the explorer panel calls. */
+/** The read-only REST the explorer view calls. */
 export interface FsApi {
   /** Tree root = all repos in repos.conf. */
   repos(): Promise<FsReposResponse>;

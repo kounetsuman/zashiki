@@ -45,7 +45,7 @@ export function getHelpTopics(locale: string): HelpTopic[] {
 /**
  * The source of truth for help categories (display order, display name, member topic ids).
  * `topicIds` are the content/*.md filename slugs (the part without the numeric prefix and extension).
- * Topics not listed here fall into the trailing "Other" on the HelpPanel side (so nothing is dropped).
+ * Topics not listed here fall into the trailing "Other" on the HelpView side (so nothing is dropped).
  */
 export const HELP_CATEGORIES: HelpCategoryDef[] = [
   { id: "config", titleKey: "help.category.config", topicIds: ["repos-conf"] },
@@ -55,8 +55,8 @@ export const HELP_CATEGORIES: HelpCategoryDef[] = [
     topicIds: ["keybindings", "navigation"],
   },
   {
-    id: "subpanel",
-    titleKey: "help.category.subpanel",
+    id: "subview",
+    titleKey: "help.category.subview",
     topicIds: [
       "session-list",
       "notifications",
@@ -66,8 +66,8 @@ export const HELP_CATEGORIES: HelpCategoryDef[] = [
     ],
   },
   {
-    id: "mainpanel",
-    titleKey: "help.category.mainpanel",
+    id: "mainview",
+    titleKey: "help.category.mainview",
     topicIds: ["session", "viewer"],
   },
 ];

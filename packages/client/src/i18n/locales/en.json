@@ -134,13 +134,13 @@
     "category": {
       "config": "Configuration",
       "general": "General",
-      "subpanel": "Sub-panels",
-      "mainpanel": "Main panel",
+      "subview": "Sub-views",
+      "mainview": "Main view",
       "other": "Other"
     }
   },
   "footer": {
-    "panelSwitch": "Switch panel",
+    "viewSwitch": "Switch view",
     "unreadBadge": "{{label}} ({{count}} unread)",
     "shortcutTitle": "{{label}} (Ctrl+Alt+{{key}})",
     "status": {
@@ -159,10 +159,10 @@
     "button": "Update",
     "tooltip": "Version {{version}} is available — open the releases page"
   },
-  "panel": {
+  "view": {
     "explorer": "Explorer",
     "search": "Search",
-    "git": "Source Control",
+    "sourceControl": "Source Control",
     "notification": "Notifications",
     "help": "Help",
     "settings": "Settings"
@@ -220,7 +220,7 @@
     "text": "{{count}} sessions at limit"
   },
   "debug": {
-    "panelLabel": "Debug info",
+    "viewLabel": "Debug info",
     "close": "Close debug",
     "reconnectAttempt": "reconnect attempt",
     "lastCloseCode": "last close code",
