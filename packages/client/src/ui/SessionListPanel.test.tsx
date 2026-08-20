@@ -181,20 +181,18 @@ describe("SessionListPanel: session rows", () => {
     expect(starting.className).toContain("material-symbols-outlined");
   });
 
-  it("overlays robot_2 on the hourglass while a subagent is running", () => {
+  it("keeps the state glyph clean and puts the subagent on a robot_2 activity chip", () => {
     renderPanel({
       sessions: [{ ...sessions[1], state: "running_bg_agent" } as SessionInfo],
     });
     const base = screen.getByText("hourglass");
-    const stack = base.parentElement;
-    expect(stack?.className).toContain("state-running_bg_agent");
-    expect(stack?.className).toContain("state-stack");
-    const badge = screen.getByText("robot_2");
-    expect(badge.className).toContain("state-bg-agent-badge");
-    expect(badge.className).toContain("material-symbols-outlined");
+    expect(base.className).toContain("state-running_bg_agent");
+    const glyph = screen.getByText("robot_2");
+    expect(glyph.parentElement?.className).toContain("session-activity-agent");
+    expect(glyph.className).not.toContain("state-bg-agent-badge");
   });
 
-  it("appends the running total (+N) while a subagent is running", () => {
+  it("appends the running subagent total to the agent chip", () => {
     renderPanel({
       sessions: [
         {
@@ -204,11 +202,12 @@ describe("SessionListPanel: session rows", () => {
         } as SessionInfo,
       ],
     });
-    const count = screen.getByText("(+13)");
-    expect(count.className).toContain("session-bg-count");
+    const chip = screen.getByText("robot_2").parentElement;
+    expect(chip?.className).toContain("session-activity-agent");
+    expect(chip?.textContent).toContain("13");
   });
 
-  it("does not show (+N) when N=0 or in a non-bg state", () => {
+  it("shows the agent chip glyph only (no number) when the subagent count is 0/unknown", () => {
     renderPanel({
       sessions: [
         {
@@ -216,6 +215,16 @@ describe("SessionListPanel: session rows", () => {
           state: "running_bg_agent",
           runningSubagents: 0,
         } as SessionInfo,
+      ],
+    });
+    expect(screen.getByText("robot_2").parentElement?.textContent).toBe(
+      "robot_2",
+    );
+  });
+
+  it("shows no agent chip outside a bg-agent state", () => {
+    renderPanel({
+      sessions: [
         {
           ...sessions[0],
           state: "running",
@@ -223,76 +232,53 @@ describe("SessionListPanel: session rows", () => {
         } as SessionInfo,
       ],
     });
-    expect(screen.queryByText(/\(\+\d+\)/)).toBeNull();
+    expect(screen.queryByText("robot_2")).toBeNull();
   });
 
-  it("overlays a terminal prompt badge at the bottom-right for a row with a persistent bg shell", () => {
-    renderPanel({
-      sessions: [
-        { ...sessions[0], state: "running", shellsRunning: 1 } as SessionInfo,
-      ],
-    });
-    const badge = screen.getByText("terminal");
-    expect(badge.className).toContain("state-shell-badge");
-    expect(badge.className).toContain("material-symbols-outlined");
-  });
-
-  it("turns an otherwise idle row into the hourglass while a bg shell runs", () => {
-    renderPanel({
-      sessions: [
-        { ...sessions[0], state: "idle", shellsRunning: 1 } as SessionInfo,
-      ],
-    });
-    const base = screen.getByText("hourglass");
-    expect(base.className).toContain("state-running");
-    expect(screen.getByText("terminal").className).toContain(
-      "state-shell-badge",
-    );
-    expect(screen.queryByText("check")).toBeNull();
-  });
-
-  it("lets the subagent badge win the bottom-right corner (no shell badge while running_bg_agent)", () => {
-    renderPanel({
-      sessions: [
-        {
-          ...sessions[0],
-          state: "running_bg_agent",
-          runningSubagents: 2,
-          shellsRunning: 3,
-        } as SessionInfo,
-      ],
-    });
-    expect(screen.getByText("robot_2").className).toContain(
-      "state-bg-agent-badge",
-    );
-    expect(screen.queryByText("terminal")).toBeNull();
-  });
-
-  it("appends the shell total (+N) only when several shells run and not in a bg-agent state", () => {
+  it("shows a terminal activity chip with the count for a bg shell in any state", () => {
     renderPanel({
       sessions: [
         { ...sessions[0], state: "running", shellsRunning: 3 } as SessionInfo,
       ],
     });
-    const count = screen.getByText("(+3)");
-    expect(count.className).toContain("session-shell-count");
+    const chip = screen.getByText("terminal").parentElement;
+    expect(chip?.className).toContain("session-activity-shell");
+    expect(chip?.textContent).toContain("3");
   });
 
-  it("does not show the shell (+N) for a single shell or in a bg-agent state", () => {
+  it("keeps an idle row's own glyph while a bg shell runs (no hourglass swap)", () => {
     renderPanel({
       sessions: [
-        { ...sessions[0], state: "running", shellsRunning: 1 } as SessionInfo,
+        { ...sessions[0], state: "idle", shellsRunning: 1 } as SessionInfo,
+      ],
+    });
+    expect(screen.getByText("check").className).toContain("state-idle");
+    expect(screen.getByText("terminal").parentElement?.className).toContain(
+      "session-activity-shell",
+    );
+    expect(screen.queryByText("hourglass")).toBeNull();
+  });
+
+  it("shows the agent and shell chips together while a subagent and a shell run concurrently", () => {
+    renderPanel({
+      sessions: [
         {
-          ...sessions[1],
+          ...sessions[0],
           state: "running_bg_agent",
-          shellsRunning: 4,
+          runningSubagents: 9,
+          shellsRunning: 3,
         } as SessionInfo,
       ],
     });
-    expect(screen.queryByText(/\(\+\d+\)/)).toBeNull();
+    const agentChip = screen.getByText("robot_2").parentElement;
+    const shellChip = screen.getByText("terminal").parentElement;
+    expect(agentChip?.className).toContain("session-activity-agent");
+    expect(agentChip?.textContent).toContain("9");
+    expect(shellChip?.className).toContain("session-activity-shell");
+    expect(shellChip?.textContent).toContain("3");
   });
 
-  it("does not show the shell badge when shellsRunning is 0/undefined", () => {
+  it("shows no shell chip when shellsRunning is 0/undefined", () => {
     renderPanel({
       sessions: [
         { ...sessions[0], state: "running", shellsRunning: 0 } as SessionInfo,

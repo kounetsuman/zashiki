@@ -361,8 +361,6 @@ body {
   color: #777;
 }
 
-/* サブエージェント実行中: hourglass に robot_2 バッジを重畳（issue #161）。
- * 外側 .state は位置基準・寸法だけ持ち、実グリフ 2 枚に font を効かせる。 */
 .state-running_bg_agent {
   color: #ddd;
 }
@@ -386,44 +384,7 @@ body {
     "opsz" 20;
 }
 
-.state-bg-agent-badge {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  font-size: 9px;
-  color: #7aa2f7;
-  /* 下地の hourglass と混ざらないよう暗色の縁取りで小バッジを浮かせる。 */
-  text-shadow:
-    0 0 1px #141414,
-    0 0 1px #141414,
-    0 0 2px #141414;
-}
-
-/* running_bg_agent 行の「実行中サブエージェント総数」(+N)（issue #191）。
- * bg エージェントバッジと同系色で、タイトルより控えめに添える。 */
-.session-bg-count {
-  margin-left: 2px;
-  font-size: 11px;
-  color: #7aa2f7;
-  font-variant-numeric: tabular-nums;
-}
-
-/* 常駐バックグラウンドシェル: サブエージェント表示に寄せた右下バッジ（青のプロンプト）。
- * running_bg_agent の robot_2 が右下を取るので排他で、両者が重なることはない。 */
-.state-shell-badge {
-  position: absolute;
-  right: -3px;
-  bottom: -3px;
-  font-size: 9px;
-  color: #7aa2f7;
-  text-shadow:
-    0 0 1px #141414,
-    0 0 1px #141414,
-    0 0 2px #141414;
-}
-
-/* 使用量上限到達（issue #301）: 主状態に重ねる右上バッジ。警告色（赤）で
- * bg-agent / shell（右下・青）と位置・色を分け、同時表示できる。 */
+/* 使用量上限到達: 状態グリフに重ねる唯一のバッジ（右上・警告色）。 */
 .state-limited-badge {
   position: absolute;
   right: -3px;
@@ -436,12 +397,24 @@ body {
     0 0 2px #141414;
 }
 
-/* 常駐バックグラウンドシェルが複数のとき添える (+N)。シェルバッジと同系の青で控えめに。 */
-.session-shell-count {
-  margin-left: 2px;
+/* 併走アクティビティのチップ: agent / shell を状態グリフの隣に添える。 */
+.session-activity {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 3px;
   font-size: 11px;
-  color: #7aa2f7;
+  color: #8b93a7;
   font-variant-numeric: tabular-nums;
+}
+
+.session-activity-glyph {
+  font-size: 13px;
+  margin-right: 1px;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
 }
 
 .main-row {
