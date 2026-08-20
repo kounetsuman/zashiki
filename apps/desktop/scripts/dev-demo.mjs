@@ -11,7 +11,7 @@
 //! Customize the scene by copying the printed spec to a file and passing `--config <path>` (or the
 //! ZASHIKI_DEMO_CONFIG env). The spec shape is { orgs:[{name,color?}], sessions:[{org,repo,title?,state}] }.
 
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -153,6 +153,11 @@ function demoDirs(spec, root) {
   return [...dirs];
 }
 
+/** The unique repo (org/repo leaf) dirs, which must be git repos for `/api/fs/repos` to list them. */
+function demoRepoDirs(spec, root) {
+  return [...new Set(spec.sessions.map((s) => join(root, s.org, s.repo)))];
+}
+
 function parseArgs(argv) {
   let config = process.env.ZASHIKI_DEMO_CONFIG ?? null;
   for (let i = 0; i < argv.length; i++) {
@@ -210,6 +215,8 @@ async function main() {
 
   const root = mkdtempSync(join(tmpdir(), "zashiki-demo-"));
   for (const dir of demoDirs(spec, root)) mkdirSync(dir, { recursive: true });
+  for (const repo of demoRepoDirs(spec, root))
+    execFileSync("git", ["init", "-q"], { cwd: repo });
   mkdirSync(join(root, "projects"), { recursive: true });
   mkdirSync(join(root, "saves"), { recursive: true });
 
