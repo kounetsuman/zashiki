@@ -30,29 +30,19 @@ const STATE_ICONS: Record<SessionState, string> = {
 
 const FRESH_ICON = "start";
 
-// While a subagent is running (running_bg_agent), overlay this bottom-right badge on the main icon.
-const BG_AGENT_BADGE = "robot_2";
+// Activity-chip glyphs. These sit beside the state glyph as chips, not overlaid on it.
+const BG_AGENT_GLYPH = "robot_2";
+const SHELL_GLYPH = "terminal";
 
-// Bottom-right badge for a persistent background shell. Shares the corner with robot_2, which
-// running_bg_agent wins, so the two never overlap.
-const SHELL_BADGE = "terminal";
-
-// Reaching the usage limit adds this top-right badge overlaid on the main state. Orthogonal to the main state (shown for any state).
+// Reaching the usage limit overlays this top-right badge on the state glyph. Orthogonal to the state.
 const LIMIT_BADGE = "error";
 
-/**
- * Zero conversation history (idle with no title) = a new/unused session.
- * A row given a manual title is no longer "unused", so it drops the fresh treatment.
- */
+/** Idle with neither an automatic nor a manual title = a new/unused session. */
 function isFresh(s: SessionInfo, custom: string | undefined): boolean {
   return s.state === "idle" && s.title === null && custom === undefined;
 }
 
-/**
- * Session state icon. The bottom-right corner shows robot_2 for a subagent or the shell prompt badge
- * for a background shell (subagent wins). An otherwise idle/fresh row with a shell takes the hourglass
- * so the badge sits on a running-style glyph.
- */
+/** Lifecycle-state glyph; background activity lives in ActivityChips, only the limit badge stays overlaid. */
 function StateIcon({
   session,
   fresh,
@@ -61,20 +51,9 @@ function StateIcon({
   fresh: boolean;
 }) {
   const { t } = useTranslation();
-  const showAgent = session.state === "running_bg_agent";
-  const showShell = !showAgent && (session.shellsRunning ?? 0) > 0;
+  const stateClass = fresh ? "fresh" : session.state;
+  const glyph = fresh ? FRESH_ICON : STATE_ICONS[session.state];
   const showLimited = session.limited === true;
-  const shellHourglass = showShell && (fresh || session.state === "idle");
-  const stateClass = shellHourglass
-    ? "running"
-    : fresh
-      ? "fresh"
-      : session.state;
-  const glyph = shellHourglass
-    ? STATE_ICONS.running
-    : fresh
-      ? FRESH_ICON
-      : STATE_ICONS[session.state];
   return (
     <span
       className={`state state-stack state-${stateClass}`}
@@ -85,16 +64,6 @@ function StateIcon({
       >
         {glyph}
       </span>
-      {showAgent && (
-        <span className="material-symbols-outlined state-stack-glyph state-bg-agent-badge">
-          {BG_AGENT_BADGE}
-        </span>
-      )}
-      {showShell && (
-        <span className="material-symbols-outlined state-stack-glyph state-shell-badge">
-          {SHELL_BADGE}
-        </span>
-      )}
       {showLimited && (
         <span
           className="material-symbols-outlined state-stack-glyph state-limited-badge"
@@ -104,6 +73,40 @@ function StateIcon({
         </span>
       )}
     </span>
+  );
+}
+
+/** Concurrent background activity as chips: agent follows running_bg_agent, shell follows shellsRunning; both are independent so both can show. */
+function ActivityChips({ session }: { session: SessionInfo }) {
+  const { t } = useTranslation();
+  const showAgent = session.state === "running_bg_agent";
+  const agentCount = session.runningSubagents ?? 0;
+  const shellCount = session.shellsRunning ?? 0;
+  return (
+    <>
+      {showAgent && (
+        <span
+          className="session-activity session-activity-agent"
+          title={t("sessionList.subagentCountTitle")}
+        >
+          <span className="material-symbols-outlined session-activity-glyph">
+            {BG_AGENT_GLYPH}
+          </span>
+          {agentCount > 0 && agentCount}
+        </span>
+      )}
+      {shellCount > 0 && (
+        <span
+          className="session-activity session-activity-shell"
+          title={t("sessionList.shellCountTitle")}
+        >
+          <span className="material-symbols-outlined session-activity-glyph">
+            {SHELL_GLYPH}
+          </span>
+          {shellCount}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -689,24 +692,7 @@ export function SessionListPanel({
                             onDoubleClick={() => select(s.windowId)}
                           >
                             <StateIcon session={s} fresh={fresh} />
-                            {s.state === "running_bg_agent" &&
-                              (s.runningSubagents ?? 0) > 0 && (
-                                <span
-                                  className="session-bg-count"
-                                  title={t("sessionList.subagentCountTitle")}
-                                >
-                                  (+{s.runningSubagents ?? 0})
-                                </span>
-                              )}
-                            {s.state !== "running_bg_agent" &&
-                              (s.shellsRunning ?? 0) > 1 && (
-                                <span
-                                  className="session-shell-count"
-                                  title={t("sessionList.shellCountTitle")}
-                                >
-                                  (+{s.shellsRunning ?? 0})
-                                </span>
-                              )}
+                            <ActivityChips session={s} />
                             <span className="session-title">
                               {" "}
                               {displayTitle}
