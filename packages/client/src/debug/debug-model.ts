@@ -1,6 +1,6 @@
 import type { CockpitTerminalInfo, ServerMessage } from "@zashiki/shared";
 import i18n from "../i18n/index.js";
-import type { TerminalSessionStatus } from "../session/terminal-session.js";
+import type { TermAttachStatus } from "../session/terminal-session.js";
 import type { ControlStatus } from "../ws/control.js";
 
 /**
@@ -35,7 +35,7 @@ export interface ControlDebugSnapshot {
 
 /** Diagnostic snapshot of the term WS (the shape TerminalSession.debugSnapshot() returns). */
 export interface TermDebugSnapshot {
-  status: TerminalSessionStatus;
+  status: TermAttachStatus;
   attempt: number;
   /** Number of unacked written characters (backpressure). */
   pendingAck: number;
@@ -73,7 +73,7 @@ export function isControlAbnormal(
  * Only disposed is abnormal (re-attach has failed). idle is excluded so status-name matching
  * does not misdetect the empty state.
  */
-export function isTermAbnormal(status: TerminalSessionStatus): boolean {
+export function isTermAbnormal(status: TermAttachStatus): boolean {
   return status === "disposed";
 }
 
@@ -83,7 +83,7 @@ export function isTermAbnormal(status: TerminalSessionStatus): boolean {
  */
 export function footerAbnormalNotice(
   control: ControlDebugSnapshot,
-  term: TerminalSessionStatus,
+  term: TermAttachStatus,
 ): string | null {
   const parts: string[] = [];
   if (isControlAbnormal(control.status, control.attempt)) {
