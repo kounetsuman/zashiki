@@ -1,8 +1,8 @@
-//! Pure functions behind the Claude Code hooks endpoint `POST /api/hooks/event` (ported from the TS `hooks-routes.ts`).
+//! Pure functions behind the Claude Code hooks endpoint `POST /api/hooks/event`.
 //!
 //! Asynchronous fetching (refresh / listWorkWindows / ps snapshot) is done by the REST handler; here we
 //! keep only **window resolution ([`resolve_window`])** and **delivery decisions ([`notify_delivery`] / [`decide`])**
-//! as pure functions (the equivalent of Node's `createHooksRoutes` options, separated into a testable form).
+//! as pure functions (separated into a testable form).
 //! The canonical source of behavior is the `tests` module at the end.
 
 use std::sync::Arc;
@@ -41,7 +41,7 @@ pub fn parse_statusline_limits(json: &Value) -> Option<(String, UsageLimits)> {
     Some((sid.to_string(), UsageLimits { five_hour, week }))
 }
 
-/// Notification destination (ZK_NOTIFY; defaults to web). TS `NotifyMode`.
+/// Notification destination (ZK_NOTIFY; defaults to web).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NotifyMode {
     #[default]
@@ -52,7 +52,7 @@ pub enum NotifyMode {
 }
 
 impl NotifyMode {
-    /// Interpret the ZK_NOTIFY string (unknown or empty defaults to web; TS's `?? "web"`).
+    /// Interpret the ZK_NOTIFY string (unknown or empty defaults to web).
     pub fn from_str_or_default(s: &str) -> NotifyMode {
         match s {
             "macos" => NotifyMode::Macos,
@@ -63,7 +63,7 @@ impl NotifyMode {
     }
 }
 
-/// Delivery targets (TS `NotifyDelivery`).
+/// Delivery targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NotifyDelivery {
     /// notify push over the control WS.
@@ -72,7 +72,7 @@ pub struct NotifyDelivery {
     pub mac: bool,
 }
 
-/// Decide delivery targets from ZK_NOTIFY and the number of connected browsers (TS `notifyDelivery`).
+/// Decide delivery targets from ZK_NOTIFY and the number of connected browsers.
 /// web falls back to macOS only when there are 0 browser connections. macos never pushes over the WS.
 pub fn notify_delivery(mode: NotifyMode, client_count: usize) -> NotifyDelivery {
     match mode {
@@ -86,14 +86,14 @@ pub fn notify_delivery(mode: NotifyMode, client_count: usize) -> NotifyDelivery 
     }
 }
 
-/// A resolved window (TS `ResolvedWindow`).
+/// A resolved window.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedWindow {
     pub window_id: String,
     pub name: String,
 }
 
-/// Map a hook event / focus request (sid / cwd) to a work window (TS `resolveWindow`).
+/// Map a hook event / focus request (sid / cwd) to a work window.
 /// The primary key is the sid (via process-tree traversal); the fallback is an exact match on the pane cwd.
 pub fn resolve_window(
     sid: Option<&str>,
@@ -128,7 +128,7 @@ pub fn resolve_window(
     None
 }
 
-/// Contents of a macOS notification (TS `MacNotification`).
+/// Contents of a macOS notification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MacNotification {
     pub kind: NotifyKind,
@@ -165,7 +165,7 @@ fn notify_kind_of(kind: HookKind) -> Option<NotifyKind> {
     }
 }
 
-/// Decide the side-effect plan from the hook kind, resolution result, and delivery settings (the decision part of TS `handleEvent`).
+/// Decide the side-effect plan from the hook kind, resolution result, and delivery settings.
 /// `snap_title` is the "current title of the resolved window" used for the mac notification body (empty string if absent).
 pub fn decide(
     kind: HookKind,

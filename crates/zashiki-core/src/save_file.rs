@@ -1,7 +1,5 @@
 //! Parse/serialize the save/restore save file (`saves/last.tsv`).
 //! The format is TSV of `widx\twname\tcwd\tsid`.
-//!
-//! Corresponds 1:1 with the TS version `packages/shared/src/save-file.ts` (ported together with its tests).
 
 /// One line of the save file = one window.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,8 +35,8 @@ fn is_uuid_shape(b: &[u8]) -> bool {
 
 /// Whether sid is in UUID format. Because the old cw jsonl fallback may save non-UUID values,
 /// the restore side validates with this before passing to `claude --resume` (also a defense against
-/// mixing arbitrary strings into literal keystrokes sent to the shell). Equivalent to the TS `^UUID$`
-/// anchor (no surplus before or after).
+/// mixing arbitrary strings into literal keystrokes sent to the shell). Must match `^UUID$` exactly
+/// (no surplus before or after).
 pub fn is_uuid_sid(sid: &str) -> bool {
     is_uuid_shape(sid.as_bytes())
 }
@@ -69,8 +67,8 @@ pub fn parse_save_file(text: &str) -> Vec<SaveEntry> {
     entries
 }
 
-/// Keeps tabs and newlines out of fields (prevents format corruption).
-/// Equivalent to TS `replace(/[\t\n\r]+/g, " ")` (collapses consecutive tab/nl/cr into a single space).
+/// Keeps tabs and newlines out of fields (prevents format corruption):
+/// collapses each run of tab/nl/cr (`[\t\n\r]+`) into a single space.
 fn sanitize_field(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut in_run = false;

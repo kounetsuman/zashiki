@@ -1,4 +1,4 @@
-//! The evaluation logic of the server-side state poller (a port of TS `packages/server/src/usecase/status-poller.ts`).
+//! The evaluation logic of the server-side state poller.
 //! It captures every work window, decides using core's pure functions, and notifies the caller only when something
 //! changed. The infra (tmux capture / ps / jsonl reads) is injected via `PollerPorts`, and this module holds only
 //! the logic (timer driving and WS broadcast wiring come later).
@@ -94,7 +94,7 @@ pub struct StateSnapshot {
     pub org_colors: BTreeMap<String, String>,
 }
 
-/// The wire SessionState string (protocol.ts's sessionStateSchema).
+/// The wire SessionState string.
 fn state_wire(state: SessionState) -> &'static str {
     match state {
         SessionState::WaitingInput => "waiting_input",
@@ -115,13 +115,13 @@ fn resolve_limit_marker(config: &PollConfig) -> &str {
     }
 }
 
-/// The last segment of cwd (the repo name). TS `lastPathSegment`.
+/// The last segment of cwd (the repo name).
 fn last_path_segment(path: &str) -> &str {
     path.split('/').rfind(|s| !s.is_empty()).unwrap_or(path)
 }
 
 /// Determines the capture target pane and sid. The first pane whose process tree contains claude(sid),
-/// or the leftmost pane (smallest left) if none. None if there are no panes. TS `pickPane`.
+/// or the leftmost pane (smallest left) if none. None if there are no panes.
 struct Picked {
     pane_id: String,
     cwd: String,
@@ -183,7 +183,7 @@ impl StatusPoller {
     }
 
     /// Evaluates all windows to build a StateSnapshot. The returned bool indicates whether it changed from last time
-    /// (equivalent to TS's onSync; the caller broadcasts only when true).
+    /// (the caller broadcasts only when true).
     pub async fn evaluate<P: PollerPorts>(
         &mut self,
         ports: &P,

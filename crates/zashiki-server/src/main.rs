@@ -1,7 +1,7 @@
 //! Startup entry point for zashiki-server. Launches the REST endpoints (healthz/token-probe/fs/git/search/sessions/hooks),
 //! the control runtime (a resident state poller + state.sync delivery over `/ws/control`), and `/ws/term`.
 //! The default is the owned PTY backend. It generates a token at startup and writes it to ZK_TOKEN_FILE,
-//! so the Tauri sidecar (`sidecar.rs`) can launch this binary instead of the Node server.
+//! so the Tauri sidecar (`sidecar.rs`) can launch this binary.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -51,7 +51,7 @@ async fn main() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8790);
-    // Drop-in for Node's index.ts: if ZK_TOKEN is not explicitly set, generate a random token at startup and,
+    // If ZK_TOKEN is not explicitly set, generate a random token at startup and,
     // for CLI/sidecar integration, write it with mode 0600 to ZK_TOKEN_FILE (default ~/.zashiki/token; the write happens after listen succeeds).
     let token = std::env::var("ZK_TOKEN")
         .ok()
@@ -69,7 +69,7 @@ async fn main() {
         .unwrap_or_else(|| home().join("Library/Logs/zashiki-server.err.log"));
     let prior_log_tail = zashiki_server::crash_report::read_tail(&err_log);
     let client_dist = std::env::var_os("ZK_CLIENT_DIST").map(PathBuf::from);
-    // repos.conf comes from ZK_REPOS_CONF, or ~/.zashiki/repos.conf if unset (per index.ts).
+    // repos.conf comes from ZK_REPOS_CONF, or ~/.zashiki/repos.conf if unset.
     let repos_conf = std::env::var_os("ZK_REPOS_CONF")
         .map(PathBuf::from)
         .or_else(|| Some(home().join(".zashiki/repos.conf")));
@@ -98,7 +98,7 @@ async fn main() {
     // ZK_NO_CLAUDE=1 suppresses claude auto-launch (the resume launch in save/restore also follows this).
     let launch_claude = std::env::var_os("ZK_NO_CLAUDE").is_none();
 
-    // The live-reload config comes from ZK_CONFIG, or ~/.zashiki/config.json if unset (per index.ts). It is read
+    // The live-reload config comes from ZK_CONFIG, or ~/.zashiki/config.json if unset. It is read
     // once at startup, and a resident watch task immediately reflects later changes as config.sync.
     let config_path = std::env::var_os("ZK_CONFIG")
         .map(PathBuf::from)

@@ -1,4 +1,4 @@
-//! Timer-driven loop for `StatusPoller` (equivalent to `start()`/interval in the TS `status-poller.ts`).
+//! Timer-driven loop for `StatusPoller`.
 //! Evaluates periodically and publishes to the ControlHub only when the state changed since the
 //! previous tick, pushing `state.sync` to each connection. The client never polls; the server is the
 //! sole observer.
@@ -23,8 +23,7 @@ fn sync_repos(config: &mut PollConfig, repos: &SharedRepos) {
     }
 }
 
-/// Evaluate one cycle. Publishes to the hub only when the state changed, and returns the snapshot
-/// (equivalent to the TS `onSync`).
+/// Evaluate one cycle. Publishes to the hub only when the state changed, and returns the snapshot.
 async fn evaluate_and_publish<P: PollerPorts>(
     poller: &mut StatusPoller,
     ports: &P,

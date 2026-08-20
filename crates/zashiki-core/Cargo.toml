@@ -4,7 +4,7 @@ version = "0.0.0"
 edition = "2021"
 publish = false
 license = "MIT"
-description = "zashiki のコアロジック（純関数）を Rust へ移植したクレート（#33）"
+description = "zashiki のコアロジック（純関数）の Rust 実装"
 
-# 依存ゼロ（std のみ）。UUID 判定・引数走査は正規表現を使わず手書きで TS 版と一致させる。
+# 依存ゼロ（std のみ）。UUID 判定・引数走査は正規表現を使わず手書きで実装する。
 [dependencies]

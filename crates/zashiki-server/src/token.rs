@@ -1,6 +1,6 @@
-//! Startup token generation and write-out (drop-in for Node `packages/server/src/index.ts`).
+//! Startup token generation and write-out.
 //!
-//! The Node version generates `randomBytes(24).toString("hex")` (48 hex digits) and writes it to
+//! Generates a 48-hex-digit token and writes it to
 //! `~/.zashiki/token` with mode 0600. The CLI integration (the `zashiki` command) and the Tauri
 //! sidecar (`read_token` in `sidecar.rs`) read this file. The sidecar requires it to be alphanumeric
 //! and non-empty (hex satisfies this).
@@ -8,7 +8,7 @@
 use std::io::Read as _;
 use std::path::Path;
 
-/// Encode 24 bytes as lowercase hex (48 digits). Same format as Node's `randomBytes(24).toString("hex")`.
+/// Encode 24 bytes as lowercase hex (48 digits).
 pub fn hex_token(bytes: &[u8]) -> String {
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
@@ -29,7 +29,7 @@ pub fn generate_token() -> std::io::Result<String> {
 
 /// Write the token with mode 0600 (creating the parent directory with mode 0700). Call this only
 /// after listen succeeds (so that a double-start failing on bind does not clobber the running
-/// instance's token; matches the ordering in index.ts).
+/// instance's token).
 pub fn write_token_file(path: &Path, token: &str) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;

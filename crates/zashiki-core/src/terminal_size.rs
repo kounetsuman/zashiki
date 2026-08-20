@@ -1,7 +1,7 @@
-//! Clamps terminal size up to a practical lower bound (a port of TS `packages/shared/src/terminal-size.ts`).
+//! Clamps terminal size up to a practical lower bound.
 //! So that the tiny sizes returned by transient frames of `FitAddon.proposeDimensions()` do not collapse the
 //! shared work window, this raises them to the lower bound as a server-side last line of defense. The wire's
-//! cols/rows are already integers (u32), so TS's `Math.trunc` is unnecessary.
+//! cols/rows are already integers (u32), so no truncation to integers is needed.
 
 /// Practical lower bound on terminal size. Real, usable terminals never go below this (a conservative value that only rejects transient garbage).
 pub const MIN_TERMINAL_COLS: u32 = 20;

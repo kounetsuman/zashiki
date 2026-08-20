@@ -1,7 +1,5 @@
-//! Registry of terminal views (terms). A port of the TS `app.ts` `terms` Map + `opening` Set +
-//! `TermEntry`. Registers on term.open, removes on term.close, and holds term.ack flow state.
-//! The real PTY/WS connection (`/ws/term`) is added in a later increment, so this increment has no
-//! pty/ws fields.
+//! Registry of terminal views (terms). Registers on term.open, removes on term.close, and holds
+//! term.ack flow state.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -11,7 +9,7 @@ use zashiki_core::flow::{
     on_bytes_acked, on_bytes_sent, FlowState, FlowWatermarks, INITIAL_FLOW_STATE,
 };
 
-/// term.ack-based flow control watermarks (TS DEFAULT_ACK_HIGH/LOW_WATER_MARK).
+/// term.ack-based flow control watermarks.
 pub const ACK_HIGH_WATER_MARK: u64 = 512 * 1024;
 pub const ACK_LOW_WATER_MARK: u64 = 128 * 1024;
 const ACK_WATERMARKS: FlowWatermarks = FlowWatermarks {
@@ -39,7 +37,7 @@ pub struct TermEntry {
     pub session_id: String,
     pub cols: u32,
     pub rows: u32,
-    /// Whether a PTY is wired up on `/ws/term` (rejects double attach; equivalent to TS's entry.ws).
+    /// Whether a PTY is wired up on `/ws/term` (rejects double attach).
     pub attached: bool,
     pub ack_enabled: bool,
     pub ack_flow: FlowState,
@@ -73,9 +71,9 @@ impl TermEntry {
 
 /// Result of a `/ws/term` attach reservation.
 pub enum AttachOutcome {
-    /// A termId that was not term.open'd (TS: close 4404).
+    /// A termId that was not term.open'd (close 4404).
     Missing,
-    /// A PTY is already wired up (TS: close 4409).
+    /// A PTY is already wired up (close 4409).
     AlreadyAttached,
     /// New attach allowed (the session and size to wire the PTY to).
     Ready {
@@ -99,7 +97,7 @@ impl TermRegistry {
     }
 
     /// Synchronous reservation for concurrent open. false if already registered or an open is in progress
-    /// (term_exists); true reserves it. Call this before any await (the TS synchronous reservation).
+    /// (term_exists); true reserves it. Call this before any await (a synchronous reservation).
     pub fn try_reserve(&mut self, term_id: &str) -> bool {
         if self.entries.contains_key(term_id) || self.opening.contains(term_id) {
             return false;
@@ -211,8 +209,8 @@ impl TermRegistry {
         true
     }
 
-    /// Flow update after sending PTY output (only when ack is enabled; the `onBytesSent` of TS
-    /// `proc.onData`). Transitions to pause when the high watermark is exceeded and increments
+    /// Flow update after sending PTY output (only when ack is enabled). Transitions to pause when the
+    /// high watermark is exceeded and increments
     /// ack_pause_count. Return value = whether to pause after sending (false if ack is disabled or
     /// unregistered = a client that sends no ACK uses natural backpressure only, as before). `units` is
     /// UTF-16 code units.
