@@ -1,8 +1,11 @@
-import type { CockpitTerminalInfo, SessionState } from "@zashiki/shared";
+import type {
+  CockpitTerminalInfo,
+  CockpitTerminalState,
+} from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 // Material Symbols Outlined ligature names (the font is loaded in main.tsx; shared with the footer).
-const STATE_ICONS: Record<SessionState, string> = {
+const STATE_ICONS: Record<CockpitTerminalState, string> = {
   waiting_input: "add_alert",
   running: "hourglass",
   running_bg_agent: "hourglass",

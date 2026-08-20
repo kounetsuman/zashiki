@@ -48,7 +48,7 @@ export type CockpitTerminalId = z.infer<typeof cockpitTerminalIdSchema>;
  * the process tree (it resolves to "no_claude" once the grace period is exceeded).
  * "unknown" appears only when detection was skipped due to pane_in_mode (copy-mode etc.) and there is not yet a previous state to retain.
  */
-export const sessionStateSchema = z.enum([
+export const cockpitTerminalStateSchema = z.enum([
   "waiting_input",
   "running",
   "running_bg_agent",
@@ -58,7 +58,7 @@ export const sessionStateSchema = z.enum([
   "unknown",
 ]);
 
-export type SessionState = z.infer<typeof sessionStateSchema>;
+export type CockpitTerminalState = z.infer<typeof cockpitTerminalStateSchema>;
 
 /**
  * One account usage limit: the rounded used percentage and, when known, the epoch-ms reset time.
@@ -100,7 +100,7 @@ export const cockpitTerminalInfoSchema = z.object({
   name: z.string(),
   org: z.string(),
   repo: z.string(),
-  state: sessionStateSchema,
+  state: cockpitTerminalStateSchema,
   /** First 30 characters of the first user utterance in the jsonl (null when there is no utterance or it cannot be read). */
   title: z.string().nullable(),
   /**
