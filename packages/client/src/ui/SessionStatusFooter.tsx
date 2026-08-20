@@ -12,8 +12,13 @@ import {
 } from "../session/status-footer.js";
 
 export interface SessionStatusFooterProps {
-  usage: SessionUsage;
+  /** Transcript-derived tokens/elapsed. null before the session has a readable transcript (shows dashes). */
+  usage: SessionUsage | null;
+  /** org accent applied to the top border, matching the active session tab. */
+  accentColor?: string;
 }
+
+const DASH = "–";
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = useState(() => Date.now());
@@ -47,10 +52,13 @@ function Cell({
  * this session) plus, when the statusLine bridge is configured, the account usage limits with a live
  * reset countdown. Elapsed and countdown re-tick each second off the server-provided epoch anchors.
  */
-export function SessionStatusFooter({ usage }: SessionStatusFooterProps) {
+export function SessionStatusFooter({
+  usage,
+  accentColor,
+}: SessionStatusFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
-  const limits = usage.limits;
+  const limits = usage?.limits;
 
   const limitCell = (limit: UsageLimit, label: string, title: string) => {
     const value =
@@ -72,19 +80,22 @@ export function SessionStatusFooter({ usage }: SessionStatusFooterProps) {
   };
 
   return (
-    <footer className="session-status">
+    <footer
+      className="session-status"
+      style={accentColor ? { borderTopColor: accentColor } : undefined}
+    >
       <span className="ss-group" title={t("footer.status.tokensTitle")}>
         <span className="material-symbols-outlined ss-icon" aria-hidden="true">
           generating_tokens
         </span>
         <Cell
-          value={fmtTokens(usage.turnTokens)}
+          value={usage ? fmtTokens(usage.turnTokens) : DASH}
           caption={t("footer.status.turn")}
         />
         <Cell
-          value={fmtTokens(usage.sessionTokens)}
+          value={usage ? fmtTokens(usage.sessionTokens) : DASH}
           caption={t("footer.status.session")}
-          severity={tokenSeverity(usage.sessionTokens)}
+          severity={usage ? tokenSeverity(usage.sessionTokens) : undefined}
         />
       </span>
 
@@ -93,11 +104,11 @@ export function SessionStatusFooter({ usage }: SessionStatusFooterProps) {
           schedule
         </span>
         <Cell
-          value={fmtDuration(now - usage.turnStartedAt)}
+          value={usage ? fmtDuration(now - usage.turnStartedAt) : DASH}
           caption={t("footer.status.turn")}
         />
         <Cell
-          value={fmtDuration(now - usage.sessionStartedAt)}
+          value={usage ? fmtDuration(now - usage.sessionStartedAt) : DASH}
           caption={t("footer.status.session")}
         />
       </span>

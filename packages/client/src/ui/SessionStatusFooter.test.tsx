@@ -37,6 +37,26 @@ describe("SessionStatusFooter", () => {
     expect(screen.queryByText("speed")).toBeNull();
   });
 
+  it("shows dashes for every cell before a transcript is readable", () => {
+    render(<SessionStatusFooter usage={null} />);
+    expect(screen.getAllByText("–").length).toBe(4);
+    expect(screen.queryByText("speed")).toBeNull();
+  });
+
+  it("tints the top border with the org accent color", () => {
+    const { container } = render(
+      <SessionStatusFooter usage={null} accentColor="#f5c2e7" />,
+    );
+    const footer = container.querySelector(".session-status") as HTMLElement;
+    expect(footer.style.borderTopColor).toBe("rgb(245, 194, 231)");
+  });
+
+  it("leaves the top border untinted without an accent color", () => {
+    const { container } = render(<SessionStatusFooter usage={null} />);
+    const footer = container.querySelector(".session-status") as HTMLElement;
+    expect(footer.style.borderTopColor).toBe("");
+  });
+
   it("shows per-limit percentages with their severity when present", () => {
     render(
       <SessionStatusFooter
