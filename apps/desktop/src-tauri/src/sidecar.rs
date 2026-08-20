@@ -6,18 +6,25 @@
 //! Every stage is emitted to stderr as a progress log (for diagnosability on crash).
 
 use std::collections::VecDeque;
-use std::io::{BufRead as _, BufReader, Read as _, Write as _};
-use std::net::TcpStream;
-use std::path::{Path, PathBuf};
+use std::io::{BufRead as _, BufReader};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+#[path = "sidecar_config.rs"]
+mod sidecar_config;
+#[path = "sidecar_http.rs"]
+mod sidecar_http;
+#[path = "sidecar_version.rs"]
+mod sidecar_version;
+
+pub use sidecar_config::{config_path_from_env, devtools_enabled, read_debug_flag, Config};
+
+use sidecar_http::{check_health, http_get, is_healthy_response, serves_client_ui};
+use sidecar_version::{classify_reuse, healthz_pid, ReuseDecision, EXPECTED_GIT_SHA};
+
 pub const DEFAULT_PORT: u16 = 8790;
-const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
-const READ_CHUNK_TIMEOUT: Duration = Duration::from_millis(500);
-/// Upper bound for a whole request (guaranteed to return even if the peer never closes the connection).
-const RESPONSE_DEADLINE: Duration = Duration::from_secs(3);
 const SPAWN_HEALTH_TIMEOUT: Duration = Duration::from_secs(15);
 const TOKEN_VERIFY_TIMEOUT: Duration = Duration::from_secs(3);
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -25,118 +32,6 @@ pub const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 /// Number of trailing stderr lines to retain for diagnostics when the server dies.
 const STDERR_TAIL_LINES: usize = 20;
 
-pub struct Config {
-    pub port: u16,
-    pub token_path: PathBuf,
-    /// The server binary to launch (the Rust zashiki-server), exec'd directly by the sidecar.
-    pub server_bin: PathBuf,
-    /// The client dist served statically by the server. In the distributed .app this is a bundled
-    /// resource (Contents/Resources/client-dist); in dev it may not exist (the dev WebView opens
-    /// Vite:5173 and does not use the server's static serving, so a dist that is absent at spawn
-    /// time is not passed as ZK_CLIENT_DIST).
-    pub client_dist: PathBuf,
-    /// The real bundle version (app.package_info().version), passed to the server as ZK_APP_VERSION so it can
-    /// compare against GitHub Releases (#26). The server's own Cargo version stays at the 0.0.0 placeholder, so
-    /// this is the only channel carrying the real version. Empty / 0.0.0 (dev) disables the server's update check.
-    pub app_version: String,
-}
-
-impl Config {
-    /// Resolves using the same environment variable scheme as the server (ZK_*).
-    /// The token and binary can each be overridden so that tests do not touch the real ~/.zashiki.
-    pub fn from_env() -> Self {
-        let port = std::env::var("ZK_PORT")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_PORT);
-        let token_path = std::env::var("ZK_TOKEN_FILE")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| default_token_path());
-        let server_bin = std::env::var("ZK_SERVER_BIN")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| default_server_bin());
-        let client_dist = std::env::var_os("ZK_CLIENT_DIST")
-            .map(PathBuf::from)
-            .unwrap_or_else(default_client_dist);
-        Self {
-            port,
-            token_path,
-            server_bin,
-            client_dist,
-            // Filled in from app.package_info().version at setup time (main.rs); the env has no real version here.
-            app_version: String::new(),
-        }
-    }
-}
-
-fn default_token_path() -> PathBuf {
-    // The server writes to ~/.zashiki/token under $HOME (zashiki-server main.rs).
-    let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".zashiki").join("token")
-}
-
-/// Resolves the Rust server binary to launch. In the distributed .app it uses the `zashiki-server`
-/// bundled in the same directory as this shell executable; in development it uses the cargo output
-/// inside the repository.
-fn default_server_bin() -> PathBuf {
-    let exe = std::env::current_exe().ok();
-    let exe_dir = exe.as_deref().and_then(Path::parent);
-    let cargo_target =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../crates/zashiki-server/target");
-    resolve_server_bin(!cfg!(debug_assertions), exe_dir, &cargo_target)
-}
-
-/// Pure logic for resolving the server binary (with current_exe / profile / paths injected from
-/// `default_server_bin`).
-///
-/// - bundled (release build = distributed .app): prefers the bundled sibling `zashiki-server`,
-///   falling back to the cargo output (release, then debug) if it is absent.
-/// - dev (debug build): does **not** look at the sibling. In tauri's `target/debug`, an externalBin
-///   `#!/bin/sh` stub (which exits 0 immediately) can appear under the same name; grabbing it makes
-///   the server "exit before startup". In dev, beforeDevCommand builds debug, so it prefers the
-///   cargo debug output and falls back to release if absent.
-fn resolve_server_bin(bundled: bool, exe_dir: Option<&Path>, cargo_target: &Path) -> PathBuf {
-    let release = cargo_target.join("release/zashiki-server");
-    let debug = cargo_target.join("debug/zashiki-server");
-    if bundled {
-        if let Some(sibling) = exe_dir.map(|dir| dir.join("zashiki-server")) {
-            if sibling.is_file() {
-                return sibling;
-            }
-        }
-        if release.is_file() {
-            return release;
-        }
-        return debug;
-    }
-    if debug.is_file() {
-        return debug;
-    }
-    release
-}
-
-/// Resolves the client dist served statically by the server. In the distributed .app it points from
-/// the executable (Contents/MacOS/Zashiki) to `../Resources/client-dist` (the bundled resource);
-/// in development it points to the repository's `packages/client/dist` (in dev it may be absent
-/// since the WebView opens Vite:5173).
-fn default_client_dist() -> PathBuf {
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let bundled = bundled_client_dist(dir);
-            if bundled.is_dir() {
-                return bundled;
-            }
-        }
-    }
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../packages/client/dist")
-}
-
-/// Pure function deriving the path to the bundled client dist (Contents/Resources/client-dist)
-/// from the distributed .app's executable directory (Contents/MacOS).
-/// Corresponds to `bundle.resources` in tauri.conf.json (client-dist -> Contents/Resources/client-dist).
-fn bundled_client_dist(exe_dir: &Path) -> PathBuf {
-    exe_dir.join("../Resources/client-dist")
-}
 
 /// Progress log for the startup sequence. If the accident of stderr not being retained on crash
 /// recurs, this lets the terminal side trace which stage took how many seconds.
@@ -159,156 +54,12 @@ impl StepLog {
     }
 }
 
-// ---- HTTP (only healthz / token verification on 127.0.0.1, so raw TCP suffices; avoid adding dependencies) ----
-
-fn http_get(
-    port: u16,
-    path: &str,
-    extra_headers: &[(&str, &str)],
-) -> std::io::Result<(u16, String)> {
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT)?;
-    stream.set_read_timeout(Some(READ_CHUNK_TIMEOUT))?;
-    stream.set_write_timeout(Some(READ_CHUNK_TIMEOUT))?;
-    let mut req = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n");
-    for (name, value) in extra_headers {
-        req.push_str(&format!("{name}: {value}\r\n"));
-    }
-    req.push_str("\r\n");
-    stream.write_all(req.as_bytes())?;
-
-    // The read timeout is per-read only, so against a peer that never closes the connection
-    // read_to_end would be unbounded. Use incremental reads with an overall deadline plus
-    // content-length completion detection.
-    let deadline = Instant::now() + RESPONSE_DEADLINE;
-    let mut buf: Vec<u8> = Vec::new();
-    let mut chunk = [0u8; 4096];
-    loop {
-        if response_complete(&buf) {
-            break;
-        }
-        if Instant::now() >= deadline {
-            break;
-        }
-        match stream.read(&mut chunk) {
-            Ok(0) => break, // EOF
-            Ok(n) => buf.extend_from_slice(&chunk[..n]),
-            Err(e)
-                if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut =>
-            {
-                continue; // per-read timeout; fall through to the deadline check
-            }
-            Err(e) => return Err(e),
-        }
-    }
-    let text = String::from_utf8_lossy(&buf).into_owned();
-    parse_http_response(&text).ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, "malformed HTTP response")
-    })
-}
-
-/// Content-length-based response completion detection (node's res.end() produces a content-length
-/// response). For header configurations where this cannot be determined, returns false and defers
-/// to EOF or the deadline.
-pub fn response_complete(buf: &[u8]) -> bool {
-    let text = String::from_utf8_lossy(buf);
-    let Some((head, body)) = text.split_once("\r\n\r\n") else {
-        return false;
-    };
-    let Some(len) = head.lines().find_map(|line| {
-        let (name, value) = line.split_once(':')?;
-        if name.trim().eq_ignore_ascii_case("content-length") {
-            value.trim().parse::<usize>().ok()
-        } else {
-            None
-        }
-    }) else {
-        return false;
-    };
-    body.len() >= len
-}
-
-pub fn parse_http_response(raw: &str) -> Option<(u16, String)> {
-    let (head, body) = raw.split_once("\r\n\r\n").unwrap_or((raw, ""));
-    let status_line = head.lines().next()?;
-    let mut parts = status_line.split(' ');
-    let version = parts.next()?;
-    if !version.starts_with("HTTP/") {
-        return None;
-    }
-    let status: u16 = parts.next()?.parse().ok()?;
-    Some((status, body.to_string()))
-}
-
-/// To avoid mistaking the case where another process merely occupies 8790 for "the server is
-/// running", checks the healthz body in addition to the status.
-pub fn is_healthy_response(status: u16, body: &str) -> bool {
-    status == 200 && body.contains("\"status\":\"ok\"")
-}
-
-pub fn check_health(port: u16) -> bool {
-    matches!(http_get(port, "/healthz", &[]), Ok((status, body)) if is_healthy_response(status, &body))
-}
-
-/// This build's own git SHA (embedded by build.rs). Compared against healthz's `git_sha` to avoid
-/// riding along on a stale server. On builds where embedding is not possible it becomes "unknown",
-/// in which case no comparison is done (with no basis to decide, it falls back to riding along).
-pub const EXPECTED_GIT_SHA: &str = env!("ZK_GIT_SHA");
-
 /// Grace period to wait after sending SIGTERM to a stale server until the port is released (healthz
 /// disappears). On SIGTERM the server does a "save session -> withdraw" (graceful). Since healthz
 /// keeps responding during the save, this is set longer than the server-side total withdrawal limit
 /// (main.rs `SHUTDOWN_BUDGET` = 10s) so as **not to interrupt the save**. Exceeding it means "it hung
 /// beyond its own budget" = last-resort SIGKILL.
 const STALE_RELEASE_TIMEOUT: Duration = Duration::from_secs(12);
-
-/// Result of the ride-along decision. `Reuse` rides along as before; `Stale` re-acquires (kill -> spawn our own).
-#[derive(Debug, PartialEq, Eq)]
-pub enum ReuseDecision {
-    Reuse,
-    Stale,
-}
-
-/// Extracts a top-level string field from healthz (JSON).
-fn healthz_str_field(body: &str, key: &str) -> Option<String> {
-    serde_json::from_str::<serde_json::Value>(body)
-        .ok()?
-        .get(key)?
-        .as_str()
-        .map(str::to_string)
-}
-
-/// The server's own pid as declared by healthz. None for old servers that don't support the build ID.
-/// pid <= 0 is not accepted: passing a negative value or 0 to `libc::kill` sends the signal to a
-/// process group or all processes (POSIX), so this structurally prevents self-destruction from a
-/// corrupt or malicious healthz.
-pub fn healthz_pid(body: &str) -> Option<i32> {
-    serde_json::from_str::<serde_json::Value>(body)
-        .ok()?
-        .get("pid")?
-        .as_i64()
-        .and_then(|p| i32::try_from(p).ok())
-        .filter(|&p| p > 0)
-}
-
-/// Pure function that, assuming healthz is healthy ([`is_healthy_response`]==true), decides whether
-/// it is OK to ride along.
-/// - dev(debug) build: always rides along, since `git_sha` changes on every rebuild and would drag
-///   the session down with it.
-/// - this build's `git_sha` is "unknown" (a build where embedding is not possible): rides along, as
-///   there is no basis to decide.
-/// - healthz's `git_sha` matches expected: rides along.
-/// - mismatch, or `git_sha` missing (an old server that doesn't support the build ID): stale.
-pub fn classify_reuse(is_dev: bool, expected_sha: &str, body: &str) -> ReuseDecision {
-    if is_dev || expected_sha == "unknown" {
-        return ReuseDecision::Reuse;
-    }
-    match healthz_str_field(body, "git_sha") {
-        Some(sha) if sha == expected_sha => ReuseDecision::Reuse,
-        _ => ReuseDecision::Stale,
-    }
-}
 
 /// Extracts the single LISTENing pid from `lsof -t` output (newline-separated pids).
 /// Multiple pids (fork workers, shared fds, etc.) are treated as "ambiguous which to kill", returning
@@ -323,20 +74,6 @@ pub fn parse_lsof_pid(output: &str) -> Option<i32> {
         [pid] => Some(*pid),
         _ => None,
     }
-}
-
-/// Whether the server's `/` (static serving of the client dist, no token required) returns an HTML
-/// document. Riding along on a server that does not serve it (occupying 8790 without a client dist)
-/// makes `/` return 401/404 and leaves the WebView blank, so this detects that and turns it into an
-/// error with remediation.
-pub fn serves_client_ui(port: u16) -> bool {
-    matches!(http_get(port, "/", &[]), Ok((status, body)) if status == 200 && is_html_document(&body))
-}
-
-/// Whether the response body is an HTML document (detecting the client's index.html). Ignores leading whitespace and is case-insensitive.
-pub fn is_html_document(body: &str) -> bool {
-    let head = body.trim_start().to_ascii_lowercase();
-    head.starts_with("<!doctype html") || head.starts_with("<html")
 }
 
 // ---- Token ----
@@ -436,57 +173,6 @@ pub fn fetch_activity(port: u16, token: &str) -> Option<Activity> {
 /// The token is already validated as alphanumeric-only by read_token, so no URL encoding is needed.
 pub fn initial_url(base: &str, token: &str) -> String {
     format!("{base}/?token={token}")
-}
-
-// ---- Debug mode (enabling the WebView's devtools via `debug` in config.json) ----
-
-/// Resolves the same live-reload config file as the server (ZK_CONFIG, or ~/.zashiki/config.json if unset).
-/// The server toggles the client's DebugPanel via `debug` in the same file, and the shell toggles the
-/// WebView's devtools via the same flag (= a single "debug mode" drives both together).
-pub fn config_path_from_env() -> PathBuf {
-    std::env::var_os("ZK_CONFIG")
-        .map(PathBuf::from)
-        .unwrap_or_else(default_config_path)
-}
-
-fn default_config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".zashiki").join("config.json")
-}
-
-/// Pure function that reads `debug` from config.json leniently. Absent, corrupt, non-object,
-/// type-mismatched, or missing all yield false (the same "default false" contract as the server's
-/// `parse_config`).
-pub fn parse_debug_flag(json_text: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(json_text)
-        .ok()
-        .as_ref()
-        .and_then(|v| v.as_object())
-        .and_then(|o| o.get("debug"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-}
-
-/// Reads config.json and resolves the debug flag. If it cannot be read (absent, permissions), false.
-pub fn read_debug_flag(path: &Path) -> bool {
-    std::fs::read_to_string(path)
-        .ok()
-        .map(|text| parse_debug_flag(&text))
-        .unwrap_or(false)
-}
-
-/// Pure decision on whether to enable the WebView's devtools (web inspector).
-/// dev (`tauri dev`) is always enabled regardless of config so as not to degrade the developer
-/// experience. Builds produced by `tauri build` (the distributed .app, including `--debug`) are
-/// enabled only when `debug` in config.json is true (devtools can be used only when turned ON via
-/// the config file).
-///
-/// The dev decision injects the same `tauri::is_dev()` (= custom-protocol disabled) as base_url.
-/// With `cfg!(debug_assertions)`, `tauri build --debug` would be treated as dev, opening devtools on
-/// a distribution-equivalent build while ignoring config (diverging from base_url, which behaves as
-/// production).
-pub fn devtools_enabled(config_debug: bool, is_dev: bool) -> bool {
-    is_dev || config_debug
 }
 
 // ---- sidecar lifecycle ----
@@ -859,6 +545,7 @@ pub fn shutdown(child: &mut Child, grace: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
 
     /// Disposable server that accepts a single connection and returns a fixed response.
@@ -932,108 +619,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_http_response_はステータスとボディを取り出す() {
-        let raw = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\n\r\n{\"status\":\"ok\"}";
-        assert_eq!(
-            parse_http_response(raw),
-            Some((200, "{\"status\":\"ok\"}".to_string()))
-        );
-    }
-
-    #[test]
-    fn parse_http_response_はボディ無しも扱う() {
-        assert_eq!(
-            parse_http_response("HTTP/1.1 403 Forbidden\r\n\r\n"),
-            Some((403, String::new()))
-        );
-    }
-
-    #[test]
-    fn parse_http_response_はhttpでないものを拒否する() {
-        assert_eq!(parse_http_response("garbage"), None);
-        assert_eq!(parse_http_response(""), None);
-    }
-
-    #[test]
-    fn response_complete_はcontent_length到達で真() {
-        assert!(response_complete(
-            b"HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello"
-        ));
-        assert!(!response_complete(
-            b"HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhel"
-        ));
-        assert!(!response_complete(b"HTTP/1.1 200 OK\r\n")); // headers incomplete
-        assert!(!response_complete(
-            b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n0\r\n\r\n"
-        )); // without content-length, defer to EOF/deadline
-    }
-
-    #[test]
-    fn is_healthy_response_は200かつステータスokのみ真() {
-        assert!(is_healthy_response(200, "{\"status\":\"ok\"}"));
-        assert!(!is_healthy_response(200, "hello")); // another process occupying the port
-        assert!(!is_healthy_response(403, "{\"status\":\"ok\"}"));
-        assert!(!is_healthy_response(500, ""));
-    }
-
-    const CURRENT_BUILD: &str =
-        r#"{"status":"ok","version":"0.0.0","git_sha":"abc123","pid":4242}"#;
-    const OTHER_BUILD: &str =
-        r#"{"status":"ok","version":"0.0.0","git_sha":"def456","pid":4242}"#;
-    const LEGACY_BUILD: &str = r#"{"status":"ok"}"#; // an old server that doesn't support the build ID
-
-    #[test]
-    fn classify_reuse_は現行ビルドにのみ相乗りしstaleを掴み直す() {
-        // release: git_sha matches -> ride along; mismatch/missing -> stale (re-acquire).
-        assert_eq!(
-            classify_reuse(false, "abc123", CURRENT_BUILD),
-            ReuseDecision::Reuse
-        );
-        assert_eq!(
-            classify_reuse(false, "abc123", OTHER_BUILD),
-            ReuseDecision::Stale
-        );
-        assert_eq!(
-            classify_reuse(false, "abc123", LEGACY_BUILD),
-            ReuseDecision::Stale
-        );
-    }
-
-    #[test]
-    fn classify_reuse_はdevと不明ビルドでは常に相乗りする() {
-        // dev(debug) changes git_sha on every rebuild = no comparison, to avoid dragging it down.
-        assert_eq!(
-            classify_reuse(true, "abc123", OTHER_BUILD),
-            ReuseDecision::Reuse
-        );
-        // If this build's git_sha is unknown (embedding not possible), there is no basis to decide, so ride along.
-        assert_eq!(
-            classify_reuse(false, "unknown", OTHER_BUILD),
-            ReuseDecision::Reuse
-        );
-    }
-
-    #[test]
-    fn healthz_pid_は数値pidのみ取り出す() {
-        assert_eq!(healthz_pid(CURRENT_BUILD), Some(4242));
-        assert_eq!(healthz_pid(LEGACY_BUILD), None); // no pid field
-        assert_eq!(healthz_pid("not json"), None);
-    }
-
-    #[test]
-    fn healthz_pid_は非正値や型違いを拒否する() {
-        // pid <= 0 is not accepted, since it triggers a runaway kill (-1 = all processes, 0 = caller's pgrp).
-        assert_eq!(healthz_pid(r#"{"status":"ok","pid":-1}"#), None);
-        assert_eq!(healthz_pid(r#"{"status":"ok","pid":0}"#), None);
-        // A type mismatch (string pid) yields None from as_i64.
-        assert_eq!(healthz_pid(r#"{"status":"ok","pid":"4242"}"#), None);
-        // A huge value exceeding i32 is rejected by try_from.
-        assert_eq!(healthz_pid(r#"{"status":"ok","pid":9999999999}"#), None);
-        // The valid minimum is accepted.
-        assert_eq!(healthz_pid(r#"{"status":"ok","pid":1}"#), Some(1));
-    }
-
-    #[test]
     fn parse_activity_reads_camelcase_counts() {
         let a = parse_activity(
             r#"{"activeSessions":2,"runningSubagents":1,"backgroundShells":3}"#,
@@ -1090,50 +675,6 @@ mod tests {
         assert_eq!(parse_lsof_pid("0\n12345\n"), Some(12345));
         // If multiple valid pids remain, it is ambiguous = give up.
         assert_eq!(parse_lsof_pid("0\n111\n222\n"), None);
-    }
-
-    #[test]
-    fn check_health_は実サーバ応答で判定する() {
-        let healthy = serve_once(
-            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 15\r\n\r\n{\"status\":\"ok\"}",
-        );
-        assert!(check_health(healthy));
-
-        let forbidden = serve_once("HTTP/1.1 403 Forbidden\r\ncontent-length: 0\r\n\r\n");
-        assert!(!check_health(forbidden));
-
-        assert!(!check_health(closed_port()));
-    }
-
-    #[test]
-    fn check_health_は接続を閉じないピアでも応答完了で即返る() {
-        // The read timeout is per-read, so against a peer that never closes, read_to_end was
-        // unbounded. Verify it returns without waiting for the deadline via content-length completion detection.
-        let port = serve_once_opts(
-            "HTTP/1.1 200 OK\r\ncontent-length: 15\r\n\r\n{\"status\":\"ok\"}",
-            false,
-        );
-        let started = Instant::now();
-        assert!(check_health(port));
-        assert!(
-            started.elapsed() < Duration::from_secs(2),
-            "完了検知で即返るべき（elapsed={:?}）",
-            started.elapsed()
-        );
-    }
-
-    #[test]
-    fn http_get_は応答しないピアでもdeadlineで必ず返る() {
-        // A peer that holds the connection with incomplete headers (neither response completion nor EOF arrives).
-        let port = serve_once_opts("HTTP/1.1 200 OK\r\n", false);
-        let started = Instant::now();
-        // The return value's contents don't matter (lenient parsing may yield Ok). Only verify boundedness.
-        let _ = http_get(port, "/healthz", &[]);
-        assert!(
-            started.elapsed() < RESPONSE_DEADLINE + Duration::from_secs(1),
-            "deadline 超過（elapsed={:?}）",
-            started.elapsed()
-        );
     }
 
     #[test]
@@ -1276,74 +817,6 @@ mod tests {
     }
 
     #[test]
-    fn resolve_server_bin_はbundledで同梱兄弟を最優先する() {
-        // Distributed .app: use the zashiki-server next to the executable (Contents/MacOS/Zashiki).
-        let dir = tempfile::tempdir().unwrap();
-        let exe_dir = dir.path().join("MacOS");
-        std::fs::create_dir(&exe_dir).unwrap();
-        let sibling = exe_dir.join("zashiki-server");
-        std::fs::write(&sibling, "REAL").unwrap();
-        // Even if cargo output exists, the sibling (bundled resource) wins.
-        let cargo = dir.path().join("target");
-        std::fs::create_dir_all(cargo.join("release")).unwrap();
-        std::fs::write(cargo.join("release/zashiki-server"), "bin").unwrap();
-        assert_eq!(resolve_server_bin(true, Some(&exe_dir), &cargo), sibling);
-    }
-
-    #[test]
-    fn resolve_server_bin_はbundledで兄弟不在時にrelease出力へ落ちる() {
-        let dir = tempfile::tempdir().unwrap();
-        let exe_dir = dir.path().join("MacOS");
-        std::fs::create_dir(&exe_dir).unwrap(); // no sibling
-        let cargo = dir.path().join("target");
-        std::fs::create_dir_all(cargo.join("release")).unwrap();
-        let release = cargo.join("release/zashiki-server");
-        std::fs::write(&release, "bin").unwrap();
-        assert_eq!(resolve_server_bin(true, Some(&exe_dir), &cargo), release);
-    }
-
-    #[test]
-    fn resolve_server_bin_はdevで兄弟スタブを無視しcargo_debugを使う() {
-        // Grabbing the #!/bin/sh stub (which exits 0 immediately) that appears in tauri's target/debug
-        // as the sibling causes "server exited before startup (exit status: 0)". In dev it does not
-        // look at the sibling and uses the cargo debug output (built by beforeDevCommand).
-        let dir = tempfile::tempdir().unwrap();
-        let exe_dir = dir.path().join("target/debug");
-        std::fs::create_dir_all(&exe_dir).unwrap();
-        let stub = exe_dir.join("zashiki-server");
-        std::fs::write(&stub, "#!/bin/sh\n").unwrap(); // sibling stub
-        let cargo = dir.path().join("crates-target");
-        std::fs::create_dir_all(cargo.join("debug")).unwrap();
-        let real = cargo.join("debug/zashiki-server");
-        std::fs::write(&real, "REAL").unwrap();
-        let got = resolve_server_bin(false, Some(&exe_dir), &cargo);
-        assert_eq!(got, real, "dev は兄弟スタブではなく cargo debug 出力を使うべき");
-        assert_ne!(got, stub);
-    }
-
-    #[test]
-    fn resolve_server_bin_はdevでdebug不在時にrelease出力へ落ちる() {
-        let dir = tempfile::tempdir().unwrap();
-        let cargo = dir.path().join("target");
-        std::fs::create_dir_all(cargo.join("release")).unwrap();
-        let release = cargo.join("release/zashiki-server");
-        std::fs::write(&release, "bin").unwrap();
-        // No debug output -> fall back to release.
-        assert_eq!(resolve_server_bin(false, None, &cargo), release);
-    }
-
-    #[test]
-    fn bundled_client_dist_は実行体ディレクトリからresources配下を指す() {
-        // Distributed .app: the executable is Contents/MacOS/Zashiki, the client dist is Contents/Resources/client-dist.
-        // Pins the contract corresponding to the bundle.resources placement (client-dist) in tauri.conf.json.
-        let exe_dir = Path::new("/Applications/Zashiki.app/Contents/MacOS");
-        assert_eq!(
-            bundled_client_dist(exe_dir),
-            PathBuf::from("/Applications/Zashiki.app/Contents/MacOS/../Resources/client-dist")
-        );
-    }
-
-    #[test]
     fn spawn_env_は常にport_tokenを含む() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = Config {
@@ -1389,72 +862,6 @@ mod tests {
             .find(|(k, _)| *k == "ZK_CLIENT_DIST")
             .map(|(_, v)| v);
         assert_eq!(value, Some(dist.to_string_lossy().into_owned()));
-    }
-
-    #[test]
-    fn is_html_document_は先頭がdoctype_htmlのみ真() {
-        assert!(is_html_document("<!doctype html>\n<html></html>"));
-        assert!(is_html_document("  \n<!DOCTYPE HTML>")); // whitespace + uppercase
-        assert!(is_html_document("<html lang=\"ja\">"));
-        assert!(!is_html_document("hello")); // the catch-all's implicit 200
-        assert!(!is_html_document("{\"ok\":true}"));
-        assert!(!is_html_document("")); // the empty body of 401/404
-    }
-
-    #[test]
-    fn serves_client_ui_は200かつhtmlのみ真() {
-        // A server that serves the client dist (returns index.html).
-        let served = serve_once(
-            "HTTP/1.1 200 OK\r\ncontent-type: text/html\r\ncontent-length: 15\r\n\r\n<!doctype html>",
-        );
-        assert!(serves_client_ui(served));
-
-        // A server occupying the port without a client dist (`/` returns 401 via require_token).
-        let unauthorized = serve_once("HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\n\r\n");
-        assert!(!serves_client_ui(unauthorized));
-
-        // Even a 200 that is not HTML (such as the catch-all's hello) is treated as UI not served.
-        let hello = serve_once("HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello");
-        assert!(!serves_client_ui(hello));
-
-        assert!(!serves_client_ui(closed_port()));
-    }
-
-    #[test]
-    fn parse_debug_flag_はdebug_trueのみ真() {
-        // The same lenient read as the server's config.json (~/.zashiki/config.json).
-        assert!(parse_debug_flag(r#"{"debug":true}"#));
-        assert!(!parse_debug_flag(r#"{"debug":false}"#));
-        assert!(!parse_debug_flag(r#"{"notifySound":true}"#)); // debug missing -> default false
-        assert!(!parse_debug_flag(r#"{"debug":"true"}"#)); // type mismatch (string) -> default false
-        assert!(!parse_debug_flag(r#"{"debug":1}"#)); // type mismatch (number) -> default false
-        assert!(!parse_debug_flag("not json")); // corrupt -> false
-        assert!(!parse_debug_flag("")); // empty -> false
-        assert!(!parse_debug_flag("[]")); // non-object -> false
-    }
-
-    #[test]
-    fn read_debug_flag_は不在で偽_true設定で真() {
-        let dir = tempfile::tempdir().unwrap();
-        // Absent (config.json not created) -> false (debug is disabled by default).
-        assert!(!read_debug_flag(&dir.path().join("no-such-config.json")));
-
-        let path = dir.path().join("config.json");
-        std::fs::write(&path, r#"{"notifySound":true,"debug":true}"#).unwrap();
-        assert!(read_debug_flag(&path));
-
-        std::fs::write(&path, r#"{"debug":false}"#).unwrap();
-        assert!(!read_debug_flag(&path));
-    }
-
-    #[test]
-    fn devtools_enabled_はdevは常時_releaseはconfig依存() {
-        // dev (debug build) enables devtools regardless of config (so as not to degrade the developer experience).
-        assert!(devtools_enabled(false, true));
-        assert!(devtools_enabled(true, true));
-        // The distributed (release) build only when debug in config.json is true.
-        assert!(!devtools_enabled(false, false));
-        assert!(devtools_enabled(true, false));
     }
 
     #[test]
