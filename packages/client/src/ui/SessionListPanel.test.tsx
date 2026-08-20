@@ -381,22 +381,24 @@ describe("SessionListPanel: session rows", () => {
     expect(body).not.toContain("tango");
   });
 
-  it("indicates the active window with a subtle row highlight (class) rather than a >", () => {
-    renderPanel();
-    const active = screen.getByRole("button", { name: /zashiki(?! を閉じる)/ });
-    expect(active.className).toContain("session-row-active");
-    expect(active.textContent).not.toContain(">");
-    const inactive = screen.getByRole("button", {
+  it("does not highlight unselected rows (only the selected row stands out)", () => {
+    renderPanel({ selectedWindowId: SID1 });
+    const unselected = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
-    expect(inactive.className).not.toContain("session-row-active");
-    expect(inactive.textContent).not.toContain(">");
+    expect(unselected.getAttribute("aria-current")).toBeNull();
+    expect(unselected.textContent).not.toContain(">");
   });
 
-  it("a row that is both active and selected has session-row-active and aria-current together", () => {
+  it("exposes the org color as a CSS var on each row (for the selected-row left bar)", () => {
+    renderPanel();
+    const row = screen.getByRole("button", { name: /zashiki(?! を閉じる)/ });
+    expect(row.style.getPropertyValue("--org-color")).not.toBe("");
+  });
+
+  it("marks the selected row with aria-current so it gets the strong highlight", () => {
     renderPanel({ selectedWindowId: SID1 });
     const row = screen.getByRole("button", { name: /zashiki(?! を閉じる)/ });
-    expect(row.className).toContain("session-row-active");
     expect(row.getAttribute("aria-current")).toBe("true");
   });
 

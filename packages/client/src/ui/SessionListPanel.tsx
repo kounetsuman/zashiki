@@ -657,13 +657,19 @@ export function SessionListPanel({
                                 : undefined
                             }
                             className={`panel-row panel-row-hover session-row-main${
-                              s.active ? " session-row-active" : ""
-                            }${
                               focused?.kind === "row" &&
                               focused.windowId === s.windowId
                                 ? " session-row-focused"
                                 : ""
                             }`}
+                            style={
+                              {
+                                "--org-color": resolveOrgColor(
+                                  s.org,
+                                  orgColors,
+                                ),
+                              } as React.CSSProperties
+                            }
                             aria-current={
                               s.windowId === selectedWindowId
                                 ? "true"

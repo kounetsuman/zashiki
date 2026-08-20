@@ -207,8 +207,8 @@ body {
     "opsz" 20;
 }
 
-/* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .panel-row。
- * explorer に揃え、選択・アクティブとも border 無しの行全体薄ハイライト。 */
+/* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .panel-row。非選択行は
+ * 背景色と同色（ハイライトなし）で、選択行だけを目立たせる。 */
 .session-row-main {
   padding: 2px 8px;
   flex: 1;
@@ -217,20 +217,15 @@ body {
   user-select: none;
 }
 
-/* アクティブ窓（`>` 廃止・#88）: 薄いハイライト。hover(.panel-row-hover:hover)
- * より優先させるため .session-row-main で詳細度を上げる。選択（下の
- * aria-current）は属性セレクタでさらに強く、確実に上書きする。 */
-.session-row-main.session-row-active,
-.session-row-main.session-row-active:hover {
-  background: #20242b;
-}
-
-/* 選択は hover・アクティブより優先（explorer の .panel-row-selected と同規約）。
- * アクティブと同詳細度だが後ろに置くことで後勝ちさせ、選択色で上書きする。 */
+/* 選択（＝現在表示中）のセッションだけを強めにハイライトし、左端に org カラーの帯を出す。
+ * hover より優先（explorer の .panel-row-selected と同規約）。border-box なので
+ * border 分だけ padding-left を詰めて本文位置を非選択行と揃える。 */
 .session-row-main[aria-current="true"],
 .session-row-main[aria-current="true"]:hover {
-  background: #2c313a;
+  background: #333b47;
   color: #fff;
+  border-left: 3px solid var(--org-color, transparent);
+  padding-left: 5px;
 }
 
 /* ↑↓ のフォーカス枠（選択＝背景ハイライトと区別できるよう内側ボーダーで示す）。 */
