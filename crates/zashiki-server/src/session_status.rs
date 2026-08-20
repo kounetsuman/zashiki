@@ -9,11 +9,11 @@
 //! source of truth is the `tests` at the end of the file.
 
 use crate::pty_host::PtySession;
-use zashiki_core::session_state::{detect_state, DetectStateOptions, SessionState};
+use zashiki_core::session_state::{detect_state, DetectStateOptions, CockpitTerminalState};
 
 /// Detect a session's current state from the headless reconstructed screen (vt100).
 /// This replaces tmux `capture-pane` → `detectState` (only the screen source changes; detection stays the core pure function).
-pub fn poll_state(session: &PtySession, opts: &DetectStateOptions) -> SessionState {
+pub fn poll_state(session: &PtySession, opts: &DetectStateOptions) -> CockpitTerminalState {
     detect_state(&session.screen_contents(), opts)
 }
 
@@ -57,7 +57,7 @@ mod tests {
         let session =
             PtySession::spawn(sh("printf 'working (esc to interrupt)\\n'; sleep 5")).unwrap();
         wait_screen_contains(&session, "esc to interrupt", 2000).await;
-        assert_eq!(poll_state(&session, &opts(true)), SessionState::Running);
+        assert_eq!(poll_state(&session, &opts(true)), CockpitTerminalState::Running);
         session.kill();
     }
 
@@ -70,7 +70,7 @@ mod tests {
         wait_screen_contains(&session, "2. no", 2000).await;
         assert_eq!(
             poll_state(&session, &opts(true)),
-            SessionState::WaitingInput
+            CockpitTerminalState::WaitingInput
         );
         session.kill();
     }
@@ -81,8 +81,8 @@ mod tests {
     async fn plain_screen_is_idle_with_claude_and_no_claude_without() {
         let session = PtySession::spawn(sh("printf 'ready> \\n'; sleep 5")).unwrap();
         wait_screen_contains(&session, "ready>", 2000).await;
-        assert_eq!(poll_state(&session, &opts(true)), SessionState::Idle);
-        assert_eq!(poll_state(&session, &opts(false)), SessionState::NoClaude);
+        assert_eq!(poll_state(&session, &opts(true)), CockpitTerminalState::Idle);
+        assert_eq!(poll_state(&session, &opts(false)), CockpitTerminalState::NoClaude);
         session.kill();
     }
 }

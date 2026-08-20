@@ -1,4 +1,7 @@
-import type { CockpitTerminalInfo, SessionState } from "@zashiki/shared";
+import type {
+  CockpitTerminalInfo,
+  CockpitTerminalState,
+} from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 import {
   buildVisibleItems,
@@ -17,7 +20,7 @@ function session(
     cockpitTerminalId,
     org,
     name: org,
-    state: "idle" as SessionState,
+    state: "idle" as CockpitTerminalState,
     title: null,
     ...extra,
   } as CockpitTerminalInfo;

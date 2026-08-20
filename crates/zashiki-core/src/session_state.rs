@@ -6,10 +6,10 @@
 //! it can be fed to this same pure function from either tmux `capture-pane` or the headless vterm
 //! reconstruction (the detection side is unchanged even after removing tmux).
 
-/// The state of a conversation session (corresponds to the wire `SessionState`).
+/// The state of a conversation session (corresponds to the wire `CockpitTerminalState`).
 /// `detect_state` never returns `Unknown` (if there is no hint on screen, it returns `Idle`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SessionState {
+pub enum CockpitTerminalState {
     WaitingInput,
     Running,
     /// The state where the normal spinner has been pushed out and only the bottom bg-agent group
@@ -254,23 +254,23 @@ fn resolve<'a>(marker: Option<&'a str>, default: &'a str) -> &'a str {
 /// Capture-primary detection that treats the conversation pane's actual screen as authoritative
 /// (priority: wizard > running > bg > no_claude > idle). `Idle` means "no hint on screen", and the
 /// caller chains it into the jsonl fallback via `fallback_state`.
-pub fn detect_state(capture: &str, opts: &DetectStateOptions) -> SessionState {
+pub fn detect_state(capture: &str, opts: &DetectStateOptions) -> CockpitTerminalState {
     if is_wizard(capture) {
-        return SessionState::WaitingInput;
+        return CockpitTerminalState::WaitingInput;
     }
     if is_running(capture, resolve(opts.run_marker, DEFAULT_RUN_MARKER)) {
-        return SessionState::Running;
+        return CockpitTerminalState::Running;
     }
     if has_bg_agent(
         capture,
         resolve(opts.bg_agent_marker, DEFAULT_BG_AGENT_MARKER),
     ) {
-        return SessionState::RunningBgAgent;
+        return CockpitTerminalState::RunningBgAgent;
     }
     if !opts.has_claude {
-        return SessionState::NoClaude;
+        return CockpitTerminalState::NoClaude;
     }
-    SessionState::Idle
+    CockpitTerminalState::Idle
 }
 
 /// The kind of the last event in the transcript (jsonl).
@@ -294,7 +294,7 @@ pub fn fallback_state(
     last_event: Option<&TranscriptEvent>,
     mtime_age_sec: Option<f64>,
     poll_sec: f64,
-) -> SessionState {
+) -> CockpitTerminalState {
     let poll = if poll_sec.is_finite() && poll_sec > 0.0 {
         poll_sec
     } else {
@@ -304,9 +304,9 @@ pub fn fallback_state(
     let fresh = matches!(mtime_age_sec, Some(age) if age <= max_age_sec);
     match last_event {
         Some(ev) if matches!(ev.kind, TranscriptKind::User) && !ev.interrupted && fresh => {
-            SessionState::Running
+            CockpitTerminalState::Running
         }
-        _ => SessionState::Idle,
+        _ => CockpitTerminalState::Idle,
     }
 }
 
@@ -353,12 +353,12 @@ pub fn startup_grace_polls(poll_sec: f64) -> u32 {
 /// `NoClaude` is returned as is (even if a live claude disappears, the caller re-counts from
 /// streak=1 if the previous state was live, so here we purely look only at "is this an early no_claude").
 pub fn apply_startup_grace(
-    detected: SessionState,
+    detected: CockpitTerminalState,
     no_claude_polls: u32,
     grace_polls: u32,
-) -> SessionState {
-    if matches!(detected, SessionState::NoClaude) && no_claude_polls <= grace_polls {
-        SessionState::Starting
+) -> CockpitTerminalState {
+    if matches!(detected, CockpitTerminalState::NoClaude) && no_claude_polls <= grace_polls {
+        CockpitTerminalState::Starting
     } else {
         detected
     }
@@ -423,14 +423,14 @@ mod tests {
 
     #[test]
     fn running_spinner_in_bottom_window() {
-        assert_eq!(detect_state(CAP_RUN, &claude()), SessionState::Running);
+        assert_eq!(detect_state(CAP_RUN, &claude()), CockpitTerminalState::Running);
     }
 
     #[test]
     fn running_ignores_trailing_blank_lines() {
         assert_eq!(
             detect_state(&with_trailing_blanks(CAP_RUN, 8), &claude()),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
     }
 
@@ -438,7 +438,7 @@ mod tests {
     fn marker_at_8th_line_is_running() {
         assert_eq!(
             detect_state(CAP_MARKER_AT_8TH, &claude()),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
     }
 
@@ -446,7 +446,7 @@ mod tests {
     fn marker_at_9th_line_is_idle() {
         assert_eq!(
             detect_state(CAP_MARKER_AT_9TH_HISTORY_QUOTE, &claude()),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -454,7 +454,7 @@ mod tests {
     fn running_detected_in_short_capture() {
         assert_eq!(
             detect_state(CAP_SHORT_RUN, &claude()),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
     }
 
@@ -462,7 +462,7 @@ mod tests {
     fn bg_panel_is_running_bg_agent() {
         assert_eq!(
             detect_state(CAP_BG, &claude()),
-            SessionState::RunningBgAgent
+            CockpitTerminalState::RunningBgAgent
         );
     }
 
@@ -470,7 +470,7 @@ mod tests {
     fn bg_panel_trailing_blanks_running_bg_agent() {
         assert_eq!(
             detect_state(&with_trailing_blanks(CAP_BG, 3), &claude()),
-            SessionState::RunningBgAgent
+            CockpitTerminalState::RunningBgAgent
         );
     }
 
@@ -478,7 +478,7 @@ mod tests {
     fn bg_multi_agents_running_bg_agent() {
         assert_eq!(
             detect_state(CAP_BG_MULTI, &claude()),
-            SessionState::RunningBgAgent
+            CockpitTerminalState::RunningBgAgent
         );
     }
 
@@ -486,7 +486,7 @@ mod tests {
     fn bg_short_running_bg_agent() {
         assert_eq!(
             detect_state(CAP_BG_SHORT, &claude()),
-            SessionState::RunningBgAgent
+            CockpitTerminalState::RunningBgAgent
         );
     }
 
@@ -494,7 +494,7 @@ mod tests {
     fn bg_inline_circle_in_input_box_is_idle() {
         assert_eq!(
             detect_state(CAP_BG_INPUT_BOX, &claude()),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -502,20 +502,20 @@ mod tests {
     fn bg_heading_but_inline_circle_is_idle() {
         assert_eq!(
             detect_state(CAP_BG_HEADING_BUT_INLINE_CIRCLE, &claude()),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
     #[test]
     fn bg_radio_without_heading_is_idle() {
-        assert_eq!(detect_state(CAP_BG_RADIO, &claude()), SessionState::Idle);
+        assert_eq!(detect_state(CAP_BG_RADIO, &claude()), CockpitTerminalState::Idle);
     }
 
     #[test]
     fn bg_history_quote_is_idle() {
         assert_eq!(
             detect_state(CAP_BG_HISTORY_QUOTE, &claude()),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -523,7 +523,7 @@ mod tests {
     fn wizard_two_choice_is_waiting_input() {
         assert_eq!(
             detect_state(CAP_WIZARD_TWO_CHOICE, &claude()),
-            SessionState::WaitingInput
+            CockpitTerminalState::WaitingInput
         );
     }
 
@@ -531,7 +531,7 @@ mod tests {
     fn wizard_single_choice_is_idle() {
         assert_eq!(
             detect_state(CAP_WIZARD_SINGLE, &claude()),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -539,7 +539,7 @@ mod tests {
     fn wizard_wins_over_spinner() {
         assert_eq!(
             detect_state(CAP_WIZARD_WITH_MARKER, &claude()),
-            SessionState::WaitingInput
+            CockpitTerminalState::WaitingInput
         );
     }
 
@@ -547,51 +547,51 @@ mod tests {
     fn numbered_list_without_cursor_is_not_wizard() {
         assert_eq!(
             detect_state(CAP_NUMBERED_LIST_NO_CURSOR, &claude()),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
     #[test]
     fn no_hint_with_claude_is_idle() {
-        assert_eq!(detect_state(CAP_IDLE_PLAIN, &claude()), SessionState::Idle);
+        assert_eq!(detect_state(CAP_IDLE_PLAIN, &claude()), CockpitTerminalState::Idle);
     }
 
     #[test]
     fn no_hint_without_claude_is_no_claude() {
         assert_eq!(
             detect_state(CAP_SHELL_ONLY, &no_claude()),
-            SessionState::NoClaude
+            CockpitTerminalState::NoClaude
         );
     }
 
     #[test]
     fn empty_capture_with_claude_is_idle() {
-        assert_eq!(detect_state("", &claude()), SessionState::Idle);
+        assert_eq!(detect_state("", &claude()), CockpitTerminalState::Idle);
     }
 
     #[test]
     fn empty_capture_without_claude_is_no_claude() {
-        assert_eq!(detect_state("", &no_claude()), SessionState::NoClaude);
+        assert_eq!(detect_state("", &no_claude()), CockpitTerminalState::NoClaude);
     }
 
     #[test]
     fn wizard_wins_over_claude_detection() {
         assert_eq!(
             detect_state(CAP_WIZARD_TWO_CHOICE, &no_claude()),
-            SessionState::WaitingInput
+            CockpitTerminalState::WaitingInput
         );
     }
 
     #[test]
     fn wide_idle_is_idle() {
-        assert_eq!(detect_state(CAP_IDLE_80, &claude()), SessionState::Idle);
+        assert_eq!(detect_state(CAP_IDLE_80, &claude()), CockpitTerminalState::Idle);
     }
 
     #[test]
     fn wide_wrapped_spinner_tail_is_running() {
         assert_eq!(
             detect_state(CAP_RUN_80_WRAPPED_TAIL, &claude()),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
     }
 
@@ -599,7 +599,7 @@ mod tests {
     fn wide_wrapped_option_is_waiting_input() {
         assert_eq!(
             detect_state(CAP_WIZARD_80_WRAPPED_OPTION, &claude()),
-            SessionState::WaitingInput
+            CockpitTerminalState::WaitingInput
         );
     }
 
@@ -607,7 +607,7 @@ mod tests {
     fn wide_wrap_starting_with_number_stays_waiting_input() {
         assert_eq!(
             detect_state(CAP_WIZARD_80_WRAP_STARTS_WITH_NUMBER, &claude()),
-            SessionState::WaitingInput
+            CockpitTerminalState::WaitingInput
         );
     }
 
@@ -615,7 +615,7 @@ mod tests {
     fn wide_old_spinner_quote_out_of_window_is_idle() {
         assert_eq!(
             detect_state(CAP_IDLE_80_WITH_OLD_SPINNER_QUOTE, &claude()),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -623,14 +623,14 @@ mod tests {
     fn wide_bg_full_screen_is_running_bg_agent() {
         assert_eq!(
             detect_state(CAP_BG_80_FULL, &claude()),
-            SessionState::RunningBgAgent
+            CockpitTerminalState::RunningBgAgent
         );
     }
 
     #[test]
     fn run_marker_is_overridable() {
         let cap = "✻ 走行中 [RUNNING-NOW]\n❯ ";
-        assert_eq!(detect_state(cap, &claude()), SessionState::Idle);
+        assert_eq!(detect_state(cap, &claude()), CockpitTerminalState::Idle);
         assert_eq!(
             detect_state(
                 cap,
@@ -640,14 +640,14 @@ mod tests {
                     bg_agent_marker: None,
                 }
             ),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
     }
 
     #[test]
     fn bg_marker_is_overridable() {
         let cap = "  ⏺ main\n  ● general-purpose  作業  1s";
-        assert_eq!(detect_state(cap, &claude()), SessionState::Idle);
+        assert_eq!(detect_state(cap, &claude()), CockpitTerminalState::Idle);
         assert_eq!(
             detect_state(
                 cap,
@@ -657,7 +657,7 @@ mod tests {
                     bg_agent_marker: Some("●"),
                 }
             ),
-            SessionState::RunningBgAgent
+            CockpitTerminalState::RunningBgAgent
         );
     }
 
@@ -672,7 +672,7 @@ mod tests {
                     bg_agent_marker: Some(""),
                 }
             ),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -808,7 +808,7 @@ mod tests {
     fn fallback_user_fresh_is_running() {
         assert_eq!(
             fallback_state(Some(&user(false)), Some(5.0), 2.0),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
     }
 
@@ -816,7 +816,7 @@ mod tests {
     fn fallback_interrupted_user_is_idle() {
         assert_eq!(
             fallback_state(Some(&user(true)), Some(5.0), 2.0),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -824,7 +824,7 @@ mod tests {
     fn fallback_stale_user_is_idle() {
         assert_eq!(
             fallback_state(Some(&user(false)), Some(120.0), 2.0),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -836,20 +836,20 @@ mod tests {
         };
         assert_eq!(
             fallback_state(Some(&ev), Some(5.0), 2.0),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
     #[test]
     fn fallback_no_event_is_idle() {
-        assert_eq!(fallback_state(None, Some(5.0), 2.0), SessionState::Idle);
+        assert_eq!(fallback_state(None, Some(5.0), 2.0), CockpitTerminalState::Idle);
     }
 
     #[test]
     fn fallback_unknown_mtime_is_idle() {
         assert_eq!(
             fallback_state(Some(&user(false)), None, 2.0),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -857,11 +857,11 @@ mod tests {
     fn fallback_freshness_boundary_poll_2() {
         assert_eq!(
             fallback_state(Some(&user(false)), Some(30.0), 2.0),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
         assert_eq!(
             fallback_state(Some(&user(false)), Some(31.0), 2.0),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -869,11 +869,11 @@ mod tests {
     fn fallback_freshness_boundary_poll_20() {
         assert_eq!(
             fallback_state(Some(&user(false)), Some(40.0), 20.0),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
         assert_eq!(
             fallback_state(Some(&user(false)), Some(41.0), 20.0),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
     }
 
@@ -881,15 +881,15 @@ mod tests {
     fn fallback_invalid_poll_defaults_to_2() {
         assert_eq!(
             fallback_state(Some(&user(false)), Some(30.0), 0.0),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
         assert_eq!(
             fallback_state(Some(&user(false)), Some(31.0), -1.0),
-            SessionState::Idle
+            CockpitTerminalState::Idle
         );
         assert_eq!(
             fallback_state(Some(&user(false)), Some(30.0), f64::NAN),
-            SessionState::Running
+            CockpitTerminalState::Running
         );
     }
 
@@ -952,28 +952,28 @@ mod tests {
     fn startup_grace_maps_early_no_claude_to_starting() {
         // Within the grace (from the first poll to the boundary) is Starting.
         assert_eq!(
-            apply_startup_grace(SessionState::NoClaude, 1, 3),
-            SessionState::Starting
+            apply_startup_grace(CockpitTerminalState::NoClaude, 1, 3),
+            CockpitTerminalState::Starting
         );
         assert_eq!(
-            apply_startup_grace(SessionState::NoClaude, 3, 3),
-            SessionState::Starting
+            apply_startup_grace(CockpitTerminalState::NoClaude, 3, 3),
+            CockpitTerminalState::Starting
         );
         // Exceeding the grace is finalized as NoClaude (does not hide a resume failure).
         assert_eq!(
-            apply_startup_grace(SessionState::NoClaude, 4, 3),
-            SessionState::NoClaude
+            apply_startup_grace(CockpitTerminalState::NoClaude, 4, 3),
+            CockpitTerminalState::NoClaude
         );
     }
 
     #[test]
     fn startup_grace_leaves_non_no_claude_states_untouched() {
         for s in [
-            SessionState::Running,
-            SessionState::RunningBgAgent,
-            SessionState::Idle,
-            SessionState::WaitingInput,
-            SessionState::Unknown,
+            CockpitTerminalState::Running,
+            CockpitTerminalState::RunningBgAgent,
+            CockpitTerminalState::Idle,
+            CockpitTerminalState::WaitingInput,
+            CockpitTerminalState::Unknown,
         ] {
             assert_eq!(apply_startup_grace(s, 1, 3), s);
         }

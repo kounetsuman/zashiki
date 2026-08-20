@@ -118,7 +118,7 @@ mod tests {
     use crate::session_registry::SessionMeta;
     use portable_pty::CommandBuilder;
     use std::time::Duration;
-    use zashiki_core::session_state::{detect_state, DetectStateOptions, SessionState};
+    use zashiki_core::session_state::{detect_state, DetectStateOptions, CockpitTerminalState};
 
     fn sh(script: &str) -> PtyConfig {
         let mut cmd = CommandBuilder::new("sh");
@@ -191,7 +191,7 @@ mod tests {
 
         let cap = wait_capture_contains(&ports, "%run", "esc to interrupt", 2000).await;
         assert!(cap.contains("esc to interrupt"), "capture missing: {cap:?}");
-        assert_eq!(detect_state(&cap, &opts(true)), SessionState::Running);
+        assert_eq!(detect_state(&cap, &opts(true)), CockpitTerminalState::Running);
 
         ports.registry.remove("%run").await;
     }
@@ -211,7 +211,7 @@ mod tests {
         let ports = PtyPollerPorts::new(Arc::new(registry), throwaway_projects());
 
         let cap = wait_capture_contains(&ports, "%wiz", "2. no", 2000).await;
-        assert_eq!(detect_state(&cap, &opts(true)), SessionState::WaitingInput);
+        assert_eq!(detect_state(&cap, &opts(true)), CockpitTerminalState::WaitingInput);
 
         ports.registry.remove("%wiz").await;
     }
@@ -226,8 +226,8 @@ mod tests {
         let ports = PtyPollerPorts::new(Arc::new(registry), throwaway_projects());
 
         let cap = wait_capture_contains(&ports, "%idle", "ready>", 2000).await;
-        assert_eq!(detect_state(&cap, &opts(true)), SessionState::Idle);
-        assert_eq!(detect_state(&cap, &opts(false)), SessionState::NoClaude);
+        assert_eq!(detect_state(&cap, &opts(true)), CockpitTerminalState::Idle);
+        assert_eq!(detect_state(&cap, &opts(false)), CockpitTerminalState::NoClaude);
 
         ports.registry.remove("%idle").await;
     }

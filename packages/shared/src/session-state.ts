@@ -1,4 +1,4 @@
-import type { SessionState } from "./protocol.js";
+import type { CockpitTerminalState } from "./protocol.js";
 
 // Pure functions for determining session state. The spec of record is session-state.test.ts.
 
@@ -140,7 +140,7 @@ export interface DetectStateOptions {
 export function detectState(
   capture: string,
   opts: DetectStateOptions,
-): SessionState {
+): CockpitTerminalState {
   if (isWizard(capture)) return "waiting_input";
   // An empty-string marker falls back to the default (equivalent to zsh's
   // ${VAR:-default}; prevents the misconfiguration where includes("") is always

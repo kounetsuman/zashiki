@@ -10,7 +10,7 @@ use zashiki_core::process_tree::{build_process_maps, find_sid_in_tree, parse_ps_
 use zashiki_core::repos::{org_names, org_of_cwd};
 use zashiki_core::session_state::{
     apply_startup_grace, count_running_subagents, detect_state, fallback_state, is_limit_reached,
-    startup_grace_polls, subagent_fresh_within_sec, DetectStateOptions, SessionState,
+    startup_grace_polls, subagent_fresh_within_sec, DetectStateOptions, CockpitTerminalState,
     DEFAULT_LIMIT_MARKER,
 };
 
@@ -94,16 +94,16 @@ pub struct StateSnapshot {
     pub org_colors: BTreeMap<String, String>,
 }
 
-/// The wire SessionState string.
-fn state_wire(state: SessionState) -> &'static str {
+/// The wire CockpitTerminalState string.
+fn state_wire(state: CockpitTerminalState) -> &'static str {
     match state {
-        SessionState::WaitingInput => "waiting_input",
-        SessionState::Running => "running",
-        SessionState::RunningBgAgent => "running_bg_agent",
-        SessionState::Idle => "idle",
-        SessionState::NoClaude => "no_claude",
-        SessionState::Starting => "starting",
-        SessionState::Unknown => "unknown",
+        CockpitTerminalState::WaitingInput => "waiting_input",
+        CockpitTerminalState::Running => "running",
+        CockpitTerminalState::RunningBgAgent => "running_bg_agent",
+        CockpitTerminalState::Idle => "idle",
+        CockpitTerminalState::NoClaude => "no_claude",
+        CockpitTerminalState::Starting => "starting",
+        CockpitTerminalState::Unknown => "unknown",
     }
 }
 
@@ -160,7 +160,7 @@ fn pick_pane(win: &CockpitTerminal, maps: &zashiki_core::process_tree::ProcessMa
 pub struct StatusPoller {
     last: Option<StateSnapshot>,
     /// The previous state of windows whose decision was skipped due to pane_in_mode (copy-mode, etc.).
-    prev_states: HashMap<String, SessionState>,
+    prev_states: HashMap<String, CockpitTerminalState>,
     /// The previous limited of windows whose decision was skipped due to pane_in_mode (carried over because the capture becomes history and cannot be re-decided).
     prev_limited: HashMap<String, bool>,
     /// The consecutive no_claude poll count per window (material for the startup grace decision). Reset to 0 on anything other than no_claude.
@@ -252,7 +252,7 @@ impl StatusPoller {
                 self.prev_states
                     .get(&win.cockpit_terminal_id)
                     .copied()
-                    .unwrap_or(SessionState::Unknown),
+                    .unwrap_or(CockpitTerminalState::Unknown),
                 self.prev_limited
                     .get(&win.cockpit_terminal_id)
                     .copied()
@@ -274,11 +274,11 @@ impl StatusPoller {
 
         let mut slices: Option<Slices> = None;
         if let Some(sid) = &sid {
-            if state == SessionState::Idle || need_slices {
+            if state == CockpitTerminalState::Idle || need_slices {
                 slices = ports.read_slices(&cwd, sid).await;
             }
         }
-        if state == SessionState::Idle && sid.is_some() {
+        if state == CockpitTerminalState::Idle && sid.is_some() {
             let last_ev = slices
                 .as_ref()
                 .and_then(|s| last_user_or_assistant_event(&s.tail));
@@ -296,7 +296,7 @@ impl StatusPoller {
             if rebuilt {
                 self.no_claude_streak.remove(&win.cockpit_terminal_id);
             }
-            let streak = if state == SessionState::NoClaude {
+            let streak = if state == CockpitTerminalState::NoClaude {
                 let entry = self
                     .no_claude_streak
                     .entry(win.cockpit_terminal_id.clone())
@@ -324,7 +324,7 @@ impl StatusPoller {
         }
 
         let mut running_subagents = 0;
-        if state == SessionState::RunningBgAgent {
+        if state == CockpitTerminalState::RunningBgAgent {
             if let Some(sid) = &sid {
                 let ages = ports.subagent_ages(&cwd, sid).await;
                 running_subagents =
@@ -348,10 +348,10 @@ impl StatusPoller {
         let usage = match (&sid, state) {
             (
                 Some(sid),
-                SessionState::Running
-                | SessionState::RunningBgAgent
-                | SessionState::WaitingInput
-                | SessionState::Idle,
+                CockpitTerminalState::Running
+                | CockpitTerminalState::RunningBgAgent
+                | CockpitTerminalState::WaitingInput
+                | CockpitTerminalState::Idle,
             ) => ports.session_usage(&cwd, sid).await.map(|d| SessionUsage {
                 turn_tokens: d.turn_tokens,
                 session_tokens: d.session_tokens,
