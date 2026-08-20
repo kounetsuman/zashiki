@@ -153,6 +153,12 @@
       "elapsedTitle": "Elapsed — this turn / this session",
       "fiveHourTitle": "5-hour session usage",
       "weekTitle": "Weekly usage"
+    },
+    "account": {
+      "session": "Current session",
+      "week": "Current week",
+      "sessionTitle": "Claude Code current session (5-hour) usage",
+      "weekTitle": "Claude Code current week usage"
     }
   },
   "update": {
