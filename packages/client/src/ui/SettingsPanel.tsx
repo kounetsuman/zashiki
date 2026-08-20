@@ -1,9 +1,17 @@
+import type { UpdateCheckResultMessage } from "@zashiki/shared";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
 import { PanelHeader } from "./PanelHeader.js";
 import { panelClass } from "./panels.js";
+
+type UpdateCheckState =
+  | { phase: "idle" }
+  | { phase: "checking" }
+  | { phase: "available"; version: string | null }
+  | { phase: "upToDate" }
+  | { phase: "error" };
 
 export interface SettingsPanelProps {
   /** Current display language (i18n.language). */
@@ -29,6 +37,11 @@ export interface SettingsPanelProps {
   canResetFontSize?: boolean;
   /** Open the "add org" modal (shared with the SESSION LIST header). Omit to hide the entry. */
   onAddOrg?(): void;
+  /**
+   * Run an on-demand update check (sends `update.check` and resolves with the server's reply).
+   * Omit to hide the entry (e.g. in isolated tests without a control channel).
+   */
+  onCheckForUpdates?(): Promise<UpdateCheckResultMessage>;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
 }
@@ -53,6 +66,7 @@ export function SettingsPanel({
   canDecreaseFontSize = true,
   canResetFontSize = true,
   onAddOrg,
+  onCheckForUpdates,
   inactive,
 }: SettingsPanelProps) {
   const { t } = useTranslation();
@@ -60,6 +74,25 @@ export function SettingsPanel({
   const [draft, setDraft] = useState<Locale>(current);
   // Follow the draft when the language changes externally (config.sync).
   useEffect(() => setDraft(current), [current]);
+
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheckState>({
+    phase: "idle",
+  });
+  const runUpdateCheck = (): void => {
+    if (onCheckForUpdates === undefined || updateCheck.phase === "checking") {
+      return;
+    }
+    setUpdateCheck({ phase: "checking" });
+    onCheckForUpdates().then(
+      (result) =>
+        setUpdateCheck(
+          result.status === "available"
+            ? { phase: "available", version: result.version }
+            : { phase: result.status },
+        ),
+      () => setUpdateCheck({ phase: "error" }),
+    );
+  };
 
   return (
     <section
@@ -127,6 +160,34 @@ export function SettingsPanel({
               </button>
             </div>
           </fieldset>
+        )}
+        {onCheckForUpdates !== undefined && (
+          <div className="settings-field">
+            <span className="settings-label">
+              {t("settings.updateSection")}
+            </span>
+            <button
+              type="button"
+              className="settings-save"
+              disabled={updateCheck.phase === "checking"}
+              onClick={runUpdateCheck}
+            >
+              {t("settings.checkForUpdates")}
+            </button>
+            {updateCheck.phase !== "idle" && (
+              <span className="settings-update-status" aria-live="polite">
+                {updateCheck.phase === "checking" &&
+                  t("settings.updateChecking")}
+                {updateCheck.phase === "available" &&
+                  t("settings.updateAvailable", {
+                    version: updateCheck.version ?? "",
+                  })}
+                {updateCheck.phase === "upToDate" &&
+                  t("settings.updateUpToDate")}
+                {updateCheck.phase === "error" && t("settings.updateError")}
+              </span>
+            )}
+          </div>
         )}
         {onAddOrg !== undefined && (
           <div className="settings-field">

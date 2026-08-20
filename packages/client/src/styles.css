@@ -413,14 +413,14 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* 常駐バックグラウンドシェル（issue #229）: 主状態に重ねる左下バッジ。
- * robot_2（右下・青）と系統を分け緑で、主状態と直交して同時表示できる。 */
+/* 常駐バックグラウンドシェル: サブエージェント表示に寄せた右下バッジ（青のプロンプト）。
+ * running_bg_agent の robot_2 が右下を取るので排他で、両者が重なることはない。 */
 .state-shell-badge {
   position: absolute;
-  left: -3px;
+  right: -3px;
   bottom: -3px;
   font-size: 9px;
-  color: #9ece6a;
+  color: #7aa2f7;
   text-shadow:
     0 0 1px #141414,
     0 0 1px #141414,
@@ -428,7 +428,7 @@ body {
 }
 
 /* 使用量上限到達（issue #301）: 主状態に重ねる右上バッジ。警告色（赤）で
- * bg-agent（右下・青）/ shell（左下・緑）と位置・色を分け、同時表示できる。 */
+ * bg-agent / shell（右下・青）と位置・色を分け、同時表示できる。 */
 .state-limited-badge {
   position: absolute;
   right: -3px;
@@ -441,11 +441,11 @@ body {
     0 0 2px #141414;
 }
 
-/* 常駐バックグラウンドシェル数 (+Nsh)。シェルバッジと同系の緑で控えめに添える。 */
+/* 常駐バックグラウンドシェルが複数のとき添える (+N)。シェルバッジと同系の青で控えめに。 */
 .session-shell-count {
   margin-left: 2px;
   font-size: 11px;
-  color: #9ece6a;
+  color: #7aa2f7;
   font-variant-numeric: tabular-nums;
 }
 
@@ -555,6 +555,67 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* ---- セッション状態フッタ（issue #74。MAIN AREA が SESSION の時のみ端末下に出す） ---- */
+
+.session-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 4px 10px;
+  background: linear-gradient(180deg, #1c1c1c, #181818);
+  border-top: 1px solid #333;
+  color: #9aa0a6;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ss-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ss-group-limits {
+  margin-left: auto;
+}
+
+.ss-icon {
+  flex: none;
+  font-size: 15px;
+  line-height: 1;
+  color: #6b7078;
+}
+
+.ss-val {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  color: #d0d3d6;
+}
+
+.ss-cap {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7078;
+}
+
+.ss-val.ss-warn {
+  color: #e5c07b;
+}
+
+.ss-val.ss-high {
+  color: #e59f52;
+}
+
+.ss-val.ss-crit {
+  color: #ff6b6b;
 }
 
 /* ---- メインエリア上部の統合タブ列（issue #149） ---- */
@@ -1813,6 +1874,11 @@ body {
 
 .settings-save:not(:disabled):hover {
   border-color: #4a7;
+}
+
+.settings-update-status {
+  font-size: 11px;
+  color: #999;
 }
 
 /* fieldset for the terminal font-size group: strip the default border/padding so it matches the

@@ -4,6 +4,8 @@
 
 `notify-event.sh` is a thin shell called from Claude Code hooks (UserPromptSubmit / PostToolUse / Notification / Stop) that forwards events to the zashiki server's `POST /api/hooks/event`. On receiving them, the server immediately re-evaluates state and delivers notifications.
 
+`statusline.sh` is the companion for Claude Code's `statusLine`: it forwards the payload to `POST /api/hooks/statusline` so the session status footer can show account usage limits (`rate_limits` reaches the statusLine command only, never the transcript). It is optional — the footer's tokens and elapsed time work without it; only the usage-limit segments need it.
+
 ## Design guarantees
 
 - **Never block or fail Claude Code even while the server is down** (`curl --max-time 1 … || true`, always exit 0).
@@ -54,6 +56,24 @@ To keep an existing notification script (notify-waiting.sh / stop-notify.sh, etc
 
 To avoid duplicate notifications, consolidate onto one side using `ZK_NOTIFY` (server side) and the browser notification toggle (client side).
 
+## Session status footer (statusLine bridge)
+
+Register `statusline.sh` as Claude Code's statusLine command so the footer can show 5-hour and weekly usage:
+
+```json
+{
+  "statusLine": { "type": "command", "command": "/path/to/zashiki/hooks/statusline.sh" }
+}
+```
+
+To keep an existing statusLine as well, point `ZK_LEGACY_STATUSLINE` at it — after the POST, it is run with stdin passed through and its stdout becomes the rendered status line (confluence, not replacement):
+
+```json
+{
+  "statusLine": { "type": "command", "command": "ZK_LEGACY_STATUSLINE=/path/to/legacy/statusline.sh /path/to/zashiki/hooks/statusline.sh" }
+}
+```
+
 ## Environment variables
 
 | Variable | Default | Meaning |
@@ -61,3 +81,4 @@ To avoid duplicate notifications, consolidate onto one side using `ZK_NOTIFY` (s
 | `ZK_PORT` | `8790` | Port of the server to POST to |
 | `ZK_TOKEN_FILE` | `~/.zashiki/token` | Token file (override hook for testing) |
 | `ZK_LEGACY_NOTIFY` | (empty) | Existing notification script to merge into (executable files only) |
+| `ZK_LEGACY_STATUSLINE` | (empty) | Existing statusLine to merge into; its stdout is rendered (executable files only) |

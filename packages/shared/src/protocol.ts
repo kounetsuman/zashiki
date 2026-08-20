@@ -60,6 +60,40 @@ export const sessionStateSchema = z.enum([
 
 export type SessionState = z.infer<typeof sessionStateSchema>;
 
+/**
+ * One account usage limit: the rounded used percentage and, when known, the epoch-ms reset time.
+ * Filled from the statusLine bridge; the footer renders a live reset countdown from `resetsAt`.
+ */
+export const usageLimitSchema = z.object({
+  usedPercent: z.number().int().min(0),
+  resetsAt: z.number().int().optional(),
+});
+
+export type UsageLimit = z.infer<typeof usageLimitSchema>;
+
+/** Account usage limits Claude Code exposes to its statusLine (5-hour window and weekly). */
+export const usageLimitsSchema = z.object({
+  fiveHour: usageLimitSchema.optional(),
+  week: usageLimitSchema.optional(),
+});
+
+export type UsageLimits = z.infer<typeof usageLimitsSchema>;
+
+/**
+ * Session status-footer material. `turn*` counts from the most recent human prompt; `session*` spans
+ * the whole transcript. `*StartedAt` are epoch ms — the client renders live elapsed as `now - start`.
+ * Tokens/timestamps derive from the transcript (no user setup); `limits` arrives via the statusLine bridge.
+ */
+export const sessionUsageSchema = z.object({
+  turnTokens: z.number().int().min(0),
+  sessionTokens: z.number().int().min(0),
+  turnStartedAt: z.number().int(),
+  sessionStartedAt: z.number().int(),
+  limits: usageLimitsSchema.optional(),
+});
+
+export type SessionUsage = z.infer<typeof sessionUsageSchema>;
+
 /** Per-window snapshot distributed via state.sync. */
 export const sessionInfoSchema = z.object({
   windowId: windowIdSchema,
@@ -95,6 +129,11 @@ export const sessionInfoSchema = z.object({
    * Orthogonal to the main state (meaningful in any state). optional for old-server compatibility (not sent is treated as false).
    */
   limited: z.boolean().optional(),
+  /**
+   * Token totals and elapsed anchors for the session status footer. Absent for old servers or when
+   * the transcript can't be read; `limits` inside is present only when the statusLine bridge is set up.
+   */
+  usage: sessionUsageSchema.optional(),
 });
 
 export type SessionInfo = z.infer<typeof sessionInfoSchema>;
@@ -110,6 +149,18 @@ export function resumeCommand(session: {
   const sid = session.sid;
   if (sid === undefined || sid === "") return null;
   return `claude --resume ${sid}`;
+}
+
+/**
+ * The running claude's session id (sid), for copying to the clipboard verbatim.
+ * Returns null for sessions without a sid (claude not started or undetectable); the caller disables the menu.
+ */
+export function claudeSessionId(session: {
+  sid?: string | undefined;
+}): string | null {
+  const sid = session.sid;
+  if (sid === undefined || sid === "") return null;
+  return sid;
 }
 
 const colsSchema = z.number().int().min(1).max(10000);
@@ -189,6 +240,14 @@ export const configUpdateSchema = z.object({
   language: z.enum(["ja", "en"]),
 });
 
+/**
+ * On-demand "Check for updates" from SETTINGS. The server checks GitHub Releases immediately
+ * and replies with `update.check.result`; a newer version also arrives as a notification.
+ */
+export const updateCheckSchema = z.object({
+  t: z.literal("update.check"),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   termOpenSchema,
   termResizeSchema,
@@ -200,6 +259,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   stateRefreshSchema,
   notificationDismissSchema,
   configUpdateSchema,
+  updateCheckSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -283,6 +343,16 @@ export const notificationsSyncSchema = z.object({
   items: z.array(notificationSchema),
 });
 
+/**
+ * Reply to `update.check`, sent only to the requester so SETTINGS can show feedback.
+ * `version` is the newer version when `status` is `"available"`, and null otherwise.
+ */
+export const updateCheckResultSchema = z.object({
+  t: z.literal("update.check.result"),
+  status: z.enum(["available", "upToDate", "error"]),
+  version: z.string().nullable(),
+});
+
 export const serverMessageSchema = z.discriminatedUnion("t", [
   stateSyncSchema,
   termReconnectSchema,
@@ -292,6 +362,7 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   errorMessageSchema,
   configSyncSchema,
   notificationsSyncSchema,
+  updateCheckResultSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
@@ -301,6 +372,7 @@ export type StateSyncMessage = z.infer<typeof stateSyncSchema>;
 export type NotifyMessage = z.infer<typeof notifySchema>;
 export type ConfigSyncMessage = z.infer<typeof configSyncSchema>;
 export type NotificationsSyncMessage = z.infer<typeof notificationsSyncSchema>;
+export type UpdateCheckResultMessage = z.infer<typeof updateCheckResultSchema>;
 
 // ---- Claude Code hooks → server（POST /api/hooks/event）----
 

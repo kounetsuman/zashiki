@@ -27,10 +27,11 @@ pub struct ResumePlan {
 }
 
 /// Builds a resume launch plan from a save entry (pure function). Returns `None` if the sid is not a UUID
-/// (claude is not launched). It launches `<claude> --resume <sid>` via the shell and **falls back to the shell
-/// after it exits** (the same [`crate::session_launch::claude_launch_payload`] as new). Pass a resolved absolute
-/// path as `claude_program` to guard against a thin PATH. UUID validation of the sid also defends against mixing
-/// arbitrary strings into a shell command ([`is_uuid_sid`]). cwd resolution is done by the caller (the rebuild in [`crate::session_persist`]).
+/// (claude is not launched). It launches `<claude> --resume <sid>` via the shell, **falling back to a fresh
+/// session with the same sid if resume fails** and then to the shell after claude exits (see
+/// [`crate::session_launch::claude_resume_payload`]). Pass a resolved absolute path as `claude_program` to guard
+/// against a thin PATH. UUID validation of the sid also defends against mixing arbitrary strings into a shell
+/// command ([`is_uuid_sid`]). cwd resolution is done by the caller (the rebuild in [`crate::session_persist`]).
 pub fn plan_resume(entry: &SaveEntry, shell: &str, claude_program: &str) -> Option<ResumePlan> {
     if !is_uuid_sid(&entry.sid) {
         return None;
@@ -39,10 +40,7 @@ pub fn plan_resume(entry: &SaveEntry, shell: &str, claude_program: &str) -> Opti
         program: shell.to_string(),
         args: vec![
             "-lc".to_string(),
-            crate::session_launch::claude_launch_payload(
-                claude_program,
-                &format!("--resume {}", entry.sid.to_lowercase()),
-            ),
+            crate::session_launch::claude_resume_payload(claude_program, &entry.sid),
         ],
         cwd: entry.cwd.clone(),
     })
@@ -115,12 +113,13 @@ mod tests {
         let plan = plan_resume(&entry("w1", "/tmp/x", &UUID_A.to_uppercase()), "/bin/zsh", "/abs/claude")
             .expect("uuid sid should plan a resume");
         assert_eq!(plan.program, "/bin/zsh");
-        // Resume with a resolved absolute path and fall back to the shell after it exits (payload shared with new).
         assert_eq!(
             plan.args,
             vec![
                 "-lc".to_string(),
-                format!(r#"/abs/claude --resume {UUID_A}; exec "${{SHELL:-/bin/sh}}""#),
+                format!(
+                    r#"/abs/claude --resume {UUID_A} || /abs/claude --session-id {UUID_A}; exec "${{SHELL:-/bin/sh}}""#
+                ),
             ]
         );
         assert_eq!(plan.cwd, "/tmp/x");

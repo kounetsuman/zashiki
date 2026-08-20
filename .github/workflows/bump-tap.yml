@@ -1,0 +1,76 @@
+name: Bump Homebrew tap
+
+# When a vX.Y.Z release is published (the draft from release.yml is promoted to a full
+# release, so the .dmg download URL is now public), rewrite kounetsuman/homebrew-tap's
+# Casks/zashiki.rb to the new version + the sha256 of the published .dmg and push it — no
+# hand-edit. `published` (not `released`) is required: `released`/`prereleased` don't fire
+# when a *draft* is promoted, which is how release.yml ships every build; the job's `if`
+# then drops prereleases so only stable builds reach the tap.
+# Needs a HOMEBREW_TAP_TOKEN secret: a PAT with contents:write on kounetsuman/homebrew-tap
+# (the job-scoped GITHUB_TOKEN can't push cross-repo).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing published release tag (vX.Y.Z) to re-run the bump for"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve and validate tag
+        id: tag
+        env:
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::invalid tag format: $TAG (expected vX.Y.Z, no prerelease suffix)"
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download the published .dmg and compute sha256
+        id: dmg
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          DMG="Zashiki_${VERSION}_aarch64.dmg"
+          gh release download "$TAG" --repo "${{ github.repository }}" --pattern "$DMG" --dir .
+          echo "sha256=$(shasum -a 256 "$DMG" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the tap
+        uses: actions/checkout@v4
+        with:
+          repository: kounetsuman/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Rewrite the cask and push
+        working-directory: tap
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          SHA: ${{ steps.dmg.outputs.sha256 }}
+        run: |
+          CASK="Casks/zashiki.rb"
+          # Only version + sha256 change; the url line derives the filename from #{version}.
+          sed -i -E "s/^(  version ).*/\1\"${VERSION}\"/" "$CASK"
+          sed -i -E "s/^(  sha256 ).*/\1\"${SHA}\"/" "$CASK"
+          if git diff --quiet -- "$CASK"; then
+            echo "cask already at ${VERSION} (${SHA}); nothing to push"
+            exit 0
+          fi
+          git config user.name "Kotaro Sato"
+          git config user.email "kounetsuman@gmail.com"
+          git commit -m "zashiki ${VERSION}" -- "$CASK"
+          git push origin HEAD

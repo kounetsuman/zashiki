@@ -7,7 +7,9 @@
     "loading": "Loading…",
     "copyAbsPath": "Copy absolute path",
     "cannotResume": "claude is not running, so resume is unavailable",
-    "copyResume": "Copy session (resume)"
+    "copyResume": "Copy session (resume)",
+    "cannotCopySessionId": "claude is not running, so there is no session ID to copy",
+    "copySessionId": "Copy Claude Code session ID"
   },
   "boot": {
     "tokenMissing": "No token found. Reopen from the URL with <code>?token=…</code> shown when the server started.",
@@ -18,6 +20,13 @@
     "label": "Error",
     "title": "⚠ Error",
     "outdatedServer": "The server rejected the request. The running zashiki server may be outdated—restart or update it (rebuild the server and reinstall the daemon)."
+  },
+  "crashReport": {
+    "title": "⚠ zashiki crashed last time",
+    "message": "The previous session ended unexpectedly. Please report it with the log below.",
+    "copy": "Copy log",
+    "copied": "Copied",
+    "report": "Report on GitHub"
   },
   "terminal": {
     "renderError": "An error occurred while rendering the terminal",
@@ -40,6 +49,7 @@
   },
   "toast": {
     "resumeCopied": "Copied the resume command",
+    "sessionIdCopied": "Copied the session ID",
     "pathCopied": "Copied the path"
   },
   "sessionList": {
@@ -126,7 +136,18 @@
   "footer": {
     "panelSwitch": "Switch panel",
     "unreadBadge": "{{label}} ({{count}} unread)",
-    "shortcutTitle": "{{label}} (Ctrl+Alt+{{key}})"
+    "shortcutTitle": "{{label}} (Ctrl+Alt+{{key}})",
+    "status": {
+      "turn": "turn",
+      "session": "session",
+      "fiveHour": "5h",
+      "week": "week",
+      "percentReset": "{{percent}}% · {{time}}",
+      "tokensTitle": "Tokens the API touched — this turn / this session",
+      "elapsedTitle": "Elapsed — this turn / this session",
+      "fiveHourTitle": "5-hour session usage",
+      "weekTitle": "Weekly usage"
+    }
   },
   "update": {
     "button": "Update",
@@ -152,7 +173,13 @@
     "fontSizeIncrease": "Increase font size",
     "fontSizeReset": "Reset",
     "orgSection": "Organizations",
-    "addOrg": "Add org"
+    "addOrg": "Add org",
+    "updateSection": "Updates",
+    "checkForUpdates": "Check for updates",
+    "updateChecking": "Checking…",
+    "updateAvailable": "Version {{version}} is available.",
+    "updateUpToDate": "You're on the latest version.",
+    "updateError": "Couldn't check for updates."
   },
   "addOrg": {
     "title": "Add org",

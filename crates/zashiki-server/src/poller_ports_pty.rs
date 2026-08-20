@@ -13,16 +13,20 @@
 
 use std::sync::Arc;
 
+use std::collections::HashSet;
+
 use crate::claude_projects::ClaudeProjectsAdapter;
+use crate::lsof::LsofAdapter;
 use crate::ps::PsAdapter;
 use crate::session_registry::SessionRegistry;
 use crate::status_poller::{PollerPorts, Slices, WorkWindow, WorkWindowPane};
 
 /// PTY-owning implementation of `PollerPorts`. The capture screen comes from each [`PtySession`] in
-/// the [`SessionRegistry`], and ps / jsonl are delegated to the same adapters as the tmux version.
+/// the [`SessionRegistry`], and ps / lsof / jsonl are delegated to the same adapters as the tmux version.
 pub struct PtyPollerPorts {
     registry: Arc<SessionRegistry>,
     ps: PsAdapter,
+    lsof: LsofAdapter,
     projects: ClaudeProjectsAdapter,
 }
 
@@ -31,6 +35,7 @@ impl PtyPollerPorts {
         Self {
             registry,
             ps: PsAdapter,
+            lsof: LsofAdapter,
             projects,
         }
     }
@@ -87,6 +92,22 @@ impl PollerPorts for PtyPollerPorts {
 
     async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
         self.projects.subagent_ages(cwd, sid).await
+    }
+
+    async fn lsof_fd_outputs(&self) -> String {
+        self.lsof.fd1_outputs().await
+    }
+
+    async fn background_task_ids(&self, cwd: &str, sid: &str) -> HashSet<String> {
+        self.projects.background_task_ids(cwd, sid).await
+    }
+
+    async fn session_usage(
+        &self,
+        cwd: &str,
+        sid: &str,
+    ) -> Option<crate::jsonl::SessionUsageData> {
+        self.projects.session_usage(cwd, sid).await
     }
 }
 

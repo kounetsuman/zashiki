@@ -4,12 +4,13 @@
 //! Parsing is the responsibility of the pure functions in `jsonl` / `status_poller`;
 //! this module only handles I/O (`spawn_blocking` + std::fs) and computing freshness in seconds.
 
+use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::jsonl::claude_project_dir_name;
+use crate::jsonl::{background_task_ids, claude_project_dir_name, session_usage, SessionUsageData};
 use crate::status_poller::Slices;
 
 const DEFAULT_MAX_SLICE_BYTES: u64 = 64 * 1024;
@@ -77,6 +78,36 @@ impl ClaudeProjectsAdapter {
         tokio::task::spawn_blocking(move || subagent_ages_sync(&dir, now))
             .await
             .unwrap_or_default()
+    }
+
+    /// Token/timing rollup for the session status footer (None when the file is missing/unreadable or
+    /// has no timestamped event). Like `background_task_ids`, it reads the whole file: session totals
+    /// need every assistant `usage`, not just the tail slice.
+    pub async fn session_usage(&self, cwd: &str, sid: &str) -> Option<SessionUsageData> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        tokio::task::spawn_blocking(move || session_usage(&fs::read_to_string(&path).ok()?))
+            .await
+            .ok()
+            .flatten()
+    }
+
+    /// The set of `toolUseResult.backgroundTaskId` in the transcript (empty when the file is missing
+    /// or has none). Unlike `read_slices`, this reads the whole file: a still-live background shell
+    /// may have been launched far from the tail, so its launch line must not be sliced away.
+    pub async fn background_task_ids(&self, cwd: &str, sid: &str) -> HashSet<String> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        tokio::task::spawn_blocking(move || match fs::read_to_string(&path) {
+            Ok(content) => background_task_ids(&content),
+            Err(_) => HashSet::new(),
+        })
+        .await
+        .unwrap_or_default()
     }
 }
 
@@ -169,6 +200,44 @@ mod tests {
 
     fn slices_path(root: &Path, sid: &str) -> PathBuf {
         root.join(PROJ_DIR).join(format!("{sid}.jsonl"))
+    }
+
+    #[tokio::test]
+    async fn background_task_ids_reads_full_transcript() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"user\",\"toolUseResult\":{\"backgroundTaskId\":\"bush20ok3\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"x\"}}\n{\"type\":\"user\",\"toolUseResult\":{\"backgroundTaskId\":\"b48tqxha9\"}}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let ids = adapter.background_task_ids(CWD, SID).await;
+        assert_eq!(
+            ids,
+            HashSet::from(["bush20ok3".to_string(), "b48tqxha9".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn session_usage_reads_full_transcript_totals() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"user\",\"timestamp\":\"2000-01-01T00:00:00Z\",\"message\":{\"content\":\"go\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let u = adapter.session_usage(CWD, SID).await.unwrap();
+        assert_eq!(u.session_tokens, 15);
+        assert_eq!(u.session_started_at_ms, 946_684_800_000);
+    }
+
+    #[tokio::test]
+    async fn session_usage_missing_transcript_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert!(adapter.session_usage(CWD, SID).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn background_task_ids_missing_transcript_is_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert!(adapter.background_task_ids(CWD, SID).await.is_empty());
     }
 
     #[test]

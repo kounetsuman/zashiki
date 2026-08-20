@@ -17,7 +17,9 @@ use zashiki_core::terminal_size::clamp_terminal_size;
 /// no pong returns before the next interval (effective timeout is one to two intervals).
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 
-use crate::protocol::{ClientMessage, Notification, ServerMessage};
+use std::collections::HashMap;
+
+use crate::protocol::{ClientMessage, Notification, ServerMessage, SessionInfo, UsageLimits};
 use crate::status_poller::StateSnapshot;
 use crate::term_registry::{TermEntry, TermRegistry};
 
@@ -63,6 +65,9 @@ pub struct ControlServices {
     pub mac_notify: crate::hooks::MacNotify,
     /// The path to config.json (the write target for SETTINGS' config.update; None for tests etc.).
     pub config_path: Option<std::path::PathBuf>,
+    /// Parsed running app version for the on-demand "Check for updates" (SETTINGS). None (dev /
+    /// placeholder / unparseable) means the manual check reports it can't determine the version.
+    pub app_version: Option<semver::Version>,
 }
 
 struct HubState {
@@ -72,6 +77,31 @@ struct HubState {
     /// The createdAt of the last enqueued notification. Kept monotonically increasing so
     /// occurrence order is preserved even for bursts within the same millisecond.
     last_notification_at: u64,
+    /// Account usage limits reported by the statusLine bridge, keyed by sid. Merged into each
+    /// snapshot's matching session before broadcast (the transcript can't carry rate_limits).
+    rate_limits: HashMap<String, RateLimitEntry>,
+}
+
+/// A bridge-reported usage-limit reading with its arrival time (for TTL pruning).
+struct RateLimitEntry {
+    limits: UsageLimits,
+    updated_at_ms: u64,
+}
+
+/// Drop bridge readings older than this so a long-idle sid's stale percentages don't linger.
+const RATE_LIMIT_TTL_MS: u64 = 30 * 60 * 1000;
+
+/// Attaches each session's bridge-reported limits (matched by sid) onto its footer usage. Sessions
+/// without transcript usage yet, or without a stored reading, are left untouched.
+fn merge_rate_limits(sessions: &mut [SessionInfo], store: &HashMap<String, RateLimitEntry>) {
+    for session in sessions.iter_mut() {
+        let Some(sid) = session.sid.as_deref() else {
+            continue;
+        };
+        if let (Some(entry), Some(usage)) = (store.get(sid), session.usage.as_mut()) {
+            usage.limits = Some(entry.limits);
+        }
+    }
 }
 
 /// The shared state + broadcast that all control connections refer to. When the poller
@@ -90,6 +120,34 @@ fn state_sync_of(snapshot: &StateSnapshot) -> ServerMessage {
     }
 }
 
+/// In-flight work counts backing `GET /api/activity`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivitySummary {
+    pub active_sessions: u32,
+    pub running_subagents: u32,
+    pub background_shells: u32,
+}
+
+/// A session counts as active when Claude is working (`running`/`running_bg_agent`) or blocked
+/// awaiting the user (`waiting_input`). `idle`/`no_claude`/`starting` are safely restorable and do
+/// not, on their own, warrant a quit confirmation.
+fn is_active_state(state: &str) -> bool {
+    matches!(state, "running" | "running_bg_agent" | "waiting_input")
+}
+
+fn summarize_activity(sessions: &[SessionInfo]) -> ActivitySummary {
+    let mut summary = ActivitySummary::default();
+    for session in sessions {
+        if is_active_state(&session.state) {
+            summary.active_sessions += 1;
+        }
+        summary.running_subagents += session.running_subagents.unwrap_or(0);
+        summary.background_shells += session.shells_running.unwrap_or(0);
+    }
+    summary
+}
+
 impl ControlHub {
     pub fn new(
         config: ConfigView,
@@ -103,6 +161,7 @@ impl ControlHub {
                 notifications,
                 snapshot,
                 last_notification_at: 0,
+                rate_limits: HashMap::new(),
             }),
             tx,
         })
@@ -134,6 +193,12 @@ impl ControlHub {
         state_sync_of(&self.inner.read().unwrap().snapshot)
     }
 
+    /// A count of in-flight work (active sessions / running subagents / resident background shells)
+    /// from the currently held snapshot, for the guarded-quit confirmation (`GET /api/activity`).
+    pub fn activity_summary(&self) -> ActivitySummary {
+        summarize_activity(&self.inner.read().unwrap().snapshot.sessions)
+    }
+
     /// Manual dismissal (removes only dismissible notifications). Broadcasts notifications.sync
     /// if anything changed. The TS `dismissNotification` (sticky/system notifications are kept).
     pub fn dismiss_notification(&self, id: &str) {
@@ -150,10 +215,43 @@ impl ControlHub {
         }
     }
 
-    /// Stores the latest snapshot and broadcasts state.sync to all connections (called by the poller driver).
-    pub fn publish_snapshot(&self, snapshot: StateSnapshot) {
-        self.inner.write().unwrap().snapshot = snapshot.clone();
-        let _ = self.tx.send(state_sync_of(&snapshot));
+    /// Stores the latest snapshot and broadcasts state.sync to all connections (called by the poller
+    /// driver). Bridge-reported usage limits are merged in first so a fresh poll keeps them.
+    pub fn publish_snapshot(&self, mut snapshot: StateSnapshot) {
+        let sync = {
+            let mut state = self.inner.write().unwrap();
+            merge_rate_limits(&mut snapshot.sessions, &state.rate_limits);
+            state.snapshot = snapshot;
+            state_sync_of(&state.snapshot)
+        };
+        let _ = self.tx.send(sync);
+    }
+
+    /// Records a statusLine-bridge usage-limit reading for a sid. Re-broadcasts the current snapshot
+    /// (with the reading merged in) only when the value actually changed — the statusLine fires on
+    /// every render, so an unconditional broadcast would storm the clients.
+    pub fn publish_rate_limits(&self, sid: &str, limits: UsageLimits, now_ms: u64) {
+        let sync = {
+            let mut guard = self.inner.write().unwrap();
+            let state = &mut *guard;
+            state
+                .rate_limits
+                .retain(|_, e| now_ms.saturating_sub(e.updated_at_ms) < RATE_LIMIT_TTL_MS);
+            let changed = state.rate_limits.get(sid).map(|e| e.limits) != Some(limits);
+            state.rate_limits.insert(
+                sid.to_string(),
+                RateLimitEntry {
+                    limits,
+                    updated_at_ms: now_ms,
+                },
+            );
+            if !changed {
+                return;
+            }
+            merge_rate_limits(&mut state.snapshot.sessions, &state.rate_limits);
+            state_sync_of(&state.snapshot)
+        };
+        let _ = self.tx.send(sync);
     }
 
     /// Stores the settings and broadcasts config.sync to all connections.
@@ -457,6 +555,36 @@ async fn handle_client_message(
             }
             true
         }
+        // On-demand "Check for updates" (SETTINGS): run the check now (ignoring the background egress
+        // flag — explicit user intent) and reply with the outcome so the UI can show feedback. A newer
+        // version also flows to all clients as a notification via run_manual_check.
+        ClientMessage::UpdateCheck => {
+            use crate::protocol::UpdateCheckStatus;
+            use crate::update_checker::CheckOutcome;
+            let result = match &services.app_version {
+                Some(current) => {
+                    match crate::update_checker::run_manual_check(&services.hub, current).await {
+                        CheckOutcome::Newer { version, .. } => ServerMessage::UpdateCheckResult {
+                            status: UpdateCheckStatus::Available,
+                            version: Some(version),
+                        },
+                        CheckOutcome::UpToDate => ServerMessage::UpdateCheckResult {
+                            status: UpdateCheckStatus::UpToDate,
+                            version: None,
+                        },
+                        CheckOutcome::Failed => ServerMessage::UpdateCheckResult {
+                            status: UpdateCheckStatus::Error,
+                            version: None,
+                        },
+                    }
+                }
+                None => ServerMessage::UpdateCheckResult {
+                    status: UpdateCheckStatus::Error,
+                    version: None,
+                },
+            };
+            socket.send(to_text(&result)).await.is_ok()
+        }
         ClientMessage::SessionNew { org } => handle_session_new(socket, services, &org).await,
         // For owned, the actual entity lives in SessionRegistry, so remove it from the registry.
         // remove aggregates killpg + reap + deregistration and is idempotent even when absent (the bool is discarded).
@@ -717,13 +845,54 @@ mod tests {
                 repo: "repo".to_string(),
                 state: "running".to_string(),
                 title: None,
+                sid: None,
                 active: true,
                 running_subagents: Some(0),
+                shells_running: None,
                 limited: false,
+                usage: None,
             }],
             orgs: vec!["org".to_string()],
             org_colors: BTreeMap::new(),
         }
+    }
+
+    fn session(state: &str, subagents: Option<u32>, shells: Option<u32>) -> SessionInfo {
+        SessionInfo {
+            window_id: "@1".to_string(),
+            name: "repo".to_string(),
+            org: "org".to_string(),
+            repo: "repo".to_string(),
+            state: state.to_string(),
+            title: None,
+            sid: None,
+            active: true,
+            running_subagents: subagents,
+            shells_running: shells,
+            limited: false,
+            usage: None,
+        }
+    }
+
+    #[test]
+    fn summarize_activity_counts_active_states_subagents_and_shells() {
+        let sessions = vec![
+            session("running", Some(0), None),
+            session("running_bg_agent", Some(2), None),
+            session("waiting_input", None, None),
+            session("idle", None, Some(1)),
+            session("no_claude", None, None),
+        ];
+        let summary = summarize_activity(&sessions);
+        assert_eq!(summary.active_sessions, 3);
+        assert_eq!(summary.running_subagents, 2);
+        assert_eq!(summary.background_shells, 1);
+    }
+
+    #[test]
+    fn summarize_activity_is_all_zero_when_nothing_runs() {
+        let sessions = vec![session("idle", None, None), session("no_claude", None, None)];
+        assert_eq!(summarize_activity(&sessions), ActivitySummary::default());
     }
 
     #[test]
@@ -761,6 +930,79 @@ mod tests {
             hub.connect_messages()[2],
             ServerMessage::StateSync { .. }
         ));
+    }
+
+    fn snapshot_with_usage(sid: &str) -> StateSnapshot {
+        let mut snap = snapshot_with("@1");
+        snap.sessions[0].sid = Some(sid.to_string());
+        snap.sessions[0].usage = Some(crate::protocol::SessionUsage {
+            turn_tokens: 1,
+            session_tokens: 2,
+            turn_started_at: 0,
+            session_started_at: 0,
+            limits: None,
+        });
+        snap
+    }
+
+    fn five_hour(used_percent: u32) -> UsageLimits {
+        UsageLimits {
+            five_hour: Some(crate::protocol::UsageLimit {
+                used_percent,
+                resets_at: None,
+            }),
+            week: None,
+        }
+    }
+
+    fn recv_five_hour_percent(msg: ServerMessage) -> Option<u32> {
+        match msg {
+            ServerMessage::StateSync { sessions, .. } => Some(
+                sessions[0]
+                    .usage
+                    .as_ref()?
+                    .limits
+                    .as_ref()?
+                    .five_hour?
+                    .used_percent,
+            ),
+            _ => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_merges_into_matching_session_and_survives_next_poll() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with_usage("sid-1"));
+        let mut rx = hub.subscribe();
+
+        hub.publish_rate_limits("sid-1", five_hour(80), 1_000);
+        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(80));
+
+        // A subsequent poll (fresh transcript usage, no limits) keeps the bridge reading merged in.
+        hub.publish_snapshot(snapshot_with_usage("sid-1"));
+        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(80));
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_skips_rebroadcast_when_value_unchanged() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with_usage("sid-1"));
+        let mut rx = hub.subscribe();
+
+        hub.publish_rate_limits("sid-1", five_hour(80), 1_000);
+        hub.publish_rate_limits("sid-1", five_hour(80), 2_000);
+        hub.publish_rate_limits("sid-1", five_hour(90), 3_000);
+
+        // The unchanged reading is skipped, so the second delivery is the 90 update, not another 80.
+        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(80));
+        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(90));
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_leaves_non_matching_sid_untouched() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with_usage("sid-1"));
+        let mut rx = hub.subscribe();
+        hub.publish_rate_limits("other-sid", five_hour(80), 1_000);
+        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), None);
     }
 
     #[tokio::test]
@@ -918,6 +1160,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),
                 config_path: None,
+                app_version: None,
             }
         }
 
@@ -994,6 +1237,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),
                 config_path: Some(config_path),
+                app_version: None,
             }
         }
 

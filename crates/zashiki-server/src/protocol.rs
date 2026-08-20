@@ -7,6 +7,42 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// One account usage limit: the rounded used percentage and, when known, the epoch-ms reset time.
+/// Populated from the statusLine bridge (`POST /api/hooks/statusline`); the client renders a live
+/// reset countdown from `resets_at`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageLimit {
+    pub used_percent: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_at: Option<u64>,
+}
+
+/// Account usage limits Claude Code exposes to its statusLine (5-hour session window and weekly).
+/// Each is absent until the bridge has reported it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageLimits {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub five_hour: Option<UsageLimit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub week: Option<UsageLimit>,
+}
+
+/// Session status-footer material: token totals plus the epoch-ms starting points for live elapsed.
+/// `turn` is measured from the most recent human prompt; `session` spans the whole transcript.
+/// Tokens/timestamps come from the transcript (no user setup); `limits` arrives via the statusLine bridge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUsage {
+    pub turn_tokens: u64,
+    pub session_tokens: u64,
+    pub turn_started_at: u64,
+    pub session_started_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<UsageLimits>,
+}
+
 /// One window's snapshot distributed via state.sync.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,17 +56,31 @@ pub struct SessionInfo {
     pub state: String,
     /// Summary of the first user utterance (null if absent).
     pub title: Option<String>,
+    /// The running claude's session id (sid), used to build the client's resume command. Absent for
+    /// windows where claude is not started, when sid detection fails, or with old servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sid: Option<String>,
     pub active: bool,
     /// Total number of running subagents (including nested). An approximate value that is only
     /// meaningful when running_bg_agent. Optional for backward compatibility with older servers (not
     /// sent when unavailable or in other states).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub running_subagents: Option<u32>,
+    /// Number of persistent background shells (Bash run_in_background) whose output fd is still held
+    /// by a live wrapper. Orthogonal to the primary state (meaningful in any state). Absent when zero
+    /// or unfetched (older servers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shells_running: Option<u32>,
     /// Flag indicating the Claude Code usage limit has been reached. Detected from the limit banner
     /// text at the bottom of the screen. Orthogonal to the primary state (meaningful in any state).
     /// For backward compatibility with older servers, false is not sent (not sent = treated as false).
     #[serde(default, skip_serializing_if = "is_false")]
     pub limited: bool,
+    /// Token totals and elapsed anchors for the session status footer (absent for old servers, or
+    /// while there is no readable transcript). `limits` inside is filled only when the statusLine
+    /// bridge is configured.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<SessionUsage>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -76,6 +126,19 @@ pub enum ClientMessage {
     /// it to config.json and distributes config.sync to all connections via watch.
     #[serde(rename = "config.update", rename_all = "camelCase")]
     ConfigUpdate { language: String },
+    /// On-demand "Check for updates" from SETTINGS. The server checks GitHub Releases now and replies
+    /// with an `update.check.result` (a newer version additionally lands as a notification).
+    #[serde(rename = "update.check")]
+    UpdateCheck,
+}
+
+/// Result of an on-demand update check, sent only to the requester so SETTINGS can show feedback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdateCheckStatus {
+    Available,
+    UpToDate,
+    Error,
 }
 
 /// The kind of notify.
@@ -209,6 +272,13 @@ pub enum ServerMessage {
     /// and on changes; a full replacement, not a diff).
     #[serde(rename = "notifications.sync")]
     NotificationsSync { items: Vec<Notification> },
+    /// Reply to a `update.check`, sent only to the requester. `version` carries the newer version when
+    /// `status` is `available`, and is null otherwise.
+    #[serde(rename = "update.check.result", rename_all = "camelCase")]
+    UpdateCheckResult {
+        status: UpdateCheckStatus,
+        version: Option<String>,
+    },
 }
 
 #[cfg(test)]
@@ -314,9 +384,12 @@ mod tests {
                 repo: "repo".into(),
                 state: "running".into(),
                 title: None,
+                sid: None,
                 active: true,
                 running_subagents: None,
+                shells_running: None,
                 limited: false,
+                usage: None,
             }],
             orgs: vec!["org1".into()],
             org_colors: BTreeMap::from([("org1".to_string(), "#7ec699".to_string())]),
@@ -429,9 +502,12 @@ mod tests {
                 repo: "repo".into(),
                 state: "running_bg_agent".into(),
                 title: None,
+                sid: None,
                 active: true,
                 running_subagents: Some(3),
+                shells_running: None,
                 limited: false,
+                usage: None,
             }],
             orgs: vec![],
             org_colors: BTreeMap::new(),
@@ -439,6 +515,27 @@ mod tests {
         let json = r#"{"t":"state.sync","sessions":[{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{}}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
+    }
+
+    #[test]
+    fn session_info_serializes_shells_running_when_present() {
+        let info = SessionInfo {
+            window_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "idle".into(),
+            title: None,
+            sid: None,
+            active: false,
+            running_subagents: None,
+            shells_running: Some(2),
+            limited: false,
+            usage: None,
+        };
+        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
+        assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
     }
 
     #[test]
@@ -450,13 +547,100 @@ mod tests {
             repo: "repo".into(),
             state: "running".into(),
             title: None,
+            sid: None,
             active: false,
             running_subagents: None,
+            shells_running: None,
             limited: false,
+            usage: None,
         };
         let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":false}"#;
         assert_eq!(to_json(&info), json);
         // Backward compatibility with older servers: a missing runningSubagents collapses to None.
+        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_info_serializes_sid_when_present() {
+        let info = SessionInfo {
+            window_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "running".into(),
+            title: None,
+            sid: Some("0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f".into()),
+            active: true,
+            running_subagents: None,
+            shells_running: None,
+            limited: false,
+            usage: None,
+        };
+        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"sid":"0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f","active":true}"#;
+        assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_info_serializes_usage_with_limits() {
+        let info = SessionInfo {
+            window_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "running".into(),
+            title: None,
+            sid: None,
+            active: true,
+            running_subagents: None,
+            shells_running: None,
+            limited: false,
+            usage: Some(SessionUsage {
+                turn_tokens: 1200,
+                session_tokens: 3_400_000,
+                turn_started_at: 1_700_000_000_000,
+                session_started_at: 1_699_999_000_000,
+                limits: Some(UsageLimits {
+                    five_hour: Some(UsageLimit {
+                        used_percent: 42,
+                        resets_at: Some(1_700_010_000_000),
+                    }),
+                    week: Some(UsageLimit {
+                        used_percent: 61,
+                        resets_at: None,
+                    }),
+                }),
+            }),
+        };
+        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"usage":{"turnTokens":1200,"sessionTokens":3400000,"turnStartedAt":1700000000000,"sessionStartedAt":1699999000000,"limits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61}}}}"#;
+        assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_info_usage_omits_limits_when_absent() {
+        let info = SessionInfo {
+            window_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "idle".into(),
+            title: None,
+            sid: None,
+            active: false,
+            running_subagents: None,
+            shells_running: None,
+            limited: false,
+            usage: Some(SessionUsage {
+                turn_tokens: 0,
+                session_tokens: 500,
+                turn_started_at: 10,
+                session_started_at: 10,
+                limits: None,
+            }),
+        };
+        let json = r#"{"windowId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"turnStartedAt":10,"sessionStartedAt":10}}"#;
+        assert_eq!(to_json(&info), json);
         assert_eq!(serde_json::from_str::<SessionInfo>(json).unwrap(), info);
     }
 
@@ -507,6 +691,34 @@ mod tests {
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg, ClientMessage::ConfigUpdate { language: "en".into() });
         assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn update_check_roundtrips_and_matches_wire() {
+        let json = r#"{"t":"update.check"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg, ClientMessage::UpdateCheck);
+        assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn update_check_result_matches_wire() {
+        let available = ServerMessage::UpdateCheckResult {
+            status: UpdateCheckStatus::Available,
+            version: Some("0.2.0".into()),
+        };
+        assert_eq!(
+            to_json(&available),
+            r#"{"t":"update.check.result","status":"available","version":"0.2.0"}"#
+        );
+        let up_to_date = ServerMessage::UpdateCheckResult {
+            status: UpdateCheckStatus::UpToDate,
+            version: None,
+        };
+        assert_eq!(
+            to_json(&up_to_date),
+            r#"{"t":"update.check.result","status":"upToDate","version":null}"#
+        );
     }
 
     #[test]

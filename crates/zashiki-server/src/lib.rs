@@ -8,6 +8,7 @@
 pub mod claude_projects;
 pub mod config;
 pub mod control;
+pub mod crash_report;
 pub mod demo_seed;
 pub mod file;
 pub mod fs;
@@ -15,6 +16,7 @@ pub mod git;
 pub mod hooks;
 pub mod jsonl;
 pub mod launchd;
+pub mod lsof;
 pub mod mac_notifier;
 pub mod notifications;
 pub mod orphan_detector;
@@ -22,6 +24,7 @@ pub mod poller_driver;
 pub mod poller_ports_pty;
 pub mod protocol;
 pub mod ps;
+pub mod shells;
 pub mod pty_host;
 pub mod repos;
 pub mod repos_watch;
@@ -80,6 +83,8 @@ pub struct ServerConfig {
     pub file_max_bytes: Option<u64>,
     /// Destination for session save/restore (ZK_SAVES_DIR; `~/.zashiki/saves` if None).
     pub saves_dir: Option<PathBuf>,
+    /// The previous run's log tail when it did not shut down cleanly, served once via `/api/last-crash`.
+    pub last_crash: Option<String>,
 }
 
 /// Response for `GET /healthz`. Beyond `status`, it returns build identifiers (`version` / `git_sha`)
@@ -98,6 +103,12 @@ struct HealthResponse {
 #[derive(Serialize)]
 struct TokenProbeResponse {
     ok: bool,
+}
+
+/// Response for `GET /api/last-crash`.
+#[derive(Serialize)]
+struct LastCrashResponse {
+    log: Option<String>,
 }
 
 /// Response for `GET /api/fs/repos` (TS: `FsReposResponse` in `packages/shared/src/fs-tree.ts`).
@@ -134,6 +145,8 @@ struct AppState {
     persist_lock: Arc<tokio::sync::Mutex<()>>,
     /// TTL cache for scan (the repos.conf walk).
     scan_cache: ScanCache,
+    /// The previous run's crash log tail, cleared by `POST /api/last-crash/ack` once the client has shown it.
+    last_crash: Arc<std::sync::Mutex<Option<String>>>,
 }
 
 /// Default destination for session save/restore (`~/.zashiki/saves`; matches TS's default).
@@ -180,6 +193,7 @@ pub fn build_router(config: ServerConfig) -> Router {
         saves_dir: Arc::new(config.saves_dir.unwrap_or_else(default_saves_dir)),
         persist_lock: Arc::new(tokio::sync::Mutex::new(())),
         scan_cache: Arc::new(tokio::sync::Mutex::new(None)),
+        last_crash: Arc::new(std::sync::Mutex::new(config.last_crash)),
     };
 
     // Token-required API group (/api/* has requireToken=true). `/ws/control` also requires a token.
@@ -211,7 +225,11 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/sessions/save", post(sessions_save))
         .route("/api/sessions/restore", post(sessions_restore))
         .route("/api/hooks/event", post(hooks_event))
-        .route("/api/focus", post(focus_session));
+        .route("/api/hooks/statusline", post(hooks_statusline))
+        .route("/api/focus", post(focus_session))
+        .route("/api/activity", get(activity))
+        .route("/api/last-crash", get(last_crash))
+        .route("/api/last-crash/ack", post(ack_last_crash));
     if state.control.is_some() {
         authed_routes = authed_routes
             .route("/ws/control", get(ws_control))
@@ -685,7 +703,54 @@ async fn hooks_event(State(state): State<AppState>, body: axum::body::Bytes) -> 
     .into_response()
 }
 
+/// `POST /api/hooks/statusline`. Receives Claude Code's statusLine payload (which carries
+/// `rate_limits`, unavailable from the transcript) and records the account usage limits per sid so
+/// the session footer can show them. Confluence, not replacement: never fails Claude Code.
+async fn hooks_statusline(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let Some(control) = state.control.as_ref() else {
+        return json_error(StatusCode::SERVICE_UNAVAILABLE, "control not available");
+    };
+    let json: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid json"),
+    };
+    let matched = match crate::hooks::parse_statusline_limits(&json) {
+        Some((sid, limits)) => {
+            control.hub.publish_rate_limits(&sid, limits, now_ms());
+            true
+        }
+        None => false,
+    };
+    Json(crate::protocol::HookEventResponse { ok: true, matched }).into_response()
+}
+
+/// `GET /api/last-crash`. Idempotent read of the previous run's crash log tail (`null` when clean).
+async fn last_crash(State(state): State<AppState>) -> Json<LastCrashResponse> {
+    let log = state.last_crash.lock().ok().and_then(|g| g.clone());
+    Json(LastCrashResponse { log })
+}
+
+/// `POST /api/last-crash/ack`. Clears the stored crash log once the client has shown it.
+async fn ack_last_crash(State(state): State<AppState>) -> StatusCode {
+    if let Ok(mut g) = state.last_crash.lock() {
+        *g = None;
+    }
+    StatusCode::NO_CONTENT
+}
+
 /// `POST /api/focus`. Resolves the window (sid then cwd) and broadcasts a `select` so an
+/// In-flight work counts for the desktop shell's guarded quit. Zeros when control is unavailable
+/// (REST-only), so an unreachable session model never traps the user in the app.
+async fn activity(State(state): State<AppState>) -> Json<crate::control::ActivitySummary> {
+    Json(
+        state
+            .control
+            .as_ref()
+            .map(|c| c.hub.activity_summary())
+            .unwrap_or_default(),
+    )
+}
+
 /// already-connected app brings that session to the front. The response reports whether it
 /// resolved (and to which window) so the caller can decide how to raise the native window.
 async fn focus_session(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
@@ -1527,6 +1592,48 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn last_crash_is_idempotent_until_acked() {
+        let app = build_router(ServerConfig {
+            expected_token: Some("t".to_string()),
+            last_crash: Some("panicked at 'boom'".to_string()),
+            ..Default::default()
+        });
+        let (s1, b1) = request(app.clone(), "/api/last-crash?token=t", Some(OK_HOST), &[]).await;
+        assert_eq!(s1, StatusCode::OK);
+        assert_eq!(b1, r#"{"log":"panicked at 'boom'"}"#);
+        let (s2, b2) = request(app.clone(), "/api/last-crash?token=t", Some(OK_HOST), &[]).await;
+        assert_eq!(b2, r#"{"log":"panicked at 'boom'"}"#, "read must not clear (s={s2})");
+
+        let ack = app
+            .clone()
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/api/last-crash/ack?token=t")
+                    .header("host", OK_HOST)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ack.status(), StatusCode::NO_CONTENT);
+
+        let (_, b3) = request(app.clone(), "/api/last-crash?token=t", Some(OK_HOST), &[]).await;
+        assert_eq!(b3, r#"{"log":null}"#, "ack clears the crash");
+    }
+
+    #[tokio::test]
+    async fn last_crash_requires_a_token() {
+        let app = build_router(ServerConfig {
+            expected_token: Some("t".to_string()),
+            last_crash: Some("boom".to_string()),
+            ..Default::default()
+        });
+        let (status, _) = request(app, "/api/last-crash", Some(OK_HOST), &[]).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
     async fn fs_list_lists_dir_and_enforces_repo_allowlist_and_safe_dir() {
         let root = tempfile::tempdir().unwrap();
         let repo = root.path().join("org1/repo-a");
@@ -2359,6 +2466,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: std::sync::Arc::new(|_| {}),
                 config_path: None,
+                app_version: None,
             }
         }
 
@@ -2555,6 +2663,7 @@ mod tests {
                 notify_mode: mode,
                 mac_notify: Arc::new(move |n| mac_log.lock().unwrap().push(n)),
                 config_path: None,
+                app_version: None,
             }
         }
 
@@ -2965,9 +3074,12 @@ mod tests {
                     repo: "repo".to_string(),
                     state: "running".to_string(),
                     title: None,
+                    sid: None,
                     active: true,
                     running_subagents: Some(0),
+                    shells_running: None,
                     limited: false,
+                    usage: None,
                 }],
                 orgs: vec!["org".to_string()],
                 org_colors: BTreeMap::new(),
@@ -2989,6 +3101,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: std::sync::Arc::new(|_| {}),
                 config_path: None,
+                app_version: None,
             }
         }
 
@@ -3049,6 +3162,63 @@ mod tests {
             for _ in 0..3 {
                 next_text(ws).await;
             }
+        }
+
+        fn session_info(state: &str, subagents: Option<u32>, shells: Option<u32>) -> crate::protocol::SessionInfo {
+            crate::protocol::SessionInfo {
+                window_id: "@1".to_string(),
+                name: "repo".to_string(),
+                org: "org".to_string(),
+                repo: "repo".to_string(),
+                state: state.to_string(),
+                title: None,
+                sid: None,
+                active: true,
+                running_subagents: subagents,
+                shells_running: shells,
+                limited: false,
+                usage: None,
+            }
+        }
+
+        #[tokio::test]
+        async fn activity_endpoint_reports_snapshot_counts() {
+            use axum::body::{to_bytes, Body};
+            use axum::http::Request as HttpRequest;
+            use tower::ServiceExt;
+
+            let snapshot = StateSnapshot {
+                sessions: vec![
+                    session_info("running", Some(0), None),
+                    session_info("running_bg_agent", Some(2), None),
+                    session_info("idle", None, Some(1)),
+                ],
+                orgs: vec![],
+                org_colors: BTreeMap::new(),
+            };
+            let hub = ControlHub::new(ConfigView::default(), vec![], snapshot);
+            let app = build_router(ServerConfig {
+                expected_token: Some("t".to_string()),
+                control: Some(test_services(hub, vec![])),
+                ..Default::default()
+            });
+            let resp = app
+                .oneshot(
+                    HttpRequest::builder()
+                        .uri("/api/activity")
+                        .header("host", "127.0.0.1:8790")
+                        .header("x-zashiki-token", "t")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), 200);
+            let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+            let body = String::from_utf8(bytes.to_vec()).unwrap();
+            assert!(body.contains(r#""activeSessions":2"#), "{body}");
+            assert!(body.contains(r#""runningSubagents":2"#), "{body}");
+            assert!(body.contains(r#""backgroundShells":1"#), "{body}");
         }
 
         #[tokio::test]

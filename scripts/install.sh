@@ -30,6 +30,8 @@ arch="$(uname -m)"
 command -v curl >/dev/null 2>&1    || err "curl is required."
 command -v hdiutil >/dev/null 2>&1 || err "hdiutil is required (macOS only)."
 command -v ditto >/dev/null 2>&1   || err "ditto is required (macOS only)."
+command -v pgrep >/dev/null 2>&1     || err "pgrep is required (macOS only)."
+command -v osascript >/dev/null 2>&1 || err "osascript is required (macOS only)."
 
 # --- resolve the .dmg download URL -----------------------------------------
 if [[ -n "${ZASHIKI_VERSION:-}" ]]; then
@@ -80,6 +82,24 @@ src="${mnt}/${APP_NAME}"
 
 dest="${INSTALL_DIR%/}/${APP_NAME}"
 [[ -w "$INSTALL_DIR" ]] || err "no write permission to ${INSTALL_DIR}. Re-run with a writable ZASHIKI_INSTALL_DIR (e.g. ZASHIKI_INSTALL_DIR=\"\$HOME/Applications\") or via sudo."
+
+# --- quit a running instance before swapping the bundle (#66) ---------------
+# Swapping the bundle under a running app leaves it serving the old version until
+# relaunch. Ask it to quit first, through the app's own guarded-quit path (#65): a
+# busy app (live sessions/agents/shells) prompts, and "Cancel" keeps it running.
+# Never hard-kill — if it outlives the grace window, abort rather than clobber a
+# bundle the user chose to keep open. Detect by real process (pgrep), not AppleScript
+# `is running`, which reports a stale "running" app after the process is long gone.
+app_bin="${APP_NAME%.app}"
+if pgrep -x "$app_bin" >/dev/null 2>&1; then
+  info "Quitting the running Zashiki ..."
+  osascript -e "tell application \"$app_bin\" to quit" >/dev/null 2>&1 || true
+  for _ in $(seq 1 60); do
+    pgrep -x "$app_bin" >/dev/null 2>&1 || break
+    sleep 0.5
+  done
+  pgrep -x "$app_bin" >/dev/null 2>&1 && err "Zashiki is still running (finishing its quit, or the quit was cancelled while work was in progress). Re-run the installer once it has quit."
+fi
 
 info "Installing to ${dest} ..."
 rm -rf "$dest"

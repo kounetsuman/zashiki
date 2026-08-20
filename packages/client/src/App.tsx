@@ -1,8 +1,10 @@
 import {
   type ClientMessage,
+  claudeSessionId,
   resumeCommand,
   type ServerMessage,
   type SessionInfo,
+  type UpdateCheckResultMessage,
   unreadCount,
   updateAvailableVersion,
 } from "@zashiki/shared";
@@ -15,7 +17,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Trans, useTranslation } from "react-i18next";
-
+import type { CrashApi } from "./api/crash.js";
 import type { FilesApi } from "./api/files.js";
 import type { FsApi } from "./api/fs.js";
 import type { GitApi } from "./api/git.js";
@@ -51,6 +53,7 @@ import {
   tabKey,
 } from "./tabs/tab-model.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
+import { CrashReportModal } from "./ui/CrashReportModal.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ExplorerPanel } from "./ui/ExplorerPanel.js";
 import { FooterPanelTabs } from "./ui/FooterPanelTabs.js";
@@ -66,6 +69,7 @@ import {
 } from "./ui/panels.js";
 import { SearchPanel } from "./ui/SearchPanel.js";
 import { SessionListPanel } from "./ui/SessionListPanel.js";
+import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
 import { SettingsPanel } from "./ui/SettingsPanel.js";
 import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
@@ -162,6 +166,8 @@ export interface AppProps {
   filesApi: FilesApi;
   /** The "add org" REST (registers a directory into repos.conf). */
   reposApi: ReposApi;
+  /** Surfaces the previous run's crash log on launch (omitted in tests that don't exercise it). */
+  crashApi?: CrashApi;
   /** Notification service (defaults to the real Web Notification + synthesized sound). */
   notifier?: Notifier;
   /** Persistence target for panel selection state (defaults to localStorage). */
@@ -270,6 +276,7 @@ export function App({
   searchApi,
   filesApi,
   reposApi,
+  crashApi,
   notifier: notifierProp,
   panelStorage: panelStorageProp,
   debugInitial,
@@ -277,6 +284,7 @@ export function App({
   const { t } = useTranslation();
   const terminalFont = useTerminalFontSize();
   const [addOrgOpen, setAddOrgOpen] = useState(false);
+  const [crashLog, setCrashLog] = useState<string | null>(null);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
   const [panelStorage] = useState(() =>
     panelStorageProp === undefined ? defaultPanelStorage() : panelStorageProp,
@@ -320,6 +328,20 @@ export function App({
     },
     [panelStorage, selectedPanel],
   );
+
+  useEffect(() => {
+    if (crashApi === undefined) return;
+    let cancelled = false;
+    crashApi.last().then(
+      (log) => {
+        if (!cancelled && log !== null) setCrashLog(log);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [crashApi]);
 
   // Global switch shortcuts (Ctrl+Alt+<key>). They do not collide with the panel-local
   // Ctrl-N/X (SessionListPanel) because the modifier keys differ.
@@ -419,6 +441,11 @@ export function App({
   // main-area display and terminal attach from the active session tab (kept one-way to avoid a loop).
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
   const activeSess = activeSessionId(tabsState);
+  // Footer material for the active session tab (null for viewer/empty or before a readable transcript).
+  const activeSessionUsage =
+    activeSess !== null
+      ? (sessions.find((s) => s.windowId === activeSess)?.usage ?? null)
+      : null;
 
   // Viewer. One viewer tab = one buffer (key matches tab.id).
   const [viewerBuffers, setViewerBuffers] = useState<ViewerBuffers>({});
@@ -657,6 +684,21 @@ export function App({
     [copyResume, sessions],
   );
 
+  // Copy the target session's Claude Code session id (sid) to the clipboard.
+  // Does nothing for a session without a sid (claude not started / undetectable) (the caller disables the menu).
+  const copySessionIdByWindowId = useCallback(
+    (windowId: string): void => {
+      const s = sessions.find((x) => x.windowId === windowId);
+      const sid = s == null ? null : claudeSessionId(s);
+      if (sid === null) return;
+      void navigator.clipboard?.writeText(sid).then(
+        () => flashCopyToast(t("toast.sessionIdCopied")),
+        () => undefined,
+      );
+    },
+    [flashCopyToast, sessions, t],
+  );
+
   // Always capture Cmd+R for copying the resume command (suppressing reload). meta keys
   // pass through to the browser even while the terminal is focused, so it works (same style
   // as Cmd+N/W). Reload is stopped even when there is no target / no sid to copy (prevents an accidental page reload).
@@ -779,6 +821,31 @@ export function App({
     [control, t],
   );
 
+  // On-demand "Check for updates" (SETTINGS): send update.check and resolve with the server's
+  // update.check.result. Not connected (send=false) / no response (timeout) rejects so the panel
+  // shows an error. The 15s window covers the server's 10s GitHub request timeout.
+  const checkForUpdates = useCallback(
+    (): Promise<UpdateCheckResultMessage> =>
+      new Promise((resolve, reject) => {
+        if (!control.send({ t: "update.check" })) {
+          reject(new Error(t("settings.updateError")));
+          return;
+        }
+        let unsubscribe = (): void => {};
+        const timer = setTimeout(() => {
+          unsubscribe();
+          reject(new Error(t("settings.updateError")));
+        }, 15000);
+        unsubscribe = control.onMessage((m) => {
+          if (m.t !== "update.check.result") return;
+          clearTimeout(timer);
+          unsubscribe();
+          resolve(m);
+        });
+      }),
+    [control, t],
+  );
+
   const handleDismissError = (): void => {
     store.clearError();
   };
@@ -817,6 +884,7 @@ export function App({
             onReorder={reorderTabByKey}
             inactive={activePanel !== "main"}
             onCopyResume={copyResumeByWindowId}
+            onCopySessionId={copySessionIdByWindowId}
           />
           <div className="tab-panel">
             <ErrorBoundary
@@ -860,6 +928,9 @@ export function App({
               />
             )}
           </div>
+          {activeSess !== null && activeSessionUsage !== null && (
+            <SessionStatusFooter usage={activeSessionUsage} />
+          )}
         </div>
         <aside className="side-column">
           <SessionListPanel
@@ -880,6 +951,7 @@ export function App({
             inactive={activePanel !== "sessions"}
             full={selectedPanel === null}
             onCopyResume={copyResumeByWindowId}
+            onCopySessionId={copySessionIdByWindowId}
             onRename={handleCommitConversationTitle}
           />
           {selectedPanel === "explorer" && (
@@ -934,6 +1006,7 @@ export function App({
               canDecreaseFontSize={terminalFont.canDecrease}
               canResetFontSize={terminalFont.canReset}
               onAddOrg={() => setAddOrgOpen(true)}
+              onCheckForUpdates={checkForUpdates}
               inactive={activePanel !== "settings"}
             />
           )}
@@ -944,6 +1017,15 @@ export function App({
           api={reposApi}
           onClose={() => setAddOrgOpen(false)}
           onAdded={(org) => flashCopyToast(t("addOrg.added", { org }))}
+        />
+      )}
+      {crashLog !== null && (
+        <CrashReportModal
+          log={crashLog}
+          onClose={() => {
+            setCrashLog(null);
+            void crashApi?.ack();
+          }}
         />
       )}
       <Toaster notifications={notifications} />

@@ -65,7 +65,13 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         spawn_config_watch(path, hub.clone(), CONFIG_POLL);
     }
     crate::orphan_detector::spawn_orphan_zombie_detector(hub.clone());
-    if let Some(version) = config.app_version {
+    // Parse once: None (dev / placeholder / unparseable) disables both the background poll and the
+    // manual "Check for updates" path, which is why they share the same parsed value.
+    let app_version = config
+        .app_version
+        .as_deref()
+        .and_then(crate::update_checker::parse_running_version);
+    if let Some(version) = app_version.clone() {
         crate::update_checker::spawn_update_checker(hub.clone(), version);
     }
 
@@ -109,6 +115,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         notify_mode: config.notify_mode,
         mac_notify: config.mac_notify,
         config_path,
+        app_version,
     }
 }
 
