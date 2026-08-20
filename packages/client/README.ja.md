@@ -2,7 +2,37 @@
 
 # @zashiki/client
 
-Vite + React + xterm.js のブラウザクライアント。状態は `state.sync` を受ける薄い store（zustand）。UI の各パネル・状態遷移の仕様は各コンポーネント隣の `*.test.tsx` / `*.test.ts` が正本。
+Vite + React + xterm.js のブラウザクライアント。状態は `state.sync` を受ける薄い store（zustand）。UI の各 View・状態遷移の仕様は各コンポーネント隣の `*.test.tsx` / `*.test.ts` が正本。
+
+## ドメインモデル（ユビキタス言語）
+
+UI の正規用語。コードには旧名（`windowId` / `SessionState` / `PanelId`）が残る箇所があり、その rename は follow-up で追う。命名ルール（casing・ワイヤ境界）は root の [`CLAUDE.md`](../../CLAUDE.md) にある。
+
+- **Area** — View を配置するレイアウト領域。
+- **View** — Area に描画される概念（容器）。中身は View ごとに変わる。（「Panel」は廃止。Sub Area の面は `… View`。）
+
+```
+Main Area
+└ Cockpit View — Cockpit Terminal | Viewer を表示（Cockpit Tab で1つ）
+     └ Cockpit Terminal — 耐久ユニット。中で Claude Session (sid) が走る
+          ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / no_claude / starting / unknown
+          ├ Background Activity — runningSubagents / shellsRunning / limited（直交フラグ）
+          └ term / termId — xterm.js の描画スロット（Cockpit Terminal に張り付く）
+
+Sub Area
+├ Cockpit Terminal List View — Organization で束ねる。行 = Cockpit Terminal（選択で Cockpit View に表示）
+├ Explorer View / Search View / Source Control View
+└ Notification View（未読/既読）/ Help View / Settings View
+
+Navigation Area — Sub Area View の切替
+Cockpit Footer — Cockpit Terminal ごとの状態
+Overlay — Notification Toast, Modal
+```
+
+- **Cockpit Terminal**（旧 window/session）— 「session」と呼ばないのは、Ctrl+C で Claude の実行が終わっても端末自体は生き残るため。
+- **Claude Session**（`sid`）— Cockpit Terminal の中で走る一過性の Claude Code 実行。
+- **Viewer** — read-only のファイルビューワー。zashiki は vibe coding 専用コックピットなので、エディタに育てる予定はない。
+- **Organization**（`org`）— Cockpit Terminal はいずれか1つに所属し、一覧はこれで束ねる。
 
 ## 起動（開発）
 

@@ -2,7 +2,37 @@
 
 # @zashiki/client
 
-A Vite + React + xterm.js browser client. State is a thin store (zustand) that receives `state.sync`. The spec for each UI panel and state transition lives in the `*.test.tsx` / `*.test.ts` next to each component as the source of truth.
+A Vite + React + xterm.js browser client. State is a thin store (zustand) that receives `state.sync`. The spec for each UI View and state transition lives in the `*.test.tsx` / `*.test.ts` next to each component as the source of truth.
+
+## Domain model (ubiquitous language)
+
+Canonical UI terms. Some code still uses legacy names (`windowId`, `SessionState`, `PanelId`); those renames are tracked as follow-ups. Naming rules (casing, the wire boundary) live in the root [`CLAUDE.md`](../../CLAUDE.md).
+
+- **Area** — a layout region that holds Views.
+- **View** — the concept drawn into an Area; its contents vary per View. (There is no "Panel"; sub-area surfaces are `… View`.)
+
+```
+Main Area
+└ Cockpit View — shows a Cockpit Terminal | a Viewer (one per Cockpit Tab)
+     └ Cockpit Terminal — the durable unit; a Claude Session (sid) runs inside it
+          ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / no_claude / starting / unknown
+          ├ Background Activity — runningSubagents / shellsRunning / limited (orthogonal flags)
+          └ term / termId — the xterm.js render slot (attaches to a Cockpit Terminal)
+
+Sub Area
+├ Cockpit Terminal List View — grouped by Organization; a row is a Cockpit Terminal (select → shown in the Cockpit View)
+├ Explorer View / Search View / Source Control View
+└ Notification View (unread/read) / Help View / Settings View
+
+Navigation Area — switches Sub Area Views
+Cockpit Footer — per-terminal status
+Overlays — Notification Toast, Modal
+```
+
+- **Cockpit Terminal** (was window/session) — not called "session": Ctrl+C ends the Claude run, but the terminal itself survives.
+- **Claude Session** (`sid`) — the transient Claude Code run inside a Cockpit Terminal.
+- **Viewer** — read-only file viewer; zashiki is a vibe-coding-only cockpit, so there is no plan to grow it into an editor.
+- **Organization** (`org`) — a Cockpit Terminal belongs to one; the list is grouped by it.
 
 ## Running (development)
 
