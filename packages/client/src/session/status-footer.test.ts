@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  durationSeverity,
   fmtDuration,
   fmtResetCountdown,
   fmtTokens,
+  pickAccountLimits,
   tokenSeverity,
   usageSeverity,
 } from "./status-footer.js";
@@ -28,8 +30,23 @@ describe("fmtDuration", () => {
     expect(fmtDuration((60 + 24) * 60_000 + 5_000)).toBe("1h 24m 5s");
   });
 
+  it("adds a day unit and keeps zero units between the largest and seconds", () => {
+    expect(fmtDuration(86_400_000)).toBe("1d 0h 0m 0s");
+    expect(
+      fmtDuration(2 * 86_400_000 + 3 * 3_600_000 + 4 * 60_000 + 5_000),
+    ).toBe("2d 3h 4m 5s");
+  });
+
   it("clamps negatives to zero", () => {
     expect(fmtDuration(-1_000)).toBe("0s");
+  });
+});
+
+describe("durationSeverity", () => {
+  it("turns critical only once a full day has elapsed", () => {
+    expect(durationSeverity(0)).toBe("");
+    expect(durationSeverity(86_400_000 - 1)).toBe("");
+    expect(durationSeverity(86_400_000)).toBe("crit");
   });
 });
 
@@ -57,5 +74,30 @@ describe("severity bands", () => {
     expect(tokenSeverity(1_000_000)).toBe("");
     expect(tokenSeverity(1_500_000)).toBe("warn");
     expect(tokenSeverity(3_000_000)).toBe("crit");
+  });
+});
+
+describe("pickAccountLimits", () => {
+  it("returns null when no session carries limits", () => {
+    expect(pickAccountLimits([])).toBeNull();
+    expect(pickAccountLimits([{ usage: null }, { usage: {} }])).toBeNull();
+  });
+
+  it("collapses to the highest usedPercent per limit, carrying its reset time", () => {
+    const picked = pickAccountLimits([
+      { usage: { limits: { fiveHour: { usedPercent: 20, resetsAt: 100 } } } },
+      {
+        usage: {
+          limits: {
+            fiveHour: { usedPercent: 55, resetsAt: 200 },
+            week: { usedPercent: 40, resetsAt: 900 },
+          },
+        },
+      },
+    ]);
+    expect(picked).toEqual({
+      fiveHour: { usedPercent: 55, resetsAt: 200 },
+      week: { usedPercent: 40, resetsAt: 900 },
+    });
   });
 });

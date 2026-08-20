@@ -1052,6 +1052,18 @@ body {
   flex: none;
 }
 
+/* Claude Code アカウント使用量（現在のセッション / 今週）を status-bar 左端に出す。
+   値/キャプション/severity 配色は .ss-* を共有する。 */
+.account-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* エラーダイアログ（issue #79。非モーダル・オーバーレイ無しで前面へ） */
 
 .error-dialog {

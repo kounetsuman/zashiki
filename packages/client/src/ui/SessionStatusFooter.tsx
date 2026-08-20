@@ -1,15 +1,16 @@
 import type { SessionUsage, UsageLimit } from "@zashiki/shared";
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
+  durationSeverity,
   fmtDuration,
   fmtResetCountdown,
   fmtTokens,
-  type Severity,
   tokenSeverity,
   usageSeverity,
 } from "../session/status-footer.js";
+import { StatusCell } from "./StatusCell.js";
+import { useNow } from "./useNow.js";
 
 export interface SessionStatusFooterProps {
   /** Transcript-derived tokens/elapsed. null before the session has a readable transcript (shows dashes). */
@@ -19,33 +20,6 @@ export interface SessionStatusFooterProps {
 }
 
 const DASH = "–";
-
-function useNow(intervalMs: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
-
-function Cell({
-  value,
-  caption,
-  severity,
-}: {
-  value: string;
-  caption: string;
-  severity?: Severity;
-}) {
-  const cls = severity ? `ss-val ss-${severity}` : "ss-val";
-  return (
-    <span className={cls}>
-      {value}
-      <span className="ss-cap">{caption}</span>
-    </span>
-  );
-}
 
 /**
  * Status area docked under the terminal for the active session: tokens and elapsed time (this turn /
@@ -70,7 +44,7 @@ export function SessionStatusFooter({
         : `${limit.usedPercent}%`;
     return (
       <span className="ss-group" title={title}>
-        <Cell
+        <StatusCell
           value={value}
           caption={label}
           severity={usageSeverity(limit.usedPercent)}
@@ -88,11 +62,11 @@ export function SessionStatusFooter({
         <span className="material-symbols-outlined ss-icon" aria-hidden="true">
           generating_tokens
         </span>
-        <Cell
+        <StatusCell
           value={usage ? fmtTokens(usage.turnTokens) : DASH}
           caption={t("footer.status.turn")}
         />
-        <Cell
+        <StatusCell
           value={usage ? fmtTokens(usage.sessionTokens) : DASH}
           caption={t("footer.status.session")}
           severity={usage ? tokenSeverity(usage.sessionTokens) : undefined}
@@ -103,13 +77,19 @@ export function SessionStatusFooter({
         <span className="material-symbols-outlined ss-icon" aria-hidden="true">
           schedule
         </span>
-        <Cell
+        <StatusCell
           value={usage ? fmtDuration(now - usage.turnStartedAt) : DASH}
           caption={t("footer.status.turn")}
+          severity={
+            usage ? durationSeverity(now - usage.turnStartedAt) : undefined
+          }
         />
-        <Cell
+        <StatusCell
           value={usage ? fmtDuration(now - usage.sessionStartedAt) : DASH}
           caption={t("footer.status.session")}
+          severity={
+            usage ? durationSeverity(now - usage.sessionStartedAt) : undefined
+          }
         />
       </span>
 
