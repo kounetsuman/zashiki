@@ -28,6 +28,12 @@
     "copied": "Copied",
     "report": "Report on GitHub"
   },
+  "clipboardEdit": {
+    "title": "Edit clipboard",
+    "help": "Copying a one-liner that was hard-wrapped at the terminal width pulls in line breaks. Remove them here before pasting, then press OK to re-copy.",
+    "ok": "OK",
+    "neverShow": "Don't show this again"
+  },
   "terminal": {
     "renderError": "An error occurred while rendering the terminal",
     "connectionProblem": "Connection problem ({{detail}})",
@@ -179,7 +185,8 @@
     "updateChecking": "Checking…",
     "updateAvailable": "Version {{version}} is available.",
     "updateUpToDate": "You're on the latest version.",
-    "updateError": "Couldn't check for updates."
+    "updateError": "Couldn't check for updates.",
+    "clipboardEditModal": "Show clipboard edit on copy"
   },
   "addOrg": {
     "title": "Add org",

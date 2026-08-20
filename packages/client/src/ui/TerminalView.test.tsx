@@ -354,6 +354,64 @@ describe("TerminalView", () => {
     expect(handled).toBe(false);
   });
 
+  it("Cmd+C on a multi-line selection opens the clipboard-edit modal and suppresses the default", () => {
+    const f = fakeSession();
+    render(<TerminalView session={f.session} />);
+    const term = MockTerminal.instances[0];
+    if (!term) throw new Error("terminal not created");
+    term.selection = "claude \\\n  --flag";
+    let handled = true;
+    act(() => {
+      handled = term.emitKey({ key: "c", metaKey: true });
+    });
+    expect(handled).toBe(false);
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "claude \\\n  --flag",
+    );
+  });
+
+  it("Cmd+C on a single-line selection does not open the modal", () => {
+    const f = fakeSession();
+    render(<TerminalView session={f.session} />);
+    const term = MockTerminal.instances[0];
+    if (!term) throw new Error("terminal not created");
+    term.selection = "claude --flag";
+    let handled = false;
+    act(() => {
+      handled = term.emitKey({ key: "c", metaKey: true });
+    });
+    expect(handled).toBe(true);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("Ctrl+C is never intercepted (stays SIGINT to the pty)", () => {
+    const f = fakeSession();
+    render(<TerminalView session={f.session} />);
+    const term = MockTerminal.instances[0];
+    if (!term) throw new Error("terminal not created");
+    term.selection = "a\nb";
+    let handled = false;
+    act(() => {
+      handled = term.emitKey({ key: "c", ctrlKey: true });
+    });
+    expect(handled).toBe(true);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("Cmd+C does not open the modal when the setting is disabled", () => {
+    const f = fakeSession();
+    render(<TerminalView session={f.session} clipboardEditEnabled={false} />);
+    const term = MockTerminal.instances[0];
+    if (!term) throw new Error("terminal not created");
+    term.selection = "a\nb";
+    let handled = false;
+    act(() => {
+      handled = term.emitKey({ key: "c", metaKey: true });
+    });
+    expect(handled).toBe(true);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
   it("plain Right/Left are not intercepted (cursor movement stays xterm->pty)", () => {
     const f = fakeSession();
     const input = vi.spyOn(f.session, "input");

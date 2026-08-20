@@ -5,6 +5,7 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { shouldOpenClipboardEditModal } from "../lib/clipboard-edit-modal.js";
 import { stripFocusReports } from "../lib/focus-report.js";
 import {
   isValidSize,
@@ -18,6 +19,7 @@ import {
   EMPTY_SEARCH_RESULTS,
   type SearchResults,
 } from "../lib/terminal-search.js";
+import { ClipboardEditModal } from "./ClipboardEditModal.js";
 import { TerminalFindBar } from "./TerminalFindBar.js";
 import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
 import { buildTerminalOptions } from "./terminal-options.js";
@@ -51,6 +53,8 @@ export function TerminalView({
   focusNonce = 0,
   resizeNonce = 0,
   fontSize = DEFAULT_TERMINAL_FONT_SIZE,
+  clipboardEditEnabled = true,
+  onSetClipboardEditEnabled,
 }: {
   session: TerminalViewSession;
   /**
@@ -72,6 +76,9 @@ export function TerminalView({
    * fire because pixels are unchanged, so we reclaim it here.
    */
   resizeNonce?: number;
+  /** Whether a multi-line Cmd+C opens the clipboard-edit modal. */
+  clipboardEditEnabled?: boolean;
+  onSetClipboardEditEnabled?(enabled: boolean): void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
@@ -126,6 +133,14 @@ export function TerminalView({
   // live instance instead of rebuilding the terminal (which would drop scrollback and restart the pty).
   const fontSizeRef = useRef(fontSize);
   fontSizeRef.current = fontSize;
+  // Read inside the once-built key handler, so a live setting change takes effect without rebuilding.
+  const clipboardEditEnabledRef = useRef(clipboardEditEnabled);
+  clipboardEditEnabledRef.current = clipboardEditEnabled;
+
+  const [clipEdit, setClipEdit] = useState<{ open: boolean; text: string }>({
+    open: false,
+    text: "",
+  });
 
   useEffect(() => {
     const el = containerRef.current;
@@ -252,6 +267,26 @@ export function TerminalView({
         e.preventDefault();
         openFind();
         return false;
+      }
+      if (
+        (e.key === "c" || e.key === "C") &&
+        e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.shiftKey
+      ) {
+        const selection = term.getSelection();
+        if (
+          shouldOpenClipboardEditModal(
+            clipboardEditEnabledRef.current,
+            selection,
+          )
+        ) {
+          e.preventDefault();
+          setClipEdit({ open: true, text: selection });
+          return false;
+        }
+        return true;
       }
       if (
         e.key === "Enter" &&
@@ -396,6 +431,17 @@ export function TerminalView({
         />
       )}
       <div ref={containerRef} className="terminal-view" />
+      {clipEdit.open && (
+        <ClipboardEditModal
+          text={clipEdit.text}
+          enabled={clipboardEditEnabled}
+          onSetEnabled={(v) => onSetClipboardEditEnabled?.(v)}
+          onClose={() => {
+            setClipEdit({ open: false, text: "" });
+            termRef.current?.focus();
+          }}
+        />
+      )}
     </>
   );
 }
