@@ -41,6 +41,8 @@ pub mod term_registry;
 pub mod update_checker;
 
 mod app_state;
+mod poller_types;
+mod poller_eval_helpers;
 mod control_dispatch;
 mod control_hub;
 mod control_session;
