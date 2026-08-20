@@ -1,15 +1,13 @@
-//! A standalone Rust server that replaces the Node server (Phase A).
+//! A standalone Rust server: the HTTP/WS backend the Tauri sidecar launches.
 //!
-//! Current state of this crate: the wire endpoints (`/healthz`, `token-probe`, `/api/fs/repos`) +
-//! Host/Origin verification middleware + token auth for `/api/*` + static serving of the client dist + pure security functions.
-//! Porting of git status/WS/PTY and the poller comes later. Not yet wired into Tauri (non-destructive).
-//! The source of truth for the wire contract to preserve is `packages/shared/src/protocol.ts`.
+//! Serves the REST endpoints (git status/write, `/api/file`, `/api/fs`, hooks), the `/ws/control`
+//! and `/ws/term` channels, and the status poller, behind Host/Origin verification, token auth for
+//! `/api/*`, and static serving of the client dist.
 
 pub mod claude_projects;
 pub mod config;
 pub mod control;
 pub mod crash_report;
-pub mod demo_seed;
 pub mod file;
 pub mod fs;
 pub mod git;
@@ -96,7 +94,7 @@ pub struct ServerConfig {
     pub repos_conf: Option<PathBuf>,
     /// Control services (if None, `/ws/control` is not wired = REST only).
     pub control: Option<ControlServices>,
-    /// Editor command (ZK_EDITOR). Default `cursor -g` (TS DEFAULT_EDITOR).
+    /// Editor command (ZK_EDITOR). Default `cursor -g`.
     pub editor: Option<String>,
     /// Replacement for the `POST /api/git/open` editor launch (for test injection; spawns the editor if None).
     pub open_file: Option<OpenFile>,
@@ -140,9 +138,8 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/git/stage-all", post(git_stage_all))
         .route("/api/git/unstage-all", post(git_unstage_all))
         .route("/api/git/commit", post(git_commit))
-        // /api/file writes allow a larger body. TS passes maxBytes + 64KiB to parseBody
-        // (content = max + slack for the JSON envelope). With axum's default 2MiB limit, a max-size
-        // content would get a 413 at the transport layer, diverging from Node (200, or a content-based 413), so we align them.
+        // /api/file writes allow a larger body: maxBytes + 64KiB (content max + slack for the JSON
+        // envelope), overriding axum's default 2MiB so the 413 is content-based rather than transport-level.
         .route(
             "/api/file",
             get(file_read).post(file_write).layer(DefaultBodyLimit::max(
@@ -200,7 +197,7 @@ fn cors_layer() -> CorsLayer {
             axum::http::Method::POST,
             axum::http::Method::OPTIONS,
         ])
-        // The client's authHeaders send x-zashiki-token (packages/client/src/lib/token.ts).
+        // The client's authHeaders send x-zashiki-token.
         // This is a non-safelisted header = it triggers preflight, so unless it's allowed, dev requests are blocked.
         .allow_headers([
             header::AUTHORIZATION,
@@ -321,7 +318,7 @@ mod tests {
                 ("host", OK_HOST),
                 ("origin", "http://localhost:5173"),
                 ("access-control-request-method", "GET"),
-                // The auth header the client actually sends (token.ts's authHeaders).
+                // The auth header the client actually sends.
                 ("access-control-request-headers", "x-zashiki-token"),
             ],
             &[ACAO, ACAM, ACAH],

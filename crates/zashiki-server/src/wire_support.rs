@@ -8,18 +8,18 @@ use serde::Deserialize;
 use crate::app_state::{scan, AppState};
 use crate::{git, session_persist};
 
-/// JSON error response of `{"error": msg}` (TS `sendHttpError`).
+/// JSON error response of `{"error": msg}`.
 pub(crate) fn json_error(status: StatusCode, msg: &str) -> Response {
     (status, Json(serde_json::json!({ "error": msg }))).into_response()
 }
 
-/// JSON response of `{"ok": true}` (the success body of TS's stage/unstage/commit etc.).
+/// JSON response of `{"ok": true}` (the success body of stage/unstage/commit etc.).
 pub(crate) fn json_ok() -> Response {
     Json(serde_json::json!({ "ok": true })).into_response()
 }
 
-/// JSON error response of `{"error": msg, "code": code}` (TS session-routes also returns a `code` for
-/// PersistError; unlike the git-side `json_error` that has `{error}` only, this is a persist-specific contract).
+/// JSON error response of `{"error": msg, "code": code}`. Unlike the git-side `json_error` that has
+/// `{error}` only, the `code` is a persist-specific contract for PersistError.
 pub(crate) fn json_error_with_code(status: StatusCode, msg: &str, code: &str) -> Response {
     (
         status,
@@ -28,7 +28,7 @@ pub(crate) fn json_error_with_code(status: StatusCode, msg: &str, code: &str) ->
         .into_response()
 }
 
-/// Maps `session_persist::PersistError` to an HTTP status + `code` (TS `PERSIST_ERROR_STATUS`).
+/// Maps `session_persist::PersistError` to an HTTP status + `code`.
 pub(crate) fn persist_error_response(err: session_persist::PersistError) -> Response {
     use session_persist::PersistError::{Io, RestoreEmpty, RestoreFileNotFound, SaveEmpty};
     match err {
@@ -47,7 +47,7 @@ pub(crate) fn persist_error_response(err: session_persist::PersistError) -> Resp
             &format!("save file has no restorable entry: {path}"),
             "restore_empty",
         ),
-        // TS also uses `sendHttpError` for 500 (no code).
+        // 500 has no code.
         Io(e) => json_error(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }
 }
@@ -66,7 +66,7 @@ pub(crate) fn bad(msg: &str) -> GuardErr {
     (StatusCode::BAD_REQUEST, msg.to_string())
 }
 
-/// bytes to JSON. An empty body is treated as `{}` (TS `parseBody`). Failure is 400 `invalid JSON body`.
+/// bytes to JSON. An empty body is treated as `{}`. Failure is 400 `invalid JSON body`.
 pub(crate) fn parse_json_body<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, GuardErr> {
     let trimmed = std::str::from_utf8(body).unwrap_or("").trim();
     let value: serde_json::Value = if trimmed.is_empty() {
@@ -77,13 +77,13 @@ pub(crate) fn parse_json_body<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Resu
     serde_json::from_value(value).map_err(|_| bad("request failed schema validation"))
 }
 
-/// Whether repoPath is in the scanned list (TS `isAllowedRepo`; judged by the scan at each request).
+/// Whether repoPath is in the scanned list (judged by the scan at each request).
 pub(crate) async fn is_allowed_repo(state: &AppState, repo_path: &str) -> bool {
     scan(state).await.iter().any(|r| r.path == repo_path)
 }
 
 /// Shared guard for file actions (stage/unstage/open). Order: schema -> safe path -> repo allowlist.
-/// The first half of TS `handleFileAction` (open additionally calls realpath verification).
+/// Open additionally calls realpath verification.
 pub(crate) async fn guard_file_action(
     state: &AppState,
     body: &[u8],
@@ -120,7 +120,7 @@ pub(crate) async fn guard_repo(state: &AppState, repo_path: &str) -> Result<(), 
     Ok(())
 }
 
-/// Maps a git mutation result to 200 `{ok:true}` / 500 `{error}` (TS: failures become 500 in the route's catch).
+/// Maps a git mutation result to 200 `{ok:true}` / 500 `{error}` (failures become 500).
 pub(crate) fn git_result(result: Result<(), git::GitError>) -> Response {
     match result {
         Ok(()) => json_ok(),
@@ -128,7 +128,7 @@ pub(crate) fn git_result(result: Result<(), git::GitError>) -> Response {
     }
 }
 
-/// Allowlist + safe-path guard for `/api/file` (the first half of TS `guardedAbs`; from realpath onward it's file.rs).
+/// Allowlist + safe-path guard for `/api/file` (from realpath onward it's file.rs).
 pub(crate) async fn guard_file_path(
     state: &AppState,
     repo_path: &str,

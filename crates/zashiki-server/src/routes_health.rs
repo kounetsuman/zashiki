@@ -15,7 +15,7 @@ pub(crate) struct HealthResponse {
     pid: u32,
 }
 
-/// Response for `GET /api/zk-shell/token-probe` (TS: `{ ok: true }`).
+/// Response for `GET /api/zk-shell/token-probe` (`{ ok: true }`).
 #[derive(Serialize)]
 pub(crate) struct TokenProbeResponse {
     ok: bool,

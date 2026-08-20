@@ -1,4 +1,4 @@
-// ---- Pure security functions (ported from TS packages/server/src/security.ts) ----
+// ---- Pure security functions ----
 
 const ALLOWED_HOSTNAMES: [&str; 3] = ["127.0.0.1", "localhost", "[::1]"];
 
@@ -13,8 +13,8 @@ fn is_port_suffix(s: &str) -> bool {
     matches!(s.strip_prefix(':'), Some(rest) if !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()))
 }
 
-/// Extracts the hostname from an authority (`host[:port]`). Equivalent to TS's Host regex
-/// `/^(\[[^\]]+\]|[^:]+)(:\d+)?$/`, it accepts only a bracketed IPv6 or a colon-free host + an optional `:port`,
+/// Extracts the hostname from an authority (`host[:port]`). Matches the Host regex
+/// `^(\[[^\]]+\]|[^:]+)(:\d+)?$`: it accepts only a bracketed IPv6 or a colon-free host + an optional `:port`,
 /// and returns None if there is extra content after `]` or at the port position (host/origin share the same rule).
 fn hostname_of_authority(authority: &str) -> Option<&str> {
     if authority.is_empty() {
@@ -52,7 +52,7 @@ pub fn is_allowed_host(host: Option<&str>) -> bool {
 }
 
 /// Origin header verification (absent is allowed; if present, only http(s) on the localhost family).
-/// TS uses `new URL(origin)`, but since an origin is the simple form `scheme://host[:port]`, we decompose it by hand.
+/// Rather than a full URL parse: an origin is the simple form `scheme://host[:port]`, so we decompose it by hand.
 /// Host extraction uses the same `hostname_of_authority` as `is_allowed_host` to keep the check consistent.
 pub fn is_allowed_origin(origin: Option<&str>) -> bool {
     let Some(origin) = origin else {
@@ -79,7 +79,7 @@ pub fn token_from_query(query: Option<&str>) -> Option<&str> {
         .filter(|t| !t.is_empty())
 }
 
-/// Timing-attack-resistant token comparison (TS `tokenMatches`; length mismatch or None is false).
+/// Timing-attack-resistant token comparison (length mismatch or None is false).
 pub fn token_matches(provided: Option<&str>, expected: &str) -> bool {
     match provided {
         None => false,

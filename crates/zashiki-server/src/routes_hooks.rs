@@ -10,10 +10,10 @@ use crate::control::ControlServices;
 use crate::hooks;
 use crate::wire_support::{json_error, parse_json_body};
 
-// ---- Claude Code hooks intake REST (the owned version of TS hooks-routes.ts) ----
+// ---- Claude Code hooks intake REST ----
 
-/// Requests an immediate re-evaluation from the poller and receives the post-evaluation snapshot (None on no response =
-/// TS's `poller.refresh().catch(()=>null)`). Used for the mac notification body (session title).
+/// Requests an immediate re-evaluation from the poller and receives the post-evaluation snapshot
+/// (None on no response). Used for the mac notification body (session title).
 async fn hooks_refresh(control: &ControlServices) -> Option<crate::status_poller::StateSnapshot> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     if control

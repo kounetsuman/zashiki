@@ -150,7 +150,7 @@ mod sessions_persist_rest_tests {
         let sessions = Arc::new(SessionRegistry::new());
         let (s, b) = send(app(dir.path(), sessions), "POST", "/api/sessions/save?token=t", "").await;
         assert_eq!(s, StatusCode::CONFLICT);
-        // TS session-routes also returns a `code` for PersistError (drop-in contract).
+        // PersistError responses carry a `code` (drop-in contract).
         assert!(b.contains(r#""code":"save_empty""#), "body: {b}");
     }
 
