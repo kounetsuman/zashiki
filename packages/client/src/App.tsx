@@ -1,6 +1,7 @@
 import {
   type ClientMessage,
   claudeSessionId,
+  resolveOrgColor,
   resumeCommand,
   type ServerMessage,
   type SessionInfo,
@@ -441,11 +442,16 @@ export function App({
   // main-area display and terminal attach from the active session tab (kept one-way to avoid a loop).
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
   const activeSess = activeSessionId(tabsState);
-  // Footer material for the active session tab (null for viewer/empty or before a readable transcript).
-  const activeSessionUsage =
+  // Footer inputs for the active session tab (undefined for viewer/empty; usage null before a transcript).
+  const activeSession =
     activeSess !== null
-      ? (sessions.find((s) => s.windowId === activeSess)?.usage ?? null)
-      : null;
+      ? sessions.find((s) => s.windowId === activeSess)
+      : undefined;
+  const activeSessionUsage = activeSession?.usage ?? null;
+  const activeSessionAccent =
+    activeSession !== undefined
+      ? resolveOrgColor(activeSession.org, orgColors)
+      : undefined;
 
   // Viewer. One viewer tab = one buffer (key matches tab.id).
   const [viewerBuffers, setViewerBuffers] = useState<ViewerBuffers>({});
@@ -928,8 +934,11 @@ export function App({
               />
             )}
           </div>
-          {activeSess !== null && activeSessionUsage !== null && (
-            <SessionStatusFooter usage={activeSessionUsage} />
+          {activeSess !== null && (
+            <SessionStatusFooter
+              usage={activeSessionUsage}
+              accentColor={activeSessionAccent}
+            />
           )}
         </div>
         <aside className="side-column">
