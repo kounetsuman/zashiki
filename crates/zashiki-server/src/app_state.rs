@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use crate::control::ControlServices;
 use crate::repos;
 
-/// Editor launch for `POST /api/git/open` (injected so tests can replace it; equivalent to TS's openFile).
-/// Arguments are (repoPath, file). Side-effect only; success/failure is ignored (TS likewise only checks spawn success and doesn't block).
+/// Editor launch for `POST /api/git/open` (injected so tests can replace it).
+/// Arguments are (repoPath, file). Side-effect only; success/failure is ignored (only spawn success is checked, and it doesn't block).
 pub type OpenFile = Arc<dyn Fn(String, String) + Send + Sync>;
 
 /// TTL cache for repos.conf scan results. Reuses, for a short window, the FS walk that scan performs on
@@ -26,7 +26,7 @@ pub(crate) struct AppState {
     pub(crate) open_file: Option<OpenFile>,
     pub(crate) file_max_bytes: u64,
     pub(crate) saves_dir: Arc<PathBuf>,
-    /// Serializes save/restore (a series of destructive operations) within the server (equivalent to TS's `runPersistExclusive`).
+    /// Serializes save/restore (a series of destructive operations) within the server.
     pub(crate) persist_lock: Arc<tokio::sync::Mutex<()>>,
     /// TTL cache for scan (the repos.conf walk).
     pub(crate) scan_cache: ScanCache,
@@ -34,14 +34,14 @@ pub(crate) struct AppState {
     pub(crate) last_crash: Arc<std::sync::Mutex<Option<String>>>,
 }
 
-/// Default destination for session save/restore (`~/.zashiki/saves`; matches TS's default).
+/// Default destination for session save/restore (`~/.zashiki/saves`).
 /// The startup restore and shutdown save in main.rs use the same resolution.
 pub fn default_saves_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     PathBuf::from(home).join(".zashiki").join("saves")
 }
 
-/// Splits `ZK_EDITOR` into argv (whitespace-separated; quotes are not interpreted; TS `parseEditorCommand`).
+/// Splits `ZK_EDITOR` into argv (whitespace-separated; quotes are not interpreted).
 fn parse_editor_command(editor: &str) -> Vec<String> {
     editor
         .split_whitespace()

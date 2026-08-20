@@ -11,7 +11,7 @@ use crate::control::RefreshRequest;
 use crate::wire_support::json_error_with_code;
 use crate::{fs, repos};
 
-/// Response for `GET /api/fs/repos` (TS: `FsReposResponse` in `packages/shared/src/fs-tree.ts`).
+/// Response for `GET /api/fs/repos` (`FsReposResponse`).
 #[derive(Serialize)]
 pub(crate) struct FsReposResponse {
     repos: Vec<FsRepo>,
@@ -24,7 +24,7 @@ pub(crate) struct FsRepo {
     path: String,
 }
 
-/// Response for `GET /api/repos/list` (TS: `ReposListResponse` in `packages/shared/src/repos-add.ts`).
+/// Response for `GET /api/repos/list` (`ReposListResponse`).
 #[derive(Serialize)]
 pub(crate) struct ReposListResponse {
     orgs: Vec<OrgRootEntry>,
