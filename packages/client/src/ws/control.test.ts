@@ -37,7 +37,7 @@ describe("ControlClient", () => {
     ws.emitMessage(
       JSON.stringify({
         t: "state.sync",
-        sessions: [],
+        cockpitTerminals: [],
         orgs: [],
         orgColors: {},
       }),
@@ -45,7 +45,7 @@ describe("ControlClient", () => {
     ws.emitMessage("broken{{{"); // invalid JSON is ignored
     ws.emitMessage(JSON.stringify({ t: "unknown-type" })); // schema violations are ignored
     expect(messages).toEqual([
-      { t: "state.sync", sessions: [], orgs: [], orgColors: {} },
+      { t: "state.sync", cockpitTerminals: [], orgs: [], orgColors: {} },
     ]);
     expect(statuses).toEqual(["connecting", "open"]);
   });
@@ -125,7 +125,7 @@ describe("ControlClient", () => {
     ws.emitMessage(
       JSON.stringify({
         t: "state.sync",
-        sessions: [],
+        cockpitTerminals: [],
         orgs: [],
         orgColors: {},
       }),

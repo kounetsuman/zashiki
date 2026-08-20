@@ -104,9 +104,9 @@ export interface AppSession extends TerminalViewSession {
   getTermId(): string | null;
   /** Re-attaches the pty on term.reconnect (e.g. after a restore). */
   reconnect(): void;
-  /** Releases the terminal while there are 0 sessions to stop respawn. */
+  /** Releases the terminal while there are 0 cockpit terminals to stop respawn. */
   suspend(): void;
-  /** Re-attaches the terminal when sessions revive. */
+  /** Re-attaches the terminal when cockpit terminals revive. */
   resume(): void;
 }
 
@@ -175,7 +175,7 @@ export function App({
     createAppStore({ control, session, notifier }),
   );
   const {
-    sessions,
+    cockpitTerminals,
     orgs,
     orgColors,
     notifications,
@@ -191,10 +191,12 @@ export function App({
   );
   const unread = unreadCount(notifications, seenIds);
   const updateVersion = updateAvailableVersion(notifications);
-  // Number of sessions that have hit the usage limit (input for the footer warning).
-  const limitedCount = sessions.filter((s) => s.limited === true).length;
+  // Number of cockpit terminals that have hit the usage limit (input for the footer warning).
+  const limitedCount = cockpitTerminals.filter(
+    (s) => s.limited === true,
+  ).length;
   // Account-wide Claude Code usage for the global footer (null until a session reports limits).
-  const accountLimits = pickAccountLimits(sessions);
+  const accountLimits = pickAccountLimits(cockpitTerminals);
 
   const controlStatus = useSyncExternalStore(
     useCallback((cb: () => void) => control.onStatus(() => cb()), [control]),
@@ -213,12 +215,12 @@ export function App({
     closeTab,
     reorderTabByKey,
     openViewerTab,
-  } = useAppTabs(store, sessions, selectedCockpitTerminalId);
+  } = useAppTabs(store, cockpitTerminals, selectedCockpitTerminalId);
 
   // Footer inputs for the active session tab (undefined for viewer/empty; usage null before a transcript).
   const activeSession =
     activeSess !== null
-      ? sessions.find((s) => s.cockpitTerminalId === activeSess)
+      ? cockpitTerminals.find((s) => s.cockpitTerminalId === activeSess)
       : undefined;
   const activeSessionUsage = activeSession?.usage ?? null;
   const activeSessionAccent =
@@ -257,7 +259,7 @@ export function App({
     copyResume,
     copyResumeByCockpitTerminalId,
     copySessionIdByCockpitTerminalId,
-  } = useClipboardCopy(sessions, flashCopyToast);
+  } = useClipboardCopy(cockpitTerminals, flashCopyToast);
 
   // Copy the absolute path of the file open in the viewer (the copy button at the left of the header).
   const copyViewerPath = useCallback(
@@ -297,7 +299,7 @@ export function App({
   );
 
   useAppKeyboardShortcuts({
-    sessions,
+    cockpitTerminals,
     orgs,
     activeSess,
     activeKey: tabsState.activeKey,
@@ -308,18 +310,18 @@ export function App({
     closeTabByKey,
   });
 
-  // When all sessions are removed, release the terminal and stop work regeneration via
+  // When all cockpit terminals are removed, release the terminal and stop work regeneration via
   // reconnect. Suspend only on the transition to 0 after having had at least one session
   // (preserves the bootstrap at first startup). Re-attach with resume when they revive.
   const hadSessionsRef = useRef(false);
   useEffect(() => {
-    if (sessions.length > 0) {
+    if (cockpitTerminals.length > 0) {
       hadSessionsRef.current = true;
       session.resume();
     } else if (hadSessionsRef.current) {
       session.suspend();
     }
-  }, [sessions.length, session]);
+  }, [cockpitTerminals.length, session]);
 
   // Receive settings that apply immediately. The footer toggles are removed; notification
   // sound and debug are driven by the server's config.json (watch -> config.sync). Since the
@@ -433,7 +435,7 @@ export function App({
           <TabBar
             tabs={tabsState.tabs}
             activeKey={tabsState.activeKey}
-            sessions={sessions}
+            cockpitTerminals={cockpitTerminals}
             conversationTitles={conversationTitles}
             orgColors={orgColors}
             onActivate={activateTabByKey}
@@ -472,10 +474,10 @@ export function App({
               />
             </ErrorBoundary>
             {controlStatus === "open" &&
-              sessions.length === 0 &&
+              cockpitTerminals.length === 0 &&
               activeViewerKey === null && <EmptyMainArea />}
             {controlStatus === "open" &&
-              sessions.length > 0 &&
+              cockpitTerminals.length > 0 &&
               activeSess === null &&
               activeViewerKey === null && <NoTabOpen />}
             {activeBuffer !== null && activeViewerKey !== null && (
@@ -497,7 +499,7 @@ export function App({
         </div>
         <aside className="side-column">
           <CockpitTerminalListView
-            sessions={sessions}
+            cockpitTerminals={cockpitTerminals}
             orgs={orgs}
             orgColors={orgColors}
             conversationTitles={conversationTitles}
@@ -597,7 +599,7 @@ export function App({
         <DebugView
           control={control}
           session={session}
-          sessions={sessions}
+          cockpitTerminals={cockpitTerminals}
           onClose={() => setDebug(false)}
         />
       )}

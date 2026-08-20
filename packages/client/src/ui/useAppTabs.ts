@@ -34,7 +34,7 @@ export interface AppTabs {
  */
 export function useAppTabs(
   store: AppStore,
-  sessions: readonly CockpitTerminalInfo[],
+  cockpitTerminals: readonly CockpitTerminalInfo[],
   selectedCockpitTerminalId: string | null,
 ): AppTabs {
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
@@ -64,10 +64,10 @@ export function useAppTabs(
     setTabsState((prev) =>
       pruneSessions(
         prev,
-        sessions.map((s) => s.cockpitTerminalId),
+        cockpitTerminals.map((s) => s.cockpitTerminalId),
       ),
     );
-  }, [sessions]);
+  }, [cockpitTerminals]);
 
   const bootstrappedRef = useRef(false);
   useEffect(() => {
@@ -76,12 +76,12 @@ export function useAppTabs(
       bootstrappedRef.current = true;
       return;
     }
-    const w = sessions.find((s) => s.active) ?? sessions[0];
+    const w = cockpitTerminals.find((s) => s.active) ?? cockpitTerminals[0];
     if (w !== undefined) {
       bootstrappedRef.current = true;
       store.selectCockpitTerminal(w.cockpitTerminalId);
     }
-  }, [sessions, tabsState.tabs.length, store]);
+  }, [cockpitTerminals, tabsState.tabs.length, store]);
 
   const activateTabByKey = useCallback(
     (key: string): void => {

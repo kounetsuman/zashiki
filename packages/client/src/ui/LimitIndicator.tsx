@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 
 export interface LimitIndicatorProps {
-  /** The number of sessions that have hit the usage limit. Hidden if 0 or less. */
+  /** The number of cockpit terminals that have hit the usage limit. Hidden if 0 or less. */
   count: number;
 }
 

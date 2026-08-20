@@ -74,7 +74,7 @@ const termSnap: TermDebugSnapshot = {
   suspended: false,
 };
 
-const sessions: CockpitTerminalInfo[] = [
+const cockpitTerminals: CockpitTerminalInfo[] = [
   {
     cockpitTerminalId: "@1",
     name: "zashiki",
@@ -94,7 +94,7 @@ describe("DebugView", () => {
       <DebugView
         control={c.control}
         session={session}
-        sessions={sessions}
+        cockpitTerminals={cockpitTerminals}
         onClose={() => undefined}
       />,
     );
@@ -115,7 +115,7 @@ describe("DebugView", () => {
       <DebugView
         control={c.control}
         session={session}
-        sessions={[]}
+        cockpitTerminals={[]}
         onClose={() => undefined}
       />,
     );
@@ -131,7 +131,7 @@ describe("DebugView", () => {
       <DebugView
         control={c.control}
         session={session}
-        sessions={[]}
+        cockpitTerminals={[]}
         onClose={() => undefined}
       />,
     );
@@ -148,7 +148,7 @@ describe("DebugView", () => {
       <DebugView
         control={c.control}
         session={session}
-        sessions={[]}
+        cockpitTerminals={[]}
         onClose={() => undefined}
       />,
     );
@@ -162,7 +162,7 @@ describe("DebugView", () => {
     );
     act(() => c.msg({ t: "git.dirty" }));
     act(() =>
-      c.msg({ t: "state.sync", sessions: [], orgs: [], orgColors: {} }),
+      c.msg({ t: "state.sync", cockpitTerminals: [], orgs: [], orgColors: {} }),
     );
     expect(screen.getByText('notify waiting @1 "x"')).toBeTruthy();
     expect(screen.getByText("git.dirty")).toBeTruthy();
@@ -175,7 +175,7 @@ describe("DebugView", () => {
       <DebugView
         control={c.control}
         session={session}
-        sessions={[]}
+        cockpitTerminals={[]}
         onClose={() => undefined}
       />,
     );
@@ -192,7 +192,7 @@ describe("DebugView", () => {
       <DebugView
         control={c.control}
         session={session}
-        sessions={[]}
+        cockpitTerminals={[]}
         onClose={onClose}
       />,
     );

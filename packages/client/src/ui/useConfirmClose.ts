@@ -14,16 +14,16 @@ export interface ConfirmClose {
  * target clears when the session disappears via another client/CLI or a refresh.
  */
 export function useConfirmClose(
-  sessions: CockpitTerminalInfo[],
+  cockpitTerminals: CockpitTerminalInfo[],
   onClose: (cockpitTerminalId: string) => void,
 ): ConfirmClose {
   const [confirmingClose, setConfirmingClose] = useState<string | null>(null);
 
   useEffect(() => {
     if (confirmingClose === null) return;
-    if (!sessions.some((s) => s.cockpitTerminalId === confirmingClose))
+    if (!cockpitTerminals.some((s) => s.cockpitTerminalId === confirmingClose))
       setConfirmingClose(null);
-  }, [sessions, confirmingClose]);
+  }, [cockpitTerminals, confirmingClose]);
 
   const confirmClose = (cockpitTerminalId: string): void => {
     setConfirmingClose(null);

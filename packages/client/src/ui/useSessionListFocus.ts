@@ -23,13 +23,13 @@ export interface SessionListFocus {
  */
 export function useSessionListFocus(
   orgList: string[],
-  sessions: CockpitTerminalInfo[],
+  cockpitTerminals: CockpitTerminalInfo[],
   collapsed: ReadonlySet<string>,
   selectedCockpitTerminalId: string | null,
 ): SessionListFocus {
   const [focused, setFocused] = useState<FocusTarget | null>(null);
   const focusedRef = useRef<HTMLButtonElement | null>(null);
-  const visibleItems = buildVisibleItems(orgList, sessions, collapsed);
+  const visibleItems = buildVisibleItems(orgList, cockpitTerminals, collapsed);
   const visibleKeys = visibleItems.map(focusKey);
   // The array is regenerated every render and can't be an effect dep, so hold a stable (string) form.
   // The separator is a control character that never appears in org names/cockpitTerminalIds (avoids key-boundary collisions).
@@ -53,7 +53,7 @@ export function useSessionListFocus(
         visibleItems,
         focused,
         selectedCockpitTerminalId,
-        sessions,
+        cockpitTerminals,
         delta,
       ),
     );

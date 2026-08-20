@@ -15,7 +15,7 @@ const SID1 = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 const SID2 = "11111111-2222-4333-8444-555566667777";
 const SID3 = "22222222-3333-4444-8555-666677778888";
 
-const sessions: CockpitTerminalInfo[] = [
+const cockpitTerminals: CockpitTerminalInfo[] = [
   {
     cockpitTerminalId: SID1,
     name: "zashiki",
@@ -54,7 +54,7 @@ function renderView(
   overrides: Partial<Parameters<typeof CockpitTerminalListView>[0]> = {},
 ) {
   const props = {
-    sessions,
+    cockpitTerminals,
     orgs,
     selectedCockpitTerminalId: null as string | null,
     onSelect: vi.fn(),
@@ -77,16 +77,16 @@ describe("CockpitTerminalListView: org collapsible group display", () => {
     expect(screen.getByText("charlie (1)")).toBeTruthy();
   });
 
-  it("always shows an org with 0 sessions as (0) too (all orgs from repos.conf)", () => {
+  it("always shows an org with 0 cockpitTerminals as (0) too (all orgs from repos.conf)", () => {
     renderView();
     expect(screen.getByText("delta (0)")).toBeTruthy();
   });
 
-  it("shows sessions from an org not in orgs as a detected group", () => {
+  it("shows cockpitTerminals from an org not in orgs as a detected group", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[0],
+          ...cockpitTerminals[0],
           org: "scratch",
           cockpitTerminalId: "@9",
         } as CockpitTerminalInfo,
@@ -128,7 +128,7 @@ describe("CockpitTerminalListView: org header color", () => {
 
 describe("CockpitTerminalListView: repos.conf not-configured guidance", () => {
   it("shows guidance to create repos.conf instead of an empty view when there are 0 orgs", () => {
-    renderView({ sessions: [], orgs: [] });
+    renderView({ cockpitTerminals: [], orgs: [] });
     expect(screen.getByText("~/.zashiki/repos.conf")).toBeTruthy();
     // Includes an example in the one-path-per-line format
     expect(screen.getByText(/1行1パス/)).toBeTruthy();
@@ -138,18 +138,21 @@ describe("CockpitTerminalListView: repos.conf not-configured guidance", () => {
   });
 
   it("does not show the guidance when there is at least one org", () => {
-    renderView({ sessions: [], orgs: ["kilo"] });
+    renderView({ cockpitTerminals: [], orgs: ["kilo"] });
     expect(screen.queryByText("~/.zashiki/repos.conf")).toBeNull();
   });
 
   it("does not show the guidance when a detected session's org exists even if orgs is empty", () => {
-    renderView({ sessions: [sessions[0] as CockpitTerminalInfo], orgs: [] });
+    renderView({
+      cockpitTerminals: [cockpitTerminals[0] as CockpitTerminalInfo],
+      orgs: [],
+    });
     expect(screen.queryByText("~/.zashiki/repos.conf")).toBeNull();
     expect(screen.getByText("kilo (1)")).toBeTruthy();
   });
 
   it("does not show the guidance even with 0 orgs when control is disconnected (avoids confusion with a connection issue)", () => {
-    renderView({ sessions: [], orgs: [], connected: false });
+    renderView({ cockpitTerminals: [], orgs: [], connected: false });
     expect(screen.queryByText("~/.zashiki/repos.conf")).toBeNull();
   });
 });
@@ -157,11 +160,14 @@ describe("CockpitTerminalListView: repos.conf not-configured guidance", () => {
 describe("CockpitTerminalListView: session rows", () => {
   it("displays the state icon (Material Symbols) with a state class", () => {
     renderView({
-      sessions: [
-        { ...sessions[0], state: "waiting_input" } as CockpitTerminalInfo,
-        { ...sessions[1], state: "running" } as CockpitTerminalInfo,
+      cockpitTerminals: [
         {
-          ...sessions[2],
+          ...cockpitTerminals[0],
+          state: "waiting_input",
+        } as CockpitTerminalInfo,
+        { ...cockpitTerminals[1], state: "running" } as CockpitTerminalInfo,
+        {
+          ...cockpitTerminals[2],
           state: "no_claude",
           org: "kilo",
         } as CockpitTerminalInfo,
@@ -178,7 +184,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("displays the pending icon with a state class while starting", () => {
     renderView({
-      sessions: [{ ...sessions[0], state: "starting" } as CockpitTerminalInfo],
+      cockpitTerminals: [
+        { ...cockpitTerminals[0], state: "starting" } as CockpitTerminalInfo,
+      ],
     });
     const starting = screen.getByText("pending");
     expect(starting.className).toContain("state-starting");
@@ -187,8 +195,11 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("keeps the state glyph clean and puts the subagent on a robot_2 activity chip", () => {
     renderView({
-      sessions: [
-        { ...sessions[1], state: "running_bg_agent" } as CockpitTerminalInfo,
+      cockpitTerminals: [
+        {
+          ...cockpitTerminals[1],
+          state: "running_bg_agent",
+        } as CockpitTerminalInfo,
       ],
     });
     const base = screen.getByText("hourglass");
@@ -200,9 +211,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("appends the running subagent total to the agent chip", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[1],
+          ...cockpitTerminals[1],
           state: "running_bg_agent",
           runningSubagents: 13,
         } as CockpitTerminalInfo,
@@ -215,9 +226,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("shows the agent chip glyph only (no number) when the subagent count is 0/unknown", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[1],
+          ...cockpitTerminals[1],
           state: "running_bg_agent",
           runningSubagents: 0,
         } as CockpitTerminalInfo,
@@ -230,9 +241,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("shows no agent chip outside a bg-agent state", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[0],
+          ...cockpitTerminals[0],
           state: "running",
           runningSubagents: 5,
         } as CockpitTerminalInfo,
@@ -243,9 +254,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("shows a terminal activity chip with the count for a bg shell in any state", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[0],
+          ...cockpitTerminals[0],
           state: "running",
           shellsRunning: 3,
         } as CockpitTerminalInfo,
@@ -258,9 +269,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("keeps an idle row's own glyph while a bg shell runs (no hourglass swap)", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[0],
+          ...cockpitTerminals[0],
           state: "idle",
           shellsRunning: 1,
         } as CockpitTerminalInfo,
@@ -275,9 +286,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("shows the agent and shell chips together while a subagent and a shell run concurrently", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[0],
+          ...cockpitTerminals[0],
           state: "running_bg_agent",
           runningSubagents: 9,
           shellsRunning: 3,
@@ -294,13 +305,13 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("shows no shell chip when shellsRunning is 0/undefined", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[0],
+          ...cockpitTerminals[0],
           state: "running",
           shellsRunning: 0,
         } as CockpitTerminalInfo,
-        { ...sessions[1] } as CockpitTerminalInfo,
+        { ...cockpitTerminals[1] } as CockpitTerminalInfo,
       ],
     });
     expect(screen.queryByText("terminal")).toBeNull();
@@ -308,9 +319,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("overlays an error badge at the top-right for a row that hit the usage limit", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[0],
+          ...cockpitTerminals[0],
           state: "running",
           limited: true,
         } as CockpitTerminalInfo,
@@ -323,13 +334,13 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("does not show the limit badge when limited is false/undefined", () => {
     renderView({
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[0],
+          ...cockpitTerminals[0],
           state: "running",
           limited: false,
         } as CockpitTerminalInfo,
-        { ...sessions[1] } as CockpitTerminalInfo,
+        { ...cockpitTerminals[1] } as CockpitTerminalInfo,
       ],
     });
     expect(screen.queryByText("error")).toBeNull();
@@ -337,8 +348,8 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("displays idle with conversation history using check", () => {
     renderView({
-      sessions: [
-        { ...sessions[1], title: "調査タスク" } as CockpitTerminalInfo,
+      cockpitTerminals: [
+        { ...cockpitTerminals[1], title: "調査タスク" } as CockpitTerminalInfo,
       ],
     });
     expect(screen.getByText("check").className).toContain("state-idle");
@@ -346,7 +357,9 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("distinguishes a new/unused session (idle with no title) using start", () => {
     // tango is idle with title:null (zero conversation history)
-    renderView({ sessions: [sessions[1] as CockpitTerminalInfo] });
+    renderView({
+      cockpitTerminals: [cockpitTerminals[1] as CockpitTerminalInfo],
+    });
     const fresh = screen.getByText("start");
     expect(fresh.className).toContain("state-fresh");
     expect(screen.queryByText("check")).toBeNull();
@@ -375,8 +388,10 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("falls back to the window name in the row body until the title is resolved (e.g. right after resume)", () => {
     // tango is title:null; the visible label should show the window name (= org name for
-    // owned sessions), matching the tab, instead of a blank row.
-    renderView({ sessions: [sessions[1] as CockpitTerminalInfo] });
+    // owned cockpit terminals), matching the tab, instead of a blank row.
+    renderView({
+      cockpitTerminals: [cockpitTerminals[1] as CockpitTerminalInfo],
+    });
     const row = screen.getByRole("button", {
       name: /tango(?! を閉じる)/,
     });
@@ -385,8 +400,8 @@ describe("CockpitTerminalListView: session rows", () => {
 
   it("replaces the window-name fallback with the summary once the title resolves", () => {
     renderView({
-      sessions: [
-        { ...sessions[1], title: "調査タスク" } as CockpitTerminalInfo,
+      cockpitTerminals: [
+        { ...cockpitTerminals[1], title: "調査タスク" } as CockpitTerminalInfo,
       ],
     });
     const row = screen.getByRole("button", {
@@ -590,7 +605,7 @@ describe("CockpitTerminalListView: right-click menu", () => {
     expect(
       screen.getByRole("button", { name: "charlie に新規セッション" }),
     ).toBeTruthy();
-    // Show + on an org with 0 sessions (delta) too (that's exactly where the new-session entry point is needed)
+    // Show + on an org with 0 cockpit terminals (delta) too (that's exactly where the new-session entry point is needed)
     expect(
       screen.getByRole("button", { name: "delta に新規セッション" }),
     ).toBeTruthy();
@@ -716,10 +731,10 @@ describe("CockpitTerminalListView: right-click menu", () => {
 
   it("right-clicking a row with a sid and choosing 'Copy session (resume)' calls onCopyResume(cockpitTerminalId)", () => {
     const withSid: CockpitTerminalInfo[] = [
-      { ...sessions[1], sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
+      { ...cockpitTerminals[1], sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
     ] as CockpitTerminalInfo[];
     const props = renderView({
-      sessions: withSid,
+      cockpitTerminals: withSid,
       onCopyResume: vi.fn(),
     });
     fireEvent.contextMenu(
@@ -737,9 +752,9 @@ describe("CockpitTerminalListView: right-click menu", () => {
 
   it("disables 'Copy session (resume)' for a row without a sid", () => {
     const noSid: CockpitTerminalInfo[] = [
-      { ...sessions[1], sid: undefined },
+      { ...cockpitTerminals[1], sid: undefined },
     ] as CockpitTerminalInfo[];
-    renderView({ sessions: noSid, onCopyResume: vi.fn() });
+    renderView({ cockpitTerminals: noSid, onCopyResume: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -776,9 +791,9 @@ describe("CockpitTerminalListView: right-click menu", () => {
 
   it("disables 'Copy Claude Code session ID' for a row without a sid", () => {
     const noSid: CockpitTerminalInfo[] = [
-      { ...sessions[1], sid: undefined },
+      { ...cockpitTerminals[1], sid: undefined },
     ] as CockpitTerminalInfo[];
-    renderView({ sessions: noSid, onCopySessionId: vi.fn() });
+    renderView({ cockpitTerminals: noSid, onCopySessionId: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
@@ -802,7 +817,7 @@ describe("CockpitTerminalListView: right-click menu", () => {
 
   it("clears the confirmation state when the target session disappears while the confirmation bar (Ctrl-X) is shown", () => {
     const props = {
-      sessions,
+      cockpitTerminals,
       orgs,
       selectedCockpitTerminalId: SID2 as string | null,
       onSelect: vi.fn(),
@@ -821,9 +836,16 @@ describe("CockpitTerminalListView: right-click menu", () => {
       screen.getByRole("button", { name: "tango を閉じる（確定）" }),
     ).toBeTruthy();
     // @2 disappears -> the confirmation state is also cleared, and the confirmation bar isn't re-shown even if @2 returns
-    const without = sessions.filter((s) => s.cockpitTerminalId !== SID2);
-    rerender(<CockpitTerminalListView {...props} sessions={without} />);
-    rerender(<CockpitTerminalListView {...props} sessions={sessions} />);
+    const without = cockpitTerminals.filter(
+      (s) => s.cockpitTerminalId !== SID2,
+    );
+    rerender(<CockpitTerminalListView {...props} cockpitTerminals={without} />);
+    rerender(
+      <CockpitTerminalListView
+        {...props}
+        cockpitTerminals={cockpitTerminals}
+      />,
+    );
     expect(
       screen.queryByRole("button", { name: "tango を閉じる（確定）" }),
     ).toBeNull();
@@ -1070,10 +1092,10 @@ describe("CockpitTerminalListView: header", () => {
 });
 
 describe("CockpitTerminalListView: empty state", () => {
-  it("does not show an empty state in the list even with 0 sessions (moved to the main area)", () => {
-    renderView({ sessions: [], orgs: ["kilo"] });
+  it("does not show an empty state in the list even with 0 cockpitTerminals (moved to the main area)", () => {
+    renderView({ cockpitTerminals: [], orgs: ["kilo"] });
     expect(screen.queryByText("セッションがありません")).toBeNull();
-    // Show org headers (the right-click entry point for new sessions) as before
+    // Show org headers (the right-click entry point for new cockpit terminals) as before
     expect(screen.getByText("kilo (0)")).toBeTruthy();
   });
 });
@@ -1148,7 +1170,9 @@ describe("CockpitTerminalListView: Rename", () => {
   it("uses the name as the initial value for a fresh row with neither a title nor a manual title", () => {
     renderView({
       onRename: vi.fn(),
-      sessions: [{ ...sessions[1], title: null } as CockpitTerminalInfo],
+      cockpitTerminals: [
+        { ...cockpitTerminals[1], title: null } as CockpitTerminalInfo,
+      ],
     });
     fireEvent.contextMenu(rowFor("tango"));
     fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" }));
@@ -1186,9 +1210,9 @@ describe("CockpitTerminalListView: Rename", () => {
   it("disables 'Rename' for a non-UUID window (unbound/plain-shell)", () => {
     renderView({
       onRename: vi.fn(),
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[1],
+          ...cockpitTerminals[1],
           cockpitTerminalId: "shell:0:tango",
         } as CockpitTerminalInfo,
       ],
@@ -1201,9 +1225,9 @@ describe("CockpitTerminalListView: Rename", () => {
   it("keeps 'Rename' enabled for a UUID window even when claude is not detected (state no_claude, sid absent)", () => {
     const props = renderView({
       onRename: vi.fn(),
-      sessions: [
+      cockpitTerminals: [
         {
-          ...sessions[1],
+          ...cockpitTerminals[1],
           state: "no_claude",
           sid: undefined,
         } as CockpitTerminalInfo,
@@ -1229,7 +1253,7 @@ describe("CockpitTerminalListView: Rename", () => {
 
   it("aborts editing when the target session disappears", () => {
     const props = {
-      sessions,
+      cockpitTerminals,
       orgs,
       selectedCockpitTerminalId: null as string | null,
       onSelect: vi.fn(),
@@ -1244,8 +1268,10 @@ describe("CockpitTerminalListView: Rename", () => {
     expect(
       screen.getByRole("textbox", { name: "セッションのタイトルを編集" }),
     ).toBeTruthy();
-    const without = sessions.filter((s) => s.cockpitTerminalId !== SID2);
-    rerender(<CockpitTerminalListView {...props} sessions={without} />);
+    const without = cockpitTerminals.filter(
+      (s) => s.cockpitTerminalId !== SID2,
+    );
+    rerender(<CockpitTerminalListView {...props} cockpitTerminals={without} />);
     expect(
       screen.queryByRole("textbox", { name: "セッションのタイトルを編集" }),
     ).toBeNull();

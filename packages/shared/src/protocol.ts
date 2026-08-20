@@ -28,7 +28,7 @@ export type TermId = z.infer<typeof termIdSchema>;
  * - owned: SessionRegistry's immutable ID (UUID)
  *
  * Both forms are accepted (restricting to only one would reject the entire
- * state.sync originating from owned, so new/restored sessions would never appear
+ * state.sync originating from owned, so new/restored cockpit terminals would never appear
  * in the list. The source of truth is protocol.test.ts).
  */
 export const cockpitTerminalIdSchema = z
@@ -141,7 +141,7 @@ export type CockpitTerminalInfo = z.infer<typeof cockpitTerminalInfoSchema>;
 /**
  * Builds the resume command for forking a session.
  * Assumes the target terminal is already in the target repo, so it omits cd and is only `claude --resume <sid>`.
- * Returns null for sessions without a sid (claude not started or undetectable); the caller disables the menu.
+ * Returns null for cockpit terminals without a sid (claude not started or undetectable); the caller disables the menu.
  */
 export function resumeCommand(session: {
   sid?: string | undefined;
@@ -153,7 +153,7 @@ export function resumeCommand(session: {
 
 /**
  * The running claude's session id (sid), for copying to the clipboard verbatim.
- * Returns null for sessions without a sid (claude not started or undetectable); the caller disables the menu.
+ * Returns null for cockpit terminals without a sid (claude not started or undetectable); the caller disables the menu.
  */
 export function claudeSessionId(session: {
   sid?: string | undefined;
@@ -274,8 +274,8 @@ export type TermAckMessage = z.infer<typeof termAckSchema>;
 
 export const stateSyncSchema = z.object({
   t: z.literal("state.sync"),
-  sessions: z.array(cockpitTerminalInfoSchema),
-  /** All orgs from repos.conf plus detected orgs (in display order). Orgs with zero sessions are not removed. */
+  cockpitTerminals: z.array(cockpitTerminalInfoSchema),
+  /** All orgs from repos.conf plus detected orgs (in display order). Orgs with zero cockpit terminals are not removed. */
   orgs: z.array(z.string()),
   /**
    * org name → display color (as noted in repos.conf). Unspecified orgs are absent (drawn with the default color).

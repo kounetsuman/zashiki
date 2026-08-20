@@ -24,7 +24,7 @@ export interface RowRename {
  * (commitTitle is a no-op there), so editing never starts for them. Same convention as tab renaming.
  */
 export function useRowRename(
-  sessions: CockpitTerminalInfo[],
+  cockpitTerminals: CockpitTerminalInfo[],
   conversationTitles: TitleMap,
   onRename?: (cockpitTerminalId: string, name: string, title: string) => void,
 ): RowRename {
@@ -41,7 +41,7 @@ export function useRowRename(
   }, [renaming]);
 
   if (renaming !== null) {
-    const s = sessions.find(
+    const s = cockpitTerminals.find(
       (x) => x.cockpitTerminalId === renaming.cockpitTerminalId,
     );
     if (s === undefined) {

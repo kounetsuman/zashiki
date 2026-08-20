@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 
 export interface TabContextMenuProps {
   menu: { cockpitTerminalId: string; x: number; y: number };
-  sessions: CockpitTerminalInfo[];
+  cockpitTerminals: CockpitTerminalInfo[];
   closeMenu(): void;
   onCopyResume?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
@@ -16,13 +16,13 @@ export interface TabContextMenuProps {
 /** Right-click menu overlay for a session tab: copy resume command / copy session id. */
 export function TabContextMenu({
   menu,
-  sessions,
+  cockpitTerminals,
   closeMenu,
   onCopyResume,
   onCopySessionId,
 }: TabContextMenuProps) {
   const { t } = useTranslation();
-  const target = sessions.find(
+  const target = cockpitTerminals.find(
     (s) => s.cockpitTerminalId === menu.cockpitTerminalId,
   );
   const canResume = target !== undefined && resumeCommand(target) !== null;

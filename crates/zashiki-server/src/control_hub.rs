@@ -51,7 +51,7 @@ pub struct ControlHub {
 
 pub(crate) fn state_sync_of(snapshot: &StateSnapshot) -> ServerMessage {
     ServerMessage::StateSync {
-        sessions: snapshot.sessions.clone(),
+        cockpit_terminals: snapshot.sessions.clone(),
         orgs: snapshot.orgs.clone(),
         org_colors: snapshot.org_colors.clone(),
     }
@@ -463,7 +463,7 @@ mod tests {
         hub.publish_snapshot(snapshot_with("@2"));
         let got = rx.recv().await.unwrap();
         match got {
-            ServerMessage::StateSync { sessions, .. } => {
+            ServerMessage::StateSync { cockpit_terminals: sessions, .. } => {
                 assert_eq!(sessions[0].cockpit_terminal_id, "@2");
             }
             _ => panic!("expected state.sync"),
@@ -500,7 +500,7 @@ mod tests {
 
     fn recv_five_hour_percent(msg: ServerMessage) -> Option<u32> {
         match msg {
-            ServerMessage::StateSync { sessions, .. } => Some(
+            ServerMessage::StateSync { cockpit_terminals: sessions, .. } => Some(
                 sessions[0]
                     .usage
                     .as_ref()?

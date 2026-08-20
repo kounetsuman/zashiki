@@ -76,7 +76,7 @@ export function resolveOrgColor(
   return explicit[org] || orgColor(org, palette);
 }
 
-/** Display-name list of all orgs in the conf (order-preserving dedup). Also the anchor for always showing orgs with zero sessions. */
+/** Display-name list of all orgs in the conf (order-preserving dedup). Also the anchor for always showing orgs with zero cockpit terminals. */
 export function orgNames(roots: readonly string[]): string[] {
   const seen = new Set<string>();
   const names: string[] = [];

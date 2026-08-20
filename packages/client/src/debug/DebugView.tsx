@@ -38,7 +38,7 @@ export interface DebugViewProps {
   control: DebugControl;
   session: DebugSession;
   /** The latest state.sync snapshot (tmux window layout / state poller result). */
-  sessions: readonly CockpitTerminalInfo[];
+  cockpitTerminals: readonly CockpitTerminalInfo[];
   /** Clock source for tests (defaults to Date.now). */
   now?: () => number;
   onClose(): void;
@@ -51,7 +51,7 @@ export interface DebugViewProps {
 export function DebugView({
   control,
   session,
-  sessions,
+  cockpitTerminals,
   now = Date.now,
   onClose,
 }: DebugViewProps) {
@@ -98,7 +98,7 @@ export function DebugView({
     return off;
   }, [control]);
 
-  const rows = summarizeSessions(sessions);
+  const rows = summarizeSessions(cockpitTerminals);
 
   return (
     <section className="debug-view" aria-label={t("debug.viewLabel")}>

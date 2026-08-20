@@ -169,7 +169,7 @@ mod tests {
         // First cycle has no previous state -> changed -> publishes state.sync.
         evaluate_and_publish(&mut poller, &ports, &config(), &hub).await;
         match rx.try_recv().expect("state.sync on first change") {
-            ServerMessage::StateSync { sessions, .. } => {
+            ServerMessage::StateSync { cockpit_terminals: sessions, .. } => {
                 assert_eq!(sessions[0].cockpit_terminal_id, "@1");
                 assert_eq!(sessions[0].state, "running");
             }

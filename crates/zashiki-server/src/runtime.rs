@@ -151,7 +151,7 @@ mod tests {
             .expect("poller should publish within timeout")
             .expect("broadcast open");
         match msg {
-            ServerMessage::StateSync { sessions, orgs, .. } => {
+            ServerMessage::StateSync { cockpit_terminals: sessions, orgs, .. } => {
                 assert!(sessions.is_empty());
                 assert_eq!(orgs, vec!["charlie".to_string()]);
             }
@@ -206,7 +206,7 @@ mod tests {
         let seen = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 match rx.recv().await {
-                    Ok(ServerMessage::StateSync { sessions, .. }) => {
+                    Ok(ServerMessage::StateSync { cockpit_terminals: sessions, .. }) => {
                         if sessions.iter().any(|s| s.name == "charlie") {
                             return true;
                         }

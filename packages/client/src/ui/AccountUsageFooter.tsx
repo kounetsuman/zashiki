@@ -6,7 +6,7 @@ import { StatusCell } from "./StatusCell.js";
 import { useNow } from "./useNow.js";
 
 export interface AccountUsageFooterProps {
-  /** Account-wide usage limits aggregated from the sessions; null until the statusLine bridge reports any. */
+  /** Account-wide usage limits aggregated from the cockpit terminals; null until the statusLine bridge reports any. */
   limits: UsageLimits | null;
 }
 

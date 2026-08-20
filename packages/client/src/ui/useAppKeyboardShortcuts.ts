@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { VIEW_DEFS, type ViewId } from "./views.js";
 
 export interface AppKeyboardShortcuts {
-  sessions: readonly CockpitTerminalInfo[];
+  cockpitTerminals: readonly CockpitTerminalInfo[];
   orgs: readonly string[];
   activeSess: string | null;
   activeKey: string | null;
@@ -21,7 +21,7 @@ export interface AppKeyboardShortcuts {
  * the Ctrl+Alt switches pass through only while a text input/terminal is not being typed in.
  */
 export function useAppKeyboardShortcuts({
-  sessions,
+  cockpitTerminals,
   orgs,
   activeSess,
   activeKey,
@@ -75,12 +75,13 @@ export function useAppKeyboardShortcuts({
       }
       e.preventDefault();
       const target =
-        sessions.find((s) => s.cockpitTerminalId === activeSess) ?? null;
+        cockpitTerminals.find((s) => s.cockpitTerminalId === activeSess) ??
+        null;
       copyResume(target);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sessions, activeSess, copyResume]);
+  }, [cockpitTerminals, activeSess, copyResume]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -88,7 +89,7 @@ export function useAppKeyboardShortcuts({
         return;
       }
       const org =
-        sessions.find((s) => s.cockpitTerminalId === activeSess)?.org ??
+        cockpitTerminals.find((s) => s.cockpitTerminalId === activeSess)?.org ??
         orgs[0];
       if (org === undefined) return;
       e.preventDefault();
@@ -96,7 +97,7 @@ export function useAppKeyboardShortcuts({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [sessions, orgs, activeSess, newSession]);
+  }, [cockpitTerminals, orgs, activeSess, newSession]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {

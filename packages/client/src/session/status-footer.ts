@@ -65,18 +65,18 @@ export function tokenSeverity(n: number): Severity {
 
 /**
  * Account usage is global to the Claude account, yet each session reports it independently via the
- * statusLine bridge. Collapse the sessions to one reading per limit by taking the highest usedPercent
+ * statusLine bridge. Collapse the cockpit terminals to one reading per limit by taking the highest usedPercent
  * seen (usage climbs monotonically within a window), carrying that reading's reset time. Returns null
  * when no session carries limits yet, so the global footer indicator stays hidden until data arrives.
  */
 export function pickAccountLimits(
-  sessions: readonly {
+  cockpitTerminals: readonly {
     usage?: { limits?: UsageLimits } | null | undefined;
   }[],
 ): UsageLimits | null {
   let fiveHour: UsageLimit | undefined;
   let week: UsageLimit | undefined;
-  for (const session of sessions) {
+  for (const session of cockpitTerminals) {
     const limits = session.usage?.limits;
     if (!limits) continue;
     if (

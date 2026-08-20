@@ -96,13 +96,15 @@ export function footerAbnormalNotice(
 }
 
 /** Formats a state.sync snapshot for display as one line = one window. */
-export function summarizeSessions(sessions: readonly CockpitTerminalInfo[]): {
+export function summarizeSessions(
+  cockpitTerminals: readonly CockpitTerminalInfo[],
+): {
   cockpitTerminalId: string;
   label: string;
   active: boolean;
   state: string;
 }[] {
-  return sessions.map((s) => ({
+  return cockpitTerminals.map((s) => ({
     cockpitTerminalId: s.cockpitTerminalId,
     label: `${s.org}/${s.repo} ${s.name}`,
     active: s.active,

@@ -6,7 +6,7 @@ import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
  * Client-side viewable scrollback (lines). The server retains the full session history without
  * eviction and replays it on attach; this is the browser-side cap on how many of those lines xterm
  * keeps addressable, chosen large enough that the very first prompt stays reachable for realistic
- * sessions. xterm grows its buffer lazily up to this cap, so memory tracks the lines actually seen.
+ * cockpit terminals. xterm grows its buffer lazily up to this cap, so memory tracks the lines actually seen.
  */
 export const TERMINAL_SCROLLBACK_LINES = 100_000;
 

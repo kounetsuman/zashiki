@@ -57,7 +57,7 @@ export function SessionRow({
   // Prefer the manual title (header rename); fall back to the automatic title if none.
   const custom = effectiveCustomTitle(conversationTitles, s);
   const summaryTitle = custom ?? s.title;
-  // Visible label. Falls back to the window name (= org name for owned sessions) via resolveTitle,
+  // Visible label. Falls back to the window name (= org name for owned cockpit terminals) via resolveTitle,
   // the same fallback the tab uses, so an unresolved title (e.g. right after resume, before the
   // summary is computed) shows the org name rather than a blank row.
   const displayTitle = resolveTitle(custom, s);

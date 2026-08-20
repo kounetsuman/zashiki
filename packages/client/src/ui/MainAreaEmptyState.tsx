@@ -1,7 +1,7 @@
 import { Trans, useTranslation } from "react-i18next";
 import logoUrl from "../assets/logo.png";
 
-/** Empty state shown in the main area when there are no sessions. */
+/** Empty state shown in the main area when there are no cockpit terminals. */
 export function EmptyMainArea() {
   const { t } = useTranslation();
   return (
@@ -28,7 +28,7 @@ export function EmptyMainArea() {
   );
 }
 
-/** Empty state shown when there are sessions but no tab is open. */
+/** Empty state shown when there are cockpit terminals but no tab is open. */
 export function NoTabOpen() {
   const { t } = useTranslation();
   return (
