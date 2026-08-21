@@ -239,6 +239,15 @@ export const configSetAccountUsageSchema = z.object({
 });
 
 /**
+ * External editor command change from SETTINGS. The server persists it to config.json and
+ * distributes config.sync, like the language change. A blank value clears it.
+ */
+export const configSetEditorSchema = z.object({
+  t: z.literal("config.setEditor"),
+  editor: z.string(),
+});
+
+/**
  * Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run wizard
  * or SETTINGS). Idempotent; the server broadcasts the resulting `hooks.status`.
  */
@@ -283,6 +292,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   notificationDismissSchema,
   configUpdateSchema,
   configSetAccountUsageSchema,
+  configSetEditorSchema,
   hooksRegisterSchema,
   hooksUnregisterSchema,
   updateCheckSchema,
@@ -357,6 +367,8 @@ export const configSyncSchema = z.object({
   language: z.enum(["ja", "en"]).nullable().default(null),
   /** Whether the account-usage bridge is opted in (defaults off; omitted by old servers). */
   accountUsage: z.boolean().catch(false).default(false),
+  /** External editor command for opening files (null when unset; omitted by old servers). */
+  editor: z.string().nullable().catch(null).default(null),
 });
 
 /**

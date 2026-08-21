@@ -49,6 +49,15 @@ fn parse_editor_command(editor: &str) -> Vec<String> {
         .collect()
 }
 
+/// Pick the effective editor command: a non-blank configured value (SETTINGS' live config.json
+/// `editor`) takes precedence over the `fallback` (ZK_EDITOR or `cursor -g`, captured at startup).
+pub(crate) fn resolve_editor<'a>(configured: Option<&'a str>, fallback: &'a str) -> &'a str {
+    configured
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(fallback)
+}
+
 /// Default editor launch (splits `ZK_EDITOR` into argv, appends `<file>` at the end, and spawns; does not
 /// wait for exit). `Err` reports that the editor binary could not be launched — an empty command, or a
 /// `spawn()` failure of argv[0] (not found / not executable); it cannot see a launcher that spawns then
@@ -101,7 +110,7 @@ pub(crate) fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::spawn_editor;
+    use super::{resolve_editor, spawn_editor};
 
     #[test]
     fn spawn_editor_errors_on_missing_binary() {
@@ -119,5 +128,22 @@ mod tests {
     fn spawn_editor_ok_for_launchable_command() {
         // `true` exists and ignores its args, standing in for an editor that launches cleanly.
         assert!(spawn_editor("true", "/tmp", "file.txt").is_ok());
+    }
+
+    #[test]
+    fn resolve_editor_prefers_configured_over_fallback() {
+        assert_eq!(resolve_editor(Some("code -w"), "cursor -g"), "code -w");
+    }
+
+    #[test]
+    fn resolve_editor_trims_configured_value() {
+        assert_eq!(resolve_editor(Some("  vim  "), "cursor -g"), "vim");
+    }
+
+    #[test]
+    fn resolve_editor_falls_back_when_unset_or_blank() {
+        assert_eq!(resolve_editor(None, "cursor -g"), "cursor -g");
+        assert_eq!(resolve_editor(Some(""), "cursor -g"), "cursor -g");
+        assert_eq!(resolve_editor(Some("   "), "cursor -g"), "cursor -g");
     }
 }

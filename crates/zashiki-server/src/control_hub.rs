@@ -130,6 +130,7 @@ impl ControlHub {
                 update_check: state.config.update_check,
                 language: state.config.language.clone(),
                 account_usage: state.config.account_usage,
+                editor: state.config.editor.clone(),
             },
             ServerMessage::NotificationsSync {
                 items: state.notifications.clone(),
@@ -212,6 +213,7 @@ impl ControlHub {
             update_check: config.update_check,
             language: config.language.clone(),
             account_usage: config.account_usage,
+            editor: config.editor.clone(),
         };
         self.inner.write().unwrap().config = config;
         let _ = self.tx.send(msg);
@@ -227,6 +229,11 @@ impl ControlHub {
     /// so toggling the opt-in applies to the next launched claude without a restart.
     pub fn account_usage_enabled(&self) -> bool {
         self.inner.read().unwrap().config.account_usage
+    }
+
+    /// The live `editor` config value (None when unset). Read per `POST /api/git/open`.
+    pub fn editor_command(&self) -> Option<String> {
+        self.inner.read().unwrap().config.editor.clone()
     }
 
     /// Stores the integration status and broadcasts hooks.status to all connections (startup probe
@@ -496,6 +503,7 @@ mod tests {
                 update_check: true,
                 language: None,
                 account_usage: false,
+                editor: None,
             },
             vec![],
             snapshot_with("@1"),
@@ -608,6 +616,7 @@ mod tests {
             update_check: true,
             language: Some("en".into()),
             account_usage: false,
+            editor: None,
         });
         assert!(matches!(
             rx.recv().await.unwrap(),
@@ -621,6 +630,24 @@ mod tests {
             rx.recv().await.unwrap(),
             ServerMessage::NotificationsSync { .. }
         ));
+    }
+
+    #[test]
+    fn editor_command_reflects_seed_then_live_update() {
+        let hub = ControlHub::new(
+            ConfigView {
+                editor: Some("code -w".into()),
+                ..Default::default()
+            },
+            vec![],
+            snapshot_with("@1"),
+        );
+        assert_eq!(hub.editor_command(), Some("code -w".into()));
+        hub.publish_config(ConfigView {
+            editor: None,
+            ..Default::default()
+        });
+        assert_eq!(hub.editor_command(), None);
     }
 
     async fn next_notifications(

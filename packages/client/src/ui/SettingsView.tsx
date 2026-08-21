@@ -55,6 +55,10 @@ export interface SettingsViewProps {
   /** Whether the account-usage footer bridge is opted in. Omit to hide the toggle. */
   accountUsage?: boolean;
   onSetAccountUsage?(enabled: boolean): void;
+  /** Current external editor command (config.json `editor`; empty when unset). Omit to hide the field. */
+  editor?: string;
+  /** Persist the editor command (Save). A blank value clears it back to the ZK_EDITOR / cursor -g fallback. */
+  onSaveEditor?(command: string): void;
   /** Current Claude Code integration status (from hooks.status). Omit to hide the toggle. */
   hooksStatus?: Omit<HooksStatusMessage, "t">;
   /** Install (true) or remove (false) the integration (hooks.register / hooks.unregister). */
@@ -95,6 +99,8 @@ export function SettingsView({
   onSetClipboardEditModal,
   accountUsage,
   onSetAccountUsage,
+  editor,
+  onSaveEditor,
   hooksStatus,
   onSetHooksRegistered,
   renderer,
@@ -108,6 +114,11 @@ export function SettingsView({
   const [draft, setDraft] = useState<Locale>(current);
   // Follow the draft when the language changes externally (config.sync).
   useEffect(() => setDraft(current), [current]);
+
+  const currentEditor = editor ?? "";
+  const [editorDraft, setEditorDraft] = useState(currentEditor);
+  // Follow the persisted value when it changes externally (config.sync echoes the trimmed/cleared value).
+  useEffect(() => setEditorDraft(currentEditor), [currentEditor]);
 
   const [updateCheck, setUpdateCheck] = useState<UpdateCheckState>({
     phase: "idle",
@@ -252,6 +263,32 @@ export function SettingsView({
             />
             <span className="settings-label">{t("settings.accountUsage")}</span>
           </label>
+        )}
+        {onSaveEditor !== undefined && (
+          <div className="settings-field">
+            <label className="settings-field">
+              <span className="settings-label">{t("settings.editor")}</span>
+              <input
+                type="text"
+                className="settings-input"
+                value={editorDraft}
+                placeholder="cursor -g"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                onChange={(e) => setEditorDraft(e.target.value)}
+              />
+            </label>
+            <span className="settings-hint">{t("settings.editorHint")}</span>
+            <button
+              type="button"
+              className="settings-save"
+              disabled={editorDraft.trim() === currentEditor}
+              onClick={() => onSaveEditor(editorDraft.trim())}
+            >
+              {t("settings.save")}
+            </button>
+          </div>
         )}
         {onSetHooksRegistered !== undefined && hooksStatus !== undefined && (
           <div className="settings-field">

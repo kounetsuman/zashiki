@@ -36,6 +36,9 @@ pub struct ConfigView {
     /// Opt-in for the self-contained account-usage bridge. Default off; when on, launches inject
     /// `--settings` so claude's statusLine relays rate_limits to the server without touching user settings.
     pub account_usage: bool,
+    /// External editor command for `POST /api/git/open` (SETTINGS). None when unset, falling back to
+    /// `ZK_EDITOR` then `cursor -g`. Read live per open, so a change applies without a restart.
+    pub editor: Option<String>,
 }
 
 /// An immediate re-evaluation request to the poller. If `reply` is present, the
@@ -339,6 +342,34 @@ mod tests {
             let c = crate::config::read_config(&path);
             assert_eq!(c.language, Some("en".to_string()));
             assert!(c.notify_sound);
+        }
+
+        /// config.setEditor: persists the editor command to config.json (preserving existing fields)
+        /// and immediately broadcasts config.sync carrying the new value.
+        #[tokio::test]
+        async fn config_set_editor_writes_file_and_broadcasts_config_sync() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("config.json");
+            std::fs::write(&path, r#"{"notifySound": true}"#).unwrap();
+            let port = serve(services_with_config_path(path.clone())).await;
+            let mut ws = connect(port).await;
+
+            send(&mut ws, serde_json::json!({"t":"config.setEditor","editor":"  code -w  "})).await;
+
+            let msg = next_json(&mut ws)
+                .await
+                .expect("config.sync should be broadcast after config.setEditor");
+            assert_eq!(msg["t"], "config.sync");
+            assert_eq!(msg["editor"], "code -w"); // trimmed
+            let c = crate::config::read_config(&path);
+            assert_eq!(c.editor, Some("code -w".to_string()));
+            assert!(c.notify_sound); // existing fields are preserved
+
+            // A blank value clears it back to unset (config.sync carries null).
+            send(&mut ws, serde_json::json!({"t":"config.setEditor","editor":"   "})).await;
+            let msg = next_json(&mut ws).await.expect("config.sync after clear");
+            assert!(msg["editor"].is_null());
+            assert_eq!(crate::config::read_config(&path).editor, None);
         }
 
         /// The server side also allow-list validates ja/en (defense in depth against zod bypass).
