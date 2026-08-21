@@ -11,6 +11,10 @@ export function appUrl(token: string = E2E_TOKEN): string {
  * Open the app and wait until the control WS is open and the first state.sync has been applied.
  */
 export async function gotoApp(page: Page): Promise<void> {
+  // Keep in sync with client FIRST_RUN_WIZARD_SEEN_KEY; dismisses the first-run wizard backdrop.
+  await page.addInitScript(() => {
+    localStorage.setItem("zk.firstRunWizard.seen", "1");
+  });
   await page.goto(appUrl());
   await expect(page.getByText("No sessions")).toBeVisible();
 }
