@@ -45,6 +45,9 @@ export interface SettingsViewProps {
   /** Whether the clipboard-edit modal appears on a multi-line Cmd+C. Omit to hide the toggle. */
   clipboardEditModal?: boolean;
   onSetClipboardEditModal?(enabled: boolean): void;
+  /** Whether the account-usage footer bridge is opted in. Omit to hide the toggle. */
+  accountUsage?: boolean;
+  onSetAccountUsage?(enabled: boolean): void;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
 }
@@ -72,6 +75,8 @@ export function SettingsView({
   onCheckForUpdates,
   clipboardEditModal,
   onSetClipboardEditModal,
+  accountUsage,
+  onSetAccountUsage,
   inactive,
 }: SettingsViewProps) {
   const { t } = useTranslation();
@@ -212,6 +217,16 @@ export function SettingsView({
             <span className="settings-label">
               {t("settings.clipboardEditModal")}
             </span>
+          </label>
+        )}
+        {onSetAccountUsage !== undefined && (
+          <label className="settings-field settings-toggle">
+            <input
+              type="checkbox"
+              checked={accountUsage ?? false}
+              onChange={(e) => onSetAccountUsage(e.target.checked)}
+            />
+            <span className="settings-label">{t("settings.accountUsage")}</span>
           </label>
         )}
       </div>

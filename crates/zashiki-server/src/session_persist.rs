@@ -171,6 +171,7 @@ async fn rebuild(
     entries: &[SaveEntry],
     launch_claude: bool,
     shell: &str,
+    settings: Option<&str>,
     warnings: &mut Vec<String>,
 ) {
     let claude = resolve_claude_program();
@@ -181,7 +182,7 @@ async fn rebuild(
             wname: entry.wname.clone(),
         };
         let (id, config) = if launch_claude && is_uuid_sid(&entry.sid) {
-            let mut plan = plan_resume(entry, shell, &claude).expect("uuid sid plans a resume");
+            let mut plan = plan_resume(entry, shell, &claude, settings).expect("uuid sid plans a resume");
             plan.cwd = cwd.clone();
             (entry.sid.to_lowercase(), resume_plan_to_config(&plan))
         } else {
@@ -191,7 +192,7 @@ async fn rebuild(
                     entry.wname, entry.sid
                 ));
             }
-            let plan = plan_new_session(&entry.sid, &cwd, &entry.wname, false, None, shell, &claude);
+            let plan = plan_new_session(&entry.sid, &cwd, &entry.wname, false, None, shell, &claude, None);
             let id = if is_uuid_sid(&entry.sid) {
                 entry.sid.to_lowercase()
             } else {
@@ -282,6 +283,7 @@ pub async fn restore_sessions(
     file: Option<&str>,
     launch_claude: bool,
     shell: &str,
+    settings: Option<&str>,
 ) -> Result<RestoreOutcome, PersistError> {
     let path = save_path(dir, file);
     let content = match fs::read_to_string(&path) {
@@ -303,7 +305,7 @@ pub async fn restore_sessions(
         registry.remove(&id).await;
     }
     let mut warnings = Vec::new();
-    rebuild(registry, &entries, launch_claude, shell, &mut warnings).await;
+    rebuild(registry, &entries, launch_claude, shell, settings, &mut warnings).await;
     Ok(RestoreOutcome {
         restored: entries.len(),
         warnings,
@@ -321,8 +323,9 @@ pub async fn restore_sessions_on_startup(
     dir: &Path,
     launch_claude: bool,
     shell: &str,
+    settings: Option<&str>,
 ) -> Result<usize, PersistError> {
-    match restore_sessions(registry, dir, None, launch_claude, shell).await {
+    match restore_sessions(registry, dir, None, launch_claude, shell, settings).await {
         Ok(out) => Ok(out.restored),
         Err(PersistError::RestoreFileNotFound(_)) | Err(PersistError::RestoreEmpty(_)) => Ok(0),
         Err(e) => Err(e),
@@ -355,7 +358,7 @@ mod tests {
 
     /// Registers one entry into the registry with a plain login shell (a test helper that prepares a save target).
     async fn seed(reg: &SessionRegistry, id: &str, wname: &str, cwd: &str) {
-        let plan = plan_new_session(id, cwd, wname, false, None, "/bin/sh", "claude");
+        let plan = plan_new_session(id, cwd, wname, false, None, "/bin/sh", "claude", None);
         reg.create_with_meta(
             id.to_string(),
             new_plan_to_config(&plan),
@@ -438,7 +441,7 @@ mod tests {
     async fn restore_missing_file_is_not_found() {
         let reg = SessionRegistry::new();
         let dir = tempfile::tempdir().unwrap();
-        let err = restore_sessions(&reg, dir.path(), None, true, "/bin/sh")
+        let err = restore_sessions(&reg, dir.path(), None, true, "/bin/sh", None)
             .await
             .unwrap_err();
         assert!(matches!(err, PersistError::RestoreFileNotFound(_)));
@@ -449,7 +452,7 @@ mod tests {
         let reg = SessionRegistry::new();
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("last.tsv"), "").unwrap();
-        let err = restore_sessions(&reg, dir.path(), None, true, "/bin/sh")
+        let err = restore_sessions(&reg, dir.path(), None, true, "/bin/sh", None)
             .await
             .unwrap_err();
         assert!(matches!(err, PersistError::RestoreEmpty(_)));
@@ -463,7 +466,7 @@ mod tests {
         let content = format!("1\talpha\t/tmp\t{UUID_A}\n2\tbeta\t/tmp\t{UUID_B}\n");
         std::fs::write(dir.path().join("last.tsv"), content).unwrap();
 
-        let out = restore_sessions(&reg, dir.path(), None, true, "/bin/sh")
+        let out = restore_sessions(&reg, dir.path(), None, true, "/bin/sh", None)
             .await
             .unwrap();
         assert_eq!(out.restored, 2);
@@ -485,7 +488,7 @@ mod tests {
         let content = format!("1\tnew\t/tmp\t{UUID_B}\n");
         std::fs::write(dir.path().join("last.tsv"), content).unwrap();
 
-        let out = restore_sessions(&reg, dir.path(), None, true, "/bin/sh")
+        let out = restore_sessions(&reg, dir.path(), None, true, "/bin/sh", None)
             .await
             .unwrap();
         assert_eq!(out.restored, 1);
@@ -508,7 +511,7 @@ mod tests {
         let content = format!("1\tlegacy\t/tmp\tworkspace\n2\tok\t/tmp\t{UUID_A}\n");
         std::fs::write(dir.path().join("last.tsv"), content).unwrap();
 
-        let out = restore_sessions(&reg, dir.path(), None, true, "/bin/sh")
+        let out = restore_sessions(&reg, dir.path(), None, true, "/bin/sh", None)
             .await
             .unwrap();
         assert_eq!(out.restored, 2);
@@ -535,7 +538,7 @@ mod tests {
         cleanup(&reg1).await;
 
         let reg2 = SessionRegistry::new();
-        let restored = restore_sessions_on_startup(&reg2, dir.path(), true, "/bin/sh")
+        let restored = restore_sessions_on_startup(&reg2, dir.path(), true, "/bin/sh", None)
             .await
             .unwrap();
         assert_eq!(restored, 2);
@@ -549,7 +552,7 @@ mod tests {
     async fn startup_restore_missing_file_is_ok_zero() {
         let reg = SessionRegistry::new();
         let dir = tempfile::tempdir().unwrap();
-        let restored = restore_sessions_on_startup(&reg, dir.path(), true, "/bin/sh")
+        let restored = restore_sessions_on_startup(&reg, dir.path(), true, "/bin/sh", None)
             .await
             .unwrap();
         assert_eq!(restored, 0);
@@ -563,7 +566,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path()).unwrap();
         std::fs::write(dir.path().join("last.tsv"), "").unwrap();
-        let restored = restore_sessions_on_startup(&reg, dir.path(), true, "/bin/sh")
+        let restored = restore_sessions_on_startup(&reg, dir.path(), true, "/bin/sh", None)
             .await
             .unwrap();
         assert_eq!(restored, 0);
@@ -731,7 +734,7 @@ mod tests {
         cleanup(&reg1).await;
 
         let reg2 = SessionRegistry::new();
-        let restored = restore_sessions_on_startup(&reg2, dir.path(), true, "/bin/sh")
+        let restored = restore_sessions_on_startup(&reg2, dir.path(), true, "/bin/sh", None)
             .await
             .unwrap();
         assert_eq!(restored, 2, "graceful save 無しでも autosave 済みの last.tsv から復元される");
@@ -751,7 +754,7 @@ mod tests {
         cleanup(&reg1).await;
 
         let reg2 = SessionRegistry::new();
-        let out = restore_sessions(&reg2, dir.path(), None, true, "/bin/sh")
+        let out = restore_sessions(&reg2, dir.path(), None, true, "/bin/sh", None)
             .await
             .unwrap();
         assert_eq!(out.restored, 2);

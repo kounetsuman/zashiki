@@ -168,6 +168,7 @@ describe("ControlClient", () => {
         debug: true,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       },
     ]);
   });
@@ -197,6 +198,7 @@ describe("ControlClient", () => {
         debug: false,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       },
     ]);
   });
