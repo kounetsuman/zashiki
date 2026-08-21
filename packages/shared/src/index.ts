@@ -132,7 +132,6 @@ export {
   notificationDismissSchema,
   notificationsSyncSchema,
   notifySchema,
-  resumeCommand,
   type SelectMessage,
   type ServerMessage,
   type SessionsRestoreRequest,

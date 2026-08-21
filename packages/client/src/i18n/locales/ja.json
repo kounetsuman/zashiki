@@ -6,8 +6,8 @@
     "refresh": "更新",
     "loading": "読み込み中…",
     "copyAbsPath": "絶対パスをコピー",
-    "cannotResume": "claude 未起動のため resume できません",
-    "copyResume": "セッションをコピー（resume）",
+    "cannotDuplicate": "claude 未起動のため複製できるセッションがありません",
+    "duplicateSession": "セッションを複製",
     "cannotCopySessionId": "claude 未起動のためコピーするセッションIDがありません",
     "copySessionId": "Claude Code セッションIDをコピー"
   },
@@ -54,7 +54,6 @@
     "hint": "右の SESSION LIST でセッションをダブルクリックすると タブとして開きます。"
   },
   "toast": {
-    "resumeCopied": "resume コマンドをコピーしました",
     "sessionIdCopied": "セッションIDをコピーしました",
     "pathCopied": "パスをコピーしました"
   },

@@ -547,8 +547,8 @@ describe("TabBar", () => {
     expect(onRename).toHaveBeenCalledWith(SID, "myrepo", "編集中の下書き");
   });
 
-  it("right-clicking a session tab with a sid and choosing 'Copy session (resume)' calls onCopyResume", () => {
-    const onCopyResume = vi.fn();
+  it("right-clicking a session tab with a sid and choosing 'Duplicate session' calls onDuplicate", () => {
+    const onDuplicate = vi.fn();
     render(
       <TabBar
         tabs={[s(SID)]}
@@ -559,20 +559,20 @@ describe("TabBar", () => {
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
-        onCopyResume={onCopyResume}
+        onDuplicate={onDuplicate}
       />,
     );
     fireEvent.contextMenu(screen.getByRole("tab"));
     const item = screen.getByRole("menuitem", {
-      name: "セッションをコピー（resume）",
+      name: "セッションを複製",
     });
     expect((item as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(item);
-    expect(onCopyResume).toHaveBeenCalledWith(SID);
+    expect(onDuplicate).toHaveBeenCalledWith(SID);
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
-  it("disables the resume item for a session tab without a sid", () => {
+  it("disables the duplicate item for a session tab without a sid", () => {
     render(
       <TabBar
         tabs={[s(SID)]}
@@ -581,12 +581,12 @@ describe("TabBar", () => {
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
-        onCopyResume={vi.fn()}
+        onDuplicate={vi.fn()}
       />,
     );
     fireEvent.contextMenu(screen.getByRole("tab"));
     const item = screen.getByRole("menuitem", {
-      name: "セッションをコピー（resume）",
+      name: "セッションを複製",
     });
     expect((item as HTMLButtonElement).disabled).toBe(true);
   });
@@ -633,7 +633,7 @@ describe("TabBar", () => {
     expect((item as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("shows both menu items when onCopyResume and onCopySessionId are provided", () => {
+  it("shows both menu items when onDuplicate and onCopySessionId are provided", () => {
     render(
       <TabBar
         tabs={[s(SID)]}
@@ -642,7 +642,7 @@ describe("TabBar", () => {
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
-        onCopyResume={vi.fn()}
+        onDuplicate={vi.fn()}
         onCopySessionId={vi.fn()}
       />,
     );
@@ -666,7 +666,7 @@ describe("TabBar", () => {
   });
 
   it("passes the cockpitTerminalId of the right-clicked window when there are multiple tabs (no mix-up)", () => {
-    const onCopyResume = vi.fn();
+    const onDuplicate = vi.fn();
     render(
       <TabBar
         tabs={[s(SID), s(SID2)]}
@@ -683,15 +683,13 @@ describe("TabBar", () => {
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
-        onCopyResume={onCopyResume}
+        onDuplicate={onDuplicate}
       />,
     );
     fireEvent.contextMenu(
       screen.getByText("二番目").closest(".tab") as Element,
     );
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "セッションをコピー（resume）" }),
-    );
-    expect(onCopyResume).toHaveBeenCalledWith(SID2);
+    fireEvent.click(screen.getByRole("menuitem", { name: "セッションを複製" }));
+    expect(onDuplicate).toHaveBeenCalledWith(SID2);
   });
 });

@@ -191,7 +191,7 @@ async fn rebuild(
                     entry.wname, entry.sid
                 ));
             }
-            let plan = plan_new_session(&entry.sid, &cwd, &entry.wname, false, shell, &claude);
+            let plan = plan_new_session(&entry.sid, &cwd, &entry.wname, false, None, shell, &claude);
             let id = if is_uuid_sid(&entry.sid) {
                 entry.sid.to_lowercase()
             } else {
@@ -355,7 +355,7 @@ mod tests {
 
     /// Registers one entry into the registry with a plain login shell (a test helper that prepares a save target).
     async fn seed(reg: &SessionRegistry, id: &str, wname: &str, cwd: &str) {
-        let plan = plan_new_session(id, cwd, wname, false, "/bin/sh", "claude");
+        let plan = plan_new_session(id, cwd, wname, false, None, "/bin/sh", "claude");
         reg.create_with_meta(
             id.to_string(),
             new_plan_to_config(&plan),

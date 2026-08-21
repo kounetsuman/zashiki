@@ -7,24 +7,9 @@ import {
   cockpitTerminalInfoSchema,
   focusRequestSchema,
   focusResponseSchema,
-  resumeCommand,
   serverMessageSchema,
   termIdSchema,
 } from "./protocol.js";
-
-describe("resumeCommand", () => {
-  it("returns claude --resume <sid> when a sid is present", () => {
-    expect(resumeCommand({ sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" })).toBe(
-      "claude --resume 0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
-    );
-  });
-
-  it("returns null when the sid is missing/empty (the caller disables the menu)", () => {
-    expect(resumeCommand({})).toBeNull();
-    expect(resumeCommand({ sid: undefined })).toBeNull();
-    expect(resumeCommand({ sid: "" })).toBeNull();
-  });
-});
 
 describe("claudeSessionId", () => {
   it("returns the sid verbatim when present", () => {
@@ -152,6 +137,13 @@ describe("clientMessageSchema", () => {
     [{ t: "term.select", termId, cockpitTerminalId: "@2" }],
     [{ t: "term.close", termId }],
     [{ t: "cockpitTerminal.new", org: "kilo" }],
+    [
+      {
+        t: "cockpitTerminal.new",
+        org: "kilo",
+        resumeSid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
+      },
+    ],
     [{ t: "cockpitTerminal.close", cockpitTerminalId: "@5" }],
     [{ t: "state.refresh" }],
     [{ t: "config.update", language: "ja" }],

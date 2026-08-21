@@ -1,8 +1,4 @@
-import {
-  type CockpitTerminalInfo,
-  claudeSessionId,
-  resumeCommand,
-} from "@zashiki/shared";
+import { type CockpitTerminalInfo, claudeSessionId } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 import type { ContextMenu } from "./session-list-model.js";
 
@@ -15,7 +11,7 @@ export interface SessionContextMenuProps {
   startRename(s: CockpitTerminalInfo): void;
   closeMenu(): void;
   onRename?(cockpitTerminalId: string, name: string, title: string): void;
-  onCopyResume?(cockpitTerminalId: string): void;
+  onDuplicate?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
 }
 
@@ -29,7 +25,7 @@ export function SessionContextMenu({
   startRename,
   closeMenu,
   onRename,
-  onCopyResume,
+  onDuplicate,
   onCopySessionId,
 }: SessionContextMenuProps) {
   const { t } = useTranslation();
@@ -90,23 +86,25 @@ export function SessionContextMenu({
                   </button>
                 );
               })()}
-            {onCopyResume !== undefined &&
+            {onDuplicate !== undefined &&
               (() => {
-                const canResume =
-                  target !== undefined && resumeCommand(target) !== null;
+                const canDuplicate =
+                  target !== undefined && claudeSessionId(target) !== null;
                 return (
                   <button
                     type="button"
                     role="menuitem"
                     className="session-context-item"
-                    disabled={!canResume}
-                    title={canResume ? undefined : t("common.cannotResume")}
+                    disabled={!canDuplicate}
+                    title={
+                      canDuplicate ? undefined : t("common.cannotDuplicate")
+                    }
                     onClick={() => {
-                      onCopyResume(menu.cockpitTerminalId);
+                      onDuplicate(menu.cockpitTerminalId);
                       closeMenu();
                     }}
                   >
-                    {t("common.copyResume")}
+                    {t("common.duplicateSession")}
                   </button>
                 );
               })()}

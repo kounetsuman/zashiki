@@ -29,13 +29,13 @@ export interface TabBarProps {
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
   /**
-   * Right-clicking a session tab copies the resume command (`claude --resume <sid>`)
-   * (for branched cockpit terminals). No context menu is shown when unspecified.
+   * Right-clicking a session tab duplicates it into a new independent cockpit terminal (forks the
+   * Claude session). No context menu is shown when unspecified.
    */
-  onCopyResume?(cockpitTerminalId: string): void;
+  onDuplicate?(cockpitTerminalId: string): void;
   /**
    * Right-clicking a session tab copies the Claude Code session id (`sid`) verbatim.
-   * The context menu appears when either this or onCopyResume is provided.
+   * The context menu appears when either this or onDuplicate is provided.
    */
   onCopySessionId?(cockpitTerminalId: string): void;
 }
@@ -58,16 +58,16 @@ export function TabBar({
   onRename,
   onReorder,
   inactive,
-  onCopyResume,
+  onDuplicate,
   onCopySessionId,
 }: TabBarProps) {
   const { t } = useTranslation();
   const rename = useTabRename(tabs, cockpitTerminals, onRename);
   const drag = useTabDrag(onReorder);
   const hasContextMenu =
-    onCopyResume !== undefined || onCopySessionId !== undefined;
+    onDuplicate !== undefined || onCopySessionId !== undefined;
   const contextMenu = useTabContextMenu(
-    (onCopyResume !== undefined ? 1 : 0) +
+    (onDuplicate !== undefined ? 1 : 0) +
       (onCopySessionId !== undefined ? 1 : 0),
   );
 
@@ -121,7 +121,7 @@ export function TabBar({
           menu={contextMenu.menu}
           cockpitTerminals={cockpitTerminals}
           closeMenu={contextMenu.closeMenu}
-          onCopyResume={onCopyResume}
+          onDuplicate={onDuplicate}
           onCopySessionId={onCopySessionId}
         />
       )}

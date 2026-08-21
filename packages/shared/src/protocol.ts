@@ -139,19 +139,6 @@ export const cockpitTerminalInfoSchema = z.object({
 export type CockpitTerminalInfo = z.infer<typeof cockpitTerminalInfoSchema>;
 
 /**
- * Builds the resume command for forking a session.
- * Assumes the target terminal is already in the target repo, so it omits cd and is only `claude --resume <sid>`.
- * Returns null for cockpit terminals without a sid (claude not started or undetectable); the caller disables the menu.
- */
-export function resumeCommand(session: {
-  sid?: string | undefined;
-}): string | null {
-  const sid = session.sid;
-  if (sid === undefined || sid === "") return null;
-  return `claude --resume ${sid}`;
-}
-
-/**
  * The running claude's session id (sid), for copying to the clipboard verbatim.
  * Returns null for cockpit terminals without a sid (claude not started or undetectable); the caller disables the menu.
  */
@@ -210,6 +197,8 @@ export const termAckSchema = z.object({
 export const cockpitTerminalNewSchema = z.object({
   t: z.literal("cockpitTerminal.new"),
   org: z.string().min(1),
+  /** Source Claude session id to fork into the new terminal (duplicate). Omitted for a plain new session. */
+  resumeSid: z.string().max(256).optional(),
 });
 
 export const cockpitTerminalCloseSchema = z.object({

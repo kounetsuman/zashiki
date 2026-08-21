@@ -1,31 +1,27 @@
-import {
-  type CockpitTerminalInfo,
-  claudeSessionId,
-  resumeCommand,
-} from "@zashiki/shared";
+import { type CockpitTerminalInfo, claudeSessionId } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 export interface TabContextMenuProps {
   menu: { cockpitTerminalId: string; x: number; y: number };
   cockpitTerminals: CockpitTerminalInfo[];
   closeMenu(): void;
-  onCopyResume?(cockpitTerminalId: string): void;
+  onDuplicate?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
 }
 
-/** Right-click menu overlay for a session tab: copy resume command / copy session id. */
+/** Right-click menu overlay for a session tab: duplicate session / copy session id. */
 export function TabContextMenu({
   menu,
   cockpitTerminals,
   closeMenu,
-  onCopyResume,
+  onDuplicate,
   onCopySessionId,
 }: TabContextMenuProps) {
   const { t } = useTranslation();
   const target = cockpitTerminals.find(
     (s) => s.cockpitTerminalId === menu.cockpitTerminalId,
   );
-  const canResume = target !== undefined && resumeCommand(target) !== null;
+  const canDuplicate = target !== undefined && claudeSessionId(target) !== null;
   const canCopySessionId =
     target !== undefined && claudeSessionId(target) !== null;
   return (
@@ -44,19 +40,19 @@ export function TabContextMenu({
         role="menu"
         style={{ top: menu.y, left: menu.x }}
       >
-        {onCopyResume !== undefined && (
+        {onDuplicate !== undefined && (
           <button
             type="button"
             role="menuitem"
             className="session-context-item"
-            disabled={!canResume}
-            title={canResume ? undefined : t("common.cannotResume")}
+            disabled={!canDuplicate}
+            title={canDuplicate ? undefined : t("common.cannotDuplicate")}
             onClick={() => {
-              onCopyResume(menu.cockpitTerminalId);
+              onDuplicate(menu.cockpitTerminalId);
               closeMenu();
             }}
           >
-            {t("common.copyResume")}
+            {t("common.duplicateSession")}
           </button>
         )}
         {onCopySessionId !== undefined && (

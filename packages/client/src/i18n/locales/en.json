@@ -6,8 +6,8 @@
     "refresh": "Refresh",
     "loading": "Loading…",
     "copyAbsPath": "Copy absolute path",
-    "cannotResume": "claude is not running, so resume is unavailable",
-    "copyResume": "Copy session (resume)",
+    "cannotDuplicate": "claude is not running, so there is no session to duplicate",
+    "duplicateSession": "Duplicate session",
     "cannotCopySessionId": "claude is not running, so there is no session ID to copy",
     "copySessionId": "Copy Claude Code session ID"
   },
@@ -54,7 +54,6 @@
     "hint": "Double-click a session in the SESSION LIST on the right to open it as a tab."
   },
   "toast": {
-    "resumeCopied": "Copied the resume command",
     "sessionIdCopied": "Copied the session ID",
     "pathCopied": "Copied the path"
   },

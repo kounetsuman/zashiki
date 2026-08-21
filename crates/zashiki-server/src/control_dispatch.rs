@@ -96,7 +96,9 @@ pub(crate) async fn handle_client_message(
             };
             socket.send(to_text(&result)).await.is_ok()
         }
-        ClientMessage::CockpitTerminalNew { org } => handle_session_new(socket, services, &org).await,
+        ClientMessage::CockpitTerminalNew { org, resume_sid } => {
+            handle_session_new(socket, services, &org, resume_sid.as_deref()).await
+        }
         // For owned, the actual entity lives in SessionRegistry, so remove it from the registry.
         // remove aggregates killpg + reap + deregistration and is idempotent even when absent (the bool is discarded).
         ClientMessage::CockpitTerminalClose { cockpit_terminal_id } => {

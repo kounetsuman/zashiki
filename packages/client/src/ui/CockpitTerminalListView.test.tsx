@@ -729,48 +729,48 @@ describe("CockpitTerminalListView: right-click menu", () => {
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
-  it("right-clicking a row with a sid and choosing 'Copy session (resume)' calls onCopyResume(cockpitTerminalId)", () => {
+  it("right-clicking a row with a sid and choosing 'Duplicate session' calls onDuplicate(cockpitTerminalId)", () => {
     const withSid: CockpitTerminalInfo[] = [
       { ...cockpitTerminals[1], sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f" },
     ] as CockpitTerminalInfo[];
     const props = renderView({
       cockpitTerminals: withSid,
-      onCopyResume: vi.fn(),
+      onDuplicate: vi.fn(),
     });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
     const item = screen.getByRole("menuitem", {
-      name: "セッションをコピー（resume）",
+      name: "セッションを複製",
     });
     expect((item as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(item);
-    expect(props.onCopyResume).toHaveBeenCalledWith(SID2);
+    expect(props.onDuplicate).toHaveBeenCalledWith(SID2);
     // The menu closes after selection
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
 
-  it("disables 'Copy session (resume)' for a row without a sid", () => {
+  it("disables 'Duplicate session' for a row without a sid", () => {
     const noSid: CockpitTerminalInfo[] = [
       { ...cockpitTerminals[1], sid: undefined },
     ] as CockpitTerminalInfo[];
-    renderView({ cockpitTerminals: noSid, onCopyResume: vi.fn() });
+    renderView({ cockpitTerminals: noSid, onDuplicate: vi.fn() });
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
     const item = screen.getByRole("menuitem", {
-      name: "セッションをコピー（resume）",
+      name: "セッションを複製",
     });
     expect((item as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("does not show the resume item when onCopyResume is not provided (backward compatibility)", () => {
+  it("does not show the duplicate item when onDuplicate is not provided (backward compatibility)", () => {
     renderView();
     fireEvent.contextMenu(
       screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
     );
     expect(
-      screen.queryByRole("menuitem", { name: "セッションをコピー（resume）" }),
+      screen.queryByRole("menuitem", { name: "セッションを複製" }),
     ).toBeNull();
     expect(screen.getByRole("menuitem", { name: "削除" })).toBeTruthy();
   });

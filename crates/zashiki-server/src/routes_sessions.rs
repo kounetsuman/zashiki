@@ -230,7 +230,7 @@ mod sessions_persist_rest_tests {
         let dir = tempfile::tempdir().unwrap();
         let sessions = Arc::new(SessionRegistry::new());
         let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
-        let plan = plan_new_session(sid, "/tmp", "alpha", false, "/bin/sh", "claude");
+        let plan = plan_new_session(sid, "/tmp", "alpha", false, None, "/bin/sh", "claude");
         sessions
             .create_with_meta(
                 sid.to_string(),

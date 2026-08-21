@@ -671,82 +671,71 @@ describe("App", () => {
     );
   });
 
-  it("Cmd+R copies the resume command of the active session", async () => {
+  it("Cmd+R duplicates the active session into a new forked terminal", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { clipboard: { writeText } });
-    try {
-      render(
-        <App
-          control={control}
-          session={f.session}
-          gitApi={fakeGitApi}
-          fsApi={fakeFsApi}
-          searchApi={fakeSearchApi}
-          filesApi={fakeFilesApi}
-          reposApi={fakeReposApi}
-        />,
-      );
-      // bootstrap opens the active @1 (zashiki) tab. Give @1 a sid.
-      act(() =>
-        control.emit({
-          t: "state.sync",
-          cockpitTerminals: [
-            {
-              ...cockpitTerminals[0],
-              sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
-            },
-            cockpitTerminals[1],
-          ] as CockpitTerminalInfo[],
-          orgs: ["kilo"],
-          orgColors: {},
-        }),
-      );
-      const ev = pressCmdR();
-      // Reload suppression (preventDefault) takes effect.
-      expect(ev.defaultPrevented).toBe(true);
-      await Promise.resolve();
-      expect(writeText).toHaveBeenCalledWith(
-        "claude --resume 0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
-      );
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    render(
+      <App
+        control={control}
+        session={f.session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        reposApi={fakeReposApi}
+      />,
+    );
+    // bootstrap opens the active @1 (zashiki) tab. Give @1 a sid.
+    act(() =>
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals: [
+          {
+            ...cockpitTerminals[0],
+            sid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
+          },
+          cockpitTerminals[1],
+        ] as CockpitTerminalInfo[],
+        orgs: ["kilo"],
+        orgColors: {},
+      }),
+    );
+    const ev = pressCmdR();
+    // Reload suppression (preventDefault) takes effect.
+    expect(ev.defaultPrevented).toBe(true);
+    expect(control.sent).toContainEqual({
+      t: "cockpitTerminal.new",
+      org: "kilo",
+      resumeSid: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
+    });
   });
 
-  it("Cmd+R does not copy for an active session without a sid but still suppresses reload", () => {
+  it("Cmd+R does not duplicate for an active session without a sid but still suppresses reload", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal("navigator", { clipboard: { writeText } });
-    try {
-      render(
-        <App
-          control={control}
-          session={f.session}
-          gitApi={fakeGitApi}
-          fsApi={fakeFsApi}
-          searchApi={fakeSearchApi}
-          filesApi={fakeFilesApi}
-          reposApi={fakeReposApi}
-        />,
-      );
-      // @1 has no sid (cockpit terminals carry no sid).
-      act(() =>
-        control.emit({
-          t: "state.sync",
-          cockpitTerminals,
-          orgs: ["kilo"],
-          orgColors: {},
-        }),
-      );
-      const ev = pressCmdR();
-      expect(ev.defaultPrevented).toBe(true);
-      expect(writeText).not.toHaveBeenCalled();
-    } finally {
-      vi.unstubAllGlobals();
-    }
+    render(
+      <App
+        control={control}
+        session={f.session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        reposApi={fakeReposApi}
+      />,
+    );
+    // @1 has no sid (cockpit terminals carry no sid).
+    act(() =>
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals,
+        orgs: ["kilo"],
+        orgColors: {},
+      }),
+    );
+    const ev = pressCmdR();
+    expect(ev.defaultPrevented).toBe(true);
+    expect(control.sent.some((m) => m.t === "cockpitTerminal.new")).toBe(false);
   });
 
   it("the refresh button sends state.refresh", () => {
