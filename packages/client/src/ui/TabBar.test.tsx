@@ -633,7 +633,7 @@ describe("TabBar", () => {
     expect((item as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("shows both menu items when onDuplicate and onCopySessionId are provided", () => {
+  it("shows close, close all, duplicate and copy items for a session tab when all handlers are provided", () => {
     render(
       <TabBar
         tabs={[s(SID)]}
@@ -642,15 +642,65 @@ describe("TabBar", () => {
         conversationTitles={{}}
         onActivate={() => undefined}
         onClose={() => undefined}
+        onCloseAll={vi.fn()}
         onDuplicate={vi.fn()}
         onCopySessionId={vi.fn()}
       />,
     );
     fireEvent.contextMenu(screen.getByRole("tab"));
-    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toEqual(
+      [
+        "閉じる",
+        "全て閉じる",
+        "セッションを複製",
+        "Claude Code セッションIDをコピー",
+      ],
+    );
   });
 
-  it("does not show the right-click menu when neither copy handler is provided (backward compatibility)", () => {
+  it("right-clicking a tab and choosing 'Close' calls onClose(key) and closes the menu", () => {
+    const onClose = vi.fn();
+    render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        cockpitTerminals={[session]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={onClose}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "閉じる" }));
+    expect(onClose).toHaveBeenCalledWith(KEY);
+    expect(screen.queryByRole("menuitem")).toBeNull();
+  });
+
+  it("right-clicking a tab and choosing 'Close all tabs' calls onCloseAll", () => {
+    const onCloseAll = vi.fn();
+    render(
+      <TabBar
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        cockpitTerminals={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onCloseAll={onCloseAll}
+      />,
+    );
+    fireEvent.contextMenu(
+      screen.getByText("二番目").closest(".tab") as Element,
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "全て閉じる" }));
+    expect(onCloseAll).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menuitem")).toBeNull();
+  });
+
+  it("hides 'Close all tabs' when onCloseAll is not provided but still shows 'Close'", () => {
     render(
       <TabBar
         tabs={[s(SID)]}
@@ -662,7 +712,50 @@ describe("TabBar", () => {
       />,
     );
     fireEvent.contextMenu(screen.getByRole("tab"));
-    expect(screen.queryByRole("menuitem")).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "閉じる" })).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "全て閉じる" })).toBeNull();
+  });
+
+  it("shows close / close all on a viewer tab but not the session-only duplicate / copy items", () => {
+    const viewerId = "/repo\nsrc/main.ts";
+    const e = (id: string): Tab => ({ kind: "viewer", id });
+    render(
+      <TabBar
+        tabs={[e(viewerId)]}
+        activeKey={`viewer:${viewerId}`}
+        cockpitTerminals={[]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onCloseAll={vi.fn()}
+        onDuplicate={vi.fn()}
+        onCopySessionId={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toEqual(
+      ["閉じる", "全て閉じる"],
+    );
+  });
+
+  it("closes a viewer tab via 'Close' with its composite viewer key", () => {
+    const onClose = vi.fn();
+    const viewerId = "/repo\nsrc/main.ts";
+    const e = (id: string): Tab => ({ kind: "viewer", id });
+    render(
+      <TabBar
+        tabs={[e(viewerId)]}
+        activeKey={`viewer:${viewerId}`}
+        cockpitTerminals={[]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={onClose}
+        onCloseAll={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "閉じる" }));
+    expect(onClose).toHaveBeenCalledWith(`viewer:${viewerId}`);
   });
 
   it("passes the cockpitTerminalId of the right-clicked window when there are multiple tabs (no mix-up)", () => {

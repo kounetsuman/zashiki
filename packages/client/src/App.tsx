@@ -39,6 +39,7 @@ import { createNotifier, type Notifier } from "./lib/notify.js";
 import { pickAccountLimits } from "./session/status-footer.js";
 import type { TermAttachStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
+import { tabKey } from "./tabs/tab-model.js";
 import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
 import { CockpitTerminalListView } from "./ui/CockpitTerminalListView.js";
@@ -258,6 +259,9 @@ export function App({
     },
     [closeTab, closeViewerBuffer],
   );
+  const closeAllTabs = useCallback((): void => {
+    for (const tab of tabsState.tabs) closeTabByKey(tabKey(tab));
+  }, [tabsState.tabs, closeTabByKey]);
 
   const { copyToast, flashCopyToast } = useCopyToast();
   const selfUpdate = useSelfUpdate(control, flashCopyToast, t);
@@ -443,6 +447,7 @@ export function App({
             orgColors={orgColors}
             onActivate={activateTabByKey}
             onClose={closeTabByKey}
+            onCloseAll={closeAllTabs}
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
             inactive={activeView !== "main"}
