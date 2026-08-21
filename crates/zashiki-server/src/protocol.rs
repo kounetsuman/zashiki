@@ -284,7 +284,6 @@ pub enum ServerMessage {
     #[serde(rename = "config.sync", rename_all = "camelCase")]
     ConfigSync {
         notify_sound: bool,
-        debug: bool,
         update_check: bool,
         language: Option<String>,
     },
@@ -696,12 +695,11 @@ mod tests {
     fn config_sync_matches_wire() {
         let msg = ServerMessage::ConfigSync {
             notify_sound: true,
-            debug: false,
             update_check: true,
             language: Some("ja".into()),
         };
         let json =
-            r#"{"t":"config.sync","notifySound":true,"debug":false,"updateCheck":true,"language":"ja"}"#;
+            r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja"}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -710,12 +708,11 @@ mod tests {
     fn config_sync_language_null_when_unset() {
         let msg = ServerMessage::ConfigSync {
             notify_sound: true,
-            debug: false,
             update_check: false,
             language: None,
         };
         let json =
-            r#"{"t":"config.sync","notifySound":true,"debug":false,"updateCheck":false,"language":null}"#;
+            r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

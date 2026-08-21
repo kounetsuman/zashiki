@@ -19,7 +19,7 @@ mod sidecar_http;
 #[path = "sidecar_version.rs"]
 mod sidecar_version;
 
-pub use sidecar_config::{config_path_from_env, devtools_enabled, read_debug_flag, Config};
+pub use sidecar_config::Config;
 
 use sidecar_http::{check_health, http_get, is_healthy_response, serves_client_ui};
 use sidecar_version::{classify_reuse, healthz_pid, ReuseDecision, EXPECTED_GIT_SHA};

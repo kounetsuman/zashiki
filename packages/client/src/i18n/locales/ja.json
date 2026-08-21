@@ -197,7 +197,13 @@
     "updateAvailable": "バージョン {{version}} が利用できます。",
     "updateUpToDate": "最新バージョンです。",
     "updateError": "アップデートを確認できませんでした。",
-    "clipboardEditModal": "コピー時にクリップボード編集を表示"
+    "clipboardEditModal": "コピー時にクリップボード編集を表示",
+    "devSection": "開発モード",
+    "renderer": "ターミナルレンダラ",
+    "rendererWebgl": "WebGL",
+    "rendererDom": "DOM",
+    "openDevtools": "DevTools を開く",
+    "openDebugPanel": "デバッグパネルを開く"
   },
   "addOrg": {
     "title": "組織を追加",

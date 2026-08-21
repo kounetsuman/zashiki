@@ -114,7 +114,6 @@ impl ControlHub {
         [
             ServerMessage::ConfigSync {
                 notify_sound: state.config.notify_sound,
-                debug: state.config.debug,
                 update_check: state.config.update_check,
                 language: state.config.language.clone(),
             },
@@ -195,7 +194,6 @@ impl ControlHub {
     pub fn publish_config(&self, config: ConfigView) {
         let msg = ServerMessage::ConfigSync {
             notify_sound: config.notify_sound,
-            debug: config.debug,
             update_check: config.update_check,
             language: config.language.clone(),
         };
@@ -443,7 +441,6 @@ mod tests {
         let hub = ControlHub::new(
             ConfigView {
                 notify_sound: true,
-                debug: false,
                 update_check: true,
                 language: None,
             },
@@ -554,7 +551,6 @@ mod tests {
         let mut rx = hub.subscribe();
         hub.publish_config(ConfigView {
             notify_sound: true,
-            debug: true,
             update_check: true,
             language: Some("en".into()),
         });
@@ -562,7 +558,6 @@ mod tests {
             rx.recv().await.unwrap(),
             ServerMessage::ConfigSync {
                 notify_sound: true,
-                debug: true,
                 ..
             }
         ));

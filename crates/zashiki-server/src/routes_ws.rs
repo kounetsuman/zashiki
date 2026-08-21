@@ -219,7 +219,6 @@ mod ws_control_tests {
         let hub = ControlHub::new(
             ConfigView {
                 notify_sound: true,
-                debug: false,
                 update_check: true,
                 language: None,
             },

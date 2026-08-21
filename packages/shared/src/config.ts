@@ -7,8 +7,6 @@ import { z } from "zod";
 export const zashikiConfigSchema = z.object({
   /** Notification sound on/off. */
   notifySound: z.boolean().catch(true).default(true),
-  /** Show the debug panel. URL/Ctrl+Alt+D is a temporary override. */
-  debug: z.boolean().catch(false).default(false),
   /** Poll GitHub Releases for updates (defaults on). Set false to stop the server's outbound egress to github.com. */
   updateCheck: z.boolean().catch(true).default(true),
   /** Display language (selected in SETTINGS). null means unset, deferring to the client's browser detection. */
@@ -19,7 +17,6 @@ export type ZashikiConfig = z.infer<typeof zashikiConfigSchema>;
 
 export const DEFAULT_CONFIG: ZashikiConfig = {
   notifySound: true,
-  debug: false,
   updateCheck: true,
   language: null,
 };

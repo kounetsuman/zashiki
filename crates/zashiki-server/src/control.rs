@@ -28,7 +28,6 @@ use crate::term_registry::TermRegistry;
 #[derive(Debug, Clone, Default)]
 pub struct ConfigView {
     pub notify_sound: bool,
-    pub debug: bool,
     /// Whether the server may poll GitHub Releases for updates (#26). Default on; set false in config.json
     /// to stop the outbound egress to github.com. Checked live per poll, so toggling applies without restart.
     pub update_check: bool,
@@ -266,7 +265,7 @@ mod tests {
         async fn config_update_writes_file_and_broadcasts_config_sync() {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("config.json");
-            std::fs::write(&path, r#"{"notifySound": true, "debug": false}"#).unwrap();
+            std::fs::write(&path, r#"{"notifySound": true}"#).unwrap();
             let port = serve(services_with_config_path(path.clone())).await;
             let mut ws = connect(port).await;
 

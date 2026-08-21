@@ -25,7 +25,6 @@ import { DebugView } from "./debug/DebugView.js";
 import {
   type ControlDebugSnapshot,
   footerAbnormalNotice,
-  resolveDebugInitial,
   type TermDebugSnapshot,
 } from "./debug/debug-model.js";
 import type { Locale } from "./i18n/detect.js";
@@ -36,6 +35,7 @@ import {
   saveConversationTitles,
 } from "./lib/conversation-title.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
+import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { pickAccountLimits } from "./session/status-footer.js";
 import type { TermAttachStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
@@ -71,6 +71,7 @@ import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useViewer } from "./ui/useViewer.js";
 import { useViewSelection } from "./ui/useViewSelection.js";
+import { useXtermRenderer } from "./ui/useXtermRenderer.js";
 import { Viewer } from "./ui/Viewer.js";
 import type { ControlStatus } from "./ws/control.js";
 
@@ -129,8 +130,6 @@ export interface AppProps {
   notifier?: Notifier;
   /** Persistence target for view selection state (defaults to localStorage). */
   viewStorage?: ViewStorage | null;
-  /** Initial on/off for debug mode (resolved from env/URL when omitted). */
-  debugInitial?: boolean;
 }
 
 export function App({
@@ -144,10 +143,10 @@ export function App({
   crashApi,
   notifier: notifierProp,
   viewStorage: viewStorageProp,
-  debugInitial,
 }: AppProps) {
   const { t } = useTranslation();
   const terminalFont = useTerminalFontSize();
+  const terminalRenderer = useXtermRenderer();
   const clipboardEdit = useClipboardEditEnabled();
   const [addOrgOpen, setAddOrgOpen] = useState(false);
   const { crashLog, dismissCrash } = useCrashReport(crashApi);
@@ -158,15 +157,7 @@ export function App({
   const [conversationTitles, setConversationTitles] = useState(() =>
     loadConversationTitles(viewStorage),
   );
-  const [debug, setDebug] = useState(
-    () =>
-      debugInitial ??
-      resolveDebugInitial(
-        import.meta.env.VITE_ZK_DEBUG as string | boolean | undefined,
-        typeof window === "undefined" ? "" : window.location.search,
-      ),
-  );
-  const toggleDebug = useCallback(() => setDebug((v) => !v), []);
+  const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
   const { selectedView, activeView, handleViewFocus, handleSelectView } =
     useViewSelection(viewStorage);
@@ -332,7 +323,6 @@ export function App({
     activeSess,
     activeKey: tabsState.activeKey,
     handleSelectView,
-    toggleDebug,
     newSession,
     duplicateSession,
     closeTabByKey,
@@ -351,15 +341,11 @@ export function App({
     }
   }, [cockpitTerminals.length, session]);
 
-  // Receive settings that apply immediately. The footer toggles are removed; notification
-  // sound and debug are driven by the server's config.json (watch -> config.sync). Since the
-  // config file is authoritative, URL ?debug=1 and Ctrl+Alt+D are transient overrides that
-  // revert to the config value on the next config.sync.
+  // Apply settings pushed by the server's config.json (watch -> config.sync).
   useEffect(() => {
     return control.onMessage((m) => {
       if (m.t !== "config.sync") return;
       notifier.applyServerConfig(m.notifySound);
-      setDebug(m.debug);
       // Apply the display language if the config file has one (unset = null keeps browser detection).
       if (m.language) void i18n.changeLanguage(m.language);
     });
@@ -477,6 +463,7 @@ export function App({
                 focusNonce={focusNonce}
                 resizeNonce={resizeNonce}
                 fontSize={terminalFont.fontSize}
+                renderer={terminalRenderer.renderer}
                 clipboardEditEnabled={clipboardEdit.enabled}
                 onSetClipboardEditEnabled={clipboardEdit.setEnabled}
               />
@@ -586,6 +573,10 @@ export function App({
               onCheckForUpdates={checkForUpdates}
               clipboardEditModal={clipboardEdit.enabled}
               onSetClipboardEditModal={clipboardEdit.setEnabled}
+              renderer={terminalRenderer.renderer}
+              onSetRenderer={terminalRenderer.setRenderer}
+              onOpenDevtools={canOpenDevtools() ? openDevtools : undefined}
+              onOpenDebugPanel={() => setDebugPanelOpen(true)}
               inactive={activeView !== "settings"}
             />
           )}
@@ -607,12 +598,12 @@ export function App({
           {copyToast}
         </div>
       )}
-      {debug && (
+      {debugPanelOpen && (
         <DebugView
           control={control}
           session={session}
           cockpitTerminals={cockpitTerminals}
-          onClose={() => setDebug(false)}
+          onClose={() => setDebugPanelOpen(false)}
         />
       )}
       <footer className="status-bar">

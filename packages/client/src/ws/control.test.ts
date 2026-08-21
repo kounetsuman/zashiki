@@ -155,9 +155,7 @@ describe("ControlClient", () => {
     if (!ws) throw new Error("ws missing");
     ws.emitOpen();
     // config.sync arrives while there are zero subscribers (reproducing the open race)
-    ws.emitMessage(
-      JSON.stringify({ t: "config.sync", notifySound: false, debug: true }),
-    );
+    ws.emitMessage(JSON.stringify({ t: "config.sync", notifySound: false }));
     // subscribing later still receives the most recent config.sync
     const late: ServerMessage[] = [];
     client.onMessage((m) => late.push(m));
@@ -165,7 +163,6 @@ describe("ControlClient", () => {
       {
         t: "config.sync",
         notifySound: false,
-        debug: true,
         updateCheck: true,
         language: null,
       },
@@ -182,19 +179,14 @@ describe("ControlClient", () => {
     const ws = factory.instances[0];
     if (!ws) throw new Error("ws missing");
     ws.emitOpen();
-    ws.emitMessage(
-      JSON.stringify({ t: "config.sync", notifySound: true, debug: false }),
-    );
-    ws.emitMessage(
-      JSON.stringify({ t: "config.sync", notifySound: false, debug: false }),
-    );
+    ws.emitMessage(JSON.stringify({ t: "config.sync", notifySound: true }));
+    ws.emitMessage(JSON.stringify({ t: "config.sync", notifySound: false }));
     const late: ServerMessage[] = [];
     client.onMessage((m) => late.push(m));
     expect(late).toEqual([
       {
         t: "config.sync",
         notifySound: false,
-        debug: false,
         updateCheck: true,
         language: null,
       },

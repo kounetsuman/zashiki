@@ -197,7 +197,13 @@
     "updateAvailable": "Version {{version}} is available.",
     "updateUpToDate": "You're on the latest version.",
     "updateError": "Couldn't check for updates.",
-    "clipboardEditModal": "Show clipboard edit on copy"
+    "clipboardEditModal": "Show clipboard edit on copy",
+    "devSection": "Developer mode",
+    "renderer": "Terminal renderer",
+    "rendererWebgl": "WebGL",
+    "rendererDom": "DOM",
+    "openDevtools": "Open DevTools",
+    "openDebugPanel": "Open debug panel"
   },
   "addOrg": {
     "title": "Add org",

@@ -15,10 +15,9 @@ describe("parseConfig", () => {
   });
 
   it("reads the specified fields", () => {
-    expect(parseConfig({ notifySound: false, debug: true })).toEqual({
+    expect(parseConfig({ notifySound: false, updateCheck: false })).toEqual({
       notifySound: false,
-      debug: true,
-      updateCheck: true,
+      updateCheck: false,
       language: null,
     });
   });
@@ -26,7 +25,6 @@ describe("parseConfig", () => {
   it("reads updateCheck as an opt-out (default on)", () => {
     expect(parseConfig({ updateCheck: false })).toEqual({
       notifySound: true,
-      debug: false,
       updateCheck: false,
       language: null,
     });
@@ -35,14 +33,13 @@ describe("parseConfig", () => {
   it("fills in missing fields with defaults", () => {
     expect(parseConfig({ notifySound: false })).toEqual({
       notifySound: false,
-      debug: false,
       updateCheck: true,
       language: null,
     });
   });
 
   it("falls back to defaults for fields with an invalid type (does not throw)", () => {
-    expect(parseConfig({ notifySound: "yes", debug: 1 })).toEqual(
+    expect(parseConfig({ notifySound: "yes", updateCheck: 1 })).toEqual(
       DEFAULT_CONFIG,
     );
   });
@@ -56,7 +53,6 @@ describe("parseConfig", () => {
   it("ignores unknown fields", () => {
     expect(parseConfig({ notifySound: false, extra: "x" })).toEqual({
       notifySound: false,
-      debug: false,
       updateCheck: true,
       language: null,
     });

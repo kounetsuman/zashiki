@@ -67,35 +67,20 @@ process, so the session remains.
 | `ZK_SERVER_BIN` | `zashiki-server` in the same directory as the executable, otherwise `crates/zashiki-server/target/{release,debug}/zashiki-server` | the Rust server binary to spawn |
 | `ZK_CLIENT_DIST` | distributed .app: `../Resources/client-dist` relative to the executable (bundled) / dev: `packages/client/dist` | the client dist for the server to serve statically. The sidecar passes it on spawn only when it actually exists (in dev it opens Vite:5173, so it is harmless even if not built) |
 | `ZK_SHELL_URL` | dev: `http://localhost:5173` / build: `http://127.0.0.1:8790` | base of the WebView's initial URL |
-| `ZK_CONFIG` | `~/.zashiki/config.json` | config file from which debug mode is read (shared with the server; see "Debug mode" below) |
+| `ZK_CONFIG` | `~/.zashiki/config.json` | live-apply config file shared with the server (notification sound, update check, display language) |
 | `ZK_APP_VERSION` | (injected by the shell) | the real bundle version (`app.package_info().version`) handed to the server for the update check. The server's own Cargo version stays at the `0.0.0` placeholder, so this is the only channel carrying the real version; unset / `0.0.0` (dev) disables the check |
 
-## Debug mode (WebView devtools)
+## DevTools (WebView inspector)
 
-If you start with `debug` set to `true` in `~/.zashiki/config.json`, the WebView's
-devtools (web inspector) are enabled, and you can open them by right-clicking the
-window → "Inspect Element" (macOS; F12 is not bound by default in WKWebView, so open
-it from the right-click menu).
+The window is always built with the WebView inspector enabled. Open it from
+Settings → Developer mode → "Open DevTools" (which invokes the `open_devtools`
+command), or by right-clicking the window → "Inspect Element" (macOS; F12 is not
+bound in WKWebView).
 
-```json
-{ "debug": true }
-```
-
-- This `debug` is the same flag the server reads, and it is linked with the client's
-  debug panel (a single "debug mode" enables both). The config file location can be
-  overridden with `ZK_CONFIG`.
-- It is read once at startup (changing the setting requires a restart). Missing,
-  corrupt, or type-mismatched values fall back to `false` (devtools disabled).
-- **dev (`tauri dev`) always has devtools enabled for the development experience.**
-  What the setting gates is builds produced by `tauri build` (including the
-  distributed .app and `tauri build --debug`). The dev determination is aligned with
-  `tauri::is_dev()`, the same as the initial URL, so even a `--debug` build is
-  correctly gated by config. To enable it in `tauri build` output, tauri's `devtools`
-  feature is enabled (on macOS it uses private API, so it is not supported for App
-  Store distribution; this app is distributed outside the App Store (Developer ID),
-  so there is no practical impact).
-- The canonical spec is `parse_debug_flag` / `devtools_enabled` in `src/sidecar.rs`
-  (cargo test).
+Tauri's `devtools` feature is enabled so the inspector is available in `tauri build`
+output too (on macOS it uses private API, so it is not supported for App Store
+distribution; this app ships outside the App Store (Developer ID), so there is no
+practical impact).
 
 ## Update check (GitHub Releases)
 

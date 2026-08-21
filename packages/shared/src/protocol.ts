@@ -323,7 +323,6 @@ export const errorMessageSchema = z.object({
 export const configSyncSchema = z.object({
   t: z.literal("config.sync"),
   notifySound: z.boolean(),
-  debug: z.boolean(),
   /** Whether the server polls GitHub Releases for updates (defaults on; omitted by old servers). */
   updateCheck: z.boolean().catch(true).default(true),
   /** Persisted display language (null when unset, i.e. deferred to the client's browser detection). */

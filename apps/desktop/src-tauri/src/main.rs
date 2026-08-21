@@ -25,16 +25,15 @@ fn base_url(cfg: &Config) -> String {
     }
 }
 
+/// Opens the WebView inspector for the in-app Developer mode.
+#[tauri::command]
+fn open_devtools(webview: tauri::WebviewWindow) {
+    webview.open_devtools();
+}
+
 fn main() {
     let cfg = Config::from_env();
     let base = base_url(&cfg);
-    // If debug is ON in the same config.json as the server (~/.zashiki/config.json), enable
-    // the WebView's devtools (web inspector). dev (tauri dev) is always enabled;
-    // builds produced by tauri build depend on the setting. The dev check uses the same tauri::is_dev() as base_url.
-    let devtools = sidecar::devtools_enabled(
-        sidecar::read_debug_flag(&sidecar::config_path_from_env()),
-        tauri::is_dev(),
-    );
     // The Child of the spawned server (None when riding along with an existing one).
     // We hold it in an Arc on the main side rather than as managed state inside setup so that it
     // isn't orphaned even on failure paths after a successful setup (= paths where RunEvent::Exit doesn't fire).
@@ -55,6 +54,7 @@ fn main() {
     let owned_in_setup = Arc::clone(&owned_server);
     let build_result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![open_devtools])
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if win_quitting.load(Ordering::SeqCst) {
@@ -86,7 +86,8 @@ fn main() {
             )
             .title("Zashiki")
             .inner_size(1280.0, 840.0)
-            .devtools(devtools)
+            // Always inspectable so the in-app Developer mode can open the inspector in release too.
+            .devtools(true)
             // WKWebView's OS-level drag-drop handler swallows HTML5 dragover/drop events,
             // which breaks in-page tab reordering. Disable it so DOM drag-and-drop works.
             .disable_drag_drop_handler()

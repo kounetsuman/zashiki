@@ -17,7 +17,6 @@ Use `Ctrl+Alt+<key>` to toggle each view's visibility.
 - `Ctrl+Alt+G`: Source Control
 - `Ctrl+Alt+N`: Notifications
 - `Ctrl+Alt+H`: Help
-- `Ctrl+Alt+D`: Debug info
 
 ## Source Control
 

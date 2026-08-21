@@ -7,29 +7,9 @@ import {
   isControlAbnormal,
   isTermAbnormal,
   pushRing,
-  resolveDebugInitial,
   summarizeSessions,
   tmuxSessionName,
 } from "./debug-model.js";
-
-describe("resolveDebugInitial", () => {
-  it("on when the build-time flag (equivalent to ZK_DEBUG) is truthy", () => {
-    expect(resolveDebugInitial(true, "")).toBe(true);
-    expect(resolveDebugInitial("1", "")).toBe(true);
-    expect(resolveDebugInitial("true", "")).toBe(true);
-  });
-
-  it("on when the URL query is ?debug=1", () => {
-    expect(resolveDebugInitial(undefined, "?debug=1")).toBe(true);
-    expect(resolveDebugInitial(undefined, "?foo=x&debug=true")).toBe(true);
-  });
-
-  it("off when there is no flag and no query (release default)", () => {
-    expect(resolveDebugInitial(undefined, "")).toBe(false);
-    expect(resolveDebugInitial(false, "?debug=0")).toBe(false);
-    expect(resolveDebugInitial("", "?other=1")).toBe(false);
-  });
-});
 
 describe("tmuxSessionName", () => {
   it("derives zk-<termId> from the termId", () => {

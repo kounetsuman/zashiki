@@ -8,7 +8,6 @@ export interface AppKeyboardShortcuts {
   activeSess: string | null;
   activeKey: string | null;
   handleSelectView(id: ViewId): void;
-  toggleDebug(): void;
   newSession(org: string): void;
   duplicateSession(cockpitTerminalId: string): void;
   closeTabByKey(key: string): void;
@@ -26,7 +25,6 @@ export function useAppKeyboardShortcuts({
   activeSess,
   activeKey,
   handleSelectView,
-  toggleDebug,
   newSession,
   duplicateSession,
   closeTabByKey,
@@ -43,24 +41,6 @@ export function useAppKeyboardShortcuts({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [handleSelectView]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      const active = document.activeElement;
-      if (active instanceof HTMLTextAreaElement) return;
-      if (
-        e.ctrlKey &&
-        e.altKey &&
-        !e.metaKey &&
-        (e.key === "d" || e.key === "D")
-      ) {
-        e.preventDefault();
-        toggleDebug();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [toggleDebug]);
 
   useEffect(() => {
     const onContextMenu = (e: MouseEvent): void => e.preventDefault();

@@ -17,7 +17,6 @@
 - `Ctrl+Alt+G`: ソース管理
 - `Ctrl+Alt+N`: 通知
 - `Ctrl+Alt+H`: ヘルプ
-- `Ctrl+Alt+D`: デバッグ情報
 
 ## ソース管理
 

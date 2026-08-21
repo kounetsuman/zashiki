@@ -5,6 +5,10 @@ import { useTranslation } from "react-i18next";
 import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
 import { ViewHeader } from "./ViewHeader.js";
 import { viewClass } from "./views.js";
+import {
+  DEFAULT_XTERM_RENDERER,
+  type XtermRenderer,
+} from "./xterm-renderer.js";
 
 type UpdateCheckState =
   | { phase: "idle" }
@@ -45,6 +49,13 @@ export interface SettingsViewProps {
   /** Whether the clipboard-edit modal appears on a multi-line Cmd+C. Omit to hide the toggle. */
   clipboardEditModal?: boolean;
   onSetClipboardEditModal?(enabled: boolean): void;
+  /** Current xterm renderer. Omit to hide the Developer mode section (e.g. in isolated tests). */
+  renderer?: XtermRenderer;
+  onSetRenderer?(renderer: XtermRenderer): void;
+  /** Open the WebView inspector. Omit outside Tauri (the button is then hidden). */
+  onOpenDevtools?(): void;
+  /** Open the in-app debug panel. Omit to hide the entry. */
+  onOpenDebugPanel?(): void;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
 }
@@ -54,9 +65,9 @@ function toLocale(lang: string): Locale {
 }
 
 /**
- * Settings view (the gear in NAVIGATION). Currently only a display-language dropdown.
- * Save applies the selection and persists it to config.json (while unsaved, the draft
- * is kept and Save stays enabled).
+ * Settings view (the gear in NAVIGATION): display language, terminal font size, updates, orgs,
+ * and a Developer mode section (renderer switch, DevTools, debug panel). Save applies the language
+ * selection and persists it to config.json (while unsaved, the draft is kept and Save stays enabled).
  */
 export function SettingsView({
   language,
@@ -72,6 +83,10 @@ export function SettingsView({
   onCheckForUpdates,
   clipboardEditModal,
   onSetClipboardEditModal,
+  renderer,
+  onSetRenderer,
+  onOpenDevtools,
+  onOpenDebugPanel,
   inactive,
 }: SettingsViewProps) {
   const { t } = useTranslation();
@@ -213,6 +228,42 @@ export function SettingsView({
               {t("settings.clipboardEditModal")}
             </span>
           </label>
+        )}
+        {onSetRenderer !== undefined && (
+          <div className="settings-field settings-dev-section">
+            <span className="settings-label">{t("settings.devSection")}</span>
+            <label className="settings-field">
+              <span className="settings-label">{t("settings.renderer")}</span>
+              <select
+                className="settings-select"
+                value={renderer ?? DEFAULT_XTERM_RENDERER}
+                onChange={(e) =>
+                  onSetRenderer(e.target.value === "dom" ? "dom" : "webgl")
+                }
+              >
+                <option value="webgl">{t("settings.rendererWebgl")}</option>
+                <option value="dom">{t("settings.rendererDom")}</option>
+              </select>
+            </label>
+            {onOpenDevtools !== undefined && (
+              <button
+                type="button"
+                className="settings-save"
+                onClick={onOpenDevtools}
+              >
+                {t("settings.openDevtools")}
+              </button>
+            )}
+            {onOpenDebugPanel !== undefined && (
+              <button
+                type="button"
+                className="settings-save"
+                onClick={onOpenDebugPanel}
+              >
+                {t("settings.openDebugPanel")}
+              </button>
+            )}
+          </div>
         )}
       </div>
     </section>
