@@ -282,6 +282,7 @@ mod tests {
                 launch_claude: false,
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
+                hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),

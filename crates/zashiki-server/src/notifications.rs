@@ -144,6 +144,80 @@ pub fn update_available_notification(version: &str, url: &str, created_at: u64) 
     }
 }
 
+/// An external-dependency boundary that failed to launch/read and would otherwise be swallowed silently.
+/// Each variant carries a fixed notification id (upsert key), a ⚠️ Japanese title, and a body naming the
+/// concrete thing to fix.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BoundaryFailure {
+    /// ripgrep could not be spawned; a cross-repo search may be incomplete.
+    RgMissing,
+    /// The `ZK_EDITOR` binary could not be launched (not found / not executable).
+    EditorFailed,
+    /// The `claude` binary could not be resolved from PATH or the usual install dirs.
+    ClaudeMissing,
+    /// `~/.claude/settings.json` exists but could not be read (invalid JSON or permission error).
+    SettingsUnreadable,
+}
+
+impl BoundaryFailure {
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::RgMissing => "boundary:rg-missing",
+            Self::EditorFailed => "boundary:editor-failed",
+            Self::ClaudeMissing => "boundary:claude-missing",
+            Self::SettingsUnreadable => "boundary:settings-unreadable",
+        }
+    }
+
+    /// Persistent misconfigurations (claude / settings) that only re-check at boot stay sticky so notification
+    /// pressure can't evict them before they are fixed; the per-action causes (rg / editor) re-fire on the next
+    /// search / click, so they auto-dismiss like other transient warns.
+    pub fn sticky(self) -> bool {
+        matches!(self, Self::ClaudeMissing | Self::SettingsUnreadable)
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::RgMissing => "⚠️ 検索ツール（ripgrep）を起動できません",
+            Self::EditorFailed => "⚠️ エディタを起動できません",
+            Self::ClaudeMissing => "⚠️ claude コマンドが見つかりません",
+            Self::SettingsUnreadable => "⚠️ settings.json を読み取れません",
+        }
+    }
+
+    pub fn body(self) -> &'static str {
+        match self {
+            Self::RgMissing => {
+                "ripgrep (rg) を起動できませんでした。検索結果が不完全な可能性があります。rg をインストールし PATH を確認してください。"
+            }
+            Self::EditorFailed => {
+                "設定されたエディタ（環境変数 ZK_EDITOR）を起動できませんでした。コマンドが見つからないか実行できません。ZK_EDITOR の設定を確認してください。"
+            }
+            Self::ClaudeMissing => {
+                "claude を PATH および ~/.claude/local・~/.local/bin・/opt/homebrew/bin などから解決できませんでした。claude をインストールし PATH を確認してください。"
+            }
+            Self::SettingsUnreadable => {
+                "~/.claude/settings.json は存在しますが読み取れません（JSON が不正、または権限エラー）。ファイルを確認してください。連携状態は「未登録」と表示されます。"
+            }
+        }
+    }
+}
+
+/// Warn notification for an external-dependency boundary failure (toast + panel). Fixed id upserts; sticky
+/// per cause so persistent misconfigurations aren't evicted before they are fixed.
+pub fn boundary_notification(failure: BoundaryFailure, created_at: u64) -> Notification {
+    Notification {
+        id: failure.id().to_string(),
+        level: NotificationLevel::Warn,
+        title: failure.title().to_string(),
+        body: Some(failure.body().to_string()),
+        created_at,
+        sticky: failure.sticky(),
+        dismissible: true,
+        toast: None,
+    }
+}
+
 /// Newest-first ordering (createdAt descending; ties by id ascending).
 fn by_newest(a: &Notification, b: &Notification) -> std::cmp::Ordering {
     b.created_at.cmp(&a.created_at).then_with(|| a.id.cmp(&b.id))
@@ -205,6 +279,53 @@ mod tests {
         assert_eq!(e.body.as_deref(), Some("boom"));
         assert_eq!(e.toast, Some(false));
         assert!(e.dismissible && !e.sticky);
+    }
+
+    #[test]
+    fn boundary_failure_ids_are_unique_and_prefixed() {
+        let all = [
+            BoundaryFailure::RgMissing,
+            BoundaryFailure::EditorFailed,
+            BoundaryFailure::ClaudeMissing,
+            BoundaryFailure::SettingsUnreadable,
+        ];
+        for f in all {
+            assert!(f.id().starts_with("boundary:"), "{:?} id is prefixed", f);
+            assert!(f.title().starts_with("⚠️"), "{:?} title carries the warn glyph", f);
+            assert!(!f.body().is_empty(), "{:?} body is non-empty", f);
+        }
+        let ids: std::collections::HashSet<_> = all.iter().map(|f| f.id()).collect();
+        assert_eq!(ids.len(), all.len(), "each cause maps to a distinct upsert id");
+    }
+
+    #[test]
+    fn boundary_notification_is_warn_and_sticky_only_for_persistent_causes() {
+        // Persistent, boot-checked causes stay sticky so notification pressure can't evict them before a fix.
+        for f in [BoundaryFailure::ClaudeMissing, BoundaryFailure::SettingsUnreadable] {
+            let n = boundary_notification(f, 1);
+            assert_eq!(n.level, NotificationLevel::Warn);
+            assert_eq!(n.id, f.id());
+            assert!(n.sticky, "{:?} must survive eviction", f);
+            assert!(!evictable(&n), "{:?} must not be evictable", f);
+        }
+        // Per-action causes re-fire on the next search/click, so they auto-dismiss like other transient warns.
+        for f in [BoundaryFailure::RgMissing, BoundaryFailure::EditorFailed] {
+            let n = boundary_notification(f, 1);
+            assert!(!n.sticky, "{:?} should not linger", f);
+        }
+    }
+
+    fn evictable(n: &Notification) -> bool {
+        !n.sticky && n.dismissible
+    }
+
+    #[test]
+    fn boundary_failure_bodies_name_the_thing_to_fix() {
+        // The body must point at the concrete lever (env var / file / binary), since it carries no dynamic detail.
+        assert!(BoundaryFailure::RgMissing.body().contains("rg"));
+        assert!(BoundaryFailure::EditorFailed.body().contains("ZK_EDITOR"));
+        assert!(BoundaryFailure::ClaudeMissing.body().contains("claude"));
+        assert!(BoundaryFailure::SettingsUnreadable.body().contains("settings.json"));
     }
 
     #[test]

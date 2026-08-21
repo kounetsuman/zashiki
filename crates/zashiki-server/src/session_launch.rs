@@ -175,10 +175,17 @@ fn program_search_dirs() -> Vec<String> {
     dirs
 }
 
-/// Resolves the absolute path of `name` from PATH and typical install locations, so it launches even when
-/// PATH is thin under GUI/launchd startup. If not found, falls back to `name` itself as before.
+/// Resolves the absolute path of `name` from PATH and typical install locations (thin GUI/launchd PATH).
+/// `None` means it was found nowhere, letting the caller surface a boundary warning; [`resolve_program`]
+/// keeps the launch-anyway fallback for callers that just need a command string.
+pub fn resolve_program_path(name: &str) -> Option<String> {
+    find_program_in(&program_search_dirs(), name)
+}
+
+/// Resolves the absolute path of `name`, falling back to `name` itself when not found so a launch is still
+/// attempted under a thin PATH (unchanged behavior). Use [`resolve_program_path`] to detect the fallback.
 pub fn resolve_program(name: &str) -> String {
-    find_program_in(&program_search_dirs(), name).unwrap_or_else(|| name.to_string())
+    resolve_program_path(name).unwrap_or_else(|| name.to_string())
 }
 
 pub fn resolve_claude_program() -> String {
@@ -388,6 +395,15 @@ mod tests {
         .await
         .unwrap_or(false);
         assert!(alive, "shell should survive after claude(true) exits");
+    }
+
+    #[test]
+    fn resolve_program_path_is_none_for_unresolvable_and_resolve_program_falls_back() {
+        // A name that exists in no search dir stays unresolved; the string form falls back to the bare name
+        // (so a launch is still attempted), which is exactly the "fell back" signal callers warn on.
+        let bogus = "zashiki-definitely-not-a-real-binary-xyz";
+        assert_eq!(resolve_program_path(bogus), None);
+        assert_eq!(resolve_program(bogus), bogus);
     }
 
     #[test]

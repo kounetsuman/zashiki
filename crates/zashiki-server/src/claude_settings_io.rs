@@ -101,9 +101,19 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
 }
 
 pub fn current_status(paths: &ClaudeSettingsPaths) -> RegistrationStatus {
+    current_status_with_readability(paths).0
+}
+
+/// Like [`current_status`], but the bool reports whether settings.json exists yet could not be read
+/// (invalid JSON or a permission error) — distinct from a missing file, which is a legitimate "not registered".
+pub fn current_status_with_readability(paths: &ClaudeSettingsPaths) -> (RegistrationStatus, bool) {
     match load_for_merge(&paths.settings_path) {
-        Ok(v) => registration_status(&v, &script_paths(&paths.hooks_dir)),
-        Err(_) => RegistrationStatus::default(),
+        // Missing / empty files also resolve to Ok(empty object) here, so this arm is never "unreadable".
+        Ok(v) => (
+            registration_status(&v, &script_paths(&paths.hooks_dir)),
+            false,
+        ),
+        Err(_) => (RegistrationStatus::default(), true),
     }
 }
 
@@ -209,5 +219,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let st = current_status(&paths_in(dir.path()));
         assert!(!st.hooks_registered && !st.status_line_registered && !st.status_line_conflict);
+    }
+
+    #[test]
+    fn readability_flags_corrupt_file_but_not_a_missing_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+
+        // Missing file: legitimately "not registered", not flagged as unreadable.
+        let (st, unreadable) = current_status_with_readability(&p);
+        assert!(!unreadable);
+        assert_eq!(st, RegistrationStatus::default());
+
+        // Present but invalid JSON: default status AND flagged unreadable.
+        std::fs::write(&p.settings_path, "{not json").unwrap();
+        let (st, unreadable) = current_status_with_readability(&p);
+        assert!(unreadable);
+        assert_eq!(st, RegistrationStatus::default());
     }
 }
