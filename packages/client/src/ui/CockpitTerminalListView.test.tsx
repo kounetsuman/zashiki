@@ -176,7 +176,7 @@ describe("CockpitTerminalListView: session rows", () => {
     const waiting = screen.getByText("add_alert");
     expect(waiting.className).toContain("state-waiting_input");
     expect(waiting.className).toContain("material-symbols-outlined");
-    const running = screen.getByText("hourglass");
+    const running = screen.getByText("progress_activity");
     expect(running.className).toContain("state-running");
     const none = screen.getByText("terminal_2");
     expect(none.className).toContain("state-no_claude");
@@ -202,7 +202,7 @@ describe("CockpitTerminalListView: session rows", () => {
         } as CockpitTerminalInfo,
       ],
     });
-    const base = screen.getByText("hourglass");
+    const base = screen.getByText("progress_activity");
     expect(base.className).toContain("state-running_bg_agent");
     const glyph = screen.getByText("robot_2");
     expect(glyph.parentElement?.className).toContain("session-activity-agent");
@@ -267,7 +267,7 @@ describe("CockpitTerminalListView: session rows", () => {
     expect(chip?.textContent).toContain("3");
   });
 
-  it("keeps an idle row's own glyph while a bg shell runs (no hourglass swap)", () => {
+  it("keeps an idle row's own glyph while a bg shell runs (no running-glyph swap)", () => {
     renderView({
       cockpitTerminals: [
         {
@@ -281,7 +281,7 @@ describe("CockpitTerminalListView: session rows", () => {
     expect(screen.getByText("terminal").parentElement?.className).toContain(
       "session-activity-shell",
     );
-    expect(screen.queryByText("hourglass")).toBeNull();
+    expect(screen.queryByText("progress_activity")).toBeNull();
   });
 
   it("shows the agent and shell chips together while a subagent and a shell run concurrently", () => {
