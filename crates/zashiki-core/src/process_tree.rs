@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn parse_ps_reads_fields_preserving_arg_spaces() {
         let out = format!(
-            "    1     0 /sbin/launchd\n  200     1 tmux -L zashiki\n  300   200 claude --session-id {SID}\n"
+            "    1     0 /sbin/launchd\n  200     1 zashiki-server --port 8790\n  300   200 claude --session-id {SID}\n"
         );
         assert_eq!(
             parse_ps_snapshot(&out),
@@ -232,7 +232,7 @@ mod tests {
                 ProcessEntry {
                     pid: 200,
                     ppid: 1,
-                    args: "tmux -L zashiki".to_string()
+                    args: "zashiki-server --port 8790".to_string()
                 },
                 ProcessEntry {
                     pid: 300,

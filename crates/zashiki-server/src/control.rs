@@ -357,7 +357,7 @@ mod tests {
             assert!(!path.exists());
         }
 
-        /// The owned term.open does not create a tmux view session, and the next reply is state.sync (not an error).
+        /// The owned term.open registers the window and replies with state.sync (not an error).
         #[tokio::test]
         async fn term_open_registers_window_and_sends_state_sync() {
             let services = owned_services_with_pty("sess-1").await;
@@ -372,7 +372,7 @@ mod tests {
             .await;
             let reply = next_json(&mut ws).await.expect("reply");
             assert_eq!(reply["t"], "state.sync", "owned term.open must not error: {reply}");
-            // The registry holds the cockpitTerminalId (UUID sid) directly (not a tmux $N).
+            // The registry holds the cockpitTerminalId (UUID sid) directly.
             assert_eq!(terms.lock().unwrap().session_id("t1").as_deref(), Some("sess-1"));
         }
 
@@ -473,7 +473,7 @@ mod tests {
             assert_eq!(next_json(&mut ws).await.expect("open reply")["t"], "state.sync");
             assert_eq!(terms.lock().unwrap().session_id("t1").as_deref(), Some(""));
 
-            // term.select binds to the real sid (it does not touch tmux).
+            // term.select binds to the real sid.
             send(
                 &mut ws,
                 serde_json::json!({"t":"term.select","termId":"t1","cockpitTerminalId":"sess-1"}),

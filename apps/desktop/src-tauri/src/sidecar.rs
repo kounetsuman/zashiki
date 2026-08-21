@@ -1,6 +1,6 @@
 //! sidecar server management (the shell starts and monitors the server, and on
-//! exit performs a graceful shutdown only if it started the server itself. The
-//! tmux session is left running).
+//! exit performs a graceful shutdown only if it started the server itself; a
+//! server it merely rode along on is left running).
 //!
 //! The decision logic is split into small, cargo-test-able functions.
 //! Every stage is emitted to stderr as a progress log (for diagnosability on crash).
@@ -522,7 +522,8 @@ pub fn start(cfg: &Config, base_url: &str) -> Result<(String, Option<Child>), St
 
 /// SIGTERM, then SIGKILL if it does not finish within the grace period.
 /// Since it was placed in a dedicated process group at spawn time, the signal is sent to the whole
-/// group (the shim + the actual node). tmux is an independent server process, so the session remains.
+/// group (the server and its descendants, such as the claude it launches). Only ever called for a
+/// self-spawned server; a server the shell rode along on is never passed here, so it keeps running.
 pub fn shutdown(child: &mut Child, grace: Duration) {
     #[cfg(unix)]
     {
@@ -538,7 +539,7 @@ pub fn shutdown(child: &mut Child, grace: Duration) {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        // SIGKILL any stragglers (such as the shim's children). Harmless if the group is already empty.
+        // SIGKILL any stragglers (such as the claude the server launched). Harmless if the group is already empty.
         unsafe { libc::kill(-pgid, libc::SIGKILL) };
     }
     let _ = child.kill();

@@ -52,7 +52,9 @@ setup から Err は返さない（Tauri v2 は setup の Err を内部 panic �
 
 シェル終了時（ウィンドウを閉じる / SIGTERM / Ctrl-C いずれも）、**自分が spawn した
 server のみ**プロセスグループへ SIGTERM → 猶予 5s → SIGKILL で落とす（既存 server への
-相乗り時は殺さない）。tmux は独立プロセスなのでセッションは残る。
+相乗り時は殺さない）。したがって Claude セッションがアプリ終了後も残るのは、ホストする
+server が生き続ける場合＝独立した長命 server に相乗りしている時のみで、自分で spawn した
+server の場合は一緒に落ちる。
 
 ### 環境変数
 
@@ -189,7 +191,7 @@ pnpm -F @zashiki/desktop test:rust   # = cargo test
 
 ## 手動スモーク手順（shell smoke は自動化せず手動）
 
-実 tmux / 実 `~/.zashiki` に触るので人間が実施する。
+実 server / 実 `~/.zashiki` に触るので人間が実施する。
 
 1. `pnpm build && pnpm -F @zashiki/desktop dev` でシェルを起動する
 2. ウィンドウにターミナル UI が表示される（トークン入力を求められないこと =
