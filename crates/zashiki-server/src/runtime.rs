@@ -77,6 +77,8 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
 
     // The poller (read) and session.new share the same registry (the condition for registrations to be visible to the poller).
     let sessions = Arc::new(SessionRegistry::new());
+    // The hook route (write) and the poller (read) share the same store: the seam for event-authoritative state.
+    let hook_events = Arc::new(crate::hook_event_store::HookEventStore::new());
     // The live repos set shared by the poller, session.new validation, and the repos watcher.
     let repos = crate::repos::shared_repos(config.repos_roots, config.org_colors);
     let poll_config = PollConfig {
@@ -92,6 +94,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     let ports = PtyPollerPorts::new(
         sessions.clone(),
         ClaudeProjectsAdapter::new(config.projects_root),
+        hook_events.clone(),
     );
     spawn_poller(ports, poll_config, repos.clone(), hub.clone(), refresh_rx);
     if let Some(path) = config.repos_conf {
@@ -111,6 +114,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
             crate::term_registry::TermRegistry::new(),
         )),
         sessions,
+        hook_events,
         heartbeat: crate::control::HEARTBEAT_INTERVAL,
         notify_mode: config.notify_mode,
         mac_notify: config.mac_notify,

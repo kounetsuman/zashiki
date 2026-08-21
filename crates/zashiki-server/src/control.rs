@@ -60,6 +60,9 @@ pub struct ControlServices {
     pub terms: Arc<Mutex<TermRegistry>>,
     /// The owned PTY registry. `attach_owned_term` looks it up by session_id.
     pub sessions: Arc<crate::session_registry::SessionRegistry>,
+    /// The shared last-hook-event store. The hook route writes it; the poller reads it via
+    /// `PollerPorts::last_hook_event` for event-authoritative state.
+    pub hook_events: Arc<crate::hook_event_store::HookEventStore>,
     /// The ping interval for WS liveness monitoring (default `HEARTBEAT_INTERVAL`; tests shorten it).
     pub heartbeat: Duration,
     /// The destination for hooks notifications (ZK_NOTIFY; default web).
@@ -177,6 +180,7 @@ mod tests {
                 launch_claude: false,
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions,
+                hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),
@@ -254,6 +258,7 @@ mod tests {
                 launch_claude: false,
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
+                hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),

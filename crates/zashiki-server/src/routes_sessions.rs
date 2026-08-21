@@ -115,6 +115,7 @@ mod sessions_persist_rest_tests {
             launch_claude: true,
             terms: Arc::new(std::sync::Mutex::new(TermRegistry::new())),
             sessions,
+            hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             mac_notify: std::sync::Arc::new(|_| {}),

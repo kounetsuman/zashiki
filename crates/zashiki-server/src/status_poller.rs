@@ -8,8 +8,9 @@ use std::collections::HashMap;
 use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
-    apply_startup_grace, count_running_subagents, detect_state, fallback_state, is_limit_reached,
-    startup_grace_polls, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
+    apply_startup_grace, count_running_subagents, detect_state, fallback_state,
+    hook_event_fresh_within_sec, is_limit_reached, resolve_state, startup_grace_polls,
+    subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
 use crate::jsonl::{first_user_title, last_user_or_assistant_event};
@@ -19,7 +20,7 @@ use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOu
 const TITLE_MAX_CHARS: usize = 30;
 
 pub use crate::poller_types::{
-    CockpitTerminal, CockpitTerminalPane, PollConfig, PollerPorts, Slices, StateSnapshot,
+    CockpitTerminal, CockpitTerminalPane, HookEventAge, PollConfig, PollerPorts, Slices, StateSnapshot,
 };
 
 use crate::poller_eval_helpers::{
@@ -183,6 +184,24 @@ impl StatusPoller {
             state = apply_startup_grace(state, streak, startup_grace_polls(config.poll_sec));
         }
 
+        // A fresh hook event arbitrates only the waiting-input dimension on top of the scrape.
+        // prev_states stores the scrape base (not the resolved state) so the arbitration is recomputed
+        // each poll rather than compounding.
+        let scrape_state = state;
+        let state = match &sid {
+            Some(sid) => {
+                let (event, fresh) = match ports.last_hook_event(sid).await {
+                    Some(h) => (
+                        Some(h.event),
+                        h.age_sec <= hook_event_fresh_within_sec(config.poll_sec),
+                    ),
+                    None => (None, false),
+                };
+                resolve_state(scrape_state, event, fresh, true)
+            }
+            None => scrape_state,
+        };
+
         let mut title: Option<String> = None;
         if let Some(key) = &title_key {
             title = self.title_cache.get(key).cloned();
@@ -235,7 +254,8 @@ impl StatusPoller {
             _ => None,
         };
 
-        self.prev_states.insert(win.cockpit_terminal_id.clone(), state);
+        self.prev_states
+            .insert(win.cockpit_terminal_id.clone(), scrape_state);
         self.prev_limited.insert(win.cockpit_terminal_id.clone(), limited);
         Some(CockpitTerminalInfo {
             cockpit_terminal_id: win.cockpit_terminal_id.clone(),
@@ -290,6 +310,7 @@ mod tests {
         subagent_ages: HashMap<String, Vec<f64>>,
         lsof: String,
         bg_task_ids: HashMap<String, HashSet<String>>,
+        hook_events: HashMap<String, HookEventAge>,
     }
 
     impl PollerPorts for FakePorts {
@@ -325,6 +346,9 @@ mod tests {
                 .get(&format!("{cwd}\u{0}{sid}"))
                 .cloned()
                 .unwrap_or_default()
+        }
+        async fn last_hook_event(&self, sid: &str) -> Option<HookEventAge> {
+            self.hook_events.get(sid).copied()
         }
     }
 
@@ -605,6 +629,77 @@ mod tests {
         let mut poller = StatusPoller::new();
         let (snap, _) = poller.evaluate(&ports, &config()).await;
         assert_eq!(snap.sessions[0].state, "idle");
+    }
+
+    fn hook_event(age_sec: f64, event: zashiki_core::session_state::HookEvent) -> HookEventAge {
+        HookEventAge { event, age_sec }
+    }
+
+    /// A fresh `waiting` hook event promotes an idle scrape to the bell (catching a wizard the scrape missed).
+    #[tokio::test]
+    async fn fresh_waiting_hook_promotes_idle_scrape_to_waiting() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), "空の待機画面".to_string())]),
+            hook_events: HashMap::from([(
+                SID.to_string(),
+                hook_event(1.0, zashiki_core::session_state::HookEvent::Waiting),
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "waiting_input");
+    }
+
+    /// A fresh `done` hook event clears a phantom scrape bell (a real-looking numbered answer sitting at
+    /// the bottom) to idle.
+    #[tokio::test]
+    async fn fresh_done_hook_clears_phantom_scrape_bell() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), "❯ 1. Yes\n  2. No".to_string())]),
+            hook_events: HashMap::from([(
+                SID.to_string(),
+                hook_event(1.0, zashiki_core::session_state::HookEvent::Done),
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "idle");
+    }
+
+    /// A stale hook event is ignored; the scrape decides (the bell stays for a real bottom wizard).
+    #[tokio::test]
+    async fn stale_hook_event_lets_scrape_decide() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), "❯ 1. Yes\n  2. No".to_string())]),
+            hook_events: HashMap::from([(
+                SID.to_string(),
+                hook_event(999.0, zashiki_core::session_state::HookEvent::Done),
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "waiting_input");
     }
 
     #[tokio::test]

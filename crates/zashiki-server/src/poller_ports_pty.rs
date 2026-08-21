@@ -15,8 +15,11 @@ use std::sync::Arc;
 
 use std::collections::HashSet;
 
+use crate::app_state::now_ms;
 use crate::claude_projects::ClaudeProjectsAdapter;
+use crate::hook_event_store::HookEventStore;
 use crate::lsof::LsofAdapter;
+use crate::poller_types::HookEventAge;
 use crate::ps::PsAdapter;
 use crate::session_registry::SessionRegistry;
 use crate::status_poller::{PollerPorts, Slices, CockpitTerminal, CockpitTerminalPane};
@@ -28,15 +31,21 @@ pub struct PtyPollerPorts {
     ps: PsAdapter,
     lsof: LsofAdapter,
     projects: ClaudeProjectsAdapter,
+    hook_events: Arc<HookEventStore>,
 }
 
 impl PtyPollerPorts {
-    pub fn new(registry: Arc<SessionRegistry>, projects: ClaudeProjectsAdapter) -> Self {
+    pub fn new(
+        registry: Arc<SessionRegistry>,
+        projects: ClaudeProjectsAdapter,
+        hook_events: Arc<HookEventStore>,
+    ) -> Self {
         Self {
             registry,
             ps: PsAdapter,
             lsof: LsofAdapter,
             projects,
+            hook_events,
         }
     }
 }
@@ -108,6 +117,10 @@ impl PollerPorts for PtyPollerPorts {
         sid: &str,
     ) -> Option<crate::jsonl::SessionUsageData> {
         self.projects.session_usage(cwd, sid).await
+    }
+
+    async fn last_hook_event(&self, sid: &str) -> Option<HookEventAge> {
+        self.hook_events.get(sid, now_ms())
     }
 }
 
@@ -187,7 +200,11 @@ mod tests {
             "printf 'working (esc to interrupt)\\n'; sleep 5",
         )
         .await;
-        let ports = PtyPollerPorts::new(Arc::new(registry), throwaway_projects());
+        let ports = PtyPollerPorts::new(
+            Arc::new(registry),
+            throwaway_projects(),
+            Arc::new(HookEventStore::new()),
+        );
 
         let cap = wait_capture_contains(&ports, "%run", "esc to interrupt", 2000).await;
         assert!(cap.contains("esc to interrupt"), "capture missing: {cap:?}");
@@ -208,7 +225,11 @@ mod tests {
             "printf '\u{276f} 1. yes\\n  2. no\\n'; sleep 5",
         )
         .await;
-        let ports = PtyPollerPorts::new(Arc::new(registry), throwaway_projects());
+        let ports = PtyPollerPorts::new(
+            Arc::new(registry),
+            throwaway_projects(),
+            Arc::new(HookEventStore::new()),
+        );
 
         let cap = wait_capture_contains(&ports, "%wiz", "2. no", 2000).await;
         assert_eq!(detect_state(&cap, &opts(true)), CockpitTerminalState::WaitingInput);
@@ -223,7 +244,11 @@ mod tests {
     async fn capture_pane_feeds_plain_screen_as_idle_or_no_claude() {
         let registry = SessionRegistry::new();
         spawn_session(&registry, "%idle", "/repos/org/app", "printf 'ready> \\n'; sleep 5").await;
-        let ports = PtyPollerPorts::new(Arc::new(registry), throwaway_projects());
+        let ports = PtyPollerPorts::new(
+            Arc::new(registry),
+            throwaway_projects(),
+            Arc::new(HookEventStore::new()),
+        );
 
         let cap = wait_capture_contains(&ports, "%idle", "ready>", 2000).await;
         assert_eq!(detect_state(&cap, &opts(true)), CockpitTerminalState::Idle);
@@ -240,7 +265,11 @@ mod tests {
         let registry = SessionRegistry::new();
         let s = spawn_session(&registry, "%1", "/repos/charlie/app", "sleep 5").await;
         let expected_pid = s.pid() as i64;
-        let ports = PtyPollerPorts::new(Arc::new(registry), throwaway_projects());
+        let ports = PtyPollerPorts::new(
+            Arc::new(registry),
+            throwaway_projects(),
+            Arc::new(HookEventStore::new()),
+        );
 
         let windows = ports.list_work_windows().await;
         assert_eq!(windows.len(), 1);
@@ -268,7 +297,11 @@ mod tests {
         let registry = SessionRegistry::new();
         spawn_session(&registry, "%b", "/repos/org/b", "sleep 5").await;
         spawn_session(&registry, "%a", "/repos/org/a", "sleep 5").await;
-        let ports = PtyPollerPorts::new(Arc::new(registry), throwaway_projects());
+        let ports = PtyPollerPorts::new(
+            Arc::new(registry),
+            throwaway_projects(),
+            Arc::new(HookEventStore::new()),
+        );
 
         let ids: Vec<String> = ports
             .list_work_windows()
@@ -287,7 +320,11 @@ mod tests {
     #[tokio::test]
     async fn capture_pane_of_unknown_pane_is_empty() {
         let registry = SessionRegistry::new();
-        let ports = PtyPollerPorts::new(Arc::new(registry), throwaway_projects());
+        let ports = PtyPollerPorts::new(
+            Arc::new(registry),
+            throwaway_projects(),
+            Arc::new(HookEventStore::new()),
+        );
         assert_eq!(ports.capture_pane("%missing").await, "");
         assert!(ports.list_work_windows().await.is_empty());
     }
@@ -315,6 +352,7 @@ mod tests {
         let ports = PtyPollerPorts::new(
             Arc::new(registry),
             ClaudeProjectsAdapter::new(tmp.path().to_path_buf()),
+            Arc::new(HookEventStore::new()),
         );
 
         assert!(!ports.ps_snapshot().await.is_empty());

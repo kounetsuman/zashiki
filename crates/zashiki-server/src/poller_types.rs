@@ -33,6 +33,15 @@ pub struct Slices {
     pub mtime_age_sec: f64,
 }
 
+/// The last hook event for a sid with its age (seconds), read from the shared hook-event store. The
+/// age is computed by the infra (mirroring `Slices.mtime_age_sec`) so `resolve_state`'s freshness gate
+/// stays a pure decision in the poller.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HookEventAge {
+    pub event: zashiki_core::session_state::HookEvent,
+    pub age_sec: f64,
+}
+
 /// The infra boundary the poller depends on (onion port). Implementations are the real-I/O adapter and test stubs.
 /// It requires `Send` on the returned futures so tasks can be spawned onto a timer-driven task (the impl side can
 /// still satisfy this as a plain `async fn`; RPITIT).
@@ -57,6 +66,12 @@ pub trait PollerPorts {
         _cwd: &str,
         _sid: &str,
     ) -> impl Future<Output = Option<SessionUsageData>> + Send {
+        async { None }
+    }
+    /// The last recorded Claude Code hook event for `sid` (None if hooks are unconfigured or nothing
+    /// recorded). Read from the shared hook-event store; feeds `resolve_state`. Defaulted to None so
+    /// stubs that do not exercise the event layer need not implement it.
+    fn last_hook_event(&self, _sid: &str) -> impl Future<Output = Option<HookEventAge>> + Send {
         async { None }
     }
 }

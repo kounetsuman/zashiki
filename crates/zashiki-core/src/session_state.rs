@@ -233,14 +233,27 @@ fn digits_then_dot(chars: &[char], skip_ws: bool) -> bool {
     chars.get(i) == Some(&'.')
 }
 
-/// Whether it is a numbered-choice wizard (awaiting user input). If there is a selection-cursor
-/// line with `❯` and two or more choice lines in the `N.` form, it is considered waiting.
+/// Whether it is a numbered-choice wizard (awaiting user input): the bottom-most `❯` on screen is a
+/// selection cursor over a choice (`❯\s*[0-9]+\.`) and there are two or more `N.` choice lines.
+///
+/// Anchoring on the *bottom-most* `❯` (rather than scanning the whole capture) is what rejects a
+/// phantom bell: a live wizard replaces the input box, so its cursor is the lowest `❯`; an idle or
+/// running session always renders the input box below any content, whose bare `❯` prompt is the lowest
+/// `❯` — so wizard-like text quoted in the history above the input box does not match.
 pub fn is_wizard(capture: &str) -> bool {
-    let lines: Vec<&str> = capture.split('\n').collect();
-    if !lines.iter().any(|line| has_cursor_number(line)) {
+    let bottom_cursor_is_choice = capture
+        .split('\n')
+        .rev()
+        .find(|line| line.contains('❯'))
+        .is_some_and(|line| has_cursor_number(line));
+    if !bottom_cursor_is_choice {
         return false;
     }
-    lines.iter().filter(|line| is_numbered_line(line)).count() >= 2
+    capture
+        .split('\n')
+        .filter(|line| is_numbered_line(line))
+        .count()
+        >= 2
 }
 
 /// Options for `detect_state`. An empty-string marker falls to the default (like zsh `${VAR:-default}`).
@@ -294,6 +307,18 @@ pub struct TranscriptEvent {
     pub interrupted: bool,
 }
 
+/// The freshness window (seconds): the larger of twice the poll interval or 30 seconds. An invalid
+/// poll falls to the default 2 seconds. Shared by the jsonl fallback, the running-subagent count, and
+/// the hook-event arbitration so their staleness cutoffs stay in lockstep.
+fn fresh_window_sec(poll_sec: f64) -> f64 {
+    let poll = if poll_sec.is_finite() && poll_sec > 0.0 {
+        poll_sec
+    } else {
+        2.0
+    };
+    (2.0 * poll).max(30.0)
+}
+
 /// The jsonl fallback for when there is neither a spinner nor a wizard on screen (`Running` or
 /// `Idle`). It rescues to running only when the most recent event is a user event (the pre-render
 /// race right after sending), and lets a stale, stuck user event fall to idle.
@@ -302,13 +327,7 @@ pub fn fallback_state(
     mtime_age_sec: Option<f64>,
     poll_sec: f64,
 ) -> CockpitTerminalState {
-    let poll = if poll_sec.is_finite() && poll_sec > 0.0 {
-        poll_sec
-    } else {
-        2.0
-    };
-    let max_age_sec = (2.0 * poll).max(30.0);
-    let fresh = matches!(mtime_age_sec, Some(age) if age <= max_age_sec);
+    let fresh = matches!(mtime_age_sec, Some(age) if age <= fresh_window_sec(poll_sec));
     match last_event {
         Some(ev) if matches!(ev.kind, TranscriptKind::User) && !ev.interrupted && fresh => {
             CockpitTerminalState::Running
@@ -317,15 +336,56 @@ pub fn fallback_state(
     }
 }
 
-/// The mtime freshness threshold (seconds) for the running-subagent count. The larger of twice the
-/// poll interval or 30 seconds (the same freshness rule as fallback_state). An invalid poll falls to the default 2 seconds.
+/// The mtime freshness threshold (seconds) for the running-subagent count (the shared freshness rule).
 pub fn subagent_fresh_within_sec(poll_sec: f64) -> f64 {
-    let poll = if poll_sec.is_finite() && poll_sec > 0.0 {
-        poll_sec
-    } else {
-        2.0
-    };
-    (2.0 * poll).max(30.0)
+    fresh_window_sec(poll_sec)
+}
+
+/// The freshness threshold (seconds) for a recorded hook event to stay authoritative for
+/// `resolve_state` (the shared freshness rule). Beyond it, arbitration yields to the screen scrape.
+pub fn hook_event_fresh_within_sec(poll_sec: f64) -> f64 {
+    fresh_window_sec(poll_sec)
+}
+
+/// A Claude Code hook event's authoritative meaning for the waiting-input dimension. Mirrors the wire
+/// `HookKind` (the domain cannot depend on the server's protocol type). The canonical spec is `resolve_state`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HookEvent {
+    /// `Notification` — Claude is waiting for the user.
+    Waiting,
+    /// `Stop` — the turn ended.
+    Done,
+    /// `UserPromptSubmit` — the user submitted a prompt.
+    Prompt,
+    /// `PostToolUse` — a tool ran mid-turn.
+    Tool,
+}
+
+/// Arbitrates the *waiting-input* dimension between the screen scrape and the last hook event, when a
+/// fresh event exists. Only the bell is arbitrated; the scrape keeps authority over running / idle /
+/// bg (hooks do not know subagent counts or bg panels). `has_claude=false` preserves the process-truth
+/// scrape (`NoClaude` / `Starting`) untouched. A `waiting` event promotes to the bell (catching a
+/// wizard the scrape missed); `done` / `prompt` / `tool` clear only a phantom scrape bell (to idle for
+/// `done`, running for `prompt` / `tool`). With no fresh event the scrape is returned unchanged.
+pub fn resolve_state(
+    scrape: CockpitTerminalState,
+    last_hook_event: Option<HookEvent>,
+    fresh: bool,
+    has_claude: bool,
+) -> CockpitTerminalState {
+    if !has_claude {
+        return scrape;
+    }
+    match last_hook_event.filter(|_| fresh) {
+        Some(HookEvent::Waiting) => CockpitTerminalState::WaitingInput,
+        Some(HookEvent::Done) if scrape == CockpitTerminalState::WaitingInput => {
+            CockpitTerminalState::Idle
+        }
+        Some(HookEvent::Prompt | HookEvent::Tool) if scrape == CockpitTerminalState::WaitingInput => {
+            CockpitTerminalState::Running
+        }
+        _ => scrape,
+    }
 }
 
 /// An approximation that counts as running the fresh ones within the threshold, from the list of
@@ -1010,6 +1070,141 @@ mod tests {
             CockpitTerminalState::Unknown,
         ] {
             assert_eq!(apply_startup_grace(s, 1, 3), s);
+        }
+    }
+
+    // ---- is_wizard bottom-anchored (phantom-bell fix) ----
+
+    // Wizard-like text quoted in the history body, with the live idle input box below it. A
+    // whole-capture scan misfires as waiting_input; anchoring on the bottom-most `❯` (the bare input
+    // prompt) does not.
+    const CAP_WIZARD_HISTORY_QUOTE_THEN_IDLE: &str = "過去ログ: ❯ 1. Yes\n  2. No\n⏺ 承知しました。\n╭───╮\n│ ❯ │\n╰───╯\n  ? for shortcuts";
+
+    // A tall 5-option prompt whose selected `❯ 1.` cursor sits far above the bottom (wrapped options +
+    // a footer). A fixed bottom-line window would push the cursor out and drop the bell.
+    const CAP_WIZARD_TALL_CURSOR_ABOVE_WINDOW: &str = "Do you want to proceed?\n❯ 1. Yes\n  2. Option two wraps to a\n     continuation line\n  3. Option three wraps to a\n     continuation line\n  4. Option four wraps to a\n     continuation line\n  5. No, and tell Claude what to do differently (esc)\n  ? for shortcuts";
+
+    // A running session whose output happens to quote a numbered choice, with the input box (running
+    // spinner keeps it) as the bottom-most `❯`.
+    const CAP_RUN_WITH_QUOTED_CHOICE: &str = "⏺ 例: ❯ 1. Yes\n  2. No のような選択肢\n✻ Simmering… (esc to interrupt · ctrl+t)\n╭───╮\n│ ❯ │\n╰───╯";
+
+    #[test]
+    fn wizard_quoted_in_history_is_not_waiting_input() {
+        assert!(!is_wizard(CAP_WIZARD_HISTORY_QUOTE_THEN_IDLE));
+        assert_eq!(
+            detect_state(CAP_WIZARD_HISTORY_QUOTE_THEN_IDLE, &claude()),
+            CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
+    fn wizard_still_detected_when_choices_sit_at_the_bottom() {
+        assert!(is_wizard(CAP_WIZARD_WITH_MARKER));
+        assert!(is_wizard(CAP_WIZARD_80_WRAPPED_OPTION));
+    }
+
+    #[test]
+    fn wizard_detected_when_cursor_pushed_far_above_the_bottom() {
+        assert!(is_wizard(CAP_WIZARD_TALL_CURSOR_ABOVE_WINDOW));
+        assert_eq!(
+            detect_state(CAP_WIZARD_TALL_CURSOR_ABOVE_WINDOW, &claude()),
+            CockpitTerminalState::WaitingInput
+        );
+    }
+
+    #[test]
+    fn quoted_choice_above_the_input_box_is_not_waiting_input() {
+        assert!(!is_wizard(CAP_RUN_WITH_QUOTED_CHOICE));
+        assert_eq!(
+            detect_state(CAP_RUN_WITH_QUOTED_CHOICE, &claude()),
+            CockpitTerminalState::Running
+        );
+    }
+
+    // ---- resolve_state (event-authoritative arbitration) ----
+
+    #[test]
+    fn hook_event_fresh_within_sec_matches_shared_rule() {
+        assert_eq!(hook_event_fresh_within_sec(2.0), 30.0);
+        assert_eq!(hook_event_fresh_within_sec(20.0), 40.0);
+        assert_eq!(hook_event_fresh_within_sec(0.0), 30.0);
+    }
+
+    #[test]
+    fn resolve_without_event_is_scrape() {
+        for s in [
+            CockpitTerminalState::Idle,
+            CockpitTerminalState::Running,
+            CockpitTerminalState::RunningBgAgent,
+            CockpitTerminalState::WaitingInput,
+        ] {
+            assert_eq!(resolve_state(s, None, true, true), s);
+        }
+    }
+
+    #[test]
+    fn resolve_stale_event_is_scrape() {
+        assert_eq!(
+            resolve_state(CockpitTerminalState::Idle, Some(HookEvent::Waiting), false, true),
+            CockpitTerminalState::Idle
+        );
+        assert_eq!(
+            resolve_state(CockpitTerminalState::WaitingInput, Some(HookEvent::Done), false, true),
+            CockpitTerminalState::WaitingInput
+        );
+    }
+
+    #[test]
+    fn resolve_fresh_waiting_promotes_to_bell() {
+        for s in [
+            CockpitTerminalState::Idle,
+            CockpitTerminalState::Running,
+            CockpitTerminalState::RunningBgAgent,
+        ] {
+            assert_eq!(
+                resolve_state(s, Some(HookEvent::Waiting), true, true),
+                CockpitTerminalState::WaitingInput
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_fresh_done_clears_phantom_bell_to_idle() {
+        assert_eq!(
+            resolve_state(CockpitTerminalState::WaitingInput, Some(HookEvent::Done), true, true),
+            CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
+    fn resolve_fresh_prompt_or_tool_clears_phantom_bell_to_running() {
+        for ev in [HookEvent::Prompt, HookEvent::Tool] {
+            assert_eq!(
+                resolve_state(CockpitTerminalState::WaitingInput, Some(ev), true, true),
+                CockpitTerminalState::Running
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_non_waiting_events_leave_a_non_bell_scrape_untouched() {
+        // done/prompt/tool clear only a phantom bell; a scrape that is not WaitingInput is kept as-is.
+        for ev in [HookEvent::Done, HookEvent::Prompt, HookEvent::Tool] {
+            assert_eq!(
+                resolve_state(CockpitTerminalState::Running, Some(ev), true, true),
+                CockpitTerminalState::Running
+            );
+            assert_eq!(
+                resolve_state(CockpitTerminalState::RunningBgAgent, Some(ev), true, true),
+                CockpitTerminalState::RunningBgAgent
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_without_claude_preserves_process_truth() {
+        for s in [CockpitTerminalState::NoClaude, CockpitTerminalState::Starting] {
+            assert_eq!(resolve_state(s, Some(HookEvent::Waiting), true, false), s);
         }
     }
 }

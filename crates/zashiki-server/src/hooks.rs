@@ -165,6 +165,18 @@ fn notify_kind_of(kind: HookKind) -> Option<NotifyKind> {
     }
 }
 
+/// Maps a wire hook kind to its domain [`HookEvent`] for the shared store (a 1:1 crossing of the
+/// web-adapter / domain seam).
+pub fn hook_event_of(kind: HookKind) -> zashiki_core::session_state::HookEvent {
+    use zashiki_core::session_state::HookEvent;
+    match kind {
+        HookKind::Waiting => HookEvent::Waiting,
+        HookKind::Done => HookEvent::Done,
+        HookKind::Prompt => HookEvent::Prompt,
+        HookKind::Tool => HookEvent::Tool,
+    }
+}
+
 /// Decide the side-effect plan from the hook kind, resolution result, and delivery settings.
 /// `snap_title` is the "current title of the resolved window" used for the mac notification body (empty string if absent).
 pub fn decide(

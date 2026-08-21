@@ -90,6 +90,7 @@ mod ws_control_tests {
             launch_claude: false,
             terms: Arc::new(std::sync::Mutex::new(TermRegistry::new())),
             sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
+            hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             mac_notify: std::sync::Arc::new(|_| {}),
