@@ -159,10 +159,15 @@ export function SearchView({
           type="text"
           aria-label={t("search.ariaLabel")}
           placeholder="Search"
+          autoCorrect="off"
+          autoCapitalize="off"
+          autoComplete="off"
+          spellCheck={false}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") void runSearch();
+            if (e.key === "Enter" && !e.nativeEvent.isComposing)
+              void runSearch();
           }}
         />
         <span className="search-options">
