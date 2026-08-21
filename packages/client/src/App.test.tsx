@@ -1167,6 +1167,48 @@ describe("App", () => {
     expect(mainArea?.classList.contains("view-inactive")).toBe(true);
   });
 
+  it("opening a file from the explorer activates the viewer and dims the explorer", async () => {
+    const control = createFakeAppControl();
+    const { session } = fakeAppSession();
+    const fsApi: FsApi = {
+      repos: () =>
+        Promise.resolve({
+          repos: [{ org: "org1", repo: "repo-a", path: "/ws/org1/repo-a" }],
+        }),
+      list: () =>
+        Promise.resolve({
+          entries: [{ name: "app.ts", kind: "file" }],
+          truncated: false,
+        }),
+    };
+    const { container } = render(
+      <App
+        control={control}
+        session={session}
+        gitApi={fakeGitApi}
+        fsApi={fsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        reposApi={fakeReposApi}
+        viewStorage={null}
+      />,
+    );
+    const repoRow = await screen.findByText("repo-a");
+    await act(async () => void fireEvent.click(repoRow));
+    const fileRow = await screen.findByText("app.ts");
+
+    // The explorer holds focus before the open (the bug's precondition).
+    act(() => (fileRow.closest("button") as HTMLElement).focus());
+    const explorer = container.querySelector('[data-view="explorer"]');
+    const mainArea = container.querySelector('[data-view="main"]');
+    expect(explorer?.classList.contains("view-inactive")).toBe(false);
+
+    // Opening the file moves focus (and the active view) to the viewer.
+    await act(async () => void fireEvent.click(fileRow));
+    expect(mainArea?.classList.contains("view-inactive")).toBe(false);
+    expect(explorer?.classList.contains("view-inactive")).toBe(true);
+  });
+
   it("single selection: only one selected view is shown, and the session list stays permanently pinned", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();

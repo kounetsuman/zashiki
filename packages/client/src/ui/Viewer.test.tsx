@@ -84,6 +84,29 @@ describe("Viewer", () => {
     );
   });
 
+  it("focuses its main-area section when the focus nonce changes (drives activeView to main)", () => {
+    const { container, rerender } = render(
+      <Viewer
+        buffer={base}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={0}
+      />,
+    );
+    const section = container.querySelector('[data-view="main"]');
+    expect(section?.getAttribute("tabindex")).toBe("-1");
+
+    rerender(
+      <Viewer
+        buffer={base}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={1}
+      />,
+    );
+    expect(document.activeElement).toBe(section);
+  });
+
   it("calls onTogglePreview on toggle click", () => {
     const onTogglePreview = vi.fn();
     render(

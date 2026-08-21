@@ -241,9 +241,12 @@ export function App({
     activeViewerKey !== null ? (viewerBuffers[activeViewerKey] ?? null) : null;
 
   // Open a file as a viewer tab (from explorer/search). ensureBuffer fires a read if not yet loaded.
+  // Bumping the nonce moves focus to the viewer so it becomes the active view (un-dims it).
+  const [viewerFocusNonce, setViewerFocusNonce] = useState(0);
   const openViewer = useCallback(
     (repoPath: string, relPath: string): void => {
       openViewerTab(ensureBuffer(repoPath, relPath));
+      setViewerFocusNonce((n) => n + 1);
     },
     [openViewerTab, ensureBuffer],
   );
@@ -487,6 +490,7 @@ export function App({
                 onTogglePreview={() => toggleViewerPreview(activeViewerKey)}
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
                 inactive={activeView !== "main"}
+                focusNonce={viewerFocusNonce}
               />
             )}
           </div>
