@@ -148,6 +148,8 @@ describe("clientMessageSchema", () => {
     [{ t: "state.refresh" }],
     [{ t: "config.update", language: "ja" }],
     [{ t: "config.update", language: "en" }],
+    [{ t: "config.setAccountUsage", enabled: true }],
+    [{ t: "config.setAccountUsage", enabled: false }],
     [{ t: "update.check" }],
     [{ t: "update.perform" }],
   ])("accepts: %j", (msg) => {
@@ -162,6 +164,8 @@ describe("clientMessageSchema", () => {
     [{ t: "state.sync", cockpitTerminals: [], orgs: [] }], // server→client message
     [{ t: "config.update", language: "fr" }], // unsupported language
     [{ t: "config.update" }], // language missing
+    [{ t: "config.setAccountUsage" }], // enabled missing
+    [{ t: "config.setAccountUsage", enabled: "yes" }], // enabled not a boolean
     [{ t: "nope" }],
     ["hello"],
     [null],
@@ -234,6 +238,7 @@ describe("serverMessageSchema", () => {
         notifySound: true,
         updateCheck: true,
         language: "ja",
+        accountUsage: true,
       },
     ],
     [
@@ -242,6 +247,7 @@ describe("serverMessageSchema", () => {
         notifySound: false,
         updateCheck: false,
         language: null,
+        accountUsage: false,
       },
     ],
     [{ t: "update.check.result", status: "available", version: "0.2.0" }],
@@ -253,7 +259,7 @@ describe("serverMessageSchema", () => {
     expect(serverMessageSchema.parse(msg)).toEqual(msg);
   });
 
-  it("defaults omitted config.sync updateCheck/language (compatible with old servers)", () => {
+  it("defaults omitted config.sync updateCheck/language/accountUsage (compatible with old servers)", () => {
     expect(
       serverMessageSchema.parse({
         t: "config.sync",
@@ -264,6 +270,7 @@ describe("serverMessageSchema", () => {
       notifySound: true,
       updateCheck: true,
       language: null,
+      accountUsage: false,
     });
   });
 

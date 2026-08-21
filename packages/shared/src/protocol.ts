@@ -230,6 +230,15 @@ export const configUpdateSchema = z.object({
 });
 
 /**
+ * Opt-in toggle for the account-usage bridge (SETTINGS / the footer modal). The server persists it to
+ * config.json and distributes config.sync; the launch-time statusLine injection reads it per launch.
+ */
+export const configSetAccountUsageSchema = z.object({
+  t: z.literal("config.setAccountUsage"),
+  enabled: z.boolean(),
+});
+
+/**
  * On-demand "Check for updates" from SETTINGS. The server checks GitHub Releases immediately
  * and replies with `update.check.result`; a newer version also arrives as a notification.
  */
@@ -257,6 +266,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   stateRefreshSchema,
   notificationDismissSchema,
   configUpdateSchema,
+  configSetAccountUsageSchema,
   updateCheckSchema,
   updatePerformSchema,
 ]);
@@ -327,6 +337,8 @@ export const configSyncSchema = z.object({
   updateCheck: z.boolean().catch(true).default(true),
   /** Persisted display language (null when unset, i.e. deferred to the client's browser detection). */
   language: z.enum(["ja", "en"]).nullable().default(null),
+  /** Whether the account-usage bridge is opted in (defaults off; omitted by old servers). */
+  accountUsage: z.boolean().catch(false).default(false),
 });
 
 /**

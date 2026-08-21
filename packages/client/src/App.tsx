@@ -41,6 +41,7 @@ import type { TermAttachStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
 import { tabKey } from "./tabs/tab-model.js";
 import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
+import { AccountUsageModal } from "./ui/AccountUsageModal.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
 import { CockpitTerminalListView } from "./ui/CockpitTerminalListView.js";
 import { CrashReportModal } from "./ui/CrashReportModal.js";
@@ -149,6 +150,8 @@ export function App({
   const terminalRenderer = useXtermRenderer();
   const clipboardEdit = useClipboardEditEnabled();
   const [addOrgOpen, setAddOrgOpen] = useState(false);
+  const [accountUsage, setAccountUsage] = useState(false);
+  const [accountUsageModalOpen, setAccountUsageModalOpen] = useState(false);
   const { crashLog, dismissCrash } = useCrashReport(crashApi);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
   const [viewStorage] = useState(() =>
@@ -346,10 +349,19 @@ export function App({
     return control.onMessage((m) => {
       if (m.t !== "config.sync") return;
       notifier.applyServerConfig(m.notifySound);
+      setAccountUsage(m.accountUsage);
       // Apply the display language if the config file has one (unset = null keeps browser detection).
       if (m.language) void i18n.changeLanguage(m.language);
     });
   }, [control, notifier]);
+
+  const saveAccountUsage = useCallback(
+    (enabled: boolean): void => {
+      setAccountUsage(enabled);
+      control.send({ t: "config.setAccountUsage", enabled });
+    },
+    [control],
+  );
 
   // Apply a SETTINGS language change immediately and persist it to config.json. After
   // persisting, watch -> config.sync distributes it to all connections, reflecting it in other clients too.
@@ -573,6 +585,8 @@ export function App({
               onCheckForUpdates={checkForUpdates}
               clipboardEditModal={clipboardEdit.enabled}
               onSetClipboardEditModal={clipboardEdit.setEnabled}
+              accountUsage={accountUsage}
+              onSetAccountUsage={saveAccountUsage}
               renderer={terminalRenderer.renderer}
               onSetRenderer={terminalRenderer.setRenderer}
               onOpenDevtools={canOpenDevtools() ? openDevtools : undefined}
@@ -587,6 +601,14 @@ export function App({
           api={reposApi}
           onClose={() => setAddOrgOpen(false)}
           onAdded={(org) => flashCopyToast(t("addOrg.added", { org }))}
+        />
+      )}
+      {accountUsageModalOpen && (
+        <AccountUsageModal
+          enabled={accountUsage}
+          runningCount={cockpitTerminals.filter((s) => s.sid).length}
+          onEnable={() => saveAccountUsage(true)}
+          onClose={() => setAccountUsageModalOpen(false)}
         />
       )}
       {crashLog !== null && (
@@ -607,7 +629,11 @@ export function App({
         />
       )}
       <footer className="status-bar">
-        <AccountUsageFooter limits={accountLimits} />
+        <AccountUsageFooter
+          limits={accountLimits}
+          enabled={accountUsage}
+          onRequestEnable={() => setAccountUsageModalOpen(true)}
+        />
         {abnormal !== null && <span className="status-error">{abnormal}</span>}
         <LimitIndicator count={limitedCount} />
         <FooterViewTabs

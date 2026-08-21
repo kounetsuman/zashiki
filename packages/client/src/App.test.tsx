@@ -293,6 +293,7 @@ describe("App", () => {
         notifySound: true,
         updateCheck: true,
         language: "en",
+        accountUsage: false,
       }),
     );
     expect(i18n.language).toBe("en");
@@ -943,6 +944,7 @@ describe("App", () => {
         notifySound: false,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       });
     });
     expect(notifier.isEnabled()).toBe(false);
@@ -952,6 +954,7 @@ describe("App", () => {
         notifySound: true,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       });
     });
     expect(notifier.isEnabled()).toBe(true);

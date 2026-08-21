@@ -221,6 +221,7 @@ mod ws_control_tests {
                 notify_sound: true,
                 update_check: true,
                 language: None,
+                account_usage: false,
             },
             vec![],
             snapshot("@1"),

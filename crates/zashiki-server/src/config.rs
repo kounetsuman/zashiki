@@ -45,29 +45,34 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
         notify_sound: field("notifySound", true),
         update_check: field("updateCheck", true),
         language,
+        account_usage: field("accountUsage", false),
     }
 }
 
-/// Write the display language into config.json (read the existing JSON, update only the
-/// `language` key, and write it back atomically). Existing fields (notifySound/debug/unknown
-/// keys) are preserved. After the write, the watch picks up the mtime change and publishes
-/// config.sync to all connections. Atomic replacement (temp→rename) keeps the watch from
-/// reading half-written JSON (consistent with the parse-failure = keep-previous contract).
-pub fn write_config_language(path: &Path, language: &str) -> std::io::Result<()> {
+/// Merge a single key into config.json and write it back atomically. Existing fields (including
+/// unknown keys) are preserved. After the write, the watch picks up the mtime change and publishes
+/// config.sync to all connections. Atomic replacement (temp→rename) keeps the watch from reading
+/// half-written JSON (consistent with the parse-failure = keep-previous contract).
+fn write_config_field(path: &Path, key: &str, value: serde_json::Value) -> std::io::Result<()> {
     let mut obj = match read_json(path) {
         Some(serde_json::Value::Object(m)) => m,
         _ => serde_json::Map::new(),
     };
-    obj.insert(
-        "language".to_string(),
-        serde_json::Value::String(language.to_string()),
-    );
+    obj.insert(key.to_string(), value);
     let text = serde_json::to_string_pretty(&serde_json::Value::Object(obj))? + "\n";
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir)?;
     let tmp = dir.join(".config.json.tmp");
     std::fs::write(&tmp, text)?;
     std::fs::rename(&tmp, path)
+}
+
+pub fn write_config_language(path: &Path, language: &str) -> std::io::Result<()> {
+    write_config_field(path, "language", serde_json::Value::String(language.to_string()))
+}
+
+pub fn write_config_account_usage(path: &Path, enabled: bool) -> std::io::Result<()> {
+    write_config_field(path, "accountUsage", serde_json::Value::Bool(enabled))
 }
 
 /// Read the live-applied settings along with whether they were read successfully.
@@ -196,6 +201,28 @@ mod tests {
         let path = dir.path().join("nested/config.json");
         write_config_language(&path, "ja").unwrap();
         assert_eq!(read_config(&path).language, Some("ja".into()));
+    }
+
+    #[test]
+    fn parse_config_account_usage_defaults_off_and_reads_bool() {
+        assert!(!parse(json!({})).account_usage);
+        assert!(parse(json!({"accountUsage": true})).account_usage);
+        assert!(!parse(json!({"accountUsage": "yes"})).account_usage);
+    }
+
+    #[test]
+    fn write_config_account_usage_sets_and_preserves_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"language": "en"}"#).unwrap();
+
+        write_config_account_usage(&path, true).unwrap();
+        let c = read_config(&path);
+        assert!(c.account_usage);
+        assert_eq!(c.language, Some("en".into())); // existing fields are preserved
+
+        write_config_account_usage(&path, false).unwrap();
+        assert!(!read_config(&path).account_usage);
     }
 
     #[test]

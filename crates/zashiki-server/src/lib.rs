@@ -35,6 +35,7 @@ pub mod session_persist;
 pub mod session_registry;
 pub mod session_restore;
 pub mod session_status;
+pub mod statusline_hook;
 pub mod status_poller;
 pub mod term_attach_pty;
 pub mod token;

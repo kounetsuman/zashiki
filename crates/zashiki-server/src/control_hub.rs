@@ -116,6 +116,7 @@ impl ControlHub {
                 notify_sound: state.config.notify_sound,
                 update_check: state.config.update_check,
                 language: state.config.language.clone(),
+                account_usage: state.config.account_usage,
             },
             ServerMessage::NotificationsSync {
                 items: state.notifications.clone(),
@@ -196,6 +197,7 @@ impl ControlHub {
             notify_sound: config.notify_sound,
             update_check: config.update_check,
             language: config.language.clone(),
+            account_usage: config.account_usage,
         };
         self.inner.write().unwrap().config = config;
         let _ = self.tx.send(msg);
@@ -205,6 +207,12 @@ impl ControlHub {
     /// task reads this each poll so disabling it in config.json stops the github.com egress without a restart (#26).
     pub fn update_check_enabled(&self) -> bool {
         self.inner.read().unwrap().config.update_check
+    }
+
+    /// Whether the account-usage bridge is opted in (the live `accountUsage` config flag). Read per launch
+    /// so toggling the opt-in applies to the next launched claude without a restart.
+    pub fn account_usage_enabled(&self) -> bool {
+        self.inner.read().unwrap().config.account_usage
     }
 
     /// Stores the notification list and broadcasts notifications.sync to all connections.
@@ -443,6 +451,7 @@ mod tests {
                 notify_sound: true,
                 update_check: true,
                 language: None,
+                account_usage: false,
             },
             vec![],
             snapshot_with("@1"),
@@ -553,6 +562,7 @@ mod tests {
             notify_sound: true,
             update_check: true,
             language: Some("en".into()),
+            account_usage: false,
         });
         assert!(matches!(
             rx.recv().await.unwrap(),

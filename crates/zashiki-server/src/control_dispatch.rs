@@ -66,6 +66,23 @@ pub(crate) async fn handle_client_message(
             }
             true
         }
+        // Persist the account-usage opt-in and broadcast config.sync (like the language change). Takes
+        // effect on the next launched claude via the launch-time --settings injection.
+        ClientMessage::ConfigSetAccountUsage { enabled } => {
+            if let Some(path) = &services.config_path {
+                if let Err(e) = crate::config::write_config_account_usage(path, enabled) {
+                    return report_error(
+                        socket,
+                        &services.hub,
+                        "config_write_failed",
+                        &format!("config の書き込みに失敗しました: {e}"),
+                    )
+                    .await;
+                }
+                services.hub.publish_config(crate::config::read_config(path));
+            }
+            true
+        }
         // On-demand "Check for updates" (SETTINGS): run the check now (ignoring the background egress
         // flag — explicit user intent) and reply with the outcome so the UI can show feedback. A newer
         // version also flows to all clients as a notification via run_manual_check.

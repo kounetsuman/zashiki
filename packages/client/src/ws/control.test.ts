@@ -165,6 +165,7 @@ describe("ControlClient", () => {
         notifySound: false,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       },
     ]);
   });
@@ -189,6 +190,7 @@ describe("ControlClient", () => {
         notifySound: false,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       },
     ]);
   });

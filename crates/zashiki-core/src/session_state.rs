@@ -165,19 +165,26 @@ pub fn is_limit_reached(capture: &str, marker: &str) -> bool {
         .any(|line| line.to_lowercase().contains(&needle))
 }
 
-/// Whether background subagents are running. The only hint is the bottom agent-group panel
-/// (the heading `⏺ main` + a line-start marker line for each running agent).
-/// To avoid false positives: it requires the heading to co-occur, and limits the marker to a match
-/// at the line start (the first non-whitespace char) followed immediately by whitespace.
+/// Whether the live background-agent panel (`⏺ main` heading directly above line-start `◯ ` agent
+/// lines, wraps allowed) is anchored at the bottom of the pane, matched by contiguity from the bottom.
 pub fn has_bg_agent(capture: &str, marker: &str) -> bool {
-    let window = bottom_non_empty_lines(capture);
-    if !window.iter().any(|line| line.contains("⏺ main")) {
-        return false;
-    }
+    let lines: Vec<&str> = capture
+        .split('\n')
+        .filter(|l| has_non_whitespace(l))
+        .collect();
     let needle = format!("{marker} ");
-    window
-        .iter()
-        .any(|line| js_trim_start(line).starts_with(&needle))
+    let mut saw_agent = false;
+    for line in lines.iter().rev() {
+        if line.contains("⏺ main") {
+            return saw_agent;
+        }
+        if js_trim_start(line).starts_with(&needle) {
+            saw_agent = true;
+        } else if line.starts_with(|c: char| !is_js_whitespace(c)) {
+            return false;
+        }
+    }
+    false
 }
 
 /// Whether the line contains a spot where `❯` is followed (optionally with whitespace) by `[0-9]+.` (`/❯\s*[0-9]+\./`).
@@ -377,6 +384,9 @@ mod tests {
     const CAP_SHORT_RUN: &str = "a\n(esc to interrupt)";
     const CAP_BG: &str = "✻ Waiting for 1 background agent to finish\n\n───\n❯\n───\n  1.4Mトークン/回\n  ⏵⏵ bypass ... ← for agents\n\n  ⏺ main\n  ◯ general-purpose  作業  29s · ↓ 9.7k tokens";
     const CAP_BG_MULTI: &str = "  ⏺ main\n  ◯ general-purpose  A  1s\n  ◯ Explore  B  2s";
+    const CAP_BG_MANY_AGENTS: &str = "✻ Waiting for 8 background agents to finish… (ctrl+t to view)\n╭──────────────────────────────────────╮\n│ ❯                                     │\n╰──────────────────────────────────────╯\n  ⏵⏵ bypass permissions\n  ⏺ main\n  ◯ general-purpose  探索1  9s · ↓ 1.2k tokens\n  ◯ Explore  探索2  8s · ↓ 1.1k tokens\n  ◯ Explore  探索3  8s\n  ◯ general-purpose  探索4  7s\n  ◯ Explore  探索5  6s\n  ◯ Explore  探索6  5s\n  ◯ general-purpose  探索7  4s\n  ◯ Explore  探索8  3s";
+    const CAP_BG_WRAPPED_OVERFLOW: &str = "✻ Waiting for 4 background agents to finish… (ctrl+t to view)\n╭──────────────────────────────────────╮\n│ ❯                                     │\n╰──────────────────────────────────────╯\n  ⏺ main\n  ◯ general-purpose  session_state の検出ロジックと既存テストの依存を洗い出す\n    長い説明  9s · ↓ 3.1k tokens\n  ◯ Explore  client 側の状態アイコン描画経路を確認する説明が折り返されて\n    いる  7s · ↓ 2.0k tokens\n  ◯ Explore  server の status_poller の組み立てを追う説明も折り返されて\n    いる  5s · ↓ 1.4k tokens\n  ◯ general-purpose  jsonl 解析の last event 判定を確認する  3s";
+    const CAP_BG_STALE_SCROLLED: &str = "  ⏺ main\n  ◯ general-purpose  A  9s\n⏺ 調査が完了しました。\n╭──────────────────────────────────────╮\n│ ❯                                     │\n╰──────────────────────────────────────╯\n  ? for shortcuts";
     const CAP_BG_INPUT_BOX: &str =
         "✻ Brewed for 1m\n───\n❯ これは ◯ について\n───\n  token\n  ⏵⏵ bypass ... ← for agents";
     const CAP_BG_HEADING_BUT_INLINE_CIRCLE: &str =
@@ -479,6 +489,30 @@ mod tests {
         assert_eq!(
             detect_state(CAP_BG_MULTI, &claude()),
             CockpitTerminalState::RunningBgAgent
+        );
+    }
+
+    #[test]
+    fn bg_many_agents_push_heading_out_of_window_still_running_bg_agent() {
+        assert_eq!(
+            detect_state(CAP_BG_MANY_AGENTS, &claude()),
+            CockpitTerminalState::RunningBgAgent
+        );
+    }
+
+    #[test]
+    fn bg_wrapped_agents_overflow_still_running_bg_agent() {
+        assert_eq!(
+            detect_state(CAP_BG_WRAPPED_OVERFLOW, &claude()),
+            CockpitTerminalState::RunningBgAgent
+        );
+    }
+
+    #[test]
+    fn bg_stale_panel_scrolled_above_input_box_is_idle() {
+        assert_eq!(
+            detect_state(CAP_BG_STALE_SCROLLED, &claude()),
+            CockpitTerminalState::Idle
         );
     }
 

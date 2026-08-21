@@ -160,7 +160,8 @@
       "session": "Current session",
       "week": "Current week",
       "sessionTitle": "Claude Code current session (5-hour) usage",
-      "weekTitle": "Claude Code current week usage"
+      "weekTitle": "Claude Code current week usage",
+      "enableTitle": "Show Claude Code account usage (click to enable)"
     }
   },
   "update": {
@@ -198,12 +199,21 @@
     "updateUpToDate": "You're on the latest version.",
     "updateError": "Couldn't check for updates.",
     "clipboardEditModal": "Show clipboard edit on copy",
+    "accountUsage": "Show account usage in the footer",
     "devSection": "Developer mode",
     "renderer": "Terminal renderer",
     "rendererWebgl": "WebGL",
     "rendererDom": "DOM",
     "openDevtools": "Open DevTools",
     "openDebugPanel": "Open debug panel"
+  },
+  "accountUsage": {
+    "title": "Show Claude Code account usage",
+    "body": "Relay Claude Code's 5-hour and weekly account usage to the footer. zashiki wires it up per launch without editing your ~/.claude settings.",
+    "subscriptionNote": "Usage appears only for Claude.ai Pro/Max sessions, after the first response.",
+    "resumeNote": "{{count}} running cockpit terminal(s) will show usage only after you resume them.",
+    "enable": "Enable",
+    "close": "Close"
   },
   "addOrg": {
     "title": "Add org",

@@ -32,7 +32,12 @@ pub struct ResumePlan {
 /// [`crate::session_launch::claude_resume_payload`]). Pass a resolved absolute path as `claude_program` to guard
 /// against a thin PATH. UUID validation of the sid also defends against mixing arbitrary strings into a shell
 /// command ([`is_uuid_sid`]). cwd resolution is done by the caller (the rebuild in [`crate::session_persist`]).
-pub fn plan_resume(entry: &SaveEntry, shell: &str, claude_program: &str) -> Option<ResumePlan> {
+pub fn plan_resume(
+    entry: &SaveEntry,
+    shell: &str,
+    claude_program: &str,
+    settings: Option<&str>,
+) -> Option<ResumePlan> {
     if !is_uuid_sid(&entry.sid) {
         return None;
     }
@@ -40,7 +45,7 @@ pub fn plan_resume(entry: &SaveEntry, shell: &str, claude_program: &str) -> Opti
         program: shell.to_string(),
         args: vec![
             "-lc".to_string(),
-            crate::session_launch::claude_resume_payload(claude_program, &entry.sid),
+            crate::session_launch::claude_resume_payload(claude_program, &entry.sid, settings),
         ],
         cwd: entry.cwd.clone(),
     })
@@ -110,7 +115,7 @@ mod tests {
 
     #[test]
     fn plan_resume_builds_claude_resume_for_uuid_sid() {
-        let plan = plan_resume(&entry("w1", "/tmp/x", &UUID_A.to_uppercase()), "/bin/zsh", "/abs/claude")
+        let plan = plan_resume(&entry("w1", "/tmp/x", &UUID_A.to_uppercase()), "/bin/zsh", "/abs/claude", None)
             .expect("uuid sid should plan a resume");
         assert_eq!(plan.program, "/bin/zsh");
         assert_eq!(
@@ -127,8 +132,8 @@ mod tests {
 
     #[test]
     fn plan_resume_skips_non_uuid_sid() {
-        assert!(plan_resume(&entry("w1", "/tmp/x", "workspace"), "/bin/sh", "claude").is_none());
-        assert!(plan_resume(&entry("w1", "/tmp/x", ""), "/bin/sh", "claude").is_none());
+        assert!(plan_resume(&entry("w1", "/tmp/x", "workspace"), "/bin/sh", "claude", None).is_none());
+        assert!(plan_resume(&entry("w1", "/tmp/x", ""), "/bin/sh", "claude", None).is_none());
     }
 
     /// Injection-defense regression: a sid containing shell metacharacters fails the UUID shape and yields `None` (it never reaches the command string).
@@ -142,7 +147,7 @@ mod tests {
             "../../etc/passwd",
         ] {
             assert!(
-                plan_resume(&entry("w", "/tmp", evil), "/bin/sh", "claude").is_none(),
+                plan_resume(&entry("w", "/tmp", evil), "/bin/sh", "claude", None).is_none(),
                 "metachar sid must not plan a resume: {evil:?}"
             );
         }
