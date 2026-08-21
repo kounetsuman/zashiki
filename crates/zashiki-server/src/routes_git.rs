@@ -230,7 +230,7 @@ mod git_file_rest_tests {
             opened.lock().unwrap().push((repo_path, file));
         });
         build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(fx.conf.clone()),
             open_file: Some(open_file),
             // Small so that 413 can be verified cheaply.
@@ -592,7 +592,7 @@ mod git_file_rest_tests {
         let fx = fixture();
         let max = crate::file::FILE_MAX_BYTES;
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(fx.conf.clone()),
             file_max_bytes: Some(max),
             ..Default::default()

@@ -6,6 +6,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use secrecy::{ExposeSecret as _, SecretString};
 use zashiki_server::runtime::{spawn_control_runtime, ControlRuntimeConfig};
 
 fn home() -> PathBuf {
@@ -63,15 +64,24 @@ async fn main() {
         .unwrap_or(8790);
     // If ZK_TOKEN is not explicitly set, generate a random token at startup and,
     // for CLI/sidecar integration, write it with mode 0600 to ZK_TOKEN_FILE (default ~/.zashiki/token; the write happens after listen succeeds).
-    let token = std::env::var("ZK_TOKEN")
-        .ok()
-        .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| {
-            zashiki_server::token::generate_token().expect("generate token from /dev/urandom")
-        });
+    let token = SecretString::new(
+        std::env::var("ZK_TOKEN")
+            .ok()
+            .filter(|t| !t.is_empty())
+            .unwrap_or_else(|| {
+                zashiki_server::token::generate_token().expect("generate token from /dev/urandom")
+            }),
+    );
     let token_file = std::env::var_os("ZK_TOKEN_FILE")
         .map(PathBuf::from)
         .unwrap_or_else(|| home().join(".zashiki/token"));
+
+    // ZK_SERVER_LOG overrides; default under ~/Library/Logs, skipped when HOME is unset.
+    let log_path = std::env::var_os("ZK_SERVER_LOG").map(PathBuf::from).or_else(|| {
+        let home = std::env::var_os("HOME").filter(|h| !h.is_empty())?;
+        Some(PathBuf::from(home).join("Library/Logs/zashiki/server.log"))
+    });
+    let _log_guard = zashiki_server::logging::init(log_path, Some(&token));
 
     // Read the stderr tail before this boot appends its own lines. ZK_SERVER_ERR_LOG overrides the path.
     let err_log = std::env::var_os("ZK_SERVER_ERR_LOG")
@@ -155,8 +165,8 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("bind 127.0.0.1");
-    if let Err(e) = zashiki_server::token::write_token_file(&token_file, &token) {
-        eprintln!("zashiki-server: token file 書き込み失敗（{}）: {e}", token_file.display());
+    if let Err(e) = zashiki_server::token::write_token_file(&token_file, token.expose_secret()) {
+        tracing::error!("zashiki-server: token file 書き込み失敗（{}）: {e}", token_file.display());
     }
 
     // A marker left by the previous run means it never reached shutdown_signal. Checked after bind so a
@@ -164,7 +174,7 @@ async fn main() {
     let marker = zashiki_server::crash_report::marker_path(&token_file, port);
     let last_crash = if marker.exists() { prior_log_tail } else { None };
     if let Err(e) = std::fs::write(&marker, []) {
-        eprintln!("zashiki-server: running marker の書き込みに失敗しました（{}）: {e}", marker.display());
+        tracing::error!("zashiki-server: running marker の書き込みに失敗しました（{}）: {e}", marker.display());
     }
 
     // Startup auto-restore: rebuild owned sessions from the last.tsv saved at the previous shutdown.
@@ -185,8 +195,8 @@ async fn main() {
         .await
         {
             Ok(0) => {}
-            Ok(n) => eprintln!("zashiki-server: 前回のセッションを {n} 件復元しました"),
-            Err(e) => eprintln!("zashiki-server: 起動時のセッション復元に失敗しました: {e:?}"),
+            Ok(n) => tracing::info!("zashiki-server: 前回のセッションを {n} 件復元しました"),
+            Err(e) => tracing::error!("zashiki-server: 起動時のセッション復元に失敗しました: {e:?}"),
         }
     }
 
@@ -210,7 +220,7 @@ async fn main() {
     );
 
     let app = zashiki_server::build_router(zashiki_server::ServerConfig {
-        expected_token: Some(token.clone()),
+        expected_token: Some(token),
         client_dist,
         repos_conf,
         control: Some(control),
@@ -222,8 +232,8 @@ async fn main() {
         saves_dir: Some(saves_dir.clone()),
         last_crash,
     });
-    eprintln!("zashiki-server listening on http://{addr}");
-    eprintln!("token file: {}", token_file.display());
+    tracing::info!("zashiki-server listening on http://{addr}");
+    tracing::info!("token file: {}", token_file.display());
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal(registry, saves_dir, autosave, marker))
         .await
@@ -271,7 +281,7 @@ async fn shutdown_signal(
     .await
     .is_err()
     {
-        eprintln!(
+        tracing::warn!(
             "zashiki-server: graceful shutdown が {SHUTDOWN_BUDGET:?} を超過。ベストエフォートで終了します"
         );
     }

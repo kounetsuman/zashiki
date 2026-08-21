@@ -282,7 +282,7 @@ mod repos_add_rest_tests {
 
     fn app(conf: std::path::PathBuf) -> axum::Router {
         build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(conf),
             ..Default::default()
         })
@@ -394,7 +394,7 @@ mod repos_add_rest_tests {
         let mut rx = services.hub.subscribe();
 
         let router = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(conf.clone()),
             control: Some(services),
             ..Default::default()

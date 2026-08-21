@@ -17,6 +17,7 @@ pub mod hook_event_store;
 pub mod hooks;
 pub mod jsonl;
 pub mod launchd;
+pub mod logging;
 pub mod lsof;
 pub mod mac_notifier;
 pub mod notifications;
@@ -98,7 +99,7 @@ use tower_http::services::ServeDir;
 #[derive(Default)]
 pub struct ServerConfig {
     /// Expected token. If unset, token-required routes always return 401 (fail-safe).
-    pub expected_token: Option<String>,
+    pub expected_token: Option<secrecy::SecretString>,
     /// Client dist (no static serving if None).
     pub client_dist: Option<PathBuf>,
     /// Path to repos.conf (if None, `/api/fs/repos` returns empty).
@@ -250,7 +251,7 @@ mod tests {
 
     fn router(token: Option<&str>) -> Router {
         build_router(ServerConfig {
-            expected_token: token.map(str::to_string),
+            expected_token: token.map(|t| secrecy::SecretString::new(t.to_string())),
             ..Default::default()
         })
     }
@@ -454,7 +455,7 @@ mod tests {
         std::fs::write(&conf, format!("{}\n", root.path().join("org1").display())).unwrap();
 
         let app = build_router(ServerConfig {
-            expected_token: Some("s3cret".to_string()),
+            expected_token: Some(secrecy::SecretString::new("s3cret".to_string())),
             repos_conf: Some(conf),
             ..Default::default()
         });
@@ -473,7 +474,7 @@ mod tests {
     #[tokio::test]
     async fn last_crash_is_idempotent_until_acked() {
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             last_crash: Some("panicked at 'boom'".to_string()),
             ..Default::default()
         });
@@ -504,7 +505,7 @@ mod tests {
     #[tokio::test]
     async fn last_crash_requires_a_token() {
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             last_crash: Some("boom".to_string()),
             ..Default::default()
         });
@@ -522,7 +523,7 @@ mod tests {
         let conf = root.path().join("repos.conf");
         std::fs::write(&conf, format!("{}\n", root.path().join("org1").display())).unwrap();
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(conf),
             ..Default::default()
         });
@@ -577,7 +578,7 @@ mod tests {
         let conf = root.path().join("repos.conf");
         std::fs::write(&conf, format!("{}\n", orgdir.display())).unwrap();
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(conf),
             ..Default::default()
         });
@@ -604,7 +605,7 @@ mod tests {
         // A degenerate `/` root must not blank the list (its empty org would fail the client schema).
         std::fs::write(&conf, format!("/\n{}\n", orgdir.display())).unwrap();
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(conf),
             ..Default::default()
         });
@@ -617,7 +618,7 @@ mod tests {
     #[tokio::test]
     async fn repos_list_is_empty_without_a_conf() {
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             ..Default::default()
         });
         let (s, body) = request(app, "/api/repos/list?token=t", Some(OK_HOST), &[]).await;
@@ -635,7 +636,7 @@ mod tests {
         let conf = root.path().join("repos.conf");
         std::fs::write(&conf, format!("{}\n", dup.display())).unwrap();
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(conf),
             ..Default::default()
         });
@@ -697,7 +698,7 @@ mod tests {
         let conf = root.path().join("repos.conf");
         std::fs::write(&conf, format!("{}\n", ws.join("workshop").display())).unwrap();
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(conf),
             ..Default::default()
         });

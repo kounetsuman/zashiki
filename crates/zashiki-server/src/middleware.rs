@@ -19,7 +19,8 @@ pub(crate) async fn require_token(
         .get("x-zashiki-token")
         .and_then(|v| v.to_str().ok());
     let query_token = token_from_query(req.uri().query());
-    let ok = match state.expected_token.as_deref() {
+    let expected = state.expected_token.as_ref().as_ref().map(secrecy::ExposeSecret::expose_secret);
+    let ok = match expected {
         Some(expected) if !expected.is_empty() => {
             token_matches(query_token, expected) || token_matches(header, expected)
         }

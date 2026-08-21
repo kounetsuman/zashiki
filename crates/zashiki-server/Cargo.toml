@@ -35,6 +35,14 @@ uuid = { version = "1", features = ["v4"] }
 ureq = { version = "2", default-features = false, features = ["tls"] }
 # 起動中バンドルと最新リリースの semver 比較（1.0.0-rc.1 < 1.0.0 の prerelease 順序を含む）。
 semver = "1"
+# 永続ログ（stderr とローテーションファイルの二系統）。env-filter で出力レベルを絞る。
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# サイズ上限つきローテーション（tracing-appender は時間ベースのみで総量を絞れない）。non_blocking で I/O をワーカースレッドへ逃がす。
+tracing-appender = "0.2"
+file-rotate = "0.7"
+# トークンを平文のまま持ち回らず、Debug/ログへの誤露出を型で禁じる。
+secrecy = "0.8"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

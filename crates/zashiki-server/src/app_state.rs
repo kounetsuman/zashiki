@@ -19,7 +19,7 @@ pub(crate) type ScanCache = Arc<tokio::sync::Mutex<Option<(Instant, Vec<repos::S
 
 #[derive(Clone)]
 pub(crate) struct AppState {
-    pub(crate) expected_token: Arc<Option<String>>,
+    pub(crate) expected_token: Arc<Option<secrecy::SecretString>>,
     pub(crate) repos_conf: Arc<Option<PathBuf>>,
     pub(crate) control: Option<ControlServices>,
     pub(crate) editor: Arc<String>,
