@@ -39,7 +39,14 @@ async fn new_owned_session(
     let shell = crate::session_restore::login_shell();
     // A missing cwd falls back to $HOME, and claude is resolved to an absolute path before launch to guard against a thin PATH.
     let cwd = crate::session_launch::resolve_cwd(root);
-    let claude = crate::session_launch::resolve_claude_program();
+    let claude = crate::session_launch::resolve_program_path("claude");
+    if services.launch_claude && claude.is_none() {
+        services.hub.record_boundary_failure(
+            crate::notifications::BoundaryFailure::ClaudeMissing,
+            crate::now_ms(),
+        );
+    }
+    let claude = claude.unwrap_or_else(|| "claude".to_string());
     let settings =
         crate::session_launch::account_usage_settings(services.hub.account_usage_enabled());
     let plan = crate::session_launch::plan_new_session(

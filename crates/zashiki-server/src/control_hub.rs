@@ -309,6 +309,29 @@ impl ControlHub {
         let _ = self.tx.send(ServerMessage::NotificationsSync { items });
     }
 
+    /// Surfaces an external-dependency boundary failure (missing binary / unreadable settings) as a Warn
+    /// NOTIFICATION. The fixed id per cause upserts so repeated failures refresh one entry rather than stacking.
+    pub fn record_boundary_failure(
+        &self,
+        failure: crate::notifications::BoundaryFailure,
+        now_ms: u64,
+    ) {
+        let items = {
+            let mut state = self.inner.write().unwrap();
+            let created = now_ms.max(state.last_notification_at + 1);
+            state.last_notification_at = created;
+            let n = crate::notifications::boundary_notification(failure, created);
+            let next = crate::notifications::append_notification(
+                &state.notifications,
+                n,
+                crate::notifications::NOTIFICATIONS_MAX,
+            );
+            state.notifications = next.clone();
+            next
+        };
+        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+    }
+
     /// Enqueues an "update available" announcement into NOTIFICATION and broadcasts notifications.sync (#26).
     /// The per-version id coalesces repeated daily polls of the same latest version (upsert), while a newer
     /// version stacks as a new entry. createdAt is kept monotonically increasing like the other record_* methods.
@@ -695,6 +718,39 @@ mod tests {
         // The error is enqueued by +1'ing the same last_notification_at as activity, so it is at the head in newest-first order.
         assert_eq!(second[0].id, "e");
         assert_eq!(second[0].created_at, 1001);
+    }
+
+    #[tokio::test]
+    async fn record_boundary_failure_appends_warn_and_upserts_by_cause() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+        hub.record_boundary_failure(crate::notifications::BoundaryFailure::RgMissing, 1000);
+        hub.record_boundary_failure(crate::notifications::BoundaryFailure::RgMissing, 1000);
+        let _first = next_notifications(&mut rx).await;
+        let second = next_notifications(&mut rx).await;
+        // The same cause upserts into one entry (refreshed timestamp), staying a Warn.
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].id, "boundary:rg-missing");
+        assert_eq!(second[0].created_at, 1001);
+        assert_eq!(second[0].level, crate::protocol::NotificationLevel::Warn);
+        assert_eq!(
+            second[0].title,
+            crate::notifications::BoundaryFailure::RgMissing.title()
+        );
+    }
+
+    #[tokio::test]
+    async fn record_boundary_failure_keeps_distinct_causes_separate() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+        hub.record_boundary_failure(crate::notifications::BoundaryFailure::RgMissing, 1000);
+        hub.record_boundary_failure(crate::notifications::BoundaryFailure::ClaudeMissing, 1000);
+        let _first = next_notifications(&mut rx).await;
+        let second = next_notifications(&mut rx).await;
+        assert_eq!(second.len(), 2);
+        let ids: std::collections::HashSet<_> = second.iter().map(|n| n.id.as_str()).collect();
+        assert!(ids.contains("boundary:rg-missing"));
+        assert!(ids.contains("boundary:claude-missing"));
     }
 
     #[tokio::test]

@@ -35,6 +35,14 @@ pub(crate) async fn search_route(
             &search::DEFAULT_SEARCH_LIMITS,
         ))
         .into_response(),
-        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "ripgrep unavailable").into_response(),
+        Err(_) => {
+            if let Some(control) = &state.control {
+                control.hub.record_boundary_failure(
+                    crate::notifications::BoundaryFailure::RgMissing,
+                    crate::now_ms(),
+                );
+            }
+            (StatusCode::INTERNAL_SERVER_ERROR, "ripgrep unavailable").into_response()
+        }
     }
 }

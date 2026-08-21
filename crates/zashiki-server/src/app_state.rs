@@ -58,20 +58,27 @@ pub(crate) fn resolve_editor<'a>(configured: Option<&'a str>, fallback: &'a str)
         .unwrap_or(fallback)
 }
 
-/// Default editor launch (splits `ZK_EDITOR` into argv, appends `<file>` at the end, and spawns; does not wait for exit).
-pub(crate) fn spawn_editor(editor: &str, repo_path: &str, file: &str) {
+/// Default editor launch (splits `ZK_EDITOR` into argv, appends `<file>` at the end, and spawns; does not
+/// wait for exit). `Err` reports that the editor binary could not be launched — an empty command, or a
+/// `spawn()` failure of argv[0] (not found / not executable); it cannot see a launcher that spawns then
+/// mishandles the file. The caller decides whether to surface it.
+pub(crate) fn spawn_editor(editor: &str, repo_path: &str, file: &str) -> std::io::Result<()> {
     let argv = parse_editor_command(editor);
     let Some((cmd, args)) = argv.split_first() else {
-        return;
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "ZK_EDITOR is empty",
+        ));
     };
     let abs = std::path::Path::new(repo_path).join(file);
-    let _ = std::process::Command::new(cmd)
+    std::process::Command::new(cmd)
         .args(args)
         .arg(abs)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
-        .spawn();
+        .spawn()
+        .map(|_| ())
 }
 
 /// Scans repos.conf (run under spawn_blocking since it is blocking I/O). The result is reused only for the
@@ -103,7 +110,25 @@ pub(crate) fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_editor;
+    use super::{resolve_editor, spawn_editor};
+
+    #[test]
+    fn spawn_editor_errors_on_missing_binary() {
+        let err = spawn_editor("zashiki-no-such-editor-xyz", "/tmp", "file.txt");
+        assert!(err.is_err(), "a non-existent editor binary must surface as Err");
+    }
+
+    #[test]
+    fn spawn_editor_errors_on_empty_command() {
+        assert!(spawn_editor("   ", "/tmp", "file.txt").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn spawn_editor_ok_for_launchable_command() {
+        // `true` exists and ignores its args, standing in for an editor that launches cleanly.
+        assert!(spawn_editor("true", "/tmp", "file.txt").is_ok());
+    }
 
     #[test]
     fn resolve_editor_prefers_configured_over_fallback() {

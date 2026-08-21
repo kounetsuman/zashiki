@@ -61,7 +61,22 @@ fn empty_snapshot() -> StateSnapshot {
 pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     let hub = ControlHub::new(config.config, Vec::new(), empty_snapshot());
     let claude_settings = crate::claude_settings_io::ClaudeSettingsPaths::resolve();
-    hub.publish_hooks_status(crate::claude_settings_io::current_status(&claude_settings));
+    let (hooks_status, settings_unreadable) =
+        crate::claude_settings_io::current_status_with_readability(&claude_settings);
+    hub.publish_hooks_status(hooks_status);
+    if settings_unreadable {
+        hub.record_boundary_failure(
+            crate::notifications::BoundaryFailure::SettingsUnreadable,
+            crate::now_ms(),
+        );
+    }
+    // Boot-time counterpart to the session.new claude check, so a missing claude surfaces before the first launch.
+    if config.launch_claude && crate::session_launch::resolve_program_path("claude").is_none() {
+        hub.record_boundary_failure(
+            crate::notifications::BoundaryFailure::ClaudeMissing,
+            crate::now_ms(),
+        );
+    }
     let config_path = config.config_path;
     if let Some(path) = config_path.clone() {
         spawn_config_watch(path, hub.clone(), CONFIG_POLL);

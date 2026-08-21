@@ -60,9 +60,17 @@ pub(crate) async fn git_open(State(state): State<AppState>, body: axum::body::By
     match state.open_file.clone() {
         Some(open) => open(repo_path, file),
         None => {
-            let configured = state.control.as_ref().and_then(|c| c.hub.editor_command());
+            let control = state.control.as_ref();
+            let configured = control.and_then(|c| c.hub.editor_command());
             let editor = resolve_editor(configured.as_deref(), state.editor.as_str());
-            spawn_editor(editor, &repo_path, &file);
+            if spawn_editor(editor, &repo_path, &file).is_err() {
+                if let Some(control) = control {
+                    control.hub.record_boundary_failure(
+                        crate::notifications::BoundaryFailure::EditorFailed,
+                        crate::now_ms(),
+                    );
+                }
+            }
         }
     }
     json_ok()
