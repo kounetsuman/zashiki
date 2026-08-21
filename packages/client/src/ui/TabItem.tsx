@@ -21,6 +21,8 @@ export interface TabItemProps {
   onClose(key: string): void;
   /** Pre-bound context-menu opener, or undefined when the tab has no menu. */
   onContextMenu?: (e: React.MouseEvent) => void;
+  /** Ref to the tab's root element; wired for the active tab so the bar can scroll it into view. */
+  rootRef?: React.Ref<HTMLDivElement>;
 }
 
 /** A single tab: org dot, icon + label (or inline rename input), and close button. */
@@ -37,6 +39,7 @@ export function TabItem({
   onActivate,
   onClose,
   onContextMenu,
+  rootRef,
 }: TabItemProps) {
   const { t } = useTranslation();
   const key = tabKey(tab);
@@ -55,6 +58,7 @@ export function TabItem({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: DnD drop target for tab reordering (interaction is on the role="tab" button; keyboard reordering is handled separately)
     <div
+      ref={rootRef}
       className={`tab${active ? " tab-active" : ""}${
         dragging ? " tab-dragging" : ""
       }${dropTarget ? " tab-drag-over" : ""}`}

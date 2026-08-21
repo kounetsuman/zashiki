@@ -6,3 +6,11 @@
 import i18n from "./i18n/index.js";
 
 void i18n.changeLanguage("ja");
+
+// jsdom lacks scrollIntoView (the tab bar calls it); the Element guard skips the node environment.
+if (
+  typeof Element !== "undefined" &&
+  typeof Element.prototype.scrollIntoView !== "function"
+) {
+  Element.prototype.scrollIntoView = () => {};
+}

@@ -1,4 +1,5 @@
 import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
+import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
 import { type Tab, tabKey } from "../tabs/tab-model.js";
@@ -71,6 +72,11 @@ export function TabBar({
       (onCopySessionId !== undefined ? 1 : 0),
   );
 
+  // Scroll the tab into view the moment it becomes active (ref fires on attach).
+  const scrollActiveIntoView = useCallback((node: HTMLDivElement | null) => {
+    node?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, []);
+
   if (tabs.length === 0) return null;
 
   return (
@@ -97,6 +103,7 @@ export function TabBar({
         return (
           <TabItem
             key={key}
+            rootRef={key === activeKey ? scrollActiveIntoView : undefined}
             tab={tab}
             active={key === activeKey}
             label={label}
