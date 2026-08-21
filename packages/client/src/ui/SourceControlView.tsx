@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 import type { GitApi } from "../api/git.js";
 import { GitRepoBlock, type GitTreeHandlers } from "./GitRepoBlock.js";
 import { Loading } from "./Loading.js";
-import { RefreshButton, type RefreshState } from "./RefreshButton.js";
 import {
   groupByOrg,
   isFlatOrg,
@@ -37,8 +36,10 @@ export function SourceControlView({
   inactive,
 }: SourceControlViewProps) {
   const { t } = useTranslation();
-  const { repos, skipped, error, loading, refreshing, refetch, setError } =
-    useGitStatus(api, onGitDirty);
+  const { repos, skipped, error, loading, refetch, setError } = useGitStatus(
+    api,
+    onGitDirty,
+  );
   const { copiedKey, copy } = useGitCopyFeedback(setError, copyText);
   const { messages, setMessage, commit, onCommitKeyDown } = useCommitDraft(
     api,
@@ -119,26 +120,12 @@ export function SourceControlView({
     );
   };
 
-  // Prioritize the spinner while fetching; show the warning icon if an error remains after settling.
-  const refreshState: RefreshState = refreshing
-    ? "loading"
-    : error !== null
-      ? "error"
-      : "idle";
-
   return (
     <section
       className={viewClass("git-view", inactive)}
       data-view="sourceControl"
     >
-      <ViewHeader title="SOURCE CONTROL">
-        <RefreshButton
-          state={refreshState}
-          label="refresh"
-          error={error}
-          onClick={() => void refetch()}
-        />
-      </ViewHeader>
+      <ViewHeader title="SOURCE CONTROL" />
       {error !== null && <div className="git-error">{error}</div>}
       {error === null && loading && <Loading />}
       {error === null && !loading && skipped.length > 0 && (

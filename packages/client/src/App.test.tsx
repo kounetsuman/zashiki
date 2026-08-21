@@ -738,24 +738,6 @@ describe("App", () => {
     expect(control.sent.some((m) => m.t === "cockpitTerminal.new")).toBe(false);
   });
 
-  it("the refresh button sends state.refresh", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "一覧を更新" }));
-    expect(control.sent).toEqual([{ t: "state.refresh" }]);
-  });
-
   it("on term.reconnect, reattaches the pty via session.reconnect", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();

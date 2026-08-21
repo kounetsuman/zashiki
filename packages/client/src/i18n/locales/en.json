@@ -60,9 +60,6 @@
   },
   "sessionList": {
     "ariaLabel": "Session list",
-    "refreshLabel": "Refresh list",
-    "refreshNotConnected": "Not connected (wait for the connection and retry)",
-    "refreshTimeout": "Refresh timed out",
     "limitReached": "Usage limit reached",
     "addOrg": "Add org",
     "orgToggleTitle": "{{org}} (click to fold / + for new session / Ctrl-N)",
