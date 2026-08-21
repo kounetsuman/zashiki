@@ -200,6 +200,9 @@
     "updateError": "アップデートを確認できませんでした。",
     "clipboardEditModal": "コピー時にクリップボード編集を表示",
     "accountUsage": "フッタにアカウント使用率を表示",
+    "hooksIntegration": "Claude Code 連携（通知・使用率フッタ）",
+    "hooksIntegrationHint": "zashiki の hooks と statusLine を ~/.claude/settings.json に登録し、通知・即時更新・使用率フッタを有効にします。",
+    "hooksConflictHint": "既存の statusLine があります。有効化すると、それをラップして zashiki と併存させます。",
     "devSection": "開発モード",
     "renderer": "ターミナルレンダラ",
     "rendererWebgl": "WebGL",
@@ -214,6 +217,14 @@
     "resumeNote": "起動中の cockpit ターミナル {{count}} 件は、resume するまで使用率が表示されません。",
     "enable": "有効化",
     "close": "閉じる"
+  },
+  "firstRun": {
+    "title": "Claude Code 連携をセットアップ",
+    "body": "zashiki の hooks と statusLine を ~/.claude/settings.json に登録し、プッシュ通知・状態の即時更新・アカウント使用率フッタを有効にします。冪等で、既存の設定は保持されます。",
+    "preserveNote": "追加されるのは zashiki のエントリのみで、設定からいつでも削除できます。",
+    "statusLineConflict": "既存の statusLine は保持されます（ラップして表示を維持します）。",
+    "enable": "有効化",
+    "notNow": "後で"
   },
   "addOrg": {
     "title": "組織を追加",

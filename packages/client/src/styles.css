@@ -1836,6 +1836,12 @@ body {
   cursor: pointer;
 }
 
+.settings-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #777;
+}
+
 .settings-select {
   background: #1e1e1e;
   border: 1px solid #333;

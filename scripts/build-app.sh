@@ -48,6 +48,12 @@ cp "crates/zashiki-server/target/release/zashiki-server" \
 rm -rf "$tauri_dir/client-dist"
 cp -R "packages/client/dist" "$tauri_dir/client-dist"
 
+# hooks/ も resources 経由で Contents/Resources/hooks へ入る（sidecar_config.rs の bundled_hooks_dir と一致）。
+rm -rf "$tauri_dir/hooks"
+cp -R "hooks" "$tauri_dir/hooks"
+# 登録先の絶対パスを Claude Code が直接起動するため、同梱コピーに実行ビットを保証する。
+chmod +x "$tauri_dir/hooks/"*.sh
+
 if [ "$prepare_only" = true ]; then
   echo "==> --prepare-only: 同梱物の配置まで完了（tauri build はスキップ）"
   exit 0

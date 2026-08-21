@@ -83,6 +83,10 @@ pub(crate) async fn handle_client_message(
             }
             true
         }
+        // Install/remove zashiki's Claude Code integration in ~/.claude/settings.json, then broadcast
+        // the fresh status to every connection.
+        ClientMessage::HooksRegister => apply_hooks_change(socket, services, true).await,
+        ClientMessage::HooksUnregister => apply_hooks_change(socket, services, false).await,
         // On-demand "Check for updates" (SETTINGS): run the check now (ignoring the background egress
         // flag — explicit user intent) and reply with the outcome so the UI can show feedback. A newer
         // version also flows to all clients as a notification via run_manual_check.
@@ -191,6 +195,34 @@ pub(crate) async fn handle_client_message(
         ClientMessage::TermAck { term_id, bytes } => {
             services.terms.lock().unwrap().apply_ack(&term_id, bytes);
             true
+        }
+    }
+}
+
+/// Registers or unregisters zashiki's integration in ~/.claude/settings.json and broadcasts the
+/// resulting hooks.status. A write failure returns an error dialog and leaves the file untouched.
+async fn apply_hooks_change(socket: &mut WebSocket, services: &ControlServices, register: bool) -> bool {
+    let Some(paths) = services.claude_settings.as_ref() else {
+        return report_error(socket, &services.hub, "hooks_unavailable", "settings path is not available").await;
+    };
+    let result = if register {
+        crate::claude_settings_io::apply_register(paths)
+    } else {
+        crate::claude_settings_io::apply_unregister(paths)
+    };
+    match result {
+        Ok(status) => {
+            services.hub.publish_hooks_status(status);
+            true
+        }
+        Err(e) => {
+            report_error(
+                socket,
+                &services.hub,
+                "hooks_write_failed",
+                &format!("~/.claude/settings.json の書き込みに失敗しました: {e}"),
+            )
+            .await
         }
     }
 }

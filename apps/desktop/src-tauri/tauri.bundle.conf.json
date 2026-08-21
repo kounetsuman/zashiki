@@ -3,7 +3,8 @@
   "bundle": {
     "externalBin": ["binaries/zashiki-server"],
     "resources": {
-      "client-dist": "client-dist"
+      "client-dist": "client-dist",
+      "hooks": "hooks"
     }
   }
 }

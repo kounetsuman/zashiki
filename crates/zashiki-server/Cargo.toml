@@ -11,7 +11,9 @@ axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "sync", "time", "signal"] }
 serde = { version = "1", features = ["derive"] }
 # rg --json（JSONL）のパース。transcript(jsonl) のイベント読みにも使う。
-serde_json = "1"
+# preserve_order: ~/.claude/settings.json をユーザーのキー順のまま読み書きするため（無変更登録が
+# バイト同一の no-op になる前提。claude_settings のマージ・冪等性の要）。
+serde_json = { version = "1", features = ["preserve_order"] }
 # jsonl タイトル抽出でのスラッシュコマンドのメタタグ除去。
 regex = "1"
 # 静的配信（client dist）+ CORS（dev の webview は localhost:5173 から 127.0.0.1:8790 を叩く＝

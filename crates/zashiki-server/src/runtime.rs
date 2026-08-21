@@ -60,6 +60,8 @@ fn empty_snapshot() -> StateSnapshot {
 /// immediate re-evaluation via state.refresh.
 pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     let hub = ControlHub::new(config.config, Vec::new(), empty_snapshot());
+    let claude_settings = crate::claude_settings_io::ClaudeSettingsPaths::resolve();
+    hub.publish_hooks_status(crate::claude_settings_io::current_status(&claude_settings));
     let config_path = config.config_path;
     if let Some(path) = config_path.clone() {
         spawn_config_watch(path, hub.clone(), CONFIG_POLL);
@@ -115,6 +117,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         notify_mode: config.notify_mode,
         mac_notify: config.mac_notify,
         config_path,
+        claude_settings: Some(claude_settings),
         app_version,
     }
 }

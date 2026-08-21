@@ -133,6 +133,14 @@ pub enum ClientMessage {
     /// config.json and distributed via config.sync, like the language change.
     #[serde(rename = "config.setAccountUsage", rename_all = "camelCase")]
     ConfigSetAccountUsage { enabled: bool },
+    /// Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run
+    /// wizard or SETTINGS). Idempotent merge; the resulting hooks.status is broadcast.
+    #[serde(rename = "hooks.register")]
+    HooksRegister,
+    /// Remove only zashiki's entries from ~/.claude/settings.json (restoring any wrapped legacy
+    /// statusLine). The resulting hooks.status is broadcast.
+    #[serde(rename = "hooks.unregister")]
+    HooksUnregister,
     /// On-demand "Check for updates" from SETTINGS. The server checks GitHub Releases now and replies
     /// with an `update.check.result` (a newer version additionally lands as a notification).
     #[serde(rename = "update.check")]
@@ -296,6 +304,16 @@ pub enum ServerMessage {
     /// and on changes; a full replacement, not a diff).
     #[serde(rename = "notifications.sync")]
     NotificationsSync { items: Vec<Notification> },
+    /// Whether zashiki's Claude Code integration is present in ~/.claude/settings.json (sent right
+    /// after connecting and after each register/unregister). Drives the first-run wizard and the
+    /// SETTINGS toggle. `status_line_conflict` means a non-zashiki statusLine is present (registering
+    /// will wrap it to preserve it).
+    #[serde(rename = "hooks.status", rename_all = "camelCase")]
+    HooksStatus {
+        hooks_registered: bool,
+        status_line_registered: bool,
+        status_line_conflict: bool,
+    },
     /// Reply to a `update.check`, sent only to the requester. `version` carries the newer version when
     /// `status` is `available`, and is null otherwise.
     #[serde(rename = "update.check.result", rename_all = "camelCase")]

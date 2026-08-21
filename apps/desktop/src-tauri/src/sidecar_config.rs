@@ -14,6 +14,10 @@ pub struct Config {
     /// Vite:5173 and does not use the server's static serving, so a dist that is absent at spawn
     /// time is not passed as ZK_CLIENT_DIST).
     pub client_dist: PathBuf,
+    /// The directory holding the bundled hook scripts (notify-event.sh / statusline.sh), passed to the
+    /// server as ZK_HOOKS_DIR so it registers absolute paths into ~/.claude/settings.json. In the
+    /// distributed .app this is `Contents/Resources/hooks`; in dev it is the repo's `hooks/`.
+    pub hooks_dir: PathBuf,
     /// The real bundle version (app.package_info().version), passed to the server as ZK_APP_VERSION so it can
     /// compare against GitHub Releases (#26). The server's own Cargo version stays at the 0.0.0 placeholder, so
     /// this is the only channel carrying the real version. Empty / 0.0.0 (dev) disables the server's update check.
@@ -37,11 +41,15 @@ impl Config {
         let client_dist = std::env::var_os("ZK_CLIENT_DIST")
             .map(PathBuf::from)
             .unwrap_or_else(default_client_dist);
+        let hooks_dir = std::env::var_os("ZK_HOOKS_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(default_hooks_dir);
         Self {
             port,
             token_path,
             server_bin,
             client_dist,
+            hooks_dir,
             // Filled in from app.package_info().version at setup time (main.rs); the env has no real version here.
             app_version: String::new(),
         }
@@ -117,6 +125,26 @@ fn bundled_client_dist(exe_dir: &Path) -> PathBuf {
     exe_dir.join("../Resources/client-dist")
 }
 
+/// Resolves the hook scripts directory: the bundled `Contents/Resources/hooks` in the distributed
+/// .app, else the repository's `hooks/` for dev/standalone runs.
+fn default_hooks_dir() -> PathBuf {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let bundled = bundled_hooks_dir(dir);
+            if bundled.is_dir() {
+                return bundled;
+            }
+        }
+    }
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../hooks")
+}
+
+/// Pure function deriving the bundled hooks dir (Contents/Resources/hooks) from the .app's executable
+/// directory (Contents/MacOS). Corresponds to `bundle.resources` (hooks -> Contents/Resources/hooks).
+fn bundled_hooks_dir(exe_dir: &Path) -> PathBuf {
+    exe_dir.join("../Resources/hooks")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,6 +214,15 @@ mod tests {
         assert_eq!(
             bundled_client_dist(exe_dir),
             PathBuf::from("/Applications/Zashiki.app/Contents/MacOS/../Resources/client-dist")
+        );
+    }
+
+    #[test]
+    fn bundled_hooks_dir_は実行体ディレクトリからresources配下を指す() {
+        let exe_dir = Path::new("/Applications/Zashiki.app/Contents/MacOS");
+        assert_eq!(
+            bundled_hooks_dir(exe_dir),
+            PathBuf::from("/Applications/Zashiki.app/Contents/MacOS/../Resources/hooks")
         );
     }
 }

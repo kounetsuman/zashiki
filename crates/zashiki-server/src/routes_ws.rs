@@ -94,6 +94,7 @@ mod ws_control_tests {
             notify_mode: crate::hooks::NotifyMode::Web,
             mac_notify: std::sync::Arc::new(|_| {}),
             config_path: None,
+            claude_settings: None,
             app_version: None,
         }
     }
@@ -147,12 +148,12 @@ mod ws_control_tests {
         }
     }
 
-    /// Skips the 3 stages sent on connect (config/notifications/state).
+    /// Skips the 4 stages sent on connect (config/notifications/state/hooks.status).
     async fn drain_handshake<S>(ws: &mut S)
     where
         S: StreamExt<Item = Result<TMsg, tokio_tungstenite::tungstenite::Error>> + Unpin,
     {
-        for _ in 0..3 {
+        for _ in 0..4 {
             next_text(ws).await;
         }
     }
@@ -235,6 +236,7 @@ mod ws_control_tests {
             .contains(r#""t":"notifications.sync""#));
         let state = next_text(&mut ws).await;
         assert!(state.contains(r#""t":"state.sync""#) && state.contains("@1"));
+        assert!(next_text(&mut ws).await.contains(r#""t":"hooks.status""#));
 
         // An invalid message -> error response. The error also accumulates into NOTIFICATION.
         ws.send(TMsg::Text("not json".to_string())).await.unwrap();

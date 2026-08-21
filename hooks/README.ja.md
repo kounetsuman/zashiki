@@ -14,6 +14,11 @@
 
 ## セットアップ
 
+アプリから自動登録できる。初回起動時にワンクリックのセットアップウィザードを提示し、SETTINGS には
+「Claude Code 連携」トグルがある。どちらも `~/.claude/settings.json` へ冪等・可逆にマージし、既存の
+hooks/statusLine を保持する（既存 statusLine は `ZK_LEGACY_STATUSLINE` でラップ）。以下の手動登録は
+スタンドアロン/上級者向け。
+
 `~/.claude/settings.json` に登録する（パスは各自のリポジトリ位置に読み替え）:
 
 ```json
@@ -81,4 +86,4 @@
 | `ZK_PORT` | `8790` | POST 先サーバのポート |
 | `ZK_TOKEN_FILE` | `~/.zashiki/token` | トークンファイル（テスト用の差し替え口） |
 | `ZK_LEGACY_NOTIFY` | （空） | 合流先の既存通知スクリプト（実行可能ファイルのみ） |
-| `ZK_LEGACY_STATUSLINE` | （空） | 合流先の既存 statusLine（stdout が描画される・実行可能ファイルのみ） |
+| `ZK_LEGACY_STATUSLINE` | （空） | 合流先の既存 statusLine（`sh -c` 経由で実行＝パスも引数付きコマンドも可。stdout が描画される） |
