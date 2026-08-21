@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use tokio::sync::broadcast;
 
+use crate::claude_settings::RegistrationStatus;
 use crate::control::ConfigView;
 use crate::protocol::{Notification, ServerMessage, CockpitTerminalInfo, UsageLimits};
 use crate::status_poller::StateSnapshot;
@@ -11,6 +12,9 @@ struct HubState {
     config: ConfigView,
     notifications: Vec<Notification>,
     snapshot: StateSnapshot,
+    /// Presence of zashiki's integration in ~/.claude/settings.json, delivered on connect and after
+    /// register/unregister. Defaults to "not registered" until the startup probe (runtime) sets it.
+    hooks_status: RegistrationStatus,
     /// The createdAt of the last enqueued notification. Kept monotonically increasing so
     /// occurrence order is preserved even for bursts within the same millisecond.
     last_notification_at: u64,
@@ -47,6 +51,14 @@ fn merge_rate_limits(sessions: &mut [CockpitTerminalInfo], store: &HashMap<Strin
 pub struct ControlHub {
     inner: RwLock<HubState>,
     tx: broadcast::Sender<ServerMessage>,
+}
+
+pub(crate) fn hooks_status_message(status: RegistrationStatus) -> ServerMessage {
+    ServerMessage::HooksStatus {
+        hooks_registered: status.hooks_registered,
+        status_line_registered: status.status_line_registered,
+        status_line_conflict: status.status_line_conflict,
+    }
 }
 
 pub(crate) fn state_sync_of(snapshot: &StateSnapshot) -> ServerMessage {
@@ -99,6 +111,7 @@ impl ControlHub {
                 snapshot,
                 last_notification_at: 0,
                 rate_limits: HashMap::new(),
+                hooks_status: RegistrationStatus::default(),
             }),
             tx,
         })
@@ -108,8 +121,8 @@ impl ControlHub {
         self.tx.subscribe()
     }
 
-    /// The three messages sent right after connecting (in the order config.sync -> notifications.sync -> state.sync).
-    pub(crate) fn connect_messages(&self) -> [ServerMessage; 3] {
+    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status).
+    pub(crate) fn connect_messages(&self) -> [ServerMessage; 4] {
         let state = self.inner.read().unwrap();
         [
             ServerMessage::ConfigSync {
@@ -122,6 +135,7 @@ impl ControlHub {
                 items: state.notifications.clone(),
             },
             state_sync_of(&state.snapshot),
+            hooks_status_message(state.hooks_status),
         ]
     }
 
@@ -213,6 +227,13 @@ impl ControlHub {
     /// so toggling the opt-in applies to the next launched claude without a restart.
     pub fn account_usage_enabled(&self) -> bool {
         self.inner.read().unwrap().config.account_usage
+    }
+
+    /// Stores the integration status and broadcasts hooks.status to all connections (startup probe
+    /// and after each register/unregister).
+    pub fn publish_hooks_status(&self, status: RegistrationStatus) {
+        self.inner.write().unwrap().hooks_status = status;
+        let _ = self.tx.send(hooks_status_message(status));
     }
 
     /// Stores the notification list and broadcasts notifications.sync to all connections.
@@ -460,6 +481,7 @@ mod tests {
         assert!(matches!(msgs[0], ServerMessage::ConfigSync { .. }));
         assert!(matches!(msgs[1], ServerMessage::NotificationsSync { .. }));
         assert!(matches!(msgs[2], ServerMessage::StateSync { .. }));
+        assert!(matches!(msgs[3], ServerMessage::HooksStatus { .. }));
     }
 
     #[tokio::test]

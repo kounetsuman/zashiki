@@ -1,6 +1,7 @@
 import {
   type ClientMessage,
   claudeSessionId,
+  type HooksStatusMessage,
   resolveOrgColor,
   type ServerMessage,
   type UpdateCheckResultMessage,
@@ -34,6 +35,11 @@ import {
   loadConversationTitles,
   saveConversationTitles,
 } from "./lib/conversation-title.js";
+import {
+  loadFirstRunWizardSeen,
+  saveFirstRunWizardSeen,
+  shouldShowFirstRunWizard,
+} from "./lib/first-run-wizard.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { pickAccountLimits } from "./session/status-footer.js";
@@ -48,6 +54,7 @@ import { CrashReportModal } from "./ui/CrashReportModal.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ErrorDialog } from "./ui/ErrorDialog.js";
 import { ExplorerView } from "./ui/ExplorerView.js";
+import { FirstRunSetupWizard } from "./ui/FirstRunSetupWizard.js";
 import { FooterViewTabs } from "./ui/FooterViewTabs.js";
 import { HelpView } from "./ui/HelpView.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
@@ -152,6 +159,9 @@ export function App({
   const [addOrgOpen, setAddOrgOpen] = useState(false);
   const [accountUsage, setAccountUsage] = useState(false);
   const [accountUsageModalOpen, setAccountUsageModalOpen] = useState(false);
+  const [hooksStatus, setHooksStatus] = useState<HooksStatusMessage | null>(
+    null,
+  );
   const { crashLog, dismissCrash } = useCrashReport(crashApi);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
   const [viewStorage] = useState(() =>
@@ -159,6 +169,9 @@ export function App({
   );
   const [conversationTitles, setConversationTitles] = useState(() =>
     loadConversationTitles(viewStorage),
+  );
+  const [wizardSeen, setWizardSeen] = useState(() =>
+    loadFirstRunWizardSeen(viewStorage),
   );
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
 
@@ -362,6 +375,30 @@ export function App({
     },
     [control],
   );
+
+  // Track the Claude Code integration status the server pushes (on connect and after each change).
+  useEffect(() => {
+    return control.onMessage((m) => {
+      if (m.t === "hooks.status") setHooksStatus(m);
+    });
+  }, [control]);
+
+  const setHooksRegistered = useCallback(
+    (register: boolean): void => {
+      control.send({ t: register ? "hooks.register" : "hooks.unregister" });
+    },
+    [control],
+  );
+
+  const dismissWizard = useCallback((): void => {
+    setWizardSeen(true);
+    saveFirstRunWizardSeen(viewStorage);
+  }, [viewStorage]);
+
+  const enableFromWizard = useCallback((): void => {
+    setHooksRegistered(true);
+    dismissWizard();
+  }, [setHooksRegistered, dismissWizard]);
 
   // Apply a SETTINGS language change immediately and persist it to config.json. After
   // persisting, watch -> config.sync distributes it to all connections, reflecting it in other clients too.
@@ -587,6 +624,8 @@ export function App({
               onSetClipboardEditModal={clipboardEdit.setEnabled}
               accountUsage={accountUsage}
               onSetAccountUsage={saveAccountUsage}
+              hooksStatus={hooksStatus ?? undefined}
+              onSetHooksRegistered={setHooksRegistered}
               renderer={terminalRenderer.renderer}
               onSetRenderer={terminalRenderer.setRenderer}
               onOpenDevtools={canOpenDevtools() ? openDevtools : undefined}
@@ -609,6 +648,13 @@ export function App({
           runningCount={cockpitTerminals.filter((s) => s.sid).length}
           onEnable={() => saveAccountUsage(true)}
           onClose={() => setAccountUsageModalOpen(false)}
+        />
+      )}
+      {shouldShowFirstRunWizard(wizardSeen, hooksStatus) && (
+        <FirstRunSetupWizard
+          statusLineConflict={hooksStatus?.statusLineConflict ?? false}
+          onEnable={enableFromWizard}
+          onDismiss={dismissWizard}
         />
       )}
       {crashLog !== null && (

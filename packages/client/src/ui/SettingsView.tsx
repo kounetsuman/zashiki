@@ -1,4 +1,7 @@
-import type { UpdateCheckResultMessage } from "@zashiki/shared";
+import type {
+  HooksStatusMessage,
+  UpdateCheckResultMessage,
+} from "@zashiki/shared";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -52,6 +55,10 @@ export interface SettingsViewProps {
   /** Whether the account-usage footer bridge is opted in. Omit to hide the toggle. */
   accountUsage?: boolean;
   onSetAccountUsage?(enabled: boolean): void;
+  /** Current Claude Code integration status (from hooks.status). Omit to hide the toggle. */
+  hooksStatus?: Omit<HooksStatusMessage, "t">;
+  /** Install (true) or remove (false) the integration (hooks.register / hooks.unregister). */
+  onSetHooksRegistered?(register: boolean): void;
   /** Current xterm renderer. Omit to hide the Developer mode section (e.g. in isolated tests). */
   renderer?: XtermRenderer;
   onSetRenderer?(renderer: XtermRenderer): void;
@@ -88,6 +95,8 @@ export function SettingsView({
   onSetClipboardEditModal,
   accountUsage,
   onSetAccountUsage,
+  hooksStatus,
+  onSetHooksRegistered,
   renderer,
   onSetRenderer,
   onOpenDevtools,
@@ -243,6 +252,28 @@ export function SettingsView({
             />
             <span className="settings-label">{t("settings.accountUsage")}</span>
           </label>
+        )}
+        {onSetHooksRegistered !== undefined && hooksStatus !== undefined && (
+          <div className="settings-field">
+            <label className="settings-field settings-toggle">
+              <input
+                type="checkbox"
+                checked={
+                  hooksStatus.hooksRegistered &&
+                  hooksStatus.statusLineRegistered
+                }
+                onChange={(e) => onSetHooksRegistered(e.target.checked)}
+              />
+              <span className="settings-label">
+                {t("settings.hooksIntegration")}
+              </span>
+            </label>
+            <span className="settings-hint">
+              {hooksStatus.statusLineConflict
+                ? t("settings.hooksConflictHint")
+                : t("settings.hooksIntegrationHint")}
+            </span>
+          </div>
         )}
         {onSetRenderer !== undefined && (
           <div className="settings-field settings-dev-section">

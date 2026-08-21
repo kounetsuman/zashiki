@@ -280,3 +280,72 @@ describe("SettingsView", () => {
     expect(onOpenDebugPanel).toHaveBeenCalledOnce();
   });
 });
+
+describe("SettingsView Claude Code integration (#145)", () => {
+  const status = {
+    hooksRegistered: false,
+    statusLineRegistered: false,
+    statusLineConflict: false,
+  };
+
+  it("hides the integration toggle when status or handler is absent", () => {
+    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    expect(
+      screen.queryByText("Claude Code 連携（通知・使用率フッタ）"),
+    ).toBeNull();
+  });
+
+  it("reflects fully-registered as checked and toggles register on/off", () => {
+    const onSet = vi.fn();
+    const { rerender } = render(
+      <SettingsView
+        language="ja"
+        onSaveLanguage={() => {}}
+        hooksStatus={status}
+        onSetHooksRegistered={onSet}
+      />,
+    );
+    const toggle = screen.getByRole("checkbox", {
+      name: "Claude Code 連携（通知・使用率フッタ）",
+    }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(onSet).toHaveBeenCalledWith(true);
+
+    rerender(
+      <SettingsView
+        language="ja"
+        onSaveLanguage={() => {}}
+        hooksStatus={{
+          hooksRegistered: true,
+          statusLineRegistered: true,
+          statusLineConflict: false,
+        }}
+        onSetHooksRegistered={onSet}
+      />,
+    );
+    expect(
+      (
+        screen.getByRole("checkbox", {
+          name: "Claude Code 連携（通知・使用率フッタ）",
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+  });
+
+  it("surfaces the wrap notice when a foreign statusLine conflicts", () => {
+    render(
+      <SettingsView
+        language="ja"
+        onSaveLanguage={() => {}}
+        hooksStatus={{ ...status, statusLineConflict: true }}
+        onSetHooksRegistered={() => {}}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "既存の statusLine があります。有効化すると、それをラップして zashiki と併存させます。",
+      ),
+    ).toBeTruthy();
+  });
+});

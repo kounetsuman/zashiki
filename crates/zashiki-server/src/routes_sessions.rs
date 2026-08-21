@@ -120,6 +120,7 @@ mod sessions_persist_rest_tests {
             notify_mode: crate::hooks::NotifyMode::Web,
             mac_notify: std::sync::Arc::new(|_| {}),
             config_path: None,
+            claude_settings: None,
             app_version: None,
         }
     }

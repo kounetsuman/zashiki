@@ -29,7 +29,8 @@ if [ -n "$input" ] && [ -r "$token_file" ]; then
 fi
 
 # 既存 statusLine への合流（設定時のみ）。その stdout が Claude Code の状態行に出る。
-if [ -n "${ZK_LEGACY_STATUSLINE:-}" ] && [ -x "${ZK_LEGACY_STATUSLINE}" ]; then
-  printf '%s' "$input" | "$ZK_LEGACY_STATUSLINE" || true
+# sh -c 経由: 実行ファイルパスも引数付きコマンドも動く。
+if [ -n "${ZK_LEGACY_STATUSLINE:-}" ]; then
+  printf '%s' "$input" | sh -c "$ZK_LEGACY_STATUSLINE" || true
 fi
 exit 0

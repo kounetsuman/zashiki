@@ -122,6 +122,7 @@ export {
   type HookEventKind,
   type HookEventRequest,
   type HookEventResponse,
+  type HooksStatusMessage,
   healthResponseSchema,
   hookEventKindSchema,
   hookEventRequestSchema,

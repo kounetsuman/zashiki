@@ -239,6 +239,22 @@ export const configSetAccountUsageSchema = z.object({
 });
 
 /**
+ * Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run wizard
+ * or SETTINGS). Idempotent; the server broadcasts the resulting `hooks.status`.
+ */
+export const hooksRegisterSchema = z.object({
+  t: z.literal("hooks.register"),
+});
+
+/**
+ * Remove only zashiki's entries from ~/.claude/settings.json (restoring any wrapped legacy
+ * statusLine). The server broadcasts the resulting `hooks.status`.
+ */
+export const hooksUnregisterSchema = z.object({
+  t: z.literal("hooks.unregister"),
+});
+
+/**
  * On-demand "Check for updates" from SETTINGS. The server checks GitHub Releases immediately
  * and replies with `update.check.result`; a newer version also arrives as a notification.
  */
@@ -267,6 +283,8 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   notificationDismissSchema,
   configUpdateSchema,
   configSetAccountUsageSchema,
+  hooksRegisterSchema,
+  hooksUnregisterSchema,
   updateCheckSchema,
   updatePerformSchema,
 ]);
@@ -354,6 +372,19 @@ export const notificationsSyncSchema = z.object({
 });
 
 /**
+ * Whether zashiki's Claude Code integration is present in ~/.claude/settings.json. Sent right after
+ * connecting and after each register/unregister. Drives the first-run wizard and the SETTINGS toggle.
+ * `statusLineConflict` means a non-zashiki statusLine occupies the slot (registering wraps it to
+ * preserve it). Booleans default off for old-server compatibility.
+ */
+export const hooksStatusSchema = z.object({
+  t: z.literal("hooks.status"),
+  hooksRegistered: z.boolean().catch(false).default(false),
+  statusLineRegistered: z.boolean().catch(false).default(false),
+  statusLineConflict: z.boolean().catch(false).default(false),
+});
+
+/**
  * Reply to `update.check`, sent only to the requester so SETTINGS can show feedback.
  * `version` is the newer version when `status` is `"available"`, and null otherwise.
  */
@@ -384,11 +415,13 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   errorMessageSchema,
   configSyncSchema,
   notificationsSyncSchema,
+  hooksStatusSchema,
   updateCheckResultSchema,
   updateStatusSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+export type HooksStatusMessage = z.infer<typeof hooksStatusSchema>;
 export type SelectMessage = z.infer<typeof selectSchema>;
 export type ErrorMessage = z.infer<typeof errorMessageSchema>;
 export type StateSyncMessage = z.infer<typeof stateSyncSchema>;

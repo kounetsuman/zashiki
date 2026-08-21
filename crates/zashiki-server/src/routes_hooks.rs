@@ -212,6 +212,7 @@ mod hooks_rest_tests {
             notify_mode: mode,
             mac_notify: Arc::new(move |n| mac_log.lock().unwrap().push(n)),
             config_path: None,
+            claude_settings: None,
             app_version: None,
         }
     }

@@ -5,6 +5,8 @@
 //! `/api/*`, and static serving of the client dist.
 
 pub mod claude_projects;
+pub mod claude_settings;
+pub mod claude_settings_io;
 pub mod config;
 pub mod control;
 pub mod crash_report;

@@ -14,6 +14,11 @@
 
 ## Setup
 
+The app can register these for you: on first run zashiki offers a one-click setup wizard, and SETTINGS
+has a "Claude Code integration" toggle. Both do an idempotent, reversible merge into
+`~/.claude/settings.json` that preserves your existing hooks/statusLine (a foreign statusLine is wrapped
+via `ZK_LEGACY_STATUSLINE`). The manual registration below is for standalone/advanced use.
+
 Register it in `~/.claude/settings.json` (adjust the path to your own repository location):
 
 ```json
@@ -81,4 +86,4 @@ To keep an existing statusLine as well, point `ZK_LEGACY_STATUSLINE` at it — a
 | `ZK_PORT` | `8790` | Port of the server to POST to |
 | `ZK_TOKEN_FILE` | `~/.zashiki/token` | Token file (override hook for testing) |
 | `ZK_LEGACY_NOTIFY` | (empty) | Existing notification script to merge into (executable files only) |
-| `ZK_LEGACY_STATUSLINE` | (empty) | Existing statusLine to merge into; its stdout is rendered (executable files only) |
+| `ZK_LEGACY_STATUSLINE` | (empty) | Existing statusLine to merge into; run via `sh -c` (a bare path or an argumented command both work) and its stdout is rendered |

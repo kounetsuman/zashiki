@@ -71,6 +71,9 @@ pub struct ControlServices {
     pub mac_notify: crate::hooks::MacNotify,
     /// The path to config.json (the write target for SETTINGS' config.update; None for tests etc.).
     pub config_path: Option<std::path::PathBuf>,
+    /// The ~/.claude/settings.json + bundled hooks-dir locations for the hooks.register/unregister
+    /// handlers. None disables the feature (tests that don't exercise it).
+    pub claude_settings: Option<crate::claude_settings_io::ClaudeSettingsPaths>,
     /// Parsed running app version for the on-demand "Check for updates" (SETTINGS). None (dev /
     /// placeholder / unparseable) means the manual check reports it can't determine the version.
     pub app_version: Option<semver::Version>,
@@ -185,6 +188,7 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),
                 config_path: None,
+                claude_settings: None,
                 app_version: None,
             }
         }
@@ -217,8 +221,8 @@ mod tests {
         async fn connect(port: u16) -> Ws {
             let url = format!("ws://127.0.0.1:{port}/ws/control");
             let mut ws = tokio_tungstenite::connect_async(&url).await.unwrap().0;
-            // Skip the config.sync / notifications.sync / state.sync sent right after connecting.
-            for _ in 0..3 {
+            // Skip the config.sync / notifications.sync / state.sync / hooks.status sent right after connecting.
+            for _ in 0..4 {
                 let _ = next_json(&mut ws).await;
             }
             ws
@@ -263,8 +267,54 @@ mod tests {
                 notify_mode: crate::hooks::NotifyMode::Web,
                 mac_notify: Arc::new(|_| {}),
                 config_path: Some(config_path),
+                claude_settings: None,
                 app_version: None,
             }
+        }
+
+        fn services_with_claude_settings(settings_path: std::path::PathBuf) -> ControlServices {
+            let (refresh, rx) = mpsc::channel(8);
+            drop(rx);
+            ControlServices {
+                hub: ControlHub::new(ConfigView::default(), vec![], empty_snapshot()),
+                refresh,
+                repos: crate::repos::shared_repos(vec![], Default::default()),
+                launch_claude: false,
+                terms: Arc::new(Mutex::new(TermRegistry::new())),
+                sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
+                heartbeat: Duration::from_secs(30),
+                notify_mode: crate::hooks::NotifyMode::Web,
+                mac_notify: Arc::new(|_| {}),
+                config_path: None,
+                claude_settings: Some(crate::claude_settings_io::ClaudeSettingsPaths {
+                    settings_path,
+                    hooks_dir: std::path::PathBuf::from("/opt/zashiki/hooks"),
+                }),
+                app_version: None,
+            }
+        }
+
+        /// hooks.register writes the integration into settings.json and broadcasts hooks.status;
+        /// hooks.unregister reverses it. The pure merge is covered in `claude_settings`; here we pin
+        /// the WS round-trip and the file effect.
+        #[tokio::test]
+        async fn hooks_register_and_unregister_round_trip() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("settings.json");
+            let port = serve(services_with_claude_settings(path.clone())).await;
+            let mut ws = connect(port).await;
+
+            send(&mut ws, serde_json::json!({ "t": "hooks.register" })).await;
+            let msg = next_json(&mut ws).await.expect("hooks.status after register");
+            assert_eq!(msg["t"], "hooks.status");
+            assert_eq!(msg["hooksRegistered"], true);
+            assert_eq!(msg["statusLineRegistered"], true);
+            assert!(path.exists());
+
+            send(&mut ws, serde_json::json!({ "t": "hooks.unregister" })).await;
+            let msg = next_json(&mut ws).await.expect("hooks.status after unregister");
+            assert_eq!(msg["hooksRegistered"], false);
+            assert_eq!(msg["statusLineRegistered"], false);
         }
 
         /// config.update: persists language to config.json (preserving existing fields) and

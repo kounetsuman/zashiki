@@ -200,6 +200,9 @@
     "updateError": "Couldn't check for updates.",
     "clipboardEditModal": "Show clipboard edit on copy",
     "accountUsage": "Show account usage in the footer",
+    "hooksIntegration": "Claude Code integration (notifications & usage footer)",
+    "hooksIntegrationHint": "Registers zashiki's hooks and statusLine in ~/.claude/settings.json so notifications, instant refresh, and the usage footer work.",
+    "hooksConflictHint": "You already have a statusLine — enabling wraps it so it keeps rendering alongside zashiki.",
     "devSection": "Developer mode",
     "renderer": "Terminal renderer",
     "rendererWebgl": "WebGL",
@@ -214,6 +217,14 @@
     "resumeNote": "{{count}} running cockpit terminal(s) will show usage only after you resume them.",
     "enable": "Enable",
     "close": "Close"
+  },
+  "firstRun": {
+    "title": "Set up Claude Code integration",
+    "body": "Register zashiki's hooks and statusLine in ~/.claude/settings.json to enable push notifications, instant state refresh, and the account-usage footer. It is idempotent and preserves your existing settings.",
+    "preserveNote": "Only zashiki's entries are added; you can remove them anytime from Settings.",
+    "statusLineConflict": "Your existing statusLine will be preserved (wrapped so it still renders).",
+    "enable": "Enable",
+    "notNow": "Not now"
   },
   "addOrg": {
     "title": "Add org",

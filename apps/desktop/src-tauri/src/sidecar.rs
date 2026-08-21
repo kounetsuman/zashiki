@@ -243,6 +243,9 @@ fn spawn_env(cfg: &Config) -> Vec<(&'static str, String)> {
             cfg.client_dist.to_string_lossy().into_owned(),
         ));
     }
+    if cfg.hooks_dir.is_dir() {
+        env.push(("ZK_HOOKS_DIR", cfg.hooks_dir.to_string_lossy().into_owned()));
+    }
     env
 }
 
@@ -782,6 +785,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: dir.path().join("no-such-bin"),
             client_dist: dir.path().join("client-dist"),
+            hooks_dir: dir.path().join("hooks"),
             app_version: String::new(),
         };
         let err = ensure_server(&cfg, &StepLog::new()).unwrap_err();
@@ -808,6 +812,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: entry,
             client_dist: dir.path().join("client-dist"),
+            hooks_dir: dir.path().join("hooks"),
             app_version: String::new(),
         };
         let err = ensure_server(&cfg, &StepLog::new()).unwrap_err();
@@ -824,6 +829,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: dir.path().join("zashiki-server"),
             client_dist: dir.path().join("nope"),
+            hooks_dir: dir.path().join("hooks"),
             app_version: "1.2.3".to_string(),
         };
         let env = spawn_env(&cfg);
@@ -841,6 +847,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: dir.path().join("zashiki-server"),
             client_dist: dir.path().join("no-such-dist"),
+            hooks_dir: dir.path().join("hooks"),
             app_version: String::new(),
         };
         assert!(!spawn_env(&cfg_missing)
@@ -855,6 +862,7 @@ mod tests {
             token_path: dir.path().join("token"),
             server_bin: dir.path().join("zashiki-server"),
             client_dist: dist.clone(),
+            hooks_dir: dir.path().join("hooks"),
             app_version: String::new(),
         };
         let value = spawn_env(&cfg_present)
@@ -862,6 +870,36 @@ mod tests {
             .find(|(k, _)| *k == "ZK_CLIENT_DIST")
             .map(|(_, v)| v);
         assert_eq!(value, Some(dist.to_string_lossy().into_owned()));
+    }
+
+    #[test]
+    fn spawn_env_はhooks_dir実在時のみZK_HOOKS_DIRを渡す() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_missing = Config {
+            port: 8790,
+            token_path: dir.path().join("token"),
+            server_bin: dir.path().join("zashiki-server"),
+            client_dist: dir.path().join("nope"),
+            hooks_dir: dir.path().join("no-such-hooks"),
+            app_version: String::new(),
+        };
+        assert!(!spawn_env(&cfg_missing).iter().any(|(k, _)| *k == "ZK_HOOKS_DIR"));
+
+        let hooks = dir.path().join("hooks");
+        std::fs::create_dir(&hooks).unwrap();
+        let cfg_present = Config {
+            port: 8790,
+            token_path: dir.path().join("token"),
+            server_bin: dir.path().join("zashiki-server"),
+            client_dist: dir.path().join("nope"),
+            hooks_dir: hooks.clone(),
+            app_version: String::new(),
+        };
+        let value = spawn_env(&cfg_present)
+            .into_iter()
+            .find(|(k, _)| *k == "ZK_HOOKS_DIR")
+            .map(|(_, v)| v);
+        assert_eq!(value, Some(hooks.to_string_lossy().into_owned()));
     }
 
     #[test]

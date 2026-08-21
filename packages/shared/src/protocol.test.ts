@@ -350,3 +350,31 @@ describe("termAckSchema (client→server flow-control ACK)", () => {
     ).toBe(false);
   });
 });
+
+describe("hooks integration messages", () => {
+  it("accepts hooks.register / hooks.unregister from the client", () => {
+    expect(clientMessageSchema.safeParse({ t: "hooks.register" }).success).toBe(
+      true,
+    );
+    expect(
+      clientMessageSchema.safeParse({ t: "hooks.unregister" }).success,
+    ).toBe(true);
+  });
+
+  it("parses hooks.status and defaults its booleans off for old servers", () => {
+    const full = serverMessageSchema.safeParse({
+      t: "hooks.status",
+      hooksRegistered: true,
+      statusLineRegistered: false,
+      statusLineConflict: true,
+    });
+    expect(full.success).toBe(true);
+    const bare = serverMessageSchema.parse({ t: "hooks.status" });
+    expect(bare).toEqual({
+      t: "hooks.status",
+      hooksRegistered: false,
+      statusLineRegistered: false,
+      statusLineConflict: false,
+    });
+  });
+});
