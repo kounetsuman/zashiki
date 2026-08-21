@@ -56,6 +56,13 @@ function CodeMirrorHost({ buffer }: Pick<ViewerProps, "buffer">) {
           EditorState.readOnly.of(true),
           EditorView.editable.of(false),
           language.of([]),
+          // The base theme pins .cm-editor to position:relative !important, so
+          // sizing it from CSS is impossible; bound the height here instead and
+          // let .cm-scroller own the scroll.
+          EditorView.theme({
+            "&": { height: "100%" },
+            ".cm-scroller": { overflow: "auto" },
+          }),
         ],
       }),
     });

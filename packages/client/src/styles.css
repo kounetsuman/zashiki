@@ -860,9 +860,9 @@ body {
   overflow: hidden;
 }
 
-/* CodeMirror ホスト（親いっぱいに広げ、スクロールは CM 内部に委ねる）。 */
-.viewer-cm,
-.viewer-cm .cm-editor {
+/* CodeMirror host: fill the parent; the editor's own height/scroll are set via
+   EditorView.theme in Viewer.tsx (the base theme blocks CSS sizing). */
+.viewer-cm {
   position: absolute;
   inset: 0;
 }
