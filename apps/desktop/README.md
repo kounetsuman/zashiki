@@ -55,8 +55,9 @@ panic, so it cannot unwind inside `did_finish_launching` and results in SIGABRT)
 
 On shell exit (whether by closing the window / SIGTERM / Ctrl-C), **only the server
 it spawned itself** is taken down via SIGTERM → 5s grace → SIGKILL to the process
-group (it does not kill it when riding on an existing server). tmux is an independent
-process, so the session remains.
+group (it does not kill it when riding on an existing server). A Claude session
+therefore outlives an app quit only when its host server keeps running — i.e. when
+riding on a standalone, long-lived server — not when the shell spawned the server itself.
 
 ### Environment variables
 
@@ -209,7 +210,7 @@ pnpm -F @zashiki/desktop test:rust   # = cargo test
 
 ## Manual smoke procedure (shell smoke is manual, not automated)
 
-Because it touches real tmux / real `~/.zashiki`, a human performs it.
+Because it touches the real server / real `~/.zashiki`, a human performs it.
 
 1. Start the shell with `pnpm build && pnpm -F @zashiki/desktop dev`
 2. The terminal UI appears in the window (you are not asked to enter a token =

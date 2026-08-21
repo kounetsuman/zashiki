@@ -42,10 +42,10 @@ describe("sidFromArgs (port of dom_sid_from_args)", () => {
 
 describe("parsePsSnapshot (parsing ps -o pid=,ppid=,args= output)", () => {
   it("reads pid/ppid/args (preserves whitespace in args)", () => {
-    const out = `    1     0 /sbin/launchd\n  200     1 tmux -L zashiki\n  300   200 claude --session-id ${SID}\n`;
+    const out = `    1     0 /sbin/launchd\n  200     1 zashiki-server --port 8790\n  300   200 claude --session-id ${SID}\n`;
     expect(parsePsSnapshot(out)).toEqual([
       { pid: 1, ppid: 0, args: "/sbin/launchd" },
-      { pid: 200, ppid: 1, args: "tmux -L zashiki" },
+      { pid: 200, ppid: 1, args: "zashiki-server --port 8790" },
       { pid: 300, ppid: 200, args: `claude --session-id ${SID}` },
     ]);
   });
@@ -57,12 +57,12 @@ describe("parsePsSnapshot (parsing ps -o pid=,ppid=,args= output)", () => {
   it("reads pid/ppid/args even with a leading tty column (-o tty=,pid=,ppid=,args=)", () => {
     const out = [
       `ttys003  300 200 claude --session-id ${SID}`,
-      "??       200   1 tmux -L zashiki",
+      "??       200   1 zashiki-server --port 8790",
       "-        400   1 -zsh",
     ].join("\n");
     expect(parsePsSnapshot(out)).toEqual([
       { pid: 300, ppid: 200, args: `claude --session-id ${SID}` },
-      { pid: 200, ppid: 1, args: "tmux -L zashiki" },
+      { pid: 200, ppid: 1, args: "zashiki-server --port 8790" },
       { pid: 400, ppid: 1, args: "-zsh" },
     ]);
   });
