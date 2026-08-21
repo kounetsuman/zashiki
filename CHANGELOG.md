@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-21
+
+### Added
+
+- Duplicate a session by forking it into a new independent terminal (#122)
+- Self-update straight from the Update button via Homebrew (#125)
+- "Close" and "Close all" actions in the tab right-click menu (#132)
+- Auto-scroll the active tab into view, and hide the tab bar scrollbar (#130)
+
+### Changed
+
+- Reworked the NOTIFICATION view and the update toast/button (#123)
+- Running cockpit terminals now show a spinning loading glyph (#126)
+
+### Fixed
+
+- Resolve ripgrep to an absolute path so search keeps working under a thin PATH (#127)
+- Activate the Viewer when opening a file from the Explorer (#133)
+
+### Removed
+
+- The obsolete header refresh button from Session List and Source Control (#129)
+
 ## [0.6.0] - 2026-08-20
 
 ### Added
@@ -92,7 +115,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kounetsuman/zashiki/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/kounetsuman/zashiki/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kounetsuman/zashiki/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/kounetsuman/zashiki/compare/v0.3.0...v0.4.0
