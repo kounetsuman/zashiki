@@ -2,25 +2,31 @@ import { type CockpitTerminalInfo, claudeSessionId } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 export interface TabContextMenuProps {
-  menu: { cockpitTerminalId: string; x: number; y: number };
+  menu: { key: string; cockpitTerminalId: string | null; x: number; y: number };
   cockpitTerminals: CockpitTerminalInfo[];
   closeMenu(): void;
+  onClose(key: string): void;
+  onCloseAll?(): void;
   onDuplicate?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
 }
 
-/** Right-click menu overlay for a session tab: duplicate session / copy session id. */
+/** Right-click menu overlay for a tab. Duplicate / copy session id render only for session tabs. */
 export function TabContextMenu({
   menu,
   cockpitTerminals,
   closeMenu,
+  onClose,
+  onCloseAll,
   onDuplicate,
   onCopySessionId,
 }: TabContextMenuProps) {
   const { t } = useTranslation();
-  const target = cockpitTerminals.find(
-    (s) => s.cockpitTerminalId === menu.cockpitTerminalId,
-  );
+  const { cockpitTerminalId } = menu;
+  const target =
+    cockpitTerminalId === null
+      ? undefined
+      : cockpitTerminals.find((s) => s.cockpitTerminalId === cockpitTerminalId);
   const canDuplicate = target !== undefined && claudeSessionId(target) !== null;
   const canCopySessionId =
     target !== undefined && claudeSessionId(target) !== null;
@@ -40,7 +46,31 @@ export function TabContextMenu({
         role="menu"
         style={{ top: menu.y, left: menu.x }}
       >
-        {onDuplicate !== undefined && (
+        <button
+          type="button"
+          role="menuitem"
+          className="session-context-item"
+          onClick={() => {
+            onClose(menu.key);
+            closeMenu();
+          }}
+        >
+          {t("common.close")}
+        </button>
+        {onCloseAll !== undefined && (
+          <button
+            type="button"
+            role="menuitem"
+            className="session-context-item"
+            onClick={() => {
+              onCloseAll();
+              closeMenu();
+            }}
+          >
+            {t("common.closeAllTabs")}
+          </button>
+        )}
+        {cockpitTerminalId !== null && onDuplicate !== undefined && (
           <button
             type="button"
             role="menuitem"
@@ -48,14 +78,14 @@ export function TabContextMenu({
             disabled={!canDuplicate}
             title={canDuplicate ? undefined : t("common.cannotDuplicate")}
             onClick={() => {
-              onDuplicate(menu.cockpitTerminalId);
+              onDuplicate(cockpitTerminalId);
               closeMenu();
             }}
           >
             {t("common.duplicateSession")}
           </button>
         )}
-        {onCopySessionId !== undefined && (
+        {cockpitTerminalId !== null && onCopySessionId !== undefined && (
           <button
             type="button"
             role="menuitem"
@@ -65,7 +95,7 @@ export function TabContextMenu({
               canCopySessionId ? undefined : t("common.cannotCopySessionId")
             }
             onClick={() => {
-              onCopySessionId(menu.cockpitTerminalId);
+              onCopySessionId(cockpitTerminalId);
               closeMenu();
             }}
           >

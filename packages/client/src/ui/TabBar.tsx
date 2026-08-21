@@ -22,6 +22,8 @@ export interface TabBarProps {
   orgColors?: Record<string, string>;
   onActivate(key: string): void;
   onClose(key: string): void;
+  /** Closes every open tab. The "close all" menu item is hidden when unspecified. */
+  onCloseAll?(): void;
   /** Commits a double-click rename on a session tab. Commits with cockpitTerminalId + name. Rename is disabled when unspecified. */
   onRename?(cockpitTerminalId: string, name: string, title: string): void;
   /** Reordering via drag & drop. Moves fromKey to the position of toKey. Reordering is disabled when unspecified. */
@@ -30,12 +32,12 @@ export interface TabBarProps {
   inactive?: boolean;
   /**
    * Right-clicking a session tab duplicates it into a new independent cockpit terminal (forks the
-   * Claude session). No context menu is shown when unspecified.
+   * Claude session). The duplicate menu item is hidden when unspecified.
    */
   onDuplicate?(cockpitTerminalId: string): void;
   /**
    * Right-clicking a session tab copies the Claude Code session id (`sid`) verbatim.
-   * The context menu appears when either this or onDuplicate is provided.
+   * The copy menu item is hidden when unspecified.
    */
   onCopySessionId?(cockpitTerminalId: string): void;
 }
@@ -55,6 +57,7 @@ export function TabBar({
   orgColors = {},
   onActivate,
   onClose,
+  onCloseAll,
   onRename,
   onReorder,
   inactive,
@@ -64,10 +67,10 @@ export function TabBar({
   const { t } = useTranslation();
   const rename = useTabRename(tabs, cockpitTerminals, onRename);
   const drag = useTabDrag(onReorder);
-  const hasContextMenu =
-    onDuplicate !== undefined || onCopySessionId !== undefined;
   const contextMenu = useTabContextMenu(
-    (onDuplicate !== undefined ? 1 : 0) +
+    1 +
+      (onCloseAll !== undefined ? 1 : 0) +
+      (onDuplicate !== undefined ? 1 : 0) +
       (onCopySessionId !== undefined ? 1 : 0),
   );
 
@@ -108,19 +111,17 @@ export function TabBar({
             drag={drag}
             onActivate={onActivate}
             onClose={onClose}
-            onContextMenu={
-              session !== undefined && hasContextMenu
-                ? (e) => contextMenu.openMenu(session, e)
-                : undefined
-            }
+            onContextMenu={(e) => contextMenu.openMenu(tab, e)}
           />
         );
       })}
-      {contextMenu.menu !== null && hasContextMenu && (
+      {contextMenu.menu !== null && (
         <TabContextMenu
           menu={contextMenu.menu}
           cockpitTerminals={cockpitTerminals}
           closeMenu={contextMenu.closeMenu}
+          onClose={onClose}
+          onCloseAll={onCloseAll}
           onDuplicate={onDuplicate}
           onCopySessionId={onCopySessionId}
         />

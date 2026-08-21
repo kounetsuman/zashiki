@@ -1,6 +1,7 @@
 {
   "common": {
     "close": "Close",
+    "closeAllTabs": "Close all tabs",
     "cancel": "Cancel",
     "retry": "Retry",
     "refresh": "Refresh",

@@ -1,6 +1,7 @@
 {
   "common": {
     "close": "閉じる",
+    "closeAllTabs": "全て閉じる",
     "cancel": "取消",
     "retry": "再試行",
     "refresh": "更新",

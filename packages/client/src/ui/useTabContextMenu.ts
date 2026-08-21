@@ -1,24 +1,26 @@
-import type { CockpitTerminalInfo } from "@zashiki/shared";
 import type React from "react";
 import { useEffect, useState } from "react";
+import { type Tab, tabKey } from "../tabs/tab-model.js";
 import { clampMenuPos } from "./views.js";
 
 export interface TabContextMenuState {
-  menu: { cockpitTerminalId: string; x: number; y: number } | null;
-  openMenu(session: CockpitTerminalInfo, e: React.MouseEvent): void;
+  menu: {
+    key: string;
+    /** Owning cockpit terminal id for a session tab; null for a viewer tab. */
+    cockpitTerminalId: string | null;
+    x: number;
+    y: number;
+  } | null;
+  openMenu(tab: Tab, e: React.MouseEvent): void;
   closeMenu(): void;
 }
 
 /**
- * Right-click menu for a session tab (copy resume / session id). The item count feeds the position
- * clamp so the menu never overflows below the pointer; Escape closes it.
+ * Right-click menu for a tab. itemCount feeds the position clamp so the menu never overflows
+ * below the pointer; Escape closes it.
  */
 export function useTabContextMenu(itemCount: number): TabContextMenuState {
-  const [menu, setMenu] = useState<{
-    cockpitTerminalId: string;
-    x: number;
-    y: number;
-  } | null>(null);
+  const [menu, setMenu] = useState<TabContextMenuState["menu"]>(null);
 
   useEffect(() => {
     if (menu === null) return;
@@ -29,13 +31,15 @@ export function useTabContextMenu(itemCount: number): TabContextMenuState {
     return () => window.removeEventListener("keydown", onKey);
   }, [menu]);
 
-  const openMenu = (
-    session: CockpitTerminalInfo,
-    e: React.MouseEvent,
-  ): void => {
+  const openMenu = (tab: Tab, e: React.MouseEvent): void => {
     e.preventDefault();
     const { x, y } = clampMenuPos(e.clientX, e.clientY, itemCount);
-    setMenu({ cockpitTerminalId: session.cockpitTerminalId, x, y });
+    setMenu({
+      key: tabKey(tab),
+      cockpitTerminalId: tab.kind === "session" ? tab.id : null,
+      x,
+      y,
+    });
   };
 
   const closeMenu = (): void => setMenu(null);

@@ -643,6 +643,45 @@ describe("App", () => {
     );
   });
 
+  it("the tab context menu 'Close all' removes every tab without killing the sessions", () => {
+    const control = createFakeAppControl();
+    const f = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={f.session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        reposApi={fakeReposApi}
+      />,
+    );
+    act(() =>
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals,
+        orgs: [],
+        orgColors: {},
+      }),
+    );
+    // bootstrap opens @1 (zashiki); double-clicking tango opens @2 -> two tabs.
+    fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
+    expect(screen.getByLabelText("zashiki のタブを閉じる")).toBeTruthy();
+    expect(screen.getByLabelText("tango のタブを閉じる")).toBeTruthy();
+
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0] as HTMLElement);
+    fireEvent.click(screen.getByRole("menuitem", { name: "全て閉じる" }));
+
+    // Both tabs are gone (the strip renders nothing once empty).
+    expect(screen.queryByLabelText("zashiki のタブを閉じる")).toBeNull();
+    expect(screen.queryByLabelText("tango のタブを閉じる")).toBeNull();
+    // Closing tabs never kills the sessions.
+    expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
+      false,
+    );
+  });
+
   it("when there are no tabs, Cmd+W does nothing", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
