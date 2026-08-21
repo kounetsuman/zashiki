@@ -210,6 +210,8 @@ body {
 /* レイアウト（flex 内で伸縮する行本体）のみ。装飾は .view-row。非選択行は
  * 背景色と同色（ハイライトなし）で、選択行だけを目立たせる。 */
 .session-row-main {
+  display: flex;
+  align-items: center;
   padding: 2px 8px;
   flex: 1;
   min-width: 0;
@@ -311,6 +313,10 @@ body {
 }
 
 .session-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: #777;
 }
 
@@ -413,7 +419,7 @@ body {
 .session-activity {
   display: inline-flex;
   align-items: center;
-  margin-left: 3px;
+  margin-left: 2px;
   font-size: 11px;
   color: #8b93a7;
   font-variant-numeric: tabular-nums;
