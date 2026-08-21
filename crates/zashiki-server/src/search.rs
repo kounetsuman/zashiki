@@ -200,14 +200,19 @@ pub fn parse_rg_json(stdout: &str, roots: &[ScannedRoot], limits: &SearchLimits)
 #[derive(Debug)]
 pub struct RipgrepUnavailable;
 
-/// Runs `rg <args> -- <paths...>` as a single process and returns stdout (no shell; 15s timeout).
-/// Exit code 1 (no match) is normal. A spawn failure (rg absent) yields `RipgrepUnavailable`.
-/// If paths is empty, rg is not started and an empty string is returned.
-pub async fn run_ripgrep(args: &[String], paths: &[String]) -> Result<String, RipgrepUnavailable> {
+/// Runs `<program> <args> -- <paths...>` as a single process and returns stdout (no shell; 15s timeout).
+/// `program` is the ripgrep executable, resolved to an absolute path by the caller so it launches under a
+/// thin GUI/launchd PATH. Exit code 1 (no match) is normal. A spawn failure (rg absent) yields
+/// `RipgrepUnavailable`. If paths is empty, rg is not started and an empty string is returned.
+pub async fn run_ripgrep(
+    program: &str,
+    args: &[String],
+    paths: &[String],
+) -> Result<String, RipgrepUnavailable> {
     if paths.is_empty() {
         return Ok(String::new());
     }
-    let mut cmd = Command::new("rg");
+    let mut cmd = Command::new(program);
     cmd.args(args)
         .arg("--")
         .args(paths)
@@ -342,6 +347,7 @@ mod tests {
     #[tokio::test]
     async fn run_ripgrep_empty_paths_returns_empty() {
         let out = run_ripgrep(
+            "rg",
             &build_rg_args(&req("x", false, false, false), &DEFAULT_SEARCH_LIMITS),
             &[],
         )
@@ -351,7 +357,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_ripgrep_finds_matches_when_rg_available() {
+    async fn run_ripgrep_finds_matches_via_resolved_absolute_path() {
         // Skip in environments without rg (CI has ripgrep installed).
         if std::process::Command::new("rg")
             .arg("--version")
@@ -360,11 +366,14 @@ mod tests {
         {
             return;
         }
+        // Spawning by the resolved absolute path is what keeps search working under a thin GUI/launchd PATH.
+        let program = crate::session_launch::resolve_program("rg");
+        assert!(program.starts_with('/'), "rg should resolve to an absolute path: {program}");
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("f.txt"), "alpha NEEDLE omega\n").unwrap();
         let root = dir.path().to_string_lossy().into_owned();
         let args = build_rg_args(&req("NEEDLE", false, false, false), &DEFAULT_SEARCH_LIMITS);
-        let stdout = run_ripgrep(&args, std::slice::from_ref(&root))
+        let stdout = run_ripgrep(&program, &args, std::slice::from_ref(&root))
             .await
             .unwrap();
         let roots = vec![ScannedRoot {
