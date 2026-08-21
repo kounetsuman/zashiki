@@ -49,6 +49,15 @@ fn parse_editor_command(editor: &str) -> Vec<String> {
         .collect()
 }
 
+/// Pick the effective editor command: a non-blank configured value (SETTINGS' live config.json
+/// `editor`) takes precedence over the `fallback` (ZK_EDITOR or `cursor -g`, captured at startup).
+pub(crate) fn resolve_editor<'a>(configured: Option<&'a str>, fallback: &'a str) -> &'a str {
+    configured
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(fallback)
+}
+
 /// Default editor launch (splits `ZK_EDITOR` into argv, appends `<file>` at the end, and spawns; does not wait for exit).
 pub(crate) fn spawn_editor(editor: &str, repo_path: &str, file: &str) {
     let argv = parse_editor_command(editor);
@@ -90,4 +99,26 @@ pub(crate) fn now_ms() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_editor;
+
+    #[test]
+    fn resolve_editor_prefers_configured_over_fallback() {
+        assert_eq!(resolve_editor(Some("code -w"), "cursor -g"), "code -w");
+    }
+
+    #[test]
+    fn resolve_editor_trims_configured_value() {
+        assert_eq!(resolve_editor(Some("  vim  "), "cursor -g"), "vim");
+    }
+
+    #[test]
+    fn resolve_editor_falls_back_when_unset_or_blank() {
+        assert_eq!(resolve_editor(None, "cursor -g"), "cursor -g");
+        assert_eq!(resolve_editor(Some(""), "cursor -g"), "cursor -g");
+        assert_eq!(resolve_editor(Some("   "), "cursor -g"), "cursor -g");
+    }
 }

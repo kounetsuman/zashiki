@@ -294,6 +294,7 @@ describe("App", () => {
         updateCheck: true,
         language: "en",
         accountUsage: false,
+        editor: null,
       }),
     );
     expect(i18n.language).toBe("en");
@@ -317,7 +318,10 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("表示言語"), {
       target: { value: "en" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    // The editor field has its own "保存" button; the language Save is the first in document order.
+    const [languageSave] = screen.getAllByRole("button", { name: "保存" });
+    if (!languageSave) throw new Error("language save button missing");
+    fireEvent.click(languageSave);
     expect(control.sent).toContainEqual({ t: "config.update", language: "en" });
     expect(i18n.language).toBe("en");
   });
@@ -945,6 +949,7 @@ describe("App", () => {
         updateCheck: true,
         language: null,
         accountUsage: false,
+        editor: null,
       });
     });
     expect(notifier.isEnabled()).toBe(false);
@@ -955,6 +960,7 @@ describe("App", () => {
         updateCheck: true,
         language: null,
         accountUsage: false,
+        editor: null,
       });
     });
     expect(notifier.isEnabled()).toBe(true);

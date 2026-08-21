@@ -133,6 +133,10 @@ pub enum ClientMessage {
     /// config.json and distributed via config.sync, like the language change.
     #[serde(rename = "config.setAccountUsage", rename_all = "camelCase")]
     ConfigSetAccountUsage { enabled: bool },
+    /// External editor command change from SETTINGS. Persisted to config.json and distributed via
+    /// config.sync, like the language change. A blank value clears it.
+    #[serde(rename = "config.setEditor", rename_all = "camelCase")]
+    ConfigSetEditor { editor: String },
     /// Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run
     /// wizard or SETTINGS). Idempotent merge; the resulting hooks.status is broadcast.
     #[serde(rename = "hooks.register")]
@@ -299,6 +303,7 @@ pub enum ServerMessage {
         update_check: bool,
         language: Option<String>,
         account_usage: bool,
+        editor: Option<String>,
     },
     /// Full distribution of in-app notifications (to all control connections right after connecting
     /// and on changes; a full replacement, not a diff).
@@ -721,9 +726,10 @@ mod tests {
             update_check: true,
             language: Some("ja".into()),
             account_usage: false,
+            editor: Some("cursor -g".into()),
         };
         let json =
-            r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false}"#;
+            r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false,"editor":"cursor -g"}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -735,9 +741,10 @@ mod tests {
             update_check: false,
             language: None,
             account_usage: true,
+            editor: None,
         };
         let json =
-            r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true}"#;
+            r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true,"editor":null}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

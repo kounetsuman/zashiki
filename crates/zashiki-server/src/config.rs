@@ -41,11 +41,19 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
         .and_then(|v| v.as_str())
         .filter(|s| *s == "ja" || *s == "en")
         .map(str::to_string);
+    // Blank/whitespace is normalized to unset.
+    let editor = obj
+        .and_then(|o| o.get("editor"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     ConfigView {
         notify_sound: field("notifySound", true),
         update_check: field("updateCheck", true),
         language,
         account_usage: field("accountUsage", false),
+        editor,
     }
 }
 
@@ -73,6 +81,10 @@ pub fn write_config_language(path: &Path, language: &str) -> std::io::Result<()>
 
 pub fn write_config_account_usage(path: &Path, enabled: bool) -> std::io::Result<()> {
     write_config_field(path, "accountUsage", serde_json::Value::Bool(enabled))
+}
+
+pub fn write_config_editor(path: &Path, editor: &str) -> std::io::Result<()> {
+    write_config_field(path, "editor", serde_json::Value::String(editor.to_string()))
 }
 
 /// Read the live-applied settings along with whether they were read successfully.
@@ -223,6 +235,33 @@ mod tests {
 
         write_config_account_usage(&path, false).unwrap();
         assert!(!read_config(&path).account_usage);
+    }
+
+    #[test]
+    fn parse_config_reads_editor_and_treats_blank_as_unset() {
+        assert_eq!(parse(json!({"editor": "code -w"})).editor, Some("code -w".into()));
+        // Surrounding whitespace is trimmed; a blank or whitespace-only value is unset (fall back to ZK_EDITOR / cursor -g).
+        assert_eq!(parse(json!({"editor": "  vim  "})).editor, Some("vim".into()));
+        assert_eq!(parse(json!({"editor": "   "})).editor, None);
+        assert_eq!(parse(json!({"editor": ""})).editor, None);
+        assert_eq!(parse(json!({"editor": 1})).editor, None);
+        assert_eq!(parse(json!({})).editor, None);
+    }
+
+    #[test]
+    fn write_config_editor_sets_and_preserves_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"language": "en"}"#).unwrap();
+
+        write_config_editor(&path, "code -w").unwrap();
+        let c = read_config(&path);
+        assert_eq!(c.editor, Some("code -w".into()));
+        assert_eq!(c.language, Some("en".into())); // existing fields are preserved
+
+        // Clearing writes a blank value, which reads back as unset.
+        write_config_editor(&path, "").unwrap();
+        assert_eq!(read_config(&path).editor, None);
     }
 
     #[test]
