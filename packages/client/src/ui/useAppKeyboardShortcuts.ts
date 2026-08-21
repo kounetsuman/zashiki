@@ -10,7 +10,7 @@ export interface AppKeyboardShortcuts {
   handleSelectView(id: ViewId): void;
   toggleDebug(): void;
   newSession(org: string): void;
-  copyResume(s: CockpitTerminalInfo | null | undefined): void;
+  duplicateSession(cockpitTerminalId: string): void;
   closeTabByKey(key: string): void;
 }
 
@@ -28,7 +28,7 @@ export function useAppKeyboardShortcuts({
   handleSelectView,
   toggleDebug,
   newSession,
-  copyResume,
+  duplicateSession,
   closeTabByKey,
 }: AppKeyboardShortcuts): void {
   useEffect(() => {
@@ -74,14 +74,11 @@ export function useAppKeyboardShortcuts({
         return;
       }
       e.preventDefault();
-      const target =
-        cockpitTerminals.find((s) => s.cockpitTerminalId === activeSess) ??
-        null;
-      copyResume(target);
+      if (activeSess !== null) duplicateSession(activeSess);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [cockpitTerminals, activeSess, copyResume]);
+  }, [activeSess, duplicateSession]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {

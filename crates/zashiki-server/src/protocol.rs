@@ -110,8 +110,13 @@ pub enum ClientMessage {
     /// Flow-control ACK. `bytes` is the amount xterm.js has finished writing (in UTF-16 code units).
     #[serde(rename = "term.ack", rename_all = "camelCase")]
     TermAck { term_id: String, bytes: u64 },
-    #[serde(rename = "cockpitTerminal.new")]
-    CockpitTerminalNew { org: String },
+    #[serde(rename = "cockpitTerminal.new", rename_all = "camelCase")]
+    CockpitTerminalNew {
+        org: String,
+        /// Source Claude session id to fork into the new terminal (duplicate). Absent for a plain new session.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resume_sid: Option<String>,
+    },
     #[serde(rename = "cockpitTerminal.close", rename_all = "camelCase")]
     CockpitTerminalClose { cockpit_terminal_id: String },
     #[serde(rename = "state.refresh")]
@@ -353,6 +358,14 @@ mod tests {
                 r#"{"t":"cockpitTerminal.new","org":"charlie"}"#,
                 ClientMessage::CockpitTerminalNew {
                     org: "charlie".into(),
+                    resume_sid: None,
+                },
+            ),
+            (
+                r#"{"t":"cockpitTerminal.new","org":"charlie","resumeSid":"1b4e28ba-2fa1-11d2-883f-0016d3cca427"}"#,
+                ClientMessage::CockpitTerminalNew {
+                    org: "charlie".into(),
+                    resume_sid: Some("1b4e28ba-2fa1-11d2-883f-0016d3cca427".into()),
                 },
             ),
             (

@@ -1,5 +1,6 @@
 import {
   type ClientMessage,
+  claudeSessionId,
   resolveOrgColor,
   type ServerMessage,
   type UpdateCheckResultMessage,
@@ -255,11 +256,10 @@ export function App({
   );
 
   const { copyToast, flashCopyToast } = useCopyToast();
-  const {
-    copyResume,
-    copyResumeByCockpitTerminalId,
-    copySessionIdByCockpitTerminalId,
-  } = useClipboardCopy(cockpitTerminals, flashCopyToast);
+  const { copySessionIdByCockpitTerminalId } = useClipboardCopy(
+    cockpitTerminals,
+    flashCopyToast,
+  );
 
   // Copy the absolute path of the file open in the viewer (the copy button at the left of the header).
   const copyViewerPath = useCallback(
@@ -298,6 +298,25 @@ export function App({
     [store, control],
   );
 
+  // Launch a new independent cockpit terminal that forks the source session. No-op for sessions without a
+  // sid (claude not started); the caller disables the menu.
+  const duplicateSession = useCallback(
+    (cockpitTerminalId: string): void => {
+      const source = cockpitTerminals.find(
+        (s) => s.cockpitTerminalId === cockpitTerminalId,
+      );
+      const sid = source == null ? null : claudeSessionId(source);
+      if (source == null || sid === null) return;
+      store.markNewRequested();
+      control.send({
+        t: "cockpitTerminal.new",
+        org: source.org,
+        resumeSid: sid,
+      });
+    },
+    [cockpitTerminals, store, control],
+  );
+
   useAppKeyboardShortcuts({
     cockpitTerminals,
     orgs,
@@ -306,7 +325,7 @@ export function App({
     handleSelectView,
     toggleDebug,
     newSession,
-    copyResume,
+    duplicateSession,
     closeTabByKey,
   });
 
@@ -443,7 +462,7 @@ export function App({
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
             inactive={activeView !== "main"}
-            onCopyResume={copyResumeByCockpitTerminalId}
+            onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
           />
           <div className="tab-view">
@@ -515,7 +534,7 @@ export function App({
             onAddOrg={() => setAddOrgOpen(true)}
             inactive={activeView !== "sessions"}
             full={selectedView === null}
-            onCopyResume={copyResumeByCockpitTerminalId}
+            onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}
           />

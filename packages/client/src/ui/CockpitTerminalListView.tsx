@@ -54,10 +54,10 @@ export interface CockpitTerminalListViewProps {
   /** Render at full height (height:100%) when the bottom view is closed. */
   full?: boolean;
   /**
-   * Copy the target session's resume command (`claude --resume <sid>`) to the clipboard
-   * (for branched cockpit terminals). If omitted, the item is not shown in the row menu.
+   * Duplicate the target session into a new independent cockpit terminal (forks the Claude session).
+   * If omitted, the item is not shown in the row menu.
    */
-  onCopyResume?(cockpitTerminalId: string): void;
+  onDuplicate?(cockpitTerminalId: string): void;
   /**
    * Copy the target session's Claude Code session id (`sid`) to the clipboard verbatim.
    * If omitted, the item is not shown in the row menu.
@@ -94,7 +94,7 @@ export function CockpitTerminalListView({
   connected = true,
   inactive,
   full,
-  onCopyResume,
+  onDuplicate,
   onCopySessionId,
   onRename,
 }: CockpitTerminalListViewProps) {
@@ -103,11 +103,11 @@ export function CockpitTerminalListView({
   const orgList = displayOrgs(orgs, cockpitTerminals);
 
   const refresh = useSessionRefresh(onRefresh);
-  // The row menu has at most 4 items: Delete + (when provided) Rename + Copy resume + Copy session id.
+  // The row menu has at most 4 items: Delete + (when provided) Rename + Duplicate + Copy session id.
   const rowItemCount =
     1 +
     (onRename !== undefined ? 1 : 0) +
-    (onCopyResume !== undefined ? 1 : 0) +
+    (onDuplicate !== undefined ? 1 : 0) +
     (onCopySessionId !== undefined ? 1 : 0);
   const { menu, openOrgMenu, openRowMenu, closeMenu } =
     useSessionContextMenu(rowItemCount);
@@ -339,7 +339,7 @@ export function CockpitTerminalListView({
           startRename={rename.startRename}
           closeMenu={closeMenu}
           onRename={onRename}
-          onCopyResume={onCopyResume}
+          onDuplicate={onDuplicate}
           onCopySessionId={onCopySessionId}
         />
       )}

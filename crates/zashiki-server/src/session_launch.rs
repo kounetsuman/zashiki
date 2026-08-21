@@ -31,14 +31,18 @@ pub fn plan_new_session(
     cwd: &str,
     name: &str,
     launch_claude: bool,
+    resume_sid: Option<&str>,
     shell: &str,
     claude_program: &str,
 ) -> NewSessionPlan {
     let args = if launch_claude {
-        vec![
-            "-lc".to_string(),
-            claude_launch_payload(claude_program, &format!("--session-id {}", sid.to_lowercase())),
-        ]
+        let payload = match resume_sid {
+            Some(source) => claude_fork_payload(claude_program, source, sid),
+            None => {
+                claude_launch_payload(claude_program, &format!("--session-id {}", sid.to_lowercase()))
+            }
+        };
+        vec!["-lc".to_string(), payload]
     } else {
         vec!["-l".to_string()]
     };
@@ -70,6 +74,17 @@ pub(crate) fn claude_resume_payload(claude_program: &str, sid: &str) -> String {
     let sid = sid.to_lowercase();
     format!(
         r#"{claude_program} --resume {sid} || {claude_program} --session-id {sid}; {SHELL_TAKEOVER_TAIL}"#
+    )
+}
+
+/// The fork payload passed to `sh -lc` (pure function; used when duplicating a session). Forks `source_sid`
+/// into `own_sid` (`--fork-session` under a pinned `--session-id`), falling back to a fresh session under
+/// `own_sid` on resume failure. Both sids must already be validated as UUIDs by the caller.
+pub(crate) fn claude_fork_payload(claude_program: &str, source_sid: &str, own_sid: &str) -> String {
+    let source = source_sid.to_lowercase();
+    let own = own_sid.to_lowercase();
+    format!(
+        r#"{claude_program} --resume {source} --fork-session --session-id {own} || {claude_program} --session-id {own}; {SHELL_TAKEOVER_TAIL}"#
     )
 }
 
@@ -160,7 +175,7 @@ mod tests {
 
     #[test]
     fn launch_claude_starts_claude_then_keeps_shell() {
-        let plan = plan_new_session(SID, "/repos/charlie", "charlie", true, "/bin/zsh", "/abs/claude");
+        let plan = plan_new_session(SID, "/repos/charlie", "charlie", true, None, "/bin/zsh", "/abs/claude");
         assert_eq!(plan.program, "/bin/zsh");
         // Launch claude with a resolved absolute path and fall back to the shell after it exits (no exec replacement).
         assert_eq!(
@@ -190,15 +205,50 @@ mod tests {
         );
     }
 
+    const OWN_SID: &str = "2C5F39CB-3EB2-42E3-994E-1127E4DDB538";
+
+    #[test]
+    fn fork_payload_forks_source_and_falls_back_to_own_sid() {
+        assert_eq!(
+            claude_fork_payload("/abs/claude", SID, OWN_SID),
+            format!(
+                r#"/abs/claude --resume {source} --fork-session --session-id {own} || /abs/claude --session-id {own}; exec "${{SHELL:-/bin/sh}}""#,
+                source = SID.to_lowercase(),
+                own = OWN_SID.to_lowercase(),
+            ),
+        );
+    }
+
+    #[test]
+    fn plan_with_resume_sid_forks_into_a_new_terminal() {
+        let plan = plan_new_session(
+            OWN_SID,
+            "/repos/charlie",
+            "charlie",
+            true,
+            Some(SID),
+            "/bin/zsh",
+            "/abs/claude",
+        );
+        assert_eq!(
+            plan.args,
+            vec![
+                "-lc".to_string(),
+                claude_fork_payload("/abs/claude", SID, OWN_SID),
+            ]
+        );
+        assert_eq!(plan.sid, OWN_SID.to_lowercase());
+    }
+
     #[test]
     fn without_launch_claude_runs_login_shell_only() {
-        let plan = plan_new_session(SID, "/repos/x", "x", false, "/bin/sh", "/abs/claude");
+        let plan = plan_new_session(SID, "/repos/x", "x", false, None, "/bin/sh", "/abs/claude");
         assert_eq!(plan.args, vec!["-l".to_string()]);
     }
 
     #[test]
     fn meta_carries_cwd_and_wname() {
-        let plan = plan_new_session(SID, "/repos/charlie", "charlie", true, "/bin/sh", "claude");
+        let plan = plan_new_session(SID, "/repos/charlie", "charlie", true, None, "/bin/sh", "claude");
         assert_eq!(
             plan_to_meta(&plan),
             SessionMeta {
@@ -236,7 +286,7 @@ mod tests {
         use std::time::Duration;
 
         // With claude_program set to `true` (exits 0 immediately), the payload is `true --session-id ...; exec $SHELL`.
-        let plan = plan_new_session(SID, "/", "x", true, "/bin/sh", "true");
+        let plan = plan_new_session(SID, "/", "x", true, None, "/bin/sh", "true");
         let session = PtySession::spawn(plan_to_config(&plan)).unwrap();
         // Wait until `true` exits and it falls back to `exec $SHELL`.
         tokio::time::sleep(Duration::from_millis(400)).await;
