@@ -42,9 +42,19 @@ fn maybe_print_plist() -> bool {
     true
 }
 
+/// `zashiki-server statusline-hook` relays claude's statusLine payload to the running server (the
+/// launch-injected account-usage bridge) and exits, without starting the server.
+fn maybe_run_statusline_hook() -> bool {
+    if std::env::args().nth(1).as_deref() != Some("statusline-hook") {
+        return false;
+    }
+    zashiki_server::statusline_hook::run();
+    true
+}
+
 #[tokio::main]
 async fn main() {
-    if maybe_print_plist() {
+    if maybe_print_plist() || maybe_run_statusline_hook() {
         return;
     }
     let port: u16 = std::env::var("ZK_PORT")
@@ -162,11 +172,15 @@ async fn main() {
     // Done before listen so the first state.sync carries the restored sessions.
     {
         let shell = zashiki_server::session_restore::login_shell();
+        let usage_settings = zashiki_server::session_launch::account_usage_settings(
+            control.hub.account_usage_enabled(),
+        );
         match zashiki_server::session_persist::restore_sessions_on_startup(
             &registry,
             &saves_dir,
             launch_claude,
             &shell,
+            usage_settings.as_deref(),
         )
         .await
         {

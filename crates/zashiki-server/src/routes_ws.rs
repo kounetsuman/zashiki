@@ -222,6 +222,7 @@ mod ws_control_tests {
                 debug: false,
                 update_check: true,
                 language: None,
+                account_usage: false,
             },
             vec![],
             snapshot("@1"),

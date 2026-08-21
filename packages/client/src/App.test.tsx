@@ -294,6 +294,7 @@ describe("App", () => {
         debug: false,
         updateCheck: true,
         language: "en",
+        accountUsage: false,
       }),
     );
     expect(i18n.language).toBe("en");
@@ -945,6 +946,7 @@ describe("App", () => {
         debug: false,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       });
     });
     expect(notifier.isEnabled()).toBe(false);
@@ -955,6 +957,7 @@ describe("App", () => {
         debug: false,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       });
     });
     expect(notifier.isEnabled()).toBe(true);
@@ -1543,6 +1546,7 @@ describe("App", () => {
         debug: true,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       });
     });
     expect(screen.getByRole("region", { name: "デバッグ情報" })).toBeTruthy();
@@ -1553,6 +1557,7 @@ describe("App", () => {
         debug: false,
         updateCheck: true,
         language: null,
+        accountUsage: false,
       });
     });
     expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();

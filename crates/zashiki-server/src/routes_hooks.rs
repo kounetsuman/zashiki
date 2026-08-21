@@ -310,7 +310,7 @@ mod hooks_rest_tests {
 
         let sessions = Arc::new(SessionRegistry::new());
         let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
-        let plan = plan_new_session(sid, "/tmp", "repo-a", false, None, "/bin/sh", "claude");
+        let plan = plan_new_session(sid, "/tmp", "repo-a", false, None, "/bin/sh", "claude", None);
         sessions
             .create_with_meta(
                 sid.to_string(),
@@ -393,7 +393,7 @@ mod hooks_rest_tests {
 
         let sessions = Arc::new(SessionRegistry::new());
         let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
-        let plan = plan_new_session(sid, "/tmp", "repo-a", false, None, "/bin/sh", "claude");
+        let plan = plan_new_session(sid, "/tmp", "repo-a", false, None, "/bin/sh", "claude", None);
         sessions
             .create_with_meta(
                 sid.to_string(),

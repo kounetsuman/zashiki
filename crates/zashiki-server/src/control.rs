@@ -34,6 +34,9 @@ pub struct ConfigView {
     pub update_check: bool,
     /// Display language ("ja"/"en"). None when unset, delegating to the client's browser detection.
     pub language: Option<String>,
+    /// Opt-in for the self-contained account-usage bridge. Default off; when on, launches inject
+    /// `--settings` so claude's statusLine relays rate_limits to the server without touching user settings.
+    pub account_usage: bool,
 }
 
 /// An immediate re-evaluation request to the poller. If `reply` is present, the

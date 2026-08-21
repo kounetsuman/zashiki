@@ -129,6 +129,10 @@ pub enum ClientMessage {
     /// it to config.json and distributes config.sync to all connections via watch.
     #[serde(rename = "config.update", rename_all = "camelCase")]
     ConfigUpdate { language: String },
+    /// Opt-in toggle for the account-usage bridge from SETTINGS / the footer modal. Persisted to
+    /// config.json and distributed via config.sync, like the language change.
+    #[serde(rename = "config.setAccountUsage", rename_all = "camelCase")]
+    ConfigSetAccountUsage { enabled: bool },
     /// On-demand "Check for updates" from SETTINGS. The server checks GitHub Releases now and replies
     /// with an `update.check.result` (a newer version additionally lands as a notification).
     #[serde(rename = "update.check")]
@@ -287,6 +291,7 @@ pub enum ServerMessage {
         debug: bool,
         update_check: bool,
         language: Option<String>,
+        account_usage: bool,
     },
     /// Full distribution of in-app notifications (to all control connections right after connecting
     /// and on changes; a full replacement, not a diff).
@@ -699,9 +704,10 @@ mod tests {
             debug: false,
             update_check: true,
             language: Some("ja".into()),
+            account_usage: false,
         };
         let json =
-            r#"{"t":"config.sync","notifySound":true,"debug":false,"updateCheck":true,"language":"ja"}"#;
+            r#"{"t":"config.sync","notifySound":true,"debug":false,"updateCheck":true,"language":"ja","accountUsage":false}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -713,9 +719,10 @@ mod tests {
             debug: false,
             update_check: false,
             language: None,
+            account_usage: true,
         };
         let json =
-            r#"{"t":"config.sync","notifySound":true,"debug":false,"updateCheck":false,"language":null}"#;
+            r#"{"t":"config.sync","notifySound":true,"debug":false,"updateCheck":false,"language":null,"accountUsage":true}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -725,6 +732,14 @@ mod tests {
         let json = r#"{"t":"config.update","language":"en"}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg, ClientMessage::ConfigUpdate { language: "en".into() });
+        assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn config_set_account_usage_roundtrips_and_matches_wire() {
+        let json = r#"{"t":"config.setAccountUsage","enabled":true}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg, ClientMessage::ConfigSetAccountUsage { enabled: true });
         assert_eq!(to_json(&msg), json);
     }
 
