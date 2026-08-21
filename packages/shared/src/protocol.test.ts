@@ -148,6 +148,8 @@ describe("clientMessageSchema", () => {
     [{ t: "state.refresh" }],
     [{ t: "config.update", language: "ja" }],
     [{ t: "config.update", language: "en" }],
+    [{ t: "update.check" }],
+    [{ t: "update.perform" }],
   ])("accepts: %j", (msg) => {
     expect(clientMessageSchema.parse(msg)).toEqual(msg);
   });
@@ -244,6 +246,11 @@ describe("serverMessageSchema", () => {
         language: null,
       },
     ],
+    [{ t: "update.check.result", status: "available", version: "0.2.0" }],
+    [{ t: "update.status", state: "running", detail: null }],
+    [{ t: "update.status", state: "relaunching", detail: null }],
+    [{ t: "update.status", state: "opened", detail: null }],
+    [{ t: "update.status", state: "failed", detail: "boom" }],
   ])("accepts: %j", (msg) => {
     expect(serverMessageSchema.parse(msg)).toEqual(msg);
   });

@@ -96,6 +96,14 @@ pub(crate) async fn handle_client_message(
             };
             socket.send(to_text(&result)).await.is_ok()
         }
+        // Long-running: run brew + relaunch off the WS loop, reporting progress via update.status
+        // broadcasts. app_version being set marks the desktop-shell context (gates brew vs open-page).
+        ClientMessage::UpdatePerform => {
+            let hub = services.hub.clone();
+            let present = services.app_version.is_some();
+            tokio::spawn(async move { crate::self_update::perform_update(hub, present).await });
+            true
+        }
         ClientMessage::CockpitTerminalNew { org, resume_sid } => {
             handle_session_new(socket, services, &org, resume_sid.as_deref()).await
         }

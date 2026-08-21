@@ -1,24 +1,41 @@
-import { ZASHIKI_RELEASES_URL } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
-/** Header banner linking to the latest release; renders only when an update is available. */
-export function UpdateBanner({ version }: { version: string | null }) {
+export interface UpdateBannerProps {
+  version: string | null;
+  /** True while an update is in progress (spinner + disabled). */
+  updating: boolean;
+  /** Start the self-update (brew upgrade + relaunch on the desktop app, else open the releases page). */
+  onUpdate(): void;
+}
+
+/**
+ * Header button offering the available update; renders only when one exists. Clicking triggers the
+ * server-side self-update and, while it runs, shows a spinner and disables itself.
+ */
+export function UpdateBanner({
+  version,
+  updating,
+  onUpdate,
+}: UpdateBannerProps) {
   const { t } = useTranslation();
   if (version === null) return null;
   return (
     <div className="update-banner">
-      <a
+      <button
+        type="button"
         className="update-banner-button"
-        href={ZASHIKI_RELEASES_URL}
-        target="_blank"
-        rel="noreferrer"
+        disabled={updating}
         title={t("update.tooltip", { version })}
+        onClick={onUpdate}
       >
-        <span className="material-symbols-outlined" aria-hidden="true">
-          upgrade
+        <span
+          className={`material-symbols-outlined${updating ? " update-spin" : ""}`}
+          aria-hidden="true"
+        >
+          {updating ? "progress_activity" : "upgrade"}
         </span>
-        <span>{t("update.button")}</span>
-      </a>
+        <span>{updating ? t("update.updating") : t("update.button")}</span>
+      </button>
     </div>
   );
 }

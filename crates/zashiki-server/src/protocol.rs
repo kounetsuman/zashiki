@@ -133,6 +133,11 @@ pub enum ClientMessage {
     /// with an `update.check.result` (a newer version additionally lands as a notification).
     #[serde(rename = "update.check")]
     UpdateCheck,
+    /// Trigger a self-update from the header Update button. On a Homebrew-cask desktop install this
+    /// runs `brew upgrade --cask zashiki` and relaunches; otherwise it opens the releases page.
+    /// Progress is reported to all connections via `update.status`.
+    #[serde(rename = "update.perform")]
+    UpdatePerform,
 }
 
 /// Result of an on-demand update check, sent only to the requester so SETTINGS can show feedback.
@@ -142,6 +147,19 @@ pub enum UpdateCheckStatus {
     Available,
     UpToDate,
     Error,
+}
+
+/// Progress of an `update.perform`, broadcast to all connections. `running` while brew works,
+/// `relaunching` once it succeeds and the app is about to quit and reopen, `opened` when the env
+/// isn't a cask install so the releases page was opened instead, `failed` on error (detail carries
+/// the brew stderr tail).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum UpdateStatusState {
+    Running,
+    Relaunching,
+    Opened,
+    Failed,
 }
 
 /// The kind of notify.
@@ -280,6 +298,13 @@ pub enum ServerMessage {
     UpdateCheckResult {
         status: UpdateCheckStatus,
         version: Option<String>,
+    },
+    /// Progress of an `update.perform`, broadcast to all connections. `detail` is null except on
+    /// `failed`, where it carries the brew stderr tail.
+    #[serde(rename = "update.status", rename_all = "camelCase")]
+    UpdateStatus {
+        state: UpdateStatusState,
+        detail: Option<String>,
     },
 }
 
@@ -709,6 +734,34 @@ mod tests {
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg, ClientMessage::UpdateCheck);
         assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn update_perform_roundtrips_and_matches_wire() {
+        let json = r#"{"t":"update.perform"}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg, ClientMessage::UpdatePerform);
+        assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn update_status_matches_wire() {
+        let running = ServerMessage::UpdateStatus {
+            state: UpdateStatusState::Running,
+            detail: None,
+        };
+        assert_eq!(
+            to_json(&running),
+            r#"{"t":"update.status","state":"running","detail":null}"#
+        );
+        let failed = ServerMessage::UpdateStatus {
+            state: UpdateStatusState::Failed,
+            detail: Some("boom".into()),
+        };
+        assert_eq!(
+            to_json(&failed),
+            r#"{"t":"update.status","state":"failed","detail":"boom"}"#
+        );
     }
 
     #[test]

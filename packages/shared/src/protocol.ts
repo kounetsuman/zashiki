@@ -237,6 +237,15 @@ export const updateCheckSchema = z.object({
   t: z.literal("update.check"),
 });
 
+/**
+ * Trigger a self-update from the header Update button. On a Homebrew-cask desktop install the server
+ * runs `brew upgrade --cask zashiki` and relaunches; otherwise it opens the releases page. Progress
+ * arrives via `update.status`.
+ */
+export const updatePerformSchema = z.object({
+  t: z.literal("update.perform"),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   termOpenSchema,
   termResizeSchema,
@@ -249,6 +258,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   notificationDismissSchema,
   configUpdateSchema,
   updateCheckSchema,
+  updatePerformSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -342,6 +352,18 @@ export const updateCheckResultSchema = z.object({
   version: z.string().nullable(),
 });
 
+/**
+ * Progress of an `update.perform`, broadcast to all connections. `running` while brew works,
+ * `relaunching` once it succeeds and the app is about to quit and reopen, `opened` when the env is
+ * not a cask install so the releases page was opened instead, `failed` on error (`detail` carries
+ * the brew stderr tail; null otherwise).
+ */
+export const updateStatusSchema = z.object({
+  t: z.literal("update.status"),
+  state: z.enum(["running", "relaunching", "opened", "failed"]),
+  detail: z.string().nullable(),
+});
+
 export const serverMessageSchema = z.discriminatedUnion("t", [
   stateSyncSchema,
   termReconnectSchema,
@@ -352,6 +374,7 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   configSyncSchema,
   notificationsSyncSchema,
   updateCheckResultSchema,
+  updateStatusSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
@@ -362,6 +385,8 @@ export type NotifyMessage = z.infer<typeof notifySchema>;
 export type ConfigSyncMessage = z.infer<typeof configSyncSchema>;
 export type NotificationsSyncMessage = z.infer<typeof notificationsSyncSchema>;
 export type UpdateCheckResultMessage = z.infer<typeof updateCheckResultSchema>;
+export type UpdateStatusMessage = z.infer<typeof updateStatusSchema>;
+export type UpdateStatusState = UpdateStatusMessage["state"];
 
 // ---- Claude Code hooks → server（POST /api/hooks/event）----
 

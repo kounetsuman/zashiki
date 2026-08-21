@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
-import { ZASHIKI_RELEASES_URL } from "@zashiki/shared";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UpdateBanner } from "./UpdateBanner.js";
 
@@ -9,15 +8,36 @@ afterEach(cleanup);
 
 describe("UpdateBanner", () => {
   it("renders nothing when no update is available", () => {
-    const { container } = render(<UpdateBanner version={null} />);
+    const { container } = render(
+      <UpdateBanner
+        version={null}
+        updating={false}
+        onUpdate={() => undefined}
+      />,
+    );
     expect(container.firstChild).toBeNull();
   });
 
-  it("links to the releases page and names the version in the tooltip", () => {
-    render(<UpdateBanner version="0.2.0" />);
-    const link = screen.getByRole("link");
-    expect(link.getAttribute("href")).toBe(ZASHIKI_RELEASES_URL);
-    expect(link.getAttribute("target")).toBe("_blank");
-    expect(link.getAttribute("title")).toContain("0.2.0");
+  it("calls onUpdate on click and names the version in the tooltip", () => {
+    const onUpdate = vi.fn();
+    render(
+      <UpdateBanner version="0.2.0" updating={false} onUpdate={onUpdate} />,
+    );
+    const button = screen.getByRole("button");
+    expect(button.getAttribute("title")).toContain("0.2.0");
+    fireEvent.click(button);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a spinner and is disabled while updating", () => {
+    const onUpdate = vi.fn();
+    render(
+      <UpdateBanner version="0.2.0" updating={true} onUpdate={onUpdate} />,
+    );
+    const button = screen.getByRole("button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.querySelector(".update-spin")).toBeTruthy();
+    fireEvent.click(button);
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 });
