@@ -20,6 +20,12 @@ export interface ViewerProps {
   /** The copy button at the header's left edge copies the file's absolute path. */
   onCopyPath(): void;
   inactive?: boolean;
+  /**
+   * Request counter for focusing the viewer. Each time it changes, focuses the section
+   * (which drives activeView to `main` via the app's onFocusCapture). App bumps it when a
+   * file is opened so opening a file activates the viewer even on re-open of the same file.
+   */
+  focusNonce?: number;
 }
 
 /**
@@ -98,8 +104,10 @@ export function Viewer({
   onTogglePreview,
   onCopyPath,
   inactive,
+  focusNonce = 0,
 }: ViewerProps) {
   const { t } = useTranslation();
+  const sectionRef = useRef<HTMLElement | null>(null);
   const md5 = isMarkdown(buffer.relPath);
   const showPreview = md5 && buffer.preview;
   const previewHtml = useMemo(
@@ -107,8 +115,15 @@ export function Viewer({
     [showPreview, buffer.content],
   );
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce is a re-run trigger, not read in the body.
+  useEffect(() => {
+    sectionRef.current?.focus();
+  }, [focusNonce]);
+
   return (
     <section
+      ref={sectionRef}
+      tabIndex={-1}
       className={viewClass("viewer-view", inactive)}
       data-view="main"
       aria-label={t("viewer.viewerLabel", { path: buffer.relPath })}
