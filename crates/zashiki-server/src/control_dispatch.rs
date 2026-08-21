@@ -83,6 +83,23 @@ pub(crate) async fn handle_client_message(
             }
             true
         }
+        // Persist the external editor command and broadcast config.sync (like the language change).
+        // Not allow-listed: the value reaches Command::new as ZK_EDITOR already does. A blank clears it.
+        ClientMessage::ConfigSetEditor { editor } => {
+            if let Some(path) = &services.config_path {
+                if let Err(e) = crate::config::write_config_editor(path, editor.trim()) {
+                    return report_error(
+                        socket,
+                        &services.hub,
+                        "config_write_failed",
+                        &format!("config の書き込みに失敗しました: {e}"),
+                    )
+                    .await;
+                }
+                services.hub.publish_config(crate::config::read_config(path));
+            }
+            true
+        }
         // Install/remove zashiki's Claude Code integration in ~/.claude/settings.json, then broadcast
         // the fresh status to every connection.
         ClientMessage::HooksRegister => apply_hooks_change(socket, services, true).await,

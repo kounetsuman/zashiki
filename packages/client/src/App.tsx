@@ -158,6 +158,7 @@ export function App({
   const clipboardEdit = useClipboardEditEnabled();
   const [addOrgOpen, setAddOrgOpen] = useState(false);
   const [accountUsage, setAccountUsage] = useState(false);
+  const [editor, setEditor] = useState<string | null>(null);
   const [accountUsageModalOpen, setAccountUsageModalOpen] = useState(false);
   const [hooksStatus, setHooksStatus] = useState<HooksStatusMessage | null>(
     null,
@@ -363,6 +364,7 @@ export function App({
       if (m.t !== "config.sync") return;
       notifier.applyServerConfig(m.notifySound);
       setAccountUsage(m.accountUsage);
+      setEditor(m.editor);
       // Apply the display language if the config file has one (unset = null keeps browser detection).
       if (m.language) void i18n.changeLanguage(m.language);
     });
@@ -372,6 +374,13 @@ export function App({
     (enabled: boolean): void => {
       setAccountUsage(enabled);
       control.send({ t: "config.setAccountUsage", enabled });
+    },
+    [control],
+  );
+
+  const saveEditor = useCallback(
+    (command: string): void => {
+      control.send({ t: "config.setEditor", editor: command });
     },
     [control],
   );
@@ -624,6 +633,8 @@ export function App({
               onSetClipboardEditModal={clipboardEdit.setEnabled}
               accountUsage={accountUsage}
               onSetAccountUsage={saveAccountUsage}
+              editor={editor ?? ""}
+              onSaveEditor={saveEditor}
               hooksStatus={hooksStatus ?? undefined}
               onSetHooksRegistered={setHooksRegistered}
               renderer={terminalRenderer.renderer}

@@ -224,6 +224,7 @@ mod ws_control_tests {
                 update_check: true,
                 language: None,
                 account_usage: false,
+                editor: None,
             },
             vec![],
             snapshot("@1"),

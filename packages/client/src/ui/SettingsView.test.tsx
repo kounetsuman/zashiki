@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { UpdateCheckResultMessage } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -154,6 +160,38 @@ describe("SettingsView", () => {
     expect(box.checked).toBe(true);
     fireEvent.click(box);
     expect(onSetClipboardEditModal).toHaveBeenCalledWith(false);
+  });
+
+  it("hides the editor field when onSaveEditor is omitted", () => {
+    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    expect(screen.queryByText("外部エディタコマンド")).toBeNull();
+  });
+
+  it("reflects the current editor command and disables Save until it changes", () => {
+    const onSaveEditor = vi.fn();
+    render(
+      <SettingsView
+        language="ja"
+        onSaveLanguage={() => {}}
+        editor="cursor -g"
+        onSaveEditor={onSaveEditor}
+      />,
+    );
+    const input = screen.getByRole("textbox", {
+      name: "外部エディタコマンド",
+    }) as HTMLInputElement;
+    expect(input.value).toBe("cursor -g");
+    // Scope to the editor field: the language field has its own "保存" button.
+    const field = input.closest("div.settings-field") as HTMLElement;
+    const save = within(field).getByRole("button", {
+      name: "保存",
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+
+    fireEvent.change(input, { target: { value: "code -w" } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(onSaveEditor).toHaveBeenCalledWith("code -w");
   });
 
   it("hides the update-check entry when onCheckForUpdates is omitted", () => {

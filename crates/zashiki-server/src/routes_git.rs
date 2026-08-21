@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, response::Response, Json};
 use serde::Deserialize;
 
-use crate::app_state::{scan, spawn_editor, AppState};
+use crate::app_state::{resolve_editor, scan, spawn_editor, AppState};
 use crate::git;
 use crate::wire_support::{
     git_result, guard_file_action, guard_repo, json_error, json_ok, parse_json_body,
@@ -59,7 +59,11 @@ pub(crate) async fn git_open(State(state): State<AppState>, body: axum::body::By
     }
     match state.open_file.clone() {
         Some(open) => open(repo_path, file),
-        None => spawn_editor(&state.editor, &repo_path, &file),
+        None => {
+            let configured = state.control.as_ref().and_then(|c| c.hub.editor_command());
+            let editor = resolve_editor(configured.as_deref(), state.editor.as_str());
+            spawn_editor(editor, &repo_path, &file);
+        }
     }
     json_ok()
 }

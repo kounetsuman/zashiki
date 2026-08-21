@@ -1861,6 +1861,19 @@ body {
   border-color: #4a7;
 }
 
+.settings-input {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #ddd;
+  font: inherit;
+  padding: 3px 6px;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: #4a7;
+}
+
 .settings-save {
   align-self: flex-start;
   background: #2a2a2a;

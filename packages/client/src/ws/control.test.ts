@@ -166,6 +166,7 @@ describe("ControlClient", () => {
         updateCheck: true,
         language: null,
         accountUsage: false,
+        editor: null,
       },
     ]);
   });
@@ -191,6 +192,7 @@ describe("ControlClient", () => {
         updateCheck: true,
         language: null,
         accountUsage: false,
+        editor: null,
       },
     ]);
   });
