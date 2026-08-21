@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-21
+
+### Added
+
+- Self-contained, opt-in account-usage footer that needs no edits to your Claude settings.json (#139)
+
+### Changed
+
+- Moved the developer tooling into a Settings "Developer mode" section (#141)
+
+### Fixed
+
+- Keep the Cockpit Terminal's running glyph accurate when a wide fan-out scrolls the heading out of view (#138)
+
 ## [0.7.0] - 2026-08-21
 
 ### Added
@@ -115,7 +129,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/kounetsuman/zashiki/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kounetsuman/zashiki/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/kounetsuman/zashiki/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kounetsuman/zashiki/compare/v0.4.0...v0.5.0
