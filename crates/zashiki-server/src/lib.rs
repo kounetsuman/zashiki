@@ -11,6 +11,7 @@ pub mod crash_report;
 pub mod file;
 pub mod fs;
 pub mod git;
+pub mod hook_event_store;
 pub mod hooks;
 pub mod jsonl;
 pub mod launchd;

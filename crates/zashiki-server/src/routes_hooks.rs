@@ -50,6 +50,14 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
         Err((status, msg)) => return json_error(status, &msg),
     };
 
+    // Record the event into the shared store before triggering the re-poll, so the immediate
+    // re-evaluation reads it and event-authoritative state applies without waiting for the next tick.
+    if let Some(sid) = req.sid.as_deref().filter(|s| !s.is_empty()) {
+        control
+            .hook_events
+            .record(sid, hooks::hook_event_of(req.kind), now_ms());
+    }
+
     let snap = hooks_refresh(control).await;
     let resolved = match req.kind {
         crate::protocol::HookKind::Waiting | crate::protocol::HookKind::Done => {
@@ -199,6 +207,7 @@ mod hooks_rest_tests {
             launch_claude: false,
             terms: Arc::new(std::sync::Mutex::new(TermRegistry::new())),
             sessions,
+            hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: mode,
             mac_notify: Arc::new(move |n| mac_log.lock().unwrap().push(n)),
@@ -256,6 +265,30 @@ mod hooks_rest_tests {
         assert!(b.contains(r#""matched":false"#), "body: {b}");
         // The git.dirty that triggers a git-panel refetch flows to all connections.
         assert!(matches!(rx.try_recv(), Ok(ServerMessage::GitDirty)));
+    }
+
+    /// Every hook event carrying a sid is recorded into the shared store (the poller's event source),
+    /// independent of whether it resolved to a window. A sid-less event records nothing.
+    #[tokio::test]
+    async fn hook_event_with_sid_is_recorded_into_store() {
+        let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
+        let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+        let services = services(hub, NotifyMode::Web, Arc::new(Mutex::new(vec![])));
+        let store = services.hook_events.clone();
+        let (s, _) = send(app(services), "POST", &format!(r#"{{"kind":"tool","sid":"{sid}"}}"#)).await;
+        assert_eq!(s, StatusCode::OK);
+        let got = store.get(sid, crate::app_state::now_ms()).expect("event recorded");
+        assert_eq!(got.event, zashiki_core::session_state::HookEvent::Tool);
+    }
+
+    #[tokio::test]
+    async fn hook_event_without_sid_records_nothing() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+        let services = services(hub, NotifyMode::Web, Arc::new(Mutex::new(vec![])));
+        let store = services.hook_events.clone();
+        let (s, _) = send(app(services), "POST", r#"{"kind":"waiting","cwd":"/nope"}"#).await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(store.get("579fa8cf-4901-45cb-b9ec-17e229231a37", crate::app_state::now_ms()).is_none());
     }
 
     #[tokio::test]
