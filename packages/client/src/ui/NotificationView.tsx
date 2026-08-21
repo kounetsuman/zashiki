@@ -10,10 +10,10 @@ export interface NotificationViewProps {
   notifications: readonly Notification[];
   /** Set of read ids (used to split into the unread/read tabs). */
   seenIds: readonly string[];
-  /** Close button for a dismissible notification. Sends notification.dismiss to the server. */
-  onDismiss(id: string): void;
-  /** Marks a notification as read on double-click. */
+  /** Marks a notification as read (mark-read button and double-click). */
   onMarkRead(id: string): void;
+  /** Deletes the given notifications (confirmed read-tab delete, single or bulk). */
+  onDelete(ids: readonly string[]): void;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
 }
@@ -47,21 +47,48 @@ export function partitionBySeen(
 /**
  * List of in-app notifications (one view of NAVIGATION). All notifications
  * (error / awaiting response / done / restart required / PTY pressure) accumulate
- * newest-first. Switch via the unread/read tabs; double-click an item to mark it
- * read, and dismissible notifications can be cleared with the close button. Read state is managed
- * in localStorage.
+ * newest-first. Unread items are marked read (button or double-click) but never
+ * deleted; only read items can be deleted, individually or in bulk, and only after
+ * a confirm dialog. Non-dismissible ones (restart required) stay until resolved.
+ * Read state is managed in localStorage.
  */
 export function NotificationView({
   notifications,
   seenIds,
-  onDismiss,
   onMarkRead,
+  onDelete,
   inactive,
 }: NotificationViewProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("unread");
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<string[] | null>(null);
   const { unread, read } = partitionBySeen(notifications, seenIds);
   const shown = tab === "unread" ? unread : read;
+
+  const switchTab = (next: Tab): void => {
+    setTab(next);
+    setSelected(new Set());
+  };
+
+  const toggleSelected = (id: string): void =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const selectedIds = read
+    .filter((n) => n.dismissible && selected.has(n.id))
+    .map((n) => n.id);
+
+  const confirmDelete = (): void => {
+    if (pendingDelete !== null) onDelete(pendingDelete);
+    setSelected(new Set());
+    setPendingDelete(null);
+  };
+
   return (
     <section
       className={viewClass("notification-view", inactive)}
@@ -74,7 +101,7 @@ export function NotificationView({
           role="tab"
           aria-selected={tab === "unread"}
           className={`notification-tab${tab === "unread" ? " is-active" : ""}`}
-          onClick={() => setTab("unread")}
+          onClick={() => switchTab("unread")}
         >
           {t("notification.unread")}
           {unread.length > 0 ? ` (${unread.length})` : ""}
@@ -84,11 +111,24 @@ export function NotificationView({
           role="tab"
           aria-selected={tab === "read"}
           className={`notification-tab${tab === "read" ? " is-active" : ""}`}
-          onClick={() => setTab("read")}
+          onClick={() => switchTab("read")}
         >
           {t("notification.read")}
           {read.length > 0 ? ` (${read.length})` : ""}
         </button>
+        {tab === "read" && selectedIds.length > 0 && (
+          <button
+            type="button"
+            className="notification-bulk-delete"
+            aria-label={t("notification.deleteSelected")}
+            title={t("notification.deleteSelected")}
+            onClick={() => setPendingDelete(selectedIds)}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              delete
+            </span>
+          </button>
+        )}
       </div>
       <div className="notification-scroll">
         {shown.length === 0 ? (
@@ -105,9 +145,20 @@ export function NotificationView({
                 className={`notification-item notification-${n.level}${
                   tab === "read" ? " notification-read" : ""
                 }`}
-                onDoubleClick={() => onMarkRead(n.id)}
-                title={t("notification.markReadHint")}
+                onDoubleClick={() => tab === "unread" && onMarkRead(n.id)}
+                title={
+                  tab === "unread" ? t("notification.markReadHint") : undefined
+                }
               >
+                {tab === "read" && n.dismissible && (
+                  <input
+                    type="checkbox"
+                    className="notification-select"
+                    aria-label={t("notification.select")}
+                    checked={selected.has(n.id)}
+                    onChange={() => toggleSelected(n.id)}
+                  />
+                )}
                 <span
                   className="material-symbols-outlined notification-icon"
                   aria-hidden="true"
@@ -123,30 +174,79 @@ export function NotificationView({
                     {formatTime(n.createdAt)}
                   </time>
                 </div>
-                {n.dismissible && (
+                {tab === "unread" ? (
                   <button
                     type="button"
-                    className="notification-dismiss"
-                    aria-label={t("notification.dismiss")}
-                    title={t("notification.dismiss")}
+                    className="notification-mark-read"
+                    aria-label={t("notification.markRead")}
+                    title={t("notification.markRead")}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onDismiss(n.id);
+                      onMarkRead(n.id);
                     }}
                   >
                     <span
                       className="material-symbols-outlined"
                       aria-hidden="true"
                     >
-                      close
+                      mark_email_read
                     </span>
                   </button>
+                ) : (
+                  n.dismissible && (
+                    <button
+                      type="button"
+                      className="notification-delete"
+                      aria-label={t("notification.delete")}
+                      title={t("notification.delete")}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingDelete([n.id]);
+                      }}
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        aria-hidden="true"
+                      >
+                        close
+                      </span>
+                    </button>
+                  )
                 )}
               </li>
             ))}
           </ul>
         )}
       </div>
+      {pendingDelete !== null && (
+        <div
+          className="notification-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="notification-confirm">
+            <p className="notification-confirm-message">
+              {t("notification.confirmDelete", { count: pendingDelete.length })}
+            </p>
+            <div className="notification-confirm-actions">
+              <button
+                type="button"
+                className="notification-confirm-cancel"
+                onClick={() => setPendingDelete(null)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                className="notification-confirm-delete"
+                onClick={confirmDelete}
+              >
+                {t("notification.delete")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

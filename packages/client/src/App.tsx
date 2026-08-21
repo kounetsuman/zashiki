@@ -549,10 +549,14 @@ export function App({
             <NotificationView
               notifications={notifications}
               seenIds={seenIds}
-              onDismiss={(id) =>
-                control.send({ t: "notification.dismiss", id })
-              }
               onMarkRead={markRead}
+              onDelete={(ids) => {
+                for (const id of ids)
+                  control.send({ t: "notification.dismiss", id });
+                flashCopyToast(
+                  t("toast.notificationsDeleted", { count: ids.length }),
+                );
+              }}
               inactive={activeView !== "notification"}
             />
           )}

@@ -56,7 +56,8 @@
   "toast": {
     "resumeCopied": "resume コマンドをコピーしました",
     "sessionIdCopied": "セッションIDをコピーしました",
-    "pathCopied": "パスをコピーしました"
+    "pathCopied": "パスをコピーしました",
+    "notificationsDeleted": "{{count}} 件の通知を削除しました"
   },
   "sessionList": {
     "ariaLabel": "セッション一覧",
@@ -98,7 +99,11 @@
     "emptyUnread": "未読の通知はありません",
     "emptyRead": "既読の通知はありません",
     "markReadHint": "ダブルクリックで既読",
-    "dismiss": "通知を消す",
+    "markRead": "既読にする",
+    "select": "削除対象に選択",
+    "delete": "削除",
+    "deleteSelected": "選択した通知を削除",
+    "confirmDelete": "{{count}} 件の通知を削除しますか？",
     "waiting": "⏳ 応答待ち",
     "done": "✅ 完了"
   },

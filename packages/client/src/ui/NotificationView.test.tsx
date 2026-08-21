@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import type { Notification } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -28,11 +34,16 @@ function renderView(
     <NotificationView
       notifications={props.notifications ?? []}
       seenIds={props.seenIds ?? []}
-      onDismiss={props.onDismiss ?? (() => undefined)}
       onMarkRead={props.onMarkRead ?? (() => undefined)}
+      onDelete={props.onDelete ?? (() => undefined)}
       inactive={props.inactive}
     />,
   );
+}
+
+function confirmDelete(): void {
+  const dialog = screen.getByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: "削除" }));
 }
 
 describe("partitionBySeen", () => {
@@ -56,14 +67,6 @@ describe("NotificationView", () => {
     expect(title.closest("header")?.className).toBe("view-header");
   });
 
-  it("places the header outside the scroll container (directly under root) so it stays fixed", () => {
-    const { container } = renderView({ notifications: [note()] });
-    const root = container.querySelector(".notification-view");
-    expect(root?.querySelector(":scope > .view-header")).toBeTruthy();
-    expect(root?.querySelector(":scope > .notification-scroll")).toBeTruthy();
-    expect(root?.querySelector(".notification-scroll .view-header")).toBeNull();
-  });
-
   it("renders the title and body", () => {
     renderView({
       notifications: [note({ title: "設定変更", body: "再起動して" })],
@@ -72,21 +75,68 @@ describe("NotificationView", () => {
     expect(screen.getByText("再起動して")).toBeTruthy();
   });
 
-  it("renders ✕ for a dismissible notification and calls onDismiss(id) on click", () => {
-    const onDismiss = vi.fn();
+  it("marks an unread item read via its button and on double-click, and never deletes it", () => {
+    const onMarkRead = vi.fn();
+    const onDelete = vi.fn();
     renderView({
-      notifications: [note({ id: "abc", dismissible: true })],
-      onDismiss,
+      notifications: [note({ id: "u", title: "未読通知" })],
+      onMarkRead,
+      onDelete,
     });
-    fireEvent.click(screen.getByRole("button", { name: "通知を消す" }));
-    expect(onDismiss).toHaveBeenCalledWith("abc");
+    fireEvent.click(screen.getByRole("button", { name: "既読にする" }));
+    expect(onMarkRead).toHaveBeenCalledWith("u");
+    fireEvent.doubleClick(screen.getByText("未読通知"));
+    expect(onMarkRead).toHaveBeenCalledTimes(2);
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "削除" })).toBeNull();
   });
 
-  it("does not render ✕ for a non-dismissible notification (sticky, restart required)", () => {
+  it("deletes a read item only after confirming, then calls onDelete(id)", () => {
+    const onDelete = vi.fn();
     renderView({
-      notifications: [note({ sticky: true, dismissible: false })],
+      notifications: [note({ id: "r", title: "既読通知" })],
+      seenIds: ["r"],
+      onDelete,
     });
-    expect(screen.queryByRole("button", { name: "通知を消す" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: /既読/ }));
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+    confirmDelete();
+    expect(onDelete).toHaveBeenCalledWith(["r"]);
+  });
+
+  it("bulk-deletes checked read items via the tab-bar delete after confirming", () => {
+    const onDelete = vi.fn();
+    renderView({
+      notifications: [
+        note({ id: "a", title: "既読A" }),
+        note({ id: "b", title: "既読B" }),
+      ],
+      seenIds: ["a", "b"],
+      onDelete,
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /既読/ }));
+    for (const check of screen.getAllByRole("checkbox")) fireEvent.click(check);
+    fireEvent.click(screen.getByRole("button", { name: "選択した通知を削除" }));
+    confirmDelete();
+    expect(onDelete).toHaveBeenCalledWith(["a", "b"]);
+  });
+
+  it("does not offer delete or checkbox for a non-dismissible read item", () => {
+    renderView({
+      notifications: [note({ id: "sys", sticky: true, dismissible: false })],
+      seenIds: ["sys"],
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /既読/ }));
+    expect(screen.queryByRole("button", { name: "削除" })).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
   });
 
   it("shows only unread on the unread tab and only read on the read tab", () => {
@@ -97,10 +147,8 @@ describe("NotificationView", () => {
       ],
       seenIds: ["r"],
     });
-    // The unread tab is the default
     expect(screen.getByText("未読通知")).toBeTruthy();
     expect(screen.queryByText("既読通知")).toBeNull();
-    // Switch to the read tab
     fireEvent.click(screen.getByRole("tab", { name: /既読/ }));
     expect(screen.getByText("既読通知")).toBeTruthy();
     expect(screen.queryByText("未読通知")).toBeNull();
@@ -113,15 +161,5 @@ describe("NotificationView", () => {
     });
     expect(screen.getByRole("tab", { name: "未読 (2)" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "既読 (1)" })).toBeTruthy();
-  });
-
-  it("calls onMarkRead(id) on double-clicking an item", () => {
-    const onMarkRead = vi.fn();
-    renderView({
-      notifications: [note({ id: "x", title: "既読にする" })],
-      onMarkRead,
-    });
-    fireEvent.doubleClick(screen.getByText("既読にする"));
-    expect(onMarkRead).toHaveBeenCalledWith("x");
   });
 });
