@@ -56,7 +56,8 @@
   "toast": {
     "resumeCopied": "Copied the resume command",
     "sessionIdCopied": "Copied the session ID",
-    "pathCopied": "Copied the path"
+    "pathCopied": "Copied the path",
+    "notificationsDeleted": "Deleted {{count}} notification(s)"
   },
   "sessionList": {
     "ariaLabel": "Session list",
@@ -98,7 +99,11 @@
     "emptyUnread": "No unread notifications",
     "emptyRead": "No read notifications",
     "markReadHint": "Double-click to mark as read",
-    "dismiss": "Dismiss notification",
+    "markRead": "Mark as read",
+    "select": "Select for deletion",
+    "delete": "Delete",
+    "deleteSelected": "Delete selected",
+    "confirmDelete": "Delete {{count}} notification(s)?",
     "waiting": "⏳ Awaiting response",
     "done": "✅ Done"
   },

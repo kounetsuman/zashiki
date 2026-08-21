@@ -127,7 +127,8 @@ pub fn scrollback_pressure_notification(used_bytes: usize, created_at: u64) -> N
 /// Notification announcing that a newer stable release exists on GitHub than the running bundle (#26).
 /// The id is per-version (`update-available:<version>`) so the same latest version does not re-stack on
 /// every daily poll (singleton per version via upsert), while a genuinely newer version stacks as a new
-/// entry. Toast + panel; sticky so a pending update survives eviction under a notification storm, and manually dismissible.
+/// entry. Toast + panel; sticky and non-dismissible so the update stays (and its header button keeps
+/// showing) until the running bundle actually catches up to the latest version.
 pub fn update_available_notification(version: &str, url: &str, created_at: u64) -> Notification {
     Notification {
         id: format!("update-available:{version}"),
@@ -138,7 +139,7 @@ pub fn update_available_notification(version: &str, url: &str, created_at: u64) 
         )),
         created_at,
         sticky: true,
-        dismissible: true,
+        dismissible: false,
         toast: Some(true),
     }
 }
@@ -272,7 +273,7 @@ mod tests {
         assert_eq!(n.id, "update-available:0.2.0");
         assert_eq!(n.level, NotificationLevel::Warn);
         assert_eq!(n.toast, Some(true));
-        assert!(n.dismissible && n.sticky);
+        assert!(!n.dismissible && n.sticky);
         assert!(n.body.as_deref().unwrap().contains("https://example.test/rel"));
         // Same version re-poll coalesces (singleton per version); a newer version stacks as a new entry.
         let same = upsert_notification(

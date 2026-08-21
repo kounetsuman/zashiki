@@ -28,9 +28,13 @@ function note(over: Partial<Notification> = {}): Notification {
 }
 
 describe("visibleToasts", () => {
-  it("sticky is always shown even when hidden", () => {
+  it("sticky is shown while not hidden", () => {
     const list = [note({ id: "s", sticky: true })];
-    expect(visibleToasts(list, new Set(["s"])).map((n) => n.id)).toEqual(["s"]);
+    expect(visibleToasts(list, new Set()).map((n) => n.id)).toEqual(["s"]);
+  });
+  it("sticky is hidden once closed", () => {
+    const list = [note({ id: "s", sticky: true })];
+    expect(visibleToasts(list, new Set(["s"]))).toEqual([]);
   });
   it("non-sticky is not shown when hidden", () => {
     const list = [note({ id: "t", sticky: false })];
@@ -48,12 +52,13 @@ describe("Toaster", () => {
     expect(container.querySelector(".toaster")).toBeNull();
   });
 
-  it("a sticky toast is shown and has no close button", () => {
+  it("a sticky toast is shown and disappears in place via the close button", () => {
     render(
       <Toaster notifications={[note({ title: "再起動して", sticky: true })]} />,
     );
     expect(screen.getByText("再起動して")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "閉じる" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+    expect(screen.queryByText("再起動して")).toBeNull();
   });
 
   it("a non-sticky toast disappears in place via the close button", () => {

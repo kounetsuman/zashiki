@@ -15,23 +15,21 @@ const LEVEL_ICON: Record<NotificationLevel, string> = {
 };
 
 /**
- * Notifications that should currently be shown as toasts (pure function, for testing). sticky ones
- * are always shown (e.g. restart-required; kept up until resolved). Non-sticky ones only if not in
- * hidden (auto-dismissed or manually closed).
+ * Notifications that should currently be shown as toasts (pure function, for testing). Any toast is
+ * hidden once it is in hidden (auto-dismissed or manually closed via ×); sticky ones differ only in
+ * that they never auto-dismiss, so they stay up until closed by hand.
  */
 export function visibleToasts(
   notifications: readonly Notification[],
   hidden: ReadonlySet<string>,
 ): Notification[] {
-  return notifications.filter(
-    (n) => n.toast !== false && (n.sticky || !hidden.has(n.id)),
-  );
+  return notifications.filter((n) => n.toast !== false && !hidden.has(n.id));
 }
 
 /**
- * Toast display stacked in a screen corner. Non-sticky toasts auto-dismiss after a while but
- * remain in the NOTIFICATION view list (toast visibility != presence in the list). sticky ones
- * (restart-required) stay until the server withdraws them (= restart). Closing a toast does not remove it from the list.
+ * Toast display stacked in a screen corner. Every toast can be closed with × (hides it in place);
+ * non-sticky ones also auto-dismiss after a while. Closing only hides the toast — the notification
+ * stays in the NOTIFICATION view list (toast visibility != presence in the list).
  */
 export function Toaster({ notifications, autoHideMs = 6000 }: ToasterProps) {
   const { t } = useTranslation();
@@ -94,19 +92,17 @@ export function Toaster({ notifications, autoHideMs = 6000 }: ToasterProps) {
               <div className="toast-body">{n.body}</div>
             )}
           </div>
-          {!n.sticky && (
-            <button
-              type="button"
-              className="toast-close"
-              aria-label={t("common.close")}
-              title={t("common.close")}
-              onClick={() => close(n.id)}
-            >
-              <span className="material-symbols-outlined" aria-hidden="true">
-                close
-              </span>
-            </button>
-          )}
+          <button
+            type="button"
+            className="toast-close"
+            aria-label={t("common.close")}
+            title={t("common.close")}
+            onClick={() => close(n.id)}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              close
+            </span>
+          </button>
         </div>
       ))}
     </div>
