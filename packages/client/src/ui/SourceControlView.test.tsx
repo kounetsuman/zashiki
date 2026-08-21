@@ -337,55 +337,7 @@ describe("SourceControlView", () => {
     expect(h.api.statusCalls).toBe(before + 1);
   });
 
-  it("refetches via the manual refresh button", async () => {
-    const h = renderView(twoRepoFixture());
-    await screen.findByRole("button", { name: /org1 \(2\)/ });
-    const before = h.api.statusCalls;
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "refresh" }));
-    });
-    expect(h.api.statusCalls).toBe(before + 1);
-  });
-
-  it("shows the header icon as a spinner (aria-busy) while a manual refresh is in flight and returns to the refresh icon on completion", async () => {
-    const resolvers: ((r: GitStatusResponse) => void)[] = [];
-    const api: GitApi = {
-      status: () => new Promise((resolve) => resolvers.push(resolve)),
-      stage: () => Promise.resolve(),
-      unstage: () => Promise.resolve(),
-      stageAll: () => Promise.resolve(),
-      unstageAll: () => Promise.resolve(),
-      open: () => Promise.resolve(),
-      commit: () => Promise.resolve(),
-    };
-    render(
-      <SourceControlView
-        api={api}
-        onGitDirty={() => () => {}}
-        copyText={() => Promise.resolve()}
-      />,
-    );
-    // Settle the initial fetch -> header is idle (↻).
-    await act(async () => {
-      resolvers[0]?.({ repos: twoRepoFixture() });
-    });
-    const btn = screen.getByRole("button", { name: "refresh" });
-    expect(btn.getAttribute("aria-busy")).toBeNull();
-    // Manual refresh -> spinner while in-flight.
-    await act(async () => {
-      fireEvent.click(btn);
-    });
-    expect(btn.getAttribute("aria-busy")).toBe("true");
-    expect(btn.querySelector(".view-refresh-spinner")).not.toBeNull();
-    // Settle -> cleared.
-    await act(async () => {
-      resolvers[1]?.({ repos: twoRepoFixture() });
-    });
-    expect(btn.getAttribute("aria-busy")).toBeNull();
-    expect(btn.textContent).toBe("refresh");
-  });
-
-  it("shows the warning icon in the header with the error in the title on an initial fetch error (alongside the red body text)", async () => {
+  it("surfaces an initial fetch error as the red body text", async () => {
     const rejecters: ((e: unknown) => void)[] = [];
     const api: GitApi = {
       status: () => new Promise((_resolve, reject) => rejecters.push(reject)),
@@ -406,10 +358,6 @@ describe("SourceControlView", () => {
     await act(async () => {
       rejecters[0]?.(new Error("boom"));
     });
-    const btn = screen.getByRole("button", { name: "refresh" });
-    expect(btn.textContent).toContain("warning");
-    expect(btn.getAttribute("title")).toContain("boom");
-    // The red text block in the body is also shown alongside, as before.
     expect(document.querySelector(".git-error")?.textContent).toContain("boom");
   });
 

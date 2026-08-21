@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -60,7 +54,6 @@ function renderView(
     onSelect: vi.fn(),
     onNew: vi.fn(),
     onClose: vi.fn(),
-    onRefresh: vi.fn(),
     onFocusTerminal: vi.fn(),
     ...overrides,
   };
@@ -823,7 +816,6 @@ describe("CockpitTerminalListView: right-click menu", () => {
       onSelect: vi.fn(),
       onNew: vi.fn(),
       onClose: vi.fn(),
-      onRefresh: vi.fn(),
       onSave: vi.fn(),
       onRestore: vi.fn(),
     };
@@ -853,55 +845,6 @@ describe("CockpitTerminalListView: right-click menu", () => {
 });
 
 describe("CockpitTerminalListView: operations", () => {
-  it("calls onRefresh via the refresh button", () => {
-    const props = renderView();
-    fireEvent.click(screen.getByRole("button", { name: "一覧を更新" }));
-    expect(props.onRefresh).toHaveBeenCalled();
-  });
-
-  it("does not show a status when onRefresh returns void (synchronous), keeping fire-and-forget compatibility", () => {
-    const props = renderView({ onRefresh: vi.fn() });
-    const btn = screen.getByRole("button", { name: "一覧を更新" });
-    fireEvent.click(btn);
-    expect(props.onRefresh).toHaveBeenCalled();
-    expect(btn.getAttribute("aria-busy")).toBeNull();
-    expect(btn.textContent).toBe("refresh");
-  });
-
-  it("shows a spinner (aria-busy) while fetching and the refresh icon on resolution when onRefresh returns a Promise", async () => {
-    let resolve: (() => void) | undefined;
-    const onRefresh = () =>
-      new Promise<void>((r) => {
-        resolve = r;
-      });
-    renderView({ onRefresh });
-    const btn = screen.getByRole("button", { name: "一覧を更新" });
-    fireEvent.click(btn);
-    expect(btn.getAttribute("aria-busy")).toBe("true");
-    expect(btn.querySelector(".view-refresh-spinner")).not.toBeNull();
-    await act(async () => {
-      resolve?.();
-    });
-    expect(btn.getAttribute("aria-busy")).toBeNull();
-    expect(btn.textContent).toBe("refresh");
-  });
-
-  it("shows the warning icon in the header with the error in title when onRefresh rejects", async () => {
-    let reject: ((e: unknown) => void) | undefined;
-    const onRefresh = () =>
-      new Promise<void>((_resolve, r) => {
-        reject = r;
-      });
-    renderView({ onRefresh });
-    const btn = screen.getByRole("button", { name: "一覧を更新" });
-    fireEvent.click(btn);
-    await act(async () => {
-      reject?.(new Error("未接続です"));
-    });
-    expect(btn.textContent).toContain("warning");
-    expect(btn.getAttribute("title")).toContain("未接続です");
-  });
-
   it("Ctrl-N calls onNew with the selected session's org", () => {
     const props = renderView({ selectedCockpitTerminalId: SID3 });
     fireEvent.keyDown(screen.getByRole("complementary"), {
@@ -1259,7 +1202,6 @@ describe("CockpitTerminalListView: Rename", () => {
       onSelect: vi.fn(),
       onNew: vi.fn(),
       onClose: vi.fn(),
-      onRefresh: vi.fn(),
       onRename: vi.fn(),
     };
     const { rerender } = render(<CockpitTerminalListView {...props} />);

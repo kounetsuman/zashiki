@@ -9,8 +9,6 @@ export interface GitStatus {
   error: string | null;
   /** true only during the initial fetch, so refetches do not flicker the loading UI. */
   loading: boolean;
-  /** in-flight flag for the header icon, set on every refetch. */
-  refreshing: boolean;
   refetch(): Promise<void>;
   setError(error: string | null): void;
 }
@@ -28,13 +26,11 @@ export function useGitStatus(
   const [skipped, setSkipped] = useState<SkippedRepo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(true);
   const generation = useRef(0);
 
   const refetch = useCallback(async (): Promise<void> => {
     generation.current += 1;
     const gen = generation.current;
-    setRefreshing(true);
     try {
       const res = await api.status();
       if (gen !== generation.current) return;
@@ -46,7 +42,6 @@ export function useGitStatus(
     } finally {
       if (gen === generation.current) {
         setLoading(false);
-        setRefreshing(false);
       }
     }
   }, [api]);
@@ -57,5 +52,5 @@ export function useGitStatus(
 
   useEffect(() => onGitDirty(() => void refetch()), [onGitDirty, refetch]);
 
-  return { repos, skipped, error, loading, refreshing, refetch, setError };
+  return { repos, skipped, error, loading, refetch, setError };
 }

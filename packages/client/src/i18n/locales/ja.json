@@ -60,9 +60,6 @@
   },
   "sessionList": {
     "ariaLabel": "セッション一覧",
-    "refreshLabel": "一覧を更新",
-    "refreshNotConnected": "未接続です（接続を待って再試行してください）",
-    "refreshTimeout": "更新がタイムアウトしました",
     "limitReached": "使用量上限に達しています",
     "addOrg": "組織を追加",
     "orgToggleTitle": "{{org}}（クリックで折畳・+ で新規セッション・Ctrl-N）",

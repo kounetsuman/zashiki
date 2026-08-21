@@ -2,7 +2,6 @@ import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
-import { RefreshButton } from "./RefreshButton.js";
 import { ReposConfGuide } from "./ReposConfGuide.js";
 import { SessionContextMenu } from "./SessionContextMenu.js";
 import { SessionRow } from "./SessionRow.js";
@@ -11,7 +10,6 @@ import { useConfirmClose } from "./useConfirmClose.js";
 import { useRowRename } from "./useRowRename.js";
 import { useSessionContextMenu } from "./useSessionContextMenu.js";
 import { useSessionListFocus } from "./useSessionListFocus.js";
-import { useSessionRefresh } from "./useSessionRefresh.js";
 import { ViewHeader } from "./ViewHeader.js";
 import { viewClass } from "./views.js";
 
@@ -25,13 +23,6 @@ export interface CockpitTerminalListViewProps {
   onSelect(cockpitTerminalId: string): void;
   onNew(org: string): void;
   onClose(cockpitTerminalId: string): void;
-  /**
-   * Manual refresh. Returning a Promise reflects the spinner while fetching and then
-   * success/error in the header icon (the App side sends state.refresh and resolves on
-   * receiving state.sync; rejects on disconnect/timeout). A void (synchronous) return
-   * shows no status.
-   */
-  onRefresh(): void | Promise<void>;
   /** Open the "add org" modal (the header + button). Omit to hide the button. */
   onAddOrg?(): void;
   /**
@@ -87,7 +78,6 @@ export function CockpitTerminalListView({
   onSelect,
   onNew,
   onClose,
-  onRefresh,
   onAddOrg,
   onFocusTerminal,
   conversationTitles = {},
@@ -102,7 +92,6 @@ export function CockpitTerminalListView({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const orgList = displayOrgs(orgs, cockpitTerminals);
 
-  const refresh = useSessionRefresh(onRefresh);
   // The row menu has at most 4 items: Delete + (when provided) Rename + Duplicate + Copy session id.
   const rowItemCount =
     1 +
@@ -225,12 +214,6 @@ export function CockpitTerminalListView({
               </span>
             </button>
           )}
-          <RefreshButton
-            state={refresh.state}
-            label={t("sessionList.refreshLabel")}
-            error={refresh.error}
-            onClick={refresh.refresh}
-          />
         </div>
       </ViewHeader>
       {/* Like other views, keep the header fixed and let the inner container handle scrolling. */}

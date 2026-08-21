@@ -377,31 +377,6 @@ export function App({
     [control],
   );
 
-  // Manual SESSION LIST refresh: send state.refresh and treat receiving the state.sync
-  // addressed to us as completion. Not connected (send=false) / no response (timeout) rejects
-  // and turns the view's header icon into an error.
-  const refreshSessions = useCallback(
-    (): Promise<void> =>
-      new Promise((resolve, reject) => {
-        if (!control.send({ t: "state.refresh" })) {
-          reject(new Error(t("sessionList.refreshNotConnected")));
-          return;
-        }
-        let unsubscribe = (): void => {};
-        const timer = setTimeout(() => {
-          unsubscribe();
-          reject(new Error(t("sessionList.refreshTimeout")));
-        }, 5000);
-        unsubscribe = control.onMessage((m) => {
-          if (m.t !== "state.sync") return;
-          clearTimeout(timer);
-          unsubscribe();
-          resolve();
-        });
-      }),
-    [control, t],
-  );
-
   // On-demand "Check for updates" (SETTINGS): send update.check and resolve with the server's
   // update.check.result. Not connected (send=false) / no response (timeout) rejects so the view
   // shows an error. The 15s window covers the server's 10s GitHub request timeout.
@@ -536,7 +511,6 @@ export function App({
             onClose={(cockpitTerminalId) =>
               control.send({ t: "cockpitTerminal.close", cockpitTerminalId })
             }
-            onRefresh={refreshSessions}
             onAddOrg={() => setAddOrgOpen(true)}
             inactive={activeView !== "sessions"}
             full={selectedView === null}
