@@ -27,7 +27,8 @@ pub(crate) async fn search_route(
         .collect();
     let paths: Vec<String> = roots.iter().map(|r| r.path.clone()).collect();
     let args = search::build_rg_args(&req, &search::DEFAULT_SEARCH_LIMITS);
-    match search::run_ripgrep(&args, &paths).await {
+    let program = crate::session_launch::resolve_program("rg");
+    match search::run_ripgrep(&program, &args, &paths).await {
         Ok(stdout) => Json(search::parse_rg_json(
             &stdout,
             &roots,

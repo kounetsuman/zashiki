@@ -105,9 +105,9 @@ pub(crate) fn resolve_cwd_with(cwd: &str, home: &str) -> String {
     }
 }
 
-/// Resolves the absolute path of the claude executable from PATH and typical install locations. This lets
-/// claude launch even when PATH is thin under GUI/launchd startup. If not found, falls back to `"claude"` as before.
-pub fn resolve_claude_program() -> String {
+/// PATH plus the typical install locations a thin GUI/launchd PATH tends to omit
+/// (`/opt/homebrew/bin`, `~/.local/bin`, …), searched in that order.
+fn program_search_dirs() -> Vec<String> {
     let mut dirs: Vec<String> = std::env::var("PATH")
         .unwrap_or_default()
         .split(':')
@@ -124,7 +124,17 @@ pub fn resolve_claude_program() -> String {
             dirs.push(d);
         }
     }
-    find_program_in(&dirs, "claude").unwrap_or_else(|| "claude".to_string())
+    dirs
+}
+
+/// Resolves the absolute path of `name` from PATH and typical install locations, so it launches even when
+/// PATH is thin under GUI/launchd startup. If not found, falls back to `name` itself as before.
+pub fn resolve_program(name: &str) -> String {
+    find_program_in(&program_search_dirs(), name).unwrap_or_else(|| name.to_string())
+}
+
+pub fn resolve_claude_program() -> String {
+    resolve_program("claude")
 }
 
 /// Looks for an executable `name` in `dirs` and returns the first absolute path (pure function).
