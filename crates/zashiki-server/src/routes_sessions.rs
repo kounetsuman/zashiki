@@ -127,7 +127,7 @@ mod sessions_persist_rest_tests {
 
     fn app(dir: &std::path::Path, sessions: Arc<SessionRegistry>) -> axum::Router {
         build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             control: Some(services(sessions)),
             saves_dir: Some(dir.to_path_buf()),
             ..Default::default()

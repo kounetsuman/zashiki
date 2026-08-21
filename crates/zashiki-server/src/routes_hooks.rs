@@ -219,7 +219,7 @@ mod hooks_rest_tests {
 
     fn app(services: ControlServices) -> axum::Router {
         build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             control: Some(services),
             ..Default::default()
         })

@@ -269,7 +269,7 @@ pub fn spawn_session_autosave(
         loop {
             ticker.tick().await;
             if let Err(e) = autosave_last(&registry, &dir, &mut prev).await {
-                eprintln!("zashiki-server: 定期セッション保存に失敗しました: {e}");
+                tracing::error!("zashiki-server: 定期セッション保存に失敗しました: {e}");
             }
         }
     })
@@ -343,7 +343,7 @@ pub async fn save_then_shutdown(registry: &SessionRegistry, dir: &Path) {
     match save_sessions(registry, dir).await {
         Ok(_) | Err(PersistError::SaveEmpty) => {}
         Err(e) => {
-            eprintln!("zashiki-server: shutdown 時のセッション保存に失敗しました: {e:?}");
+            tracing::error!("zashiki-server: shutdown 時のセッション保存に失敗しました: {e:?}");
         }
     }
     registry.shutdown_all().await;

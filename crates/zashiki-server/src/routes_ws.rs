@@ -102,7 +102,7 @@ mod ws_control_tests {
 
     async fn serve(control: Option<ControlServices>) -> u16 {
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             control,
             ..Default::default()
         });
@@ -193,7 +193,7 @@ mod ws_control_tests {
         };
         let hub = ControlHub::new(ConfigView::default(), vec![], snapshot);
         let app = build_router(ServerConfig {
-            expected_token: Some("t".to_string()),
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
             control: Some(test_services(hub, vec![])),
             ..Default::default()
         });
