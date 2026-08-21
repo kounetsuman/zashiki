@@ -167,7 +167,10 @@
   },
   "update": {
     "button": "Update",
-    "tooltip": "Version {{version}} is available — open the releases page"
+    "updating": "Updating…",
+    "tooltip": "Update to version {{version}}",
+    "opened": "Opened the releases page",
+    "failed": "Update failed"
   },
   "view": {
     "explorer": "Explorer",

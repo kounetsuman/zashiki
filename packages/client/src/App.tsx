@@ -66,6 +66,7 @@ import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
 import { useCrashReport } from "./ui/useCrashReport.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
+import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useViewer } from "./ui/useViewer.js";
 import { useViewSelection } from "./ui/useViewSelection.js";
@@ -256,6 +257,7 @@ export function App({
   );
 
   const { copyToast, flashCopyToast } = useCopyToast();
+  const selfUpdate = useSelfUpdate(control, flashCopyToast, t);
   const { copySessionIdByCockpitTerminalId } = useClipboardCopy(
     cockpitTerminals,
     flashCopyToast,
@@ -445,7 +447,11 @@ export function App({
 
   return (
     <div className="app">
-      <UpdateBanner version={updateVersion} />
+      <UpdateBanner
+        version={updateVersion}
+        updating={selfUpdate.updating}
+        onUpdate={selfUpdate.perform}
+      />
       <div className="main-row" onFocusCapture={handleViewFocus}>
         <div
           className={`main-area${activeView === "main" ? "" : " view-inactive"}`}

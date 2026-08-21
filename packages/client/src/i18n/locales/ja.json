@@ -167,7 +167,10 @@
   },
   "update": {
     "button": "アップデート",
-    "tooltip": "バージョン {{version}} が利用できます — リリースページを開く"
+    "updating": "アップデート中…",
+    "tooltip": "バージョン {{version}} にアップデート",
+    "opened": "リリースページを開きました",
+    "failed": "アップデートに失敗しました"
   },
   "view": {
     "explorer": "エクスプローラー",

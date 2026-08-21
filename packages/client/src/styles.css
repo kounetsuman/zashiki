@@ -614,12 +614,27 @@ body {
   cursor: pointer;
 }
 
-.update-banner-button:hover {
+.update-banner-button:hover:not(:disabled) {
   background: #1177bb;
+}
+
+.update-banner-button:disabled {
+  cursor: default;
+  opacity: 0.85;
 }
 
 .update-banner-button .material-symbols-outlined {
   font-size: 16px;
+}
+
+.update-banner-button .update-spin {
+  animation: update-spin 1s linear infinite;
+}
+
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tab-bar {
