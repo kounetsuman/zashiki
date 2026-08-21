@@ -158,6 +158,26 @@ describe("SearchView", () => {
     expect(opened).toEqual([{ relPath: "src/a.ts", line: 3 }]);
   });
 
+  it("disables native text substitution on the input (WebKit autocorrect/autocapitalize)", () => {
+    const api = createFakeApi({ truncated: false, files: [] });
+    render(<SearchView api={api} />);
+    const input = screen.getByLabelText("検索");
+    expect(input.getAttribute("autocorrect")).toBe("off");
+    expect(input.getAttribute("autocapitalize")).toBe("off");
+    expect(input.getAttribute("spellcheck")).toBe("false");
+  });
+
+  it("does not search on the IME composition-confirming Enter (isComposing)", async () => {
+    const api = createFakeApi({ truncated: false, files: [] });
+    render(<SearchView api={api} />);
+    const input = screen.getByLabelText("検索");
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "foo" } });
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    });
+    expect(api.calls).toHaveLength(0);
+  });
+
   it("labels the header SEARCH (uppercase, shared view-title)", () => {
     const api = createFakeApi({ truncated: false, files: [] });
     render(<SearchView api={api} />);
