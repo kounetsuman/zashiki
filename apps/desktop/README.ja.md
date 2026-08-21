@@ -63,28 +63,17 @@ server のみ**プロセスグループへ SIGTERM → 猶予 5s → SIGKILL で
 | `ZK_SERVER_BIN` | 実行体と同ディレクトリの `zashiki-server`、無ければ `crates/zashiki-server/target/{release,debug}/zashiki-server` | spawn する Rust server バイナリ |
 | `ZK_CLIENT_DIST` | 配布 .app: 実行体から `../Resources/client-dist`（同梱物）／dev: `packages/client/dist` | server に静的配信させる client dist。sidecar は実在するときだけ spawn 時に渡す（dev は Vite:5173 を開くため未生成でも無害） |
 | `ZK_SHELL_URL` | dev: `http://localhost:5173` / build: `http://127.0.0.1:8790` | WebView の初期 URL ベース |
-| `ZK_CONFIG` | `~/.zashiki/config.json` | デバッグモードを読む設定ファイル（server と共有。下記「デバッグモード」参照） |
+| `ZK_CONFIG` | `~/.zashiki/config.json` | server と共有するライブ適用設定ファイル（通知音・更新チェック・表示言語） |
 | `ZK_APP_VERSION` | （シェルが注入） | 更新チェック用に server へ渡す実バンドルバージョン（`app.package_info().version`）。server 自身の Cargo バージョンは `0.0.0` プレースホルダのままなので、実バージョンを運ぶのはこの経路だけ。未設定・`0.0.0`（dev）ならチェックは無効 |
 
-## デバッグモード（WebView devtools）
+## DevTools（WebView インスペクタ）
 
-`~/.zashiki/config.json` の `debug` を `true` にして起動すると、WebView の devtools
-（web inspector）が有効になり、ウィンドウを右クリック →「要素の詳細を表示（Inspect Element）」で
-開ける（macOS。F12 は WKWebView では既定バインドされないため右クリックから開く）。
+ウィンドウは常に WebView インスペクタ有効で生成する。設定 → 開発モード →「DevTools を開く」
+（`open_devtools` コマンドを呼ぶ）、またはウィンドウを右クリック →「要素の詳細を表示（Inspect Element）」
+で開ける（macOS。F12 は WKWebView では既定バインドされない）。
 
-```json
-{ "debug": true }
-```
-
-- この `debug` は server が読む同じフラグで、client 側のデバッグパネルと連動する
-  （一つの「デバッグモード」で両方が有効になる）。設定ファイルの場所は `ZK_CONFIG` で差し替え可能。
-- 起動時に一度読む（設定を変えたら再起動が必要）。不在・破損・型不一致は `false`（devtools 無効）へ倒す。
-- **dev（`tauri dev`）は開発体験のため常に devtools 有効**。設定で出し分けるのは
-  `tauri build` で作るビルド（配布 .app・`tauri build --debug` 含む）。dev 判定は初期 URL と同じ
-  `tauri::is_dev()` に揃えているため、`--debug` ビルドでも config で正しくゲートされる。
-  `tauri build` 産で有効化するため tauri の `devtools` feature を付けている（macOS では
-  private API を使うため App Store 配布時は非対応。本アプリは App Store 外（Developer ID）配布のため実害はない）。
-- 仕様の正本は `src/sidecar.rs` の `parse_debug_flag` / `devtools_enabled`（cargo test）。
+`tauri build` 産でもインスペクタを使えるよう tauri の `devtools` feature を付けている（macOS では
+private API を使うため App Store 配布時は非対応。本アプリは App Store 外（Developer ID）配布のため実害はない）。
 
 ## 更新チェック（GitHub Releases）
 

@@ -212,4 +212,71 @@ describe("SettingsView", () => {
       await screen.findByText("アップデートを確認できませんでした。"),
     ).toBeTruthy();
   });
+
+  it("hides the Developer mode section when onSetRenderer is not provided", () => {
+    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    expect(screen.queryByText("開発モード")).toBeNull();
+    expect(screen.queryByLabelText("ターミナルレンダラ")).toBeNull();
+  });
+
+  it("switches the renderer via the Developer mode dropdown", () => {
+    const onSetRenderer = vi.fn();
+    render(
+      <SettingsView
+        language="ja"
+        onSaveLanguage={() => {}}
+        renderer="webgl"
+        onSetRenderer={onSetRenderer}
+      />,
+    );
+    const select = screen.getByLabelText(
+      "ターミナルレンダラ",
+    ) as HTMLSelectElement;
+    expect(select.value).toBe("webgl");
+    fireEvent.change(select, { target: { value: "dom" } });
+    expect(onSetRenderer).toHaveBeenCalledWith("dom");
+  });
+
+  it("shows the DevTools button only when onOpenDevtools is provided", () => {
+    const onOpenDevtools = vi.fn();
+    const { rerender } = render(
+      <SettingsView
+        language="ja"
+        onSaveLanguage={() => {}}
+        renderer="webgl"
+        onSetRenderer={() => {}}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "DevTools を開く" }),
+    ).toBeNull();
+    rerender(
+      <SettingsView
+        language="ja"
+        onSaveLanguage={() => {}}
+        renderer="webgl"
+        onSetRenderer={() => {}}
+        onOpenDevtools={onOpenDevtools}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "DevTools を開く" }));
+    expect(onOpenDevtools).toHaveBeenCalledOnce();
+  });
+
+  it("calls onOpenDebugPanel when the debug-panel button is clicked", () => {
+    const onOpenDebugPanel = vi.fn();
+    render(
+      <SettingsView
+        language="ja"
+        onSaveLanguage={() => {}}
+        renderer="webgl"
+        onSetRenderer={() => {}}
+        onOpenDebugPanel={onOpenDebugPanel}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "デバッグパネルを開く" }),
+    );
+    expect(onOpenDebugPanel).toHaveBeenCalledOnce();
+  });
 });

@@ -3,7 +3,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-import { type RefObject, useEffect, useRef } from "react";
+import { type RefObject, useCallback, useEffect, useRef } from "react";
 import { stripFocusReports } from "../lib/focus-report.js";
 import {
   isValidSize,
@@ -15,6 +15,7 @@ import type { SearchResults } from "../lib/terminal-search.js";
 import type { TerminalViewSession } from "./TerminalView.js";
 import { handleTerminalKey } from "./terminal-key-handler.js";
 import { buildTerminalOptions } from "./terminal-options.js";
+import type { XtermRenderer } from "./xterm-renderer.js";
 
 const COPY_DEBOUNCE_MS = 200;
 
@@ -24,6 +25,7 @@ export interface XtermTerminalDeps {
   termRef: RefObject<Terminal | null>;
   searchRef: RefObject<SearchAddon | null>;
   fontSize: number;
+  renderer: XtermRenderer;
   focusNonce: number;
   resizeNonce: number;
   clipboardEditEnabled: boolean;
@@ -44,6 +46,7 @@ export function useXtermTerminal({
   termRef,
   searchRef,
   fontSize,
+  renderer,
   focusNonce,
   resizeNonce,
   clipboardEditEnabled,
@@ -55,8 +58,30 @@ export function useXtermTerminal({
   const reassertSizeRef = useRef<() => void>(() => undefined);
   const fontSizeRef = useRef(fontSize);
   fontSizeRef.current = fontSize;
+  const rendererRef = useRef(renderer);
+  rendererRef.current = renderer;
+  const webglAddonRef = useRef<WebglAddon | null>(null);
   const clipboardEditEnabledRef = useRef(clipboardEditEnabled);
   clipboardEditEnabledRef.current = clipboardEditEnabled;
+
+  // Under WKWebView the DOM renderer intermittently drops the first paint on attach (rows exist but
+  // stay empty while the buffer holds the content, and a later resize does not reliably repaint); the
+  // WebGL renderer paints to a canvas and avoids that race. On context loss it disposes itself and
+  // xterm falls back to the DOM renderer; if WebGL is unavailable the constructor throws.
+  const enableWebgl = useCallback((term: Terminal): void => {
+    if (webglAddonRef.current) return;
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => {
+        webgl.dispose();
+        webglAddonRef.current = null;
+      });
+      term.loadAddon(webgl);
+      webglAddonRef.current = webgl;
+    } catch {
+      // WebGL unavailable: keep the DOM renderer.
+    }
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -83,19 +108,7 @@ export function useXtermTerminal({
     const offResults = search.onDidChangeResults(setFindResults);
     term.open(el);
 
-    // Render via WebGL instead of xterm's default DOM renderer. Under WKWebView (the packaged app)
-    // the DOM renderer intermittently drops the first paint on attach: rows exist but stay empty
-    // while the buffer holds the content, and a later resize does not reliably repaint. The WebGL
-    // renderer paints to a canvas and is not subject to that DOM first-paint race. On context loss
-    // it disposes itself, and xterm falls back to the DOM renderer; if WebGL is unavailable the
-    // constructor throws and we keep the DOM renderer (unchanged behavior).
-    try {
-      const webgl = new WebglAddon();
-      webgl.onContextLoss(() => webgl.dispose());
-      term.loadAddon(webgl);
-    } catch {
-      // WebGL unavailable: keep the DOM renderer.
-    }
+    if (rendererRef.current === "webgl") enableWebgl(term);
 
     // The actual render size, obtainable only once cell dimensions are settled. Right after
     // term.open they are unsettled and proposeDimensions() returns undefined, so this returns null (= not started yet).
@@ -229,6 +242,7 @@ export function useXtermTerminal({
       offResults.dispose();
       for (const d of disposables) d.dispose();
       term.dispose();
+      webglAddonRef.current = null;
       termRef.current = null;
       searchRef.current = null;
       reassertSizeRef.current = () => undefined;
@@ -238,11 +252,25 @@ export function useXtermTerminal({
     containerRef,
     termRef,
     searchRef,
+    enableWebgl,
     openFind,
     openClipboardEdit,
     resetFind,
     setFindResults,
   ]);
+
+  // Switch renderer without rebuilding the terminal so scrollback and decorations survive: disposing
+  // the WebGL addon restores xterm's DOM renderer, and re-adding it returns to WebGL.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    if (renderer === "webgl") {
+      enableWebgl(term);
+    } else {
+      webglAddonRef.current?.dispose();
+      webglAddonRef.current = null;
+    }
+  }, [renderer, termRef, enableWebgl]);
 
   // When focusNonce increments on new session creation, return focus to the terminal.
   // Don't fire on initial mount (initial value 0) or when unchanged. A disposed term is set to

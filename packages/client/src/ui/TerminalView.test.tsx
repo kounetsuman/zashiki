@@ -123,14 +123,24 @@ interface Sizable {
 const { MockWebglAddon } = vi.hoisted(() => {
   class MockWebglAddon {
     static instances = 0;
+    static disposedCount = 0;
+    static last: MockWebglAddon | null = null;
     disposed = false;
+    private lossHandler: (() => void) | null = null;
     constructor() {
       MockWebglAddon.instances += 1;
+      MockWebglAddon.last = this;
     }
     activate(): void {}
-    onContextLoss(): void {}
+    onContextLoss(cb: () => void): void {
+      this.lossHandler = cb;
+    }
+    loseContext(): void {
+      this.lossHandler?.();
+    }
     dispose(): void {
       this.disposed = true;
+      MockWebglAddon.disposedCount += 1;
     }
   }
   return { MockWebglAddon };
@@ -234,6 +244,8 @@ describe("TerminalView", () => {
   beforeEach(() => {
     MockTerminal.instances.length = 0;
     MockWebglAddon.instances = 0;
+    MockWebglAddon.disposedCount = 0;
+    MockWebglAddon.last = null;
     MockSearchAddon.instances.length = 0;
     fitTarget = null;
   });
@@ -249,6 +261,49 @@ describe("TerminalView", () => {
     const f = fakeSession();
     render(<TerminalView session={f.session} />);
     expect(MockWebglAddon.instances).toBe(1);
+  });
+
+  it("starts on the DOM renderer when renderer='dom' (no WebGL addon)", () => {
+    fitTarget = { cols: 80, rows: 24 };
+    const f = fakeSession();
+    render(<TerminalView session={f.session} renderer="dom" />);
+    expect(MockWebglAddon.instances).toBe(0);
+  });
+
+  it("switches renderer live without rebuilding the terminal (disposes/re-adds WebGL)", () => {
+    fitTarget = { cols: 80, rows: 24 };
+    const f = fakeSession();
+    const { rerender } = render(
+      <TerminalView session={f.session} renderer="webgl" />,
+    );
+    expect(MockWebglAddon.instances).toBe(1);
+    expect(MockTerminal.instances.length).toBe(1);
+
+    rerender(<TerminalView session={f.session} renderer="dom" />);
+    expect(MockWebglAddon.disposedCount).toBe(1);
+    expect(MockTerminal.instances.length).toBe(1); // same terminal, scrollback preserved
+
+    rerender(<TerminalView session={f.session} renderer="webgl" />);
+    expect(MockWebglAddon.instances).toBe(2);
+    expect(MockTerminal.instances.length).toBe(1);
+  });
+
+  it("re-adds the WebGL renderer after a context loss when the terminal is rebuilt", () => {
+    fitTarget = { cols: 80, rows: 24 };
+    const a = fakeSession();
+    const { rerender } = render(
+      <TerminalView session={a.session} renderer="webgl" />,
+    );
+    expect(MockWebglAddon.instances).toBe(1);
+
+    // Context loss disposes the addon (xterm falls back to the DOM renderer).
+    MockWebglAddon.last?.loseContext();
+    expect(MockWebglAddon.disposedCount).toBe(1);
+
+    // A session switch rebuilds the terminal; renderer is still "webgl", so WebGL is re-added.
+    const b = fakeSession();
+    rerender(<TerminalView session={b.session} renderer="webgl" />);
+    expect(MockWebglAddon.instances).toBe(2);
   });
 
   it("builds the terminal with the given font size", () => {

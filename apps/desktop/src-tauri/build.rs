@@ -2,7 +2,14 @@ use std::process::Command;
 
 fn main() {
     embed_git_sha();
-    tauri_build::build()
+    // Autogenerate the ACL permission for the open_devtools app command so a capability can grant the
+    // remote-loaded frontend access to it (a plain tauri_build::build() would not emit it).
+    tauri_build::try_build(
+        tauri_build::Attributes::new().app_manifest(
+            tauri_build::AppManifest::new().commands(&["open_devtools"]),
+        ),
+    )
+    .expect("failed to run tauri-build");
 }
 
 /// Embeds the same value as the server's build.rs as `ZK_GIT_SHA`. In the distributed .app,

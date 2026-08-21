@@ -291,7 +291,6 @@ describe("App", () => {
       control.emit({
         t: "config.sync",
         notifySound: true,
-        debug: false,
         updateCheck: true,
         language: "en",
         accountUsage: false,
@@ -943,7 +942,6 @@ describe("App", () => {
       control.emit({
         t: "config.sync",
         notifySound: false,
-        debug: false,
         updateCheck: true,
         language: null,
         accountUsage: false,
@@ -954,7 +952,6 @@ describe("App", () => {
       control.emit({
         t: "config.sync",
         notifySound: true,
-        debug: false,
         updateCheck: true,
         language: null,
         accountUsage: false,
@@ -1524,91 +1521,7 @@ describe("App", () => {
     expect(screen.getByText(/接続に問題があります/)).toBeTruthy();
   });
 
-  it("config.sync can open and close the debug view (moved to the config file)", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-      />,
-    );
-    expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();
-    act(() => {
-      control.emit({
-        t: "config.sync",
-        notifySound: true,
-        debug: true,
-        updateCheck: true,
-        language: null,
-        accountUsage: false,
-      });
-    });
-    expect(screen.getByRole("region", { name: "デバッグ情報" })).toBeTruthy();
-    act(() => {
-      control.emit({
-        t: "config.sync",
-        notifySound: true,
-        debug: false,
-        updateCheck: true,
-        language: null,
-        accountUsage: false,
-      });
-    });
-    expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();
-  });
-
-  it("Ctrl+Alt+D remains as a temporary override for the debug view", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-      />,
-    );
-    expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();
-    act(() => {
-      const ev = new KeyboardEvent("keydown", {
-        key: "d",
-        ctrlKey: true,
-        altKey: true,
-        bubbles: true,
-      });
-      window.dispatchEvent(ev);
-    });
-    expect(screen.getByRole("region", { name: "デバッグ情報" })).toBeTruthy();
-  });
-
-  it("with debugInitial=true the debug view is shown from the start", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-        debugInitial
-      />,
-    );
-    expect(screen.getByRole("region", { name: "デバッグ情報" })).toBeTruthy();
-  });
-
-  it("Ctrl+Alt+D toggles debug mode (does not collide with E/F/G/S)", () => {
+  it("opens the debug panel from the Settings developer mode", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1624,22 +1537,33 @@ describe("App", () => {
       />,
     );
     expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "設定" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "デバッグパネルを開く" }),
+    );
+    expect(screen.getByRole("region", { name: "デバッグ情報" })).toBeTruthy();
+  });
+
+  it("Ctrl+Alt+D no longer opens the debug panel", () => {
+    const control = createFakeAppControl();
+    const { session } = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        reposApi={fakeReposApi}
+      />,
+    );
     act(() => {
       window.dispatchEvent(
         new KeyboardEvent("keydown", { key: "d", ctrlKey: true, altKey: true }),
       );
     });
-    expect(screen.getByRole("region", { name: "デバッグ情報" })).toBeTruthy();
-    // The default view (session list) has not disappeared = it does not collide with the view toggle.
-    act(() =>
-      control.emit({
-        t: "state.sync",
-        cockpitTerminals,
-        orgs: ["kilo"],
-        orgColors: {},
-      }),
-    );
-    expect(inList().getByRole("button", { name: ROW_ZASHIKI })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();
   });
 
   it("suspends the terminal when all cockpitTerminals are deleted and resumes it on revival (suppresses respawn)", () => {

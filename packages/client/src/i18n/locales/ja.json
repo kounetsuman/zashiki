@@ -199,7 +199,13 @@
     "updateUpToDate": "最新バージョンです。",
     "updateError": "アップデートを確認できませんでした。",
     "clipboardEditModal": "コピー時にクリップボード編集を表示",
-    "accountUsage": "フッタにアカウント使用率を表示"
+    "accountUsage": "フッタにアカウント使用率を表示",
+    "devSection": "開発モード",
+    "renderer": "ターミナルレンダラ",
+    "rendererWebgl": "WebGL",
+    "rendererDom": "DOM",
+    "openDevtools": "DevTools を開く",
+    "openDebugPanel": "デバッグパネルを開く"
   },
   "accountUsage": {
     "title": "Claude Code のアカウント使用率を表示",

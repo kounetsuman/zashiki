@@ -1,4 +1,4 @@
-//! startup config + debug-flag resolution (pure path/env/JSON).
+//! startup config resolution (pure path/env).
 
 use std::path::{Path, PathBuf};
 
@@ -117,55 +117,6 @@ fn bundled_client_dist(exe_dir: &Path) -> PathBuf {
     exe_dir.join("../Resources/client-dist")
 }
 
-/// Resolves the same live-reload config file as the server (ZK_CONFIG, or ~/.zashiki/config.json if unset).
-/// The server toggles the client's DebugPanel via `debug` in the same file, and the shell toggles the
-/// WebView's devtools via the same flag (= a single "debug mode" drives both together).
-pub fn config_path_from_env() -> PathBuf {
-    std::env::var_os("ZK_CONFIG")
-        .map(PathBuf::from)
-        .unwrap_or_else(default_config_path)
-}
-
-fn default_config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_default();
-    PathBuf::from(home).join(".zashiki").join("config.json")
-}
-
-/// Pure function that reads `debug` from config.json leniently. Absent, corrupt, non-object,
-/// type-mismatched, or missing all yield false (the same "default false" contract as the server's
-/// `parse_config`).
-pub fn parse_debug_flag(json_text: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(json_text)
-        .ok()
-        .as_ref()
-        .and_then(|v| v.as_object())
-        .and_then(|o| o.get("debug"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-}
-
-/// Reads config.json and resolves the debug flag. If it cannot be read (absent, permissions), false.
-pub fn read_debug_flag(path: &Path) -> bool {
-    std::fs::read_to_string(path)
-        .ok()
-        .map(|text| parse_debug_flag(&text))
-        .unwrap_or(false)
-}
-
-/// Pure decision on whether to enable the WebView's devtools (web inspector).
-/// dev (`tauri dev`) is always enabled regardless of config so as not to degrade the developer
-/// experience. Builds produced by `tauri build` (the distributed .app, including `--debug`) are
-/// enabled only when `debug` in config.json is true (devtools can be used only when turned ON via
-/// the config file).
-///
-/// The dev decision injects the same `tauri::is_dev()` (= custom-protocol disabled) as base_url.
-/// With `cfg!(debug_assertions)`, `tauri build --debug` would be treated as dev, opening devtools on
-/// a distribution-equivalent build while ignoring config (diverging from base_url, which behaves as
-/// production).
-pub fn devtools_enabled(config_debug: bool, is_dev: bool) -> bool {
-    is_dev || config_debug
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,42 +187,5 @@ mod tests {
             bundled_client_dist(exe_dir),
             PathBuf::from("/Applications/Zashiki.app/Contents/MacOS/../Resources/client-dist")
         );
-    }
-
-    #[test]
-    fn parse_debug_flag_はdebug_trueのみ真() {
-        // The same lenient read as the server's config.json (~/.zashiki/config.json).
-        assert!(parse_debug_flag(r#"{"debug":true}"#));
-        assert!(!parse_debug_flag(r#"{"debug":false}"#));
-        assert!(!parse_debug_flag(r#"{"notifySound":true}"#)); // debug missing -> default false
-        assert!(!parse_debug_flag(r#"{"debug":"true"}"#)); // type mismatch (string) -> default false
-        assert!(!parse_debug_flag(r#"{"debug":1}"#)); // type mismatch (number) -> default false
-        assert!(!parse_debug_flag("not json")); // corrupt -> false
-        assert!(!parse_debug_flag("")); // empty -> false
-        assert!(!parse_debug_flag("[]")); // non-object -> false
-    }
-
-    #[test]
-    fn read_debug_flag_は不在で偽_true設定で真() {
-        let dir = tempfile::tempdir().unwrap();
-        // Absent (config.json not created) -> false (debug is disabled by default).
-        assert!(!read_debug_flag(&dir.path().join("no-such-config.json")));
-
-        let path = dir.path().join("config.json");
-        std::fs::write(&path, r#"{"notifySound":true,"debug":true}"#).unwrap();
-        assert!(read_debug_flag(&path));
-
-        std::fs::write(&path, r#"{"debug":false}"#).unwrap();
-        assert!(!read_debug_flag(&path));
-    }
-
-    #[test]
-    fn devtools_enabled_はdevは常時_releaseはconfig依存() {
-        // dev (debug build) enables devtools regardless of config (so as not to degrade the developer experience).
-        assert!(devtools_enabled(false, true));
-        assert!(devtools_enabled(true, true));
-        // The distributed (release) build only when debug in config.json is true.
-        assert!(!devtools_enabled(false, false));
-        assert!(devtools_enabled(true, false));
     }
 }

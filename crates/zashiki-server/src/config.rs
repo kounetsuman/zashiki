@@ -1,7 +1,7 @@
-//! Reading and watching config.json (live-applied settings). Reads `notifySound`/`debug`,
+//! Reading and watching config.json (live-applied settings). Reads `notifySound`,
 //! detects file changes, and publishes config.sync to `ControlHub`.
 //!
-//! Defaults are notifySound=true / debug=false. Missing, corrupt, or empty files fall back to
+//! Defaults are notifySound=true. Missing, corrupt, or empty files fall back to
 //! defaults without panicking. On corruption (ok=false) the previous value is kept and nothing is
 //! published. To avoid the notify crate, watching uses a tokio interval + mtime polling. The mtime
 //! approach catches inode replacement (atomic rename save) via a re-stat each tick, but misses
@@ -43,7 +43,6 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
         .map(str::to_string);
     ConfigView {
         notify_sound: field("notifySound", true),
-        debug: field("debug", false),
         update_check: field("updateCheck", true),
         language,
         account_usage: field("accountUsage", false),
@@ -135,18 +134,16 @@ mod tests {
     }
 
     #[test]
-    fn parse_config_reads_both_fields() {
-        let c = parse(json!({"notifySound": false, "debug": true}));
+    fn parse_config_reads_notify_sound() {
+        let c = parse(json!({"notifySound": false}));
         assert!(!c.notify_sound);
-        assert!(c.debug);
     }
 
     #[test]
-    fn parse_config_defaults_are_notify_on_debug_off() {
-        // Missing keys use the defaults (notifySound=true / debug=false).
+    fn parse_config_default_notify_on() {
+        // Missing keys use the defaults (notifySound=true).
         let c = parse(json!({}));
         assert!(c.notify_sound);
-        assert!(!c.debug);
     }
 
     #[test]
@@ -160,16 +157,15 @@ mod tests {
     #[test]
     fn parse_config_wrong_type_field_falls_back_to_default() {
         // zod `.catch()`: a field with a mismatched type falls back to the default (other fields are kept).
-        let c = parse(json!({"notifySound": "yes", "debug": true}));
+        let c = parse(json!({"notifySound": "yes", "updateCheck": false}));
         assert!(c.notify_sound); // string → default true
-        assert!(c.debug);
+        assert!(!c.update_check); // other fields are kept
     }
 
     #[test]
     fn parse_config_non_object_is_all_defaults() {
         let c = parse(json!(42));
         assert!(c.notify_sound);
-        assert!(!c.debug);
         assert_eq!(c.language, None);
     }
 
@@ -187,13 +183,12 @@ mod tests {
     fn write_config_language_sets_and_preserves_other_fields() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
-        std::fs::write(&path, r#"{"notifySound": false, "debug": true}"#).unwrap();
+        std::fs::write(&path, r#"{"notifySound": false}"#).unwrap();
 
         write_config_language(&path, "en").unwrap();
         let c = read_config(&path);
         assert_eq!(c.language, Some("en".into()));
         assert!(!c.notify_sound); // existing fields are preserved
-        assert!(c.debug);
 
         // Overwriting also works.
         write_config_language(&path, "ja").unwrap();
@@ -235,7 +230,6 @@ mod tests {
         let (c, ok) = read_config_result(Path::new("/no/such/config.json"));
         assert!(!ok);
         assert!(c.notify_sound);
-        assert!(!c.debug);
     }
 
     #[test]
@@ -252,11 +246,10 @@ mod tests {
     fn read_config_result_valid_is_ok() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
-        std::fs::write(&path, r#"{"notifySound": false, "debug": true}"#).unwrap();
+        std::fs::write(&path, r#"{"notifySound": false}"#).unwrap();
         let (c, ok) = read_config_result(&path);
         assert!(ok);
         assert!(!c.notify_sound);
-        assert!(c.debug);
     }
 
     fn empty_hub() -> Arc<ControlHub> {
@@ -282,23 +275,22 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
         // Place the initial state (equivalent to defaults) first and let the watch capture the baseline mtime.
-        std::fs::write(&path, r#"{"notifySound": true, "debug": false}"#).unwrap();
+        std::fs::write(&path, r#"{"notifySound": true}"#).unwrap();
         let hub = empty_hub();
         let mut rx = hub.subscribe();
         let _task = spawn_config_watch(path.clone(), hub.clone(), Duration::from_millis(10));
         settle().await;
 
-        // Change (notifySound off / debug on) → detected, re-read, and published.
-        std::fs::write(&path, r#"{"notifySound": false, "debug": true}"#).unwrap();
+        // Change (notifySound off) → detected, re-read, and published.
+        std::fs::write(&path, r#"{"notifySound": false}"#).unwrap();
 
         let msg = tokio::time::timeout(Duration::from_secs(3), rx.recv())
             .await
             .expect("watch should publish within timeout")
             .expect("broadcast open");
         match msg {
-            ServerMessage::ConfigSync { notify_sound, debug, .. } => {
+            ServerMessage::ConfigSync { notify_sound, .. } => {
                 assert!(!notify_sound);
-                assert!(debug);
             }
             other => panic!("expected config.sync, got {other:?}"),
         }
@@ -308,7 +300,7 @@ mod tests {
     async fn watch_keeps_previous_value_on_broken_write() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.json");
-        std::fs::write(&path, r#"{"notifySound": true, "debug": false}"#).unwrap();
+        std::fs::write(&path, r#"{"notifySound": true}"#).unwrap();
         let hub = empty_hub();
         let mut rx = hub.subscribe();
         let _task = spawn_config_watch(path.clone(), hub.clone(), Duration::from_millis(10));
@@ -321,7 +313,7 @@ mod tests {
 
         // A subsequent valid write is published = the watch only "ignored" the corruption and is still alive
         // (the ok gate explicitly verifies "fired but did not publish", distinguishing it from mere unresponsiveness).
-        std::fs::write(&path, r#"{"notifySound": false, "debug": true}"#).unwrap();
+        std::fs::write(&path, r#"{"notifySound": false}"#).unwrap();
         let msg = tokio::time::timeout(Duration::from_secs(3), rx.recv())
             .await
             .expect("valid write after broken should publish")
@@ -329,9 +321,9 @@ mod tests {
         assert!(
             matches!(
                 msg,
-                ServerMessage::ConfigSync { notify_sound: false, debug: true, .. }
+                ServerMessage::ConfigSync { notify_sound: false, .. }
             ),
-            "expected config.sync(false,true) after recovery, got {msg:?}"
+            "expected config.sync(notifySound=false) after recovery, got {msg:?}"
         );
     }
 }

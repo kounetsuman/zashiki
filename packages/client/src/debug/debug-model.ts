@@ -3,22 +3,6 @@ import i18n from "../i18n/index.js";
 import type { TermAttachStatus } from "../session/terminal-session.js";
 import type { ControlStatus } from "../ws/control.js";
 
-/**
- * Pure function that decides the initial on/off for debug mode.
- * On if either:
- * - a build-time flag (equivalent to ZK_DEBUG; `import.meta.env.VITE_ZK_DEBUG`), or
- * - the URL query `?debug=1` (explicitly added by the developer).
- * In release builds env is undefined/false, so it defaults to off.
- */
-export function resolveDebugInitial(
-  viteFlag: string | boolean | undefined,
-  search: string,
-): boolean {
-  if (viteFlag === true || viteFlag === "1" || viteFlag === "true") return true;
-  const v = new URLSearchParams(search).get("debug");
-  return v === "1" || v === "true";
-}
-
 /** The tmux session name (zk-<termId>) used by term.select and others. */
 export function tmuxSessionName(termId: string | null): string | null {
   return termId === null ? null : `zk-${termId}`;

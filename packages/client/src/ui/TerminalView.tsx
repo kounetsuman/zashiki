@@ -6,6 +6,10 @@ import { TerminalFindBar } from "./TerminalFindBar.js";
 import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
 import { useTerminalFind } from "./useTerminalFind.js";
 import { useXtermTerminal } from "./useXtermTerminal.js";
+import {
+  DEFAULT_XTERM_RENDERER,
+  type XtermRenderer,
+} from "./xterm-renderer.js";
 
 export interface TerminalViewSession {
   start(cols: number, rows: number): void;
@@ -34,6 +38,7 @@ export function TerminalView({
   focusNonce = 0,
   resizeNonce = 0,
   fontSize = DEFAULT_TERMINAL_FONT_SIZE,
+  renderer = DEFAULT_XTERM_RENDERER,
   clipboardEditEnabled = true,
   onSetClipboardEditEnabled,
 }: {
@@ -43,6 +48,8 @@ export function TerminalView({
    * changing it updates the running xterm instance and re-fits so cols/rows track the new cell size.
    */
   fontSize?: number;
+  /** xterm renderer, switched live from the Settings Developer mode without rebuilding the terminal. */
+  renderer?: XtermRenderer;
   /**
    * Request counter for focusing the terminal. Each time it increments, calls term.focus
    * (not on initial mount or when unchanged). app-store advances it when a new session is created.
@@ -81,6 +88,7 @@ export function TerminalView({
     termRef,
     searchRef,
     fontSize,
+    renderer,
     focusNonce,
     resizeNonce,
     clipboardEditEnabled,

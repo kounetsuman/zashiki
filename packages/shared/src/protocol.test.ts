@@ -236,7 +236,6 @@ describe("serverMessageSchema", () => {
       {
         t: "config.sync",
         notifySound: true,
-        debug: false,
         updateCheck: true,
         language: "ja",
         accountUsage: true,
@@ -246,7 +245,6 @@ describe("serverMessageSchema", () => {
       {
         t: "config.sync",
         notifySound: false,
-        debug: true,
         updateCheck: false,
         language: null,
         accountUsage: false,
@@ -266,12 +264,10 @@ describe("serverMessageSchema", () => {
       serverMessageSchema.parse({
         t: "config.sync",
         notifySound: true,
-        debug: false,
       }),
     ).toEqual({
       t: "config.sync",
       notifySound: true,
-      debug: false,
       updateCheck: true,
       language: null,
       accountUsage: false,
@@ -284,8 +280,8 @@ describe("serverMessageSchema", () => {
     [{ t: "select", cockpitTerminalId: "work:1" }], // invalid cockpitTerminalId format
     [{ t: "term.open", termId: "abc", cols: 80, rows: 24 }], // client→server message
     [{ t: "error", code: "x" }], // message missing
-    [{ t: "config.sync", notifySound: true }], // debug missing
-    [{ t: "config.sync", notifySound: "yes", debug: false }], // wrong type
+    [{ t: "config.sync" }], // notifySound missing
+    [{ t: "config.sync", notifySound: "yes" }], // wrong type
   ])("rejects: %j", (msg) => {
     expect(serverMessageSchema.safeParse(msg).success).toBe(false);
   });
