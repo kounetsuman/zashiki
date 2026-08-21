@@ -384,6 +384,18 @@ body {
     "opsz" 20;
 }
 
+.state-stack-glyph.state-running,
+.state-stack-glyph.state-running_bg_agent {
+  animation: git-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-stack-glyph.state-running,
+  .state-stack-glyph.state-running_bg_agent {
+    animation: none;
+  }
+}
+
 /* 使用量上限到達: 状態グリフに重ねる唯一のバッジ（右上・警告色）。 */
 .state-limited-badge {
   position: absolute;

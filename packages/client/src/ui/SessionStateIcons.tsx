@@ -7,8 +7,8 @@ import { useTranslation } from "react-i18next";
 // Material Symbols Outlined ligature names (the font is loaded in main.tsx; shared with the footer).
 const STATE_ICONS: Record<CockpitTerminalState, string> = {
   waiting_input: "add_alert",
-  running: "hourglass",
-  running_bg_agent: "hourglass",
+  running: "progress_activity",
+  running_bg_agent: "progress_activity",
   idle: "check",
   no_claude: "terminal_2",
   starting: "pending",
