@@ -74,7 +74,7 @@ export function ActivityChips({ session }: { session: CockpitTerminalInfo }) {
           <span className="material-symbols-outlined session-activity-glyph">
             {BG_AGENT_GLYPH}
           </span>
-          {agentCount > 0 && agentCount}
+          {Math.max(agentCount, 1)}
         </span>
       )}
       {shellCount > 0 && (

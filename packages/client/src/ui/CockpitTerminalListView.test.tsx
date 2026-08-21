@@ -217,7 +217,7 @@ describe("CockpitTerminalListView: session rows", () => {
     expect(chip?.textContent).toContain("13");
   });
 
-  it("shows the agent chip glyph only (no number) when the subagent count is 0/unknown", () => {
+  it("falls back to 1 on the agent chip when the subagent count is 0/unknown", () => {
     renderView({
       cockpitTerminals: [
         {
@@ -228,7 +228,7 @@ describe("CockpitTerminalListView: session rows", () => {
       ],
     });
     expect(screen.getByText("robot_2").parentElement?.textContent).toBe(
-      "robot_2",
+      "robot_21",
     );
   });
 
