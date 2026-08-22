@@ -59,6 +59,23 @@ function createFakeGitApi(repos: RepoStatus[] = []): FakeGitApi {
       api.calls.push(["commit", repoPath, message]);
       return Promise.resolve();
     },
+    diff: (repoPath, file, staged, untracked) => {
+      api.calls.push([
+        "diff",
+        repoPath,
+        file,
+        String(staged),
+        String(untracked),
+      ]);
+      return Promise.resolve({
+        oldText: "",
+        newText: "",
+        binary: false,
+        tooLarge: false,
+        added: 0,
+        removed: 0,
+      });
+    },
   };
   return api;
 }
@@ -84,12 +101,14 @@ interface Harness {
   api: FakeGitApi;
   fireDirty: () => void;
   copied: string[];
+  diffed: string[][];
 }
 
-function renderView(repos: RepoStatus[]): Harness {
+function renderView(repos: RepoStatus[], withDiff = false): Harness {
   const api = createFakeGitApi(repos);
   const dirtyListeners = new Set<() => void>();
   const copied: string[] = [];
+  const diffed: string[][] = [];
   render(
     <SourceControlView
       api={api}
@@ -101,11 +120,18 @@ function renderView(repos: RepoStatus[]): Harness {
         copied.push(text);
         return Promise.resolve();
       }}
+      onOpenDiff={
+        withDiff
+          ? (repoPath, file, staged, untracked) =>
+              diffed.push([repoPath, file, String(staged), String(untracked)])
+          : undefined
+      }
     />,
   );
   return {
     api,
     copied,
+    diffed,
     fireDirty: () => {
       for (const fn of dirtyListeners) fn();
     },
@@ -205,6 +231,72 @@ describe("SourceControlView", () => {
       fireEvent.click(screen.getByText("app.ts"));
     });
     expect(h.api.calls).toContainEqual(["open", "/ws/org1/repo-a", "app.ts"]);
+  });
+
+  // A real double-click delivers click, click, then dblclick; the deferred open must be cancelled.
+  function doubleClick(el: HTMLElement): void {
+    fireEvent.click(el);
+    fireEvent.click(el);
+    fireEvent.doubleClick(el);
+  }
+
+  it("double-clicking a changed file opens its diff and cancels the editor open", async () => {
+    const h = renderView(twoRepoFixture(), true);
+    await expandToFiles(h);
+    await act(async () => {
+      doubleClick(screen.getByText("app.ts"));
+    });
+    // changed side: staged=false, untracked=false.
+    expect(h.diffed).toContainEqual([
+      "/ws/org1/repo-a",
+      "app.ts",
+      "false",
+      "false",
+    ]);
+    // The double-click cancels the deferred open, so the external editor is not launched.
+    expect(h.api.calls.some((c) => c[0] === "open")).toBe(false);
+  });
+
+  it("double-clicking a staged file diffs its staged side, and an untracked file its untracked side", async () => {
+    const h = renderView(twoRepoFixture(), true);
+    await expandToFiles(h);
+    await act(async () => {
+      doubleClick(screen.getByText("new.ts"));
+      doubleClick(screen.getByText("mem.md"));
+    });
+    expect(h.diffed).toContainEqual([
+      "/ws/org1/repo-a",
+      "new.ts",
+      "true",
+      "false",
+    ]);
+    expect(h.diffed).toContainEqual([
+      "/ws/org1/repo-a",
+      "mem.md",
+      "false",
+      "true",
+    ]);
+  });
+
+  it("does not offer a diff for an untracked directory (--no-index cannot diff a dir)", async () => {
+    const withDir = [
+      repo({
+        repo: "repo-a",
+        path: "/ws/org1/repo-a",
+        branch: "main",
+        staged: [],
+        changed: [{ code: "??", path: "newdir/" }],
+      }),
+    ];
+    const h = renderView(withDir, true);
+    fireEvent.click(await screen.findByRole("button", { name: /org1 \(1\)/ }));
+    fireEvent.click(rowButton("git-repo-row", "repo-a"));
+    // An untracked dir has no diff, so a single click falls straight through to the editor.
+    await act(async () => {
+      fireEvent.click(screen.getByText("newdir/"));
+    });
+    expect(h.diffed).toEqual([]);
+    expect(h.api.calls).toContainEqual(["open", "/ws/org1/repo-a", "newdir/"]);
   });
 
   it("copies the absolute path via the copy button", async () => {
@@ -396,6 +488,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     render(
       <SourceControlView
@@ -421,6 +522,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     const dirty = new Set<() => void>();
     render(
@@ -466,6 +576,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     render(
       <SourceControlView
@@ -498,6 +617,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     render(
       <SourceControlView
@@ -524,6 +652,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     render(
       <SourceControlView
@@ -554,6 +691,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     render(
       <SourceControlView
@@ -580,6 +726,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     render(
       <SourceControlView
@@ -607,6 +762,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     const dirty = new Set<() => void>();
     render(
@@ -644,6 +808,15 @@ describe("SourceControlView", () => {
       removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
     };
     const dirty = new Set<() => void>();
     render(

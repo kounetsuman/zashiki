@@ -1,10 +1,11 @@
-use axum::{extract::State, http::StatusCode, response::Response, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, response::Response, Json};
 use serde::Deserialize;
 
 use crate::app_state::{invalidate_scan_cache, resolve_editor, scan, spawn_editor, AppState};
 use crate::git;
 use crate::wire_support::{
-    git_result, guard_file_action, guard_repo, json_error, json_ok, parse_json_body,
+    git_result, guard_file_action, guard_file_path, guard_repo, json_error, json_ok,
+    parse_json_body,
 };
 
 /// git status for each repo (branch + staged/changed).
@@ -74,6 +75,38 @@ pub(crate) async fn git_open(State(state): State<AppState>, body: axum::body::By
         }
     }
     json_ok()
+}
+
+#[derive(Deserialize)]
+struct GitDiffBody {
+    #[serde(rename = "repoPath")]
+    repo_path: Option<String>,
+    file: Option<String>,
+    #[serde(default)]
+    staged: bool,
+    #[serde(default)]
+    untracked: bool,
+}
+
+pub(crate) async fn git_diff(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let parsed: GitDiffBody = match parse_json_body(&body) {
+        Err((status, msg)) => return json_error(status, &msg),
+        Ok(v) => v,
+    };
+    let (Some(repo_path), Some(file)) = (parsed.repo_path, parsed.file) else {
+        return json_error(StatusCode::BAD_REQUEST, "request failed schema validation");
+    };
+    if let Err((status, msg)) = guard_file_path(&state, &repo_path, &file).await {
+        return json_error(status, &msg);
+    }
+    let payload = git::diff(
+        std::path::Path::new(&repo_path),
+        &file,
+        parsed.staged,
+        parsed.untracked,
+    )
+    .await;
+    Json(payload).into_response()
 }
 
 pub(crate) async fn git_stage_all(
@@ -499,6 +532,67 @@ mod git_file_rest_tests {
             assert_eq!(s, StatusCode::BAD_REQUEST);
             assert_eq!(fx.opened.lock().unwrap().len(), before);
         }
+    }
+
+    #[tokio::test]
+    async fn diff_happy_shapes_and_guards() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("base.txt"), "base\nmore\n").unwrap();
+
+        // A changed tracked file returns both versions and line counts.
+        let (s, b) = post(
+            app(&fx),
+            "/api/git/diff?token=t",
+            &format!(r#"{{"repoPath":"{}","file":"base.txt"}}"#, fx.repo_a),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(v["oldText"], "base\n");
+        assert_eq!(v["newText"], "base\nmore\n");
+        assert_eq!(v["binary"], false);
+        assert_eq!(v["tooLarge"], false);
+
+        // An untracked file diffs as all-new.
+        std::fs::write(Path::new(&fx.repo_a).join("fresh.txt"), "n\n").unwrap();
+        let (s, b) = post(
+            app(&fx),
+            "/api/git/diff?token=t",
+            &format!(
+                r#"{{"repoPath":"{}","file":"fresh.txt","untracked":true}}"#,
+                fx.repo_a
+            ),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(v["oldText"], "");
+        assert_eq!(v["newText"], "n\n");
+
+        // Path traversal is 400 and a repo outside the scan is 403.
+        let (s, _) = post(
+            app(&fx),
+            "/api/git/diff?token=t",
+            &format!(r#"{{"repoPath":"{}","file":"../repo-b/base.txt"}}"#, fx.repo_a),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        let (s, _) = post(
+            app(&fx),
+            "/api/git/diff?token=t",
+            &format!(r#"{{"repoPath":"{}","file":"base.txt"}}"#, fx.outside),
+        )
+        .await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+
+        // A missing file field is 400.
+        let (s, _) = post(
+            app(&fx),
+            "/api/git/diff?token=t",
+            &format!(r#"{{"repoPath":"{}"}}"#, fx.repo_a),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

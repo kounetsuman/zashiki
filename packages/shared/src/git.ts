@@ -219,3 +219,34 @@ export const gitCommitRequestSchema = z.object({
 });
 
 export type GitCommitRequest = z.infer<typeof gitCommitRequestSchema>;
+
+export const gitDiffRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  file: z.string().min(1),
+  /** Diff the index against HEAD (the staged side) rather than the worktree against the index. */
+  staged: z.boolean().optional(),
+  /** Compare an empty tree against the worktree file (an untracked `??` entry). */
+  untracked: z.boolean().optional(),
+});
+
+export type GitDiffRequest = z.infer<typeof gitDiffRequestSchema>;
+
+/**
+ * The two file versions to diff, rendered client-side by CodeMirror's merge view.
+ * `oldText`/`newText` are empty when `binary` or `tooLarge` (both decided server-side before either
+ * body is read, so a giant file is refused without being materialized).
+ */
+export const gitDiffResponseSchema = z.object({
+  oldText: z.string(),
+  newText: z.string(),
+  binary: z.boolean(),
+  tooLarge: z.boolean(),
+  added: z.number().int().nonnegative(),
+  removed: z.number().int().nonnegative(),
+});
+
+export type GitDiffResponse = z.infer<typeof gitDiffResponseSchema>;
+
+export function parseGitDiffResponse(data: unknown): GitDiffResponse {
+  return gitDiffResponseSchema.parse(data);
+}

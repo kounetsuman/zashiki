@@ -126,6 +126,16 @@
     "deleteWorktreeConfirm": "Confirm deleting worktree {{repo}}",
     "deleteWorktreeCancel": "Keep worktree {{repo}}"
   },
+  "diff": {
+    "viewLabel": "Diff {{path}}",
+    "unified": "Unified",
+    "split": "Split",
+    "binary": "Binary file — no text diff to show.",
+    "tooLarge": "This diff is too large to display.",
+    "openInEditor": "Open in editor",
+    "failed": "Could not load the diff: {{error}}",
+    "fetchTimeout": "Loading the diff timed out"
+  },
   "viewer": {
     "viewerLabel": "Viewer {{path}}",
     "copyPathLabel": "Copy path",

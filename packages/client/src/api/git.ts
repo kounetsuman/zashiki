@@ -1,4 +1,9 @@
-import { type GitStatusResult, parseGitStatusResponse } from "@zashiki/shared";
+import {
+  type GitDiffResponse,
+  type GitStatusResult,
+  parseGitDiffResponse,
+  parseGitStatusResponse,
+} from "@zashiki/shared";
 
 import { authHeaders } from "../lib/token.js";
 
@@ -12,6 +17,14 @@ export interface GitApi {
   removeWorktree(repoPath: string): Promise<void>;
   open(repoPath: string, file: string): Promise<void>;
   commit(repoPath: string, message: string): Promise<void>;
+  /** The old/new versions of a file (signal allows timeout/abort), for the diff view. */
+  diff(
+    repoPath: string,
+    file: string,
+    staged: boolean,
+    untracked: boolean,
+    signal?: AbortSignal,
+  ): Promise<GitDiffResponse>;
 }
 
 async function errorOf(res: Response): Promise<string> {
@@ -54,5 +67,15 @@ export function createGitApi(
     open: (repoPath, file) => post("/api/git/open", { repoPath, file }),
     commit: (repoPath, message) =>
       post("/api/git/commit", { repoPath, message }),
+    async diff(repoPath, file, staged, untracked, signal) {
+      const res = await fetchFn(`${base}/api/git/diff`, {
+        method: "POST",
+        headers: { ...authHeaders(token), "content-type": "application/json" },
+        body: JSON.stringify({ repoPath, file, staged, untracked }),
+        signal,
+      });
+      if (!res.ok) throw new Error(`/api/git/diff: ${await errorOf(res)}`);
+      return parseGitDiffResponse(await res.json());
+    },
   };
 }

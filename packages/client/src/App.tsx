@@ -30,6 +30,7 @@ import {
   footerAbnormalNotice,
   type TermDebugSnapshot,
 } from "./debug/debug-model.js";
+import { diffSide } from "./diff/diff-model.js";
 import type { Locale } from "./i18n/detect.js";
 import i18n from "./i18n/index.js";
 import {
@@ -53,6 +54,7 @@ import { AccountUsageModal } from "./ui/AccountUsageModal.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
 import { CockpitTerminalListView } from "./ui/CockpitTerminalListView.js";
 import { CrashReportModal } from "./ui/CrashReportModal.js";
+import { DiffView } from "./ui/DiffView.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ErrorDialog } from "./ui/ErrorDialog.js";
 import { ExplorerView } from "./ui/ExplorerView.js";
@@ -77,6 +79,7 @@ import { useClipboardCopy } from "./ui/useClipboardCopy.js";
 import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
 import { useCrashReport } from "./ui/useCrashReport.js";
+import { useDiff } from "./ui/useDiff.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
@@ -232,10 +235,12 @@ export function App({
     tabsState,
     activeSess,
     activeViewerKey,
+    activeDiffKey,
     activateTabByKey,
     closeTab,
     reorderTabByKey,
     openViewerTab,
+    openDiffTab,
   } = useAppTabs(store, cockpitTerminals, selectedCockpitTerminalId);
 
   // Footer inputs for the active session tab (undefined for viewer/empty; usage null before a transcript).
@@ -259,6 +264,15 @@ export function App({
   const activeBuffer =
     activeViewerKey !== null ? (viewerBuffers[activeViewerKey] ?? null) : null;
 
+  const {
+    buffers: diffBuffers,
+    ensureDiff,
+    closeDiff,
+    toggleLayout: toggleDiffLayout,
+  } = useDiff(gitApi, activeDiffKey);
+  const activeDiffBuffer =
+    activeDiffKey !== null ? (diffBuffers[activeDiffKey] ?? null) : null;
+
   // Open a file as a viewer tab (from explorer/search). ensureBuffer fires a read if not yet loaded.
   // Bumping the nonce moves focus to the viewer so it becomes the active view (un-dims it).
   const [viewerFocusNonce, setViewerFocusNonce] = useState(0);
@@ -269,13 +283,29 @@ export function App({
     },
     [openViewerTab, ensureBuffer],
   );
-  // Tab close removes both the tab and its viewer buffer immediately (read-only, no unsaved-changes prompt).
+
+  // Open a file's diff as a diff tab (from the double-click on a Source Control file row).
+  const [diffFocusNonce, setDiffFocusNonce] = useState(0);
+  const openDiff = useCallback(
+    (
+      repoPath: string,
+      relPath: string,
+      staged: boolean,
+      untracked: boolean,
+    ): void => {
+      openDiffTab(ensureDiff(repoPath, relPath, diffSide(staged, untracked)));
+      setDiffFocusNonce((n) => n + 1);
+    },
+    [openDiffTab, ensureDiff],
+  );
+  // Tab close removes both the tab and its viewer/diff buffer immediately (read-only, no prompt).
   const closeTabByKey = useCallback(
     (key: string): void => {
       closeTab(key);
       closeViewerBuffer(key);
+      closeDiff(key);
     },
-    [closeTab, closeViewerBuffer],
+    [closeTab, closeViewerBuffer, closeDiff],
   );
   const closeAllTabs = useCallback((): void => {
     for (const tab of tabsState.tabs) closeTabByKey(tabKey(tab));
@@ -299,6 +329,17 @@ export function App({
       );
     },
     [viewerPathOf, flashCopyToast, t],
+  );
+
+  // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
+  const copyDiffPath = useCallback(
+    (repoPath: string, relPath: string): void => {
+      void navigator.clipboard?.writeText(`${repoPath}/${relPath}`).then(
+        () => flashCopyToast(t("toast.pathCopied")),
+        () => undefined,
+      );
+    },
+    [flashCopyToast, t],
   );
 
   // Commit the conversation header / tab title edit and persist it keyed by cockpitTerminalId (the owned-mode
@@ -560,11 +601,13 @@ export function App({
             </ErrorBoundary>
             {controlStatus === "open" &&
               cockpitTerminals.length === 0 &&
-              activeViewerKey === null && <EmptyMainArea />}
+              activeViewerKey === null &&
+              activeDiffKey === null && <EmptyMainArea />}
             {controlStatus === "open" &&
               cockpitTerminals.length > 0 &&
               activeSess === null &&
-              activeViewerKey === null && <NoTabOpen />}
+              activeViewerKey === null &&
+              activeDiffKey === null && <NoTabOpen />}
             {activeBuffer !== null && activeViewerKey !== null && (
               <Viewer
                 key={activeViewerKey}
@@ -573,6 +616,26 @@ export function App({
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
                 inactive={activeView !== "main"}
                 focusNonce={viewerFocusNonce}
+              />
+            )}
+            {activeDiffBuffer !== null && activeDiffKey !== null && (
+              <DiffView
+                key={activeDiffKey}
+                buffer={activeDiffBuffer}
+                onToggleLayout={() => toggleDiffLayout(activeDiffKey)}
+                onCopyPath={() =>
+                  copyDiffPath(
+                    activeDiffBuffer.repoPath,
+                    activeDiffBuffer.relPath,
+                  )
+                }
+                onOpenInEditor={() =>
+                  void gitApi
+                    .open(activeDiffBuffer.repoPath, activeDiffBuffer.relPath)
+                    .catch(() => undefined)
+                }
+                inactive={activeView !== "main"}
+                focusNonce={diffFocusNonce}
               />
             )}
           </div>
@@ -632,6 +695,7 @@ export function App({
               onGitDirty={onGitDirty}
               orgColors={orgColors}
               orgAliases={orgAliases}
+              onOpenDiff={openDiff}
               inactive={activeView !== "sourceControl"}
             />
           )}

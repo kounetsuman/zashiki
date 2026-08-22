@@ -20,11 +20,14 @@ export interface AppTabs {
   activeSess: string | null;
   /** Buffer key of the active viewer tab (null when the active tab is not a viewer). */
   activeViewerKey: string | null;
+  /** Buffer key of the active diff tab (null when the active tab is not a diff). */
+  activeDiffKey: string | null;
   activateTabByKey(key: string): void;
-  /** Removes the tab only; the session (or viewer buffer) is closed by the caller. */
+  /** Removes the tab only; the session (or viewer/diff buffer) is closed by the caller. */
   closeTab(key: string): void;
   reorderTabByKey(fromKey: string, toKey: string): void;
   openViewerTab(key: string): void;
+  openDiffTab(key: string): void;
 }
 
 /**
@@ -41,6 +44,7 @@ export function useAppTabs(
   const activeSess = activeSessionId(tabsState);
   const active = activeTab(tabsState);
   const activeViewerKey = active?.kind === "viewer" ? active.id : null;
+  const activeDiffKey = active?.kind === "diff" ? active.id : null;
 
   useEffect(() => {
     if (selectedCockpitTerminalId === null) return;
@@ -108,13 +112,19 @@ export function useAppTabs(
     setTabsState((prev) => openTab(prev, { kind: "viewer", id: key }));
   }, []);
 
+  const openDiffTab = useCallback((key: string): void => {
+    setTabsState((prev) => openTab(prev, { kind: "diff", id: key }));
+  }, []);
+
   return {
     tabsState,
     activeSess,
     activeViewerKey,
+    activeDiffKey,
     activateTabByKey,
     closeTab,
     reorderTabByKey,
     openViewerTab,
+    openDiffTab,
   };
 }
