@@ -53,6 +53,7 @@ function createFakeGitApi(repos: RepoStatus[] = []): FakeGitApi {
     unstage: record("unstage"),
     stageAll: record("stage-all"),
     unstageAll: record("unstage-all"),
+    removeWorktree: record("remove-worktree"),
     open: record("open"),
     commit: (repoPath: string, message: string): Promise<void> => {
       api.calls.push(["commit", repoPath, message]);
@@ -253,6 +254,53 @@ describe("SourceControlView", () => {
     ).toBe("remove");
   });
 
+  it("shows a delete button only on worktree rows, and removes on inline confirm", async () => {
+    const repos = [
+      repo({ repo: "repo-a", path: "/ws/org1/repo-a", isWorktree: false }),
+      repo({ repo: "repo-wt", path: "/ws/org1/repo-wt", isWorktree: true }),
+    ];
+    const h = renderView(repos);
+    fireEvent.click(await screen.findByRole("button", { name: /org1 \(2\)/ }));
+
+    // The main working tree has no delete button; the worktree does (labels are pinned to ja).
+    expect(
+      screen.queryByRole("button", { name: /ワークツリー repo-a を削除/ }),
+    ).toBeNull();
+    const del = screen.getByRole("button", {
+      name: /ワークツリー repo-wt を削除/,
+    });
+
+    // First click asks for confirmation (does not delete yet).
+    fireEvent.click(del);
+    expect(h.api.calls.some((c) => c[0] === "remove-worktree")).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: /ワークツリー repo-wt の削除を確定/,
+        }),
+      );
+    });
+    expect(h.api.calls).toContainEqual(["remove-worktree", "/ws/org1/repo-wt"]);
+  });
+
+  it("marks worktree rows with the account_tree icon and main repos with folder", async () => {
+    const repos = [
+      repo({ repo: "repo-a", path: "/ws/org1/repo-a", isWorktree: false }),
+      repo({ repo: "repo-wt", path: "/ws/org1/repo-wt", isWorktree: true }),
+    ];
+    renderView(repos);
+    fireEvent.click(await screen.findByRole("button", { name: /org1 \(2\)/ }));
+    expect(
+      rowButton("git-repo-row", "repo-a").querySelector(".git-repo-icon")
+        ?.textContent,
+    ).toBe("folder");
+    expect(
+      rowButton("git-repo-row", "repo-wt").querySelector(".git-repo-icon")
+        ?.textContent,
+    ).toBe("account_tree");
+  });
+
   it("shows the header as SOURCE CONTROL (VSCode-style)", async () => {
     renderView(twoRepoFixture());
     await screen.findByRole("button", { name: /org1 \(2\)/ });
@@ -345,6 +393,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };
@@ -369,6 +418,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };
@@ -413,6 +463,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };
@@ -444,6 +495,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };
@@ -469,6 +521,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };
@@ -498,6 +551,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };
@@ -523,6 +577,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };
@@ -549,6 +604,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };
@@ -585,6 +641,7 @@ describe("SourceControlView", () => {
       unstage: () => Promise.resolve(),
       stageAll: () => Promise.resolve(),
       unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
       open: () => Promise.resolve(),
       commit: () => Promise.resolve(),
     };

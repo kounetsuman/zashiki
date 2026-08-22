@@ -9,6 +9,7 @@ export interface GitApi {
   unstage(repoPath: string, file: string): Promise<void>;
   stageAll(repoPath: string): Promise<void>;
   unstageAll(repoPath: string): Promise<void>;
+  removeWorktree(repoPath: string): Promise<void>;
   open(repoPath: string, file: string): Promise<void>;
   commit(repoPath: string, message: string): Promise<void>;
 }
@@ -48,6 +49,8 @@ export function createGitApi(
     unstage: (repoPath, file) => post("/api/git/unstage", { repoPath, file }),
     stageAll: (repoPath) => post("/api/git/stage-all", { repoPath }),
     unstageAll: (repoPath) => post("/api/git/unstage-all", { repoPath }),
+    removeWorktree: (repoPath) =>
+      post("/api/git/remove-worktree", { repoPath }),
     open: (repoPath, file) => post("/api/git/open", { repoPath, file }),
     commit: (repoPath, message) =>
       post("/api/git/commit", { repoPath, message }),

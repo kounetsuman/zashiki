@@ -3,6 +3,7 @@
     "close": "Close",
     "closeAllTabs": "Close all tabs",
     "cancel": "Cancel",
+    "delete": "Delete",
     "retry": "Retry",
     "refresh": "Refresh",
     "loading": "Loading…",
@@ -117,7 +118,13 @@
     "stageAll": "Stage all (git add .)",
     "unstageAll": "Unstage all (git reset .)",
     "noChanges": "No changes",
-    "skipped": "Skipped {{count}} repo(s) with an unreadable status"
+    "skipped": "Skipped {{count}} repo(s) with an unreadable status",
+    "worktree": "Worktree",
+    "repository": "Repository",
+    "lastCommit": "Last commit {{date}}",
+    "deleteWorktree": "Delete worktree {{repo}}",
+    "deleteWorktreeConfirm": "Confirm deleting worktree {{repo}}",
+    "deleteWorktreeCancel": "Keep worktree {{repo}}"
   },
   "viewer": {
     "viewerLabel": "Viewer {{path}}",

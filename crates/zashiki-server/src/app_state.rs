@@ -101,6 +101,12 @@ pub(crate) async fn scan(state: &AppState) -> Vec<repos::ScannedRepo> {
     repos
 }
 
+/// Drop the cached scan so the next `scan` re-walks the filesystem (after the repo set changes,
+/// e.g. a worktree removal).
+pub(crate) async fn invalidate_scan_cache(state: &AppState) {
+    *state.scan_cache.lock().await = None;
+}
+
 pub(crate) fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

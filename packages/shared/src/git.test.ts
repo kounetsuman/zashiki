@@ -255,4 +255,24 @@ describe("parseGitStatusResponse (per-repo fault isolation)", () => {
     expect(() => parseGitStatusResponse({ repos: "nope" })).toThrow();
     expect(() => parseGitStatusResponse(null)).toThrow();
   });
+
+  it("keeps a repo whose optional isWorktree/lastCommit are absent (no whole-repo drop on skew)", () => {
+    const result = parseGitStatusResponse({ repos: [good({ repo: "a" })] });
+    expect(result.repos.map((r) => r.repo)).toEqual(["a"]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("carries isWorktree and lastCommit through when present", () => {
+    const result = parseGitStatusResponse({
+      repos: [
+        good({
+          repo: "wt",
+          isWorktree: true,
+          lastCommit: "2026-08-22T16:21:44+09:00",
+        }),
+      ],
+    });
+    expect(result.repos[0]?.isWorktree).toBe(true);
+    expect(result.repos[0]?.lastCommit).toBe("2026-08-22T16:21:44+09:00");
+  });
 });

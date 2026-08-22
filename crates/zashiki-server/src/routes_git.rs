@@ -1,7 +1,7 @@
 use axum::{extract::State, http::StatusCode, response::Response, Json};
 use serde::Deserialize;
 
-use crate::app_state::{resolve_editor, scan, spawn_editor, AppState};
+use crate::app_state::{invalidate_scan_cache, resolve_editor, scan, spawn_editor, AppState};
 use crate::git;
 use crate::wire_support::{
     git_result, guard_file_action, guard_repo, json_error, json_ok, parse_json_body,
@@ -110,6 +110,32 @@ pub(crate) async fn git_unstage_all(
         return json_error(status, &msg);
     }
     git_result(git::unstage_all(std::path::Path::new(&repo_path)).await)
+}
+
+pub(crate) async fn git_remove_worktree(
+    State(state): State<AppState>,
+    body: axum::body::Bytes,
+) -> Response {
+    let parsed: GitRepoBody = match parse_json_body(&body) {
+        Err((status, msg)) => return json_error(status, &msg),
+        Ok(v) => v,
+    };
+    let repo_path = match parsed.repo_path.filter(|p| !p.is_empty()) {
+        None => return json_error(StatusCode::BAD_REQUEST, "request failed schema validation"),
+        Some(p) => p,
+    };
+    if let Err((status, msg)) = guard_repo(&state, &repo_path).await {
+        return json_error(status, &msg);
+    }
+    let path = std::path::Path::new(&repo_path);
+    if !crate::repos::is_linked_worktree(path) {
+        return json_error(StatusCode::BAD_REQUEST, "repoPath is not a linked worktree");
+    }
+    let result = git::remove_worktree(path).await;
+    if result.is_ok() {
+        invalidate_scan_cache(&state).await;
+    }
+    git_result(result)
 }
 
 pub(crate) async fn git_commit(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
@@ -367,6 +393,71 @@ mod git_file_rest_tests {
         )
         .await;
         assert_eq!(s, StatusCode::FORBIDDEN);
+    }
+
+    /// Adds a linked worktree of `repo-a` under the scanned org and returns its absolute path.
+    fn add_worktree(fx: &Fixture, name: &str) -> String {
+        let wt = Path::new(&fx.repo_a).parent().unwrap().join(name);
+        git(
+            Path::new(&fx.repo_a),
+            &["worktree", "add", "-q", "-b", name, &wt.to_string_lossy()],
+        );
+        wt.to_string_lossy().into_owned()
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_happy_guards_and_rejects_non_worktree() {
+        let fx = fixture();
+        let wt = add_worktree(&fx, "wt-clean");
+
+        // A scanned linked worktree is removed (200) and the directory disappears.
+        let (s, b) = post(
+            app(&fx),
+            "/api/git/remove-worktree?token=t",
+            &format!(r#"{{"repoPath":"{}"}}"#, wt),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b, r#"{"ok":true}"#);
+        assert!(!Path::new(&wt).exists());
+
+        // A main working tree in the scan is rejected as not a worktree (400).
+        let (s, _) = post(
+            app(&fx),
+            "/api/git/remove-worktree?token=t",
+            &format!(r#"{{"repoPath":"{}"}}"#, fx.repo_a),
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+
+        // Outside the scan is 403.
+        let (s, _) = post(
+            app(&fx),
+            "/api/git/remove-worktree?token=t",
+            &format!(r#"{{"repoPath":"{}"}}"#, fx.outside),
+        )
+        .await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+
+        // Missing repoPath is 400.
+        let (s, _) = post(app(&fx), "/api/git/remove-worktree?token=t", "{}").await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_dirty_is_500_and_kept() {
+        let fx = fixture();
+        let wt = add_worktree(&fx, "wt-dirty");
+        std::fs::write(Path::new(&wt).join("uncommitted.txt"), "x\n").unwrap();
+
+        let (s, _) = post(
+            app(&fx),
+            "/api/git/remove-worktree?token=t",
+            &format!(r#"{{"repoPath":"{}"}}"#, wt),
+        )
+        .await;
+        assert_eq!(s, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(Path::new(&wt).exists());
     }
 
     #[tokio::test]

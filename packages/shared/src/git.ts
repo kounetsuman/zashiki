@@ -133,6 +133,10 @@ export const repoStatusSchema = z.object({
   /** Absolute path to the worktree (used directly as the repoPath for stage, etc.). */
   path: z.string().min(1),
   branch: z.string().min(1),
+  /** True for a linked git worktree (vs the main working tree). Optional so version skew never drops a repo. */
+  isWorktree: z.boolean().optional(),
+  /** Committer date of HEAD (ISO 8601); empty or absent when the repo has no commits. */
+  lastCommit: z.string().optional(),
   staged: z.array(gitFileEntrySchema),
   changed: z.array(gitFileEntrySchema),
 });

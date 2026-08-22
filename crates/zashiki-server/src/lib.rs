@@ -74,7 +74,8 @@ use crate::app_state::AppState;
 use crate::middleware::{host_origin_guard, require_token};
 use crate::routes_fs::{file_read, file_write, fs_list};
 use crate::routes_git::{
-    git_commit, git_open, git_stage, git_stage_all, git_status, git_unstage, git_unstage_all,
+    git_commit, git_open, git_remove_worktree, git_stage, git_stage_all, git_status, git_unstage,
+    git_unstage_all,
 };
 use crate::routes_health::{ack_last_crash, healthz, last_crash, token_probe};
 use crate::routes_repos::{
@@ -154,6 +155,7 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/git/open", post(git_open))
         .route("/api/git/stage-all", post(git_stage_all))
         .route("/api/git/unstage-all", post(git_unstage_all))
+        .route("/api/git/remove-worktree", post(git_remove_worktree))
         .route("/api/git/commit", post(git_commit))
         // /api/file writes allow a larger body: maxBytes + 64KiB (content max + slack for the JSON
         // envelope), overriding axum's default 2MiB so the 413 is content-based rather than transport-level.

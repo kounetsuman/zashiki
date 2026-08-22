@@ -13,6 +13,7 @@ pub struct ScannedRepo {
     pub org: String,
     pub repo: String,
     pub path: String,
+    pub is_worktree: bool,
 }
 
 /// Collapses `.` / `..` lexically (does not resolve symlinks).
@@ -387,6 +388,28 @@ fn is_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
+/// Whether `path` is a linked worktree (as opposed to a main working tree or a submodule).
+/// A linked worktree's `.git` is a file whose `gitdir:` target sits directly under a `worktrees`
+/// directory (`.../worktrees/<name>`); a submodule instead points under `.../modules/<name>`.
+pub fn is_linked_worktree(path: &Path) -> bool {
+    let dot_git = path.join(".git");
+    if !dot_git.is_file() {
+        return false;
+    }
+    let Ok(content) = std::fs::read_to_string(&dot_git) else {
+        return false;
+    };
+    let target = content
+        .lines()
+        .find_map(|line| line.strip_prefix("gitdir:"))
+        .unwrap_or("")
+        .trim();
+    Path::new(target)
+        .parent()
+        .and_then(|parent| parent.file_name())
+        .is_some_and(|name| name == "worktrees")
+}
+
 /// Visible subdirectories directly under `dir` (excluding those starting with `.`).
 fn visible_subdirs(dir: &Path) -> Vec<PathBuf> {
     let Ok(rd) = std::fs::read_dir(dir) else {
@@ -433,6 +456,7 @@ pub fn scan_repos(conf_path: &Path) -> Vec<ScannedRepo> {
             out.push(ScannedRepo {
                 org: org.clone(),
                 repo: basename(&repo_path),
+                is_worktree: is_linked_worktree(&repo_path),
                 path: repo_path.to_string_lossy().into_owned(),
             });
         }
@@ -825,5 +849,44 @@ rel/dir
         let roots = browse_roots(&conf);
         assert!(!roots.iter().any(|r| *r == PathBuf::from("/opt"))); // parent depth 1
         assert!(!roots.iter().any(|r| *r == PathBuf::from("/"))); // parent of "/Users"
+    }
+
+    #[test]
+    fn is_linked_worktree_distinguishes_worktree_from_main_and_submodule() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+
+        let main = base.join("main");
+        std::fs::create_dir_all(main.join(".git")).unwrap();
+        assert!(!is_linked_worktree(&main));
+
+        let worktree = base.join("wt");
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(
+            worktree.join(".git"),
+            "gitdir: /repo/.git/worktrees/wt\n",
+        )
+        .unwrap();
+        assert!(is_linked_worktree(&worktree));
+
+        let submodule = base.join("sub");
+        std::fs::create_dir_all(&submodule).unwrap();
+        std::fs::write(submodule.join(".git"), "gitdir: ../.git/modules/sub\n").unwrap();
+        assert!(!is_linked_worktree(&submodule));
+
+        // A submodule whose superproject lives under a directory literally named "worktrees" must
+        // not be misread as a worktree: the gitdir still ends in modules/<name>, not worktrees/<name>.
+        let nested = base.join("nested");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(
+            nested.join(".git"),
+            "gitdir: /repo/worktrees/super/.git/modules/sub\n",
+        )
+        .unwrap();
+        assert!(!is_linked_worktree(&nested));
+
+        let plain = base.join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert!(!is_linked_worktree(&plain));
     }
 }
