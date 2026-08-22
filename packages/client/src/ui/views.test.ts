@@ -22,7 +22,7 @@ function memStorage(initial: Record<string, string> = {}) {
 }
 
 describe("views pure logic", () => {
-  it("VIEW_DEFS has explorer/search/git/notification/help/settings with unique ids and shortcuts (cockpitTerminals are always fixed and not included)", () => {
+  it("VIEW_DEFS has explorer/search/git/notification/help with unique ids and shortcuts (settings is a modal, not a switchable view; cockpitTerminals are always fixed and not included)", () => {
     const ids = VIEW_DEFS.map((d: ViewDef) => d.id);
     const keys = VIEW_DEFS.map((d: ViewDef) => d.shortcutKey);
     expect(ids).toEqual([
@@ -31,7 +31,6 @@ describe("views pure logic", () => {
       "sourceControl",
       "notification",
       "help",
-      "settings",
     ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(new Set(keys).size).toBe(keys.length);
@@ -46,6 +45,7 @@ describe("views pure logic", () => {
     expect(isViewId("explorer")).toBe(true);
     expect(isViewId("help")).toBe(true);
     expect(isViewId("sessions")).toBe(false);
+    expect(isViewId("settings")).toBe(false);
     expect(isViewId("bogus")).toBe(false);
     expect(isViewId("")).toBe(false);
     expect(isViewId(null)).toBe(false);
@@ -66,9 +66,12 @@ describe("views pure logic", () => {
     expect(loadSelectedView(s)).toBe("sourceControl");
   });
 
-  it("loadSelectedView: values outside VIEW_DEFS fall back to explorer (legacy cockpitTerminals, invalid values)", () => {
+  it("loadSelectedView: values outside VIEW_DEFS fall back to explorer (legacy cockpitTerminals, retired settings view, invalid values)", () => {
     expect(
       loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "sessions" })),
+    ).toBe("explorer");
+    expect(
+      loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "settings" })),
     ).toBe("explorer");
     expect(
       loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "bogus" })),

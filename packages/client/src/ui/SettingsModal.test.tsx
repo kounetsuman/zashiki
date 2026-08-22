@@ -9,13 +9,88 @@ import {
 import type { UpdateCheckResultMessage } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsView } from "./SettingsView.js";
+import { SettingsModal } from "./SettingsModal.js";
 
 afterEach(cleanup);
 
-describe("SettingsView", () => {
+const noop = () => {};
+
+describe("SettingsModal shell", () => {
+  it("renders a dialog with General and Development tabs, General active by default", () => {
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
+    expect(screen.getByRole("dialog", { name: "設定" })).toBeTruthy();
+    const general = screen.getByRole("tab", { name: "一般" });
+    const developer = screen.getByRole("tab", { name: "開発モード" });
+    expect(general.getAttribute("aria-selected")).toBe("true");
+    expect(developer.getAttribute("aria-selected")).toBe("false");
+  });
+
+  it("closes on Escape", () => {
+    const onClose = vi.fn();
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={onClose} />,
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("closes on Escape pressed from a control inside the dialog", () => {
+    const onClose = vi.fn();
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={onClose} />,
+    );
+    fireEvent.keyDown(screen.getByLabelText("表示言語"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("closes on the close button", () => {
+    const onClose = vi.fn();
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={onClose} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("closes on a backdrop click but not on a click inside the dialog", () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={onClose} />,
+    );
+    fireEvent.click(screen.getByRole("dialog", { name: "設定" }));
+    expect(onClose).not.toHaveBeenCalled();
+    const backdrop = container.querySelector(
+      ".settings-backdrop",
+    ) as HTMLElement;
+    fireEvent.click(backdrop);
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("keeps an unsaved language draft when switching to Development and back", () => {
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
+    fireEvent.change(screen.getByLabelText("表示言語"), {
+      target: { value: "en" },
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "開発モード" }));
+    fireEvent.click(screen.getByRole("tab", { name: "一般" }));
+    const select = screen.getByLabelText("表示言語") as HTMLSelectElement;
+    expect(select.value).toBe("en");
+    expect(
+      (screen.getByRole("button", { name: "保存" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
+});
+
+describe("SettingsModal General tab", () => {
   it("reflects the current language in the dropdown and disables Save when unchanged", () => {
-    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
     const select = screen.getByLabelText("表示言語") as HTMLSelectElement;
     expect(select.value).toBe("ja");
     const save = screen.getByRole("button", {
@@ -25,7 +100,9 @@ describe("SettingsView", () => {
   });
 
   it("renders the ja / en options", () => {
-    render(<SettingsView language="en" onSaveLanguage={() => {}} />);
+    render(
+      <SettingsModal language="en" onSaveLanguage={noop} onClose={noop} />,
+    );
     expect(screen.getByRole("option", { name: "日本語" })).toBeTruthy();
     expect(screen.getByRole("option", { name: "English" })).toBeTruthy();
   });
@@ -33,13 +110,14 @@ describe("SettingsView", () => {
   it("shows the add-org entry only when onAddOrg is provided and calls it on click", () => {
     const onAddOrg = vi.fn();
     const { rerender } = render(
-      <SettingsView language="ja" onSaveLanguage={() => {}} />,
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
     );
     expect(screen.queryByRole("button", { name: "組織を追加" })).toBeNull();
     rerender(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         onAddOrg={onAddOrg}
       />,
     );
@@ -49,7 +127,13 @@ describe("SettingsView", () => {
 
   it("calls onSaveLanguage with the selected language after changing it and saving", () => {
     const onSaveLanguage = vi.fn();
-    render(<SettingsView language="ja" onSaveLanguage={onSaveLanguage} />);
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={onSaveLanguage}
+        onClose={noop}
+      />,
+    );
     fireEvent.change(screen.getByLabelText("表示言語"), {
       target: { value: "en" },
     });
@@ -62,7 +146,9 @@ describe("SettingsView", () => {
   });
 
   it("does not render the font-size controls when fontSize is omitted", () => {
-    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
     expect(screen.queryByText("ターミナルの文字サイズ")).toBeNull();
   });
 
@@ -71,9 +157,10 @@ describe("SettingsView", () => {
     const onDecreaseFontSize = vi.fn();
     const onResetFontSize = vi.fn();
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         fontSize={13}
         onIncreaseFontSize={onIncreaseFontSize}
         onDecreaseFontSize={onDecreaseFontSize}
@@ -91,9 +178,10 @@ describe("SettingsView", () => {
 
   it("disables A+ at the maximum and A- at the minimum", () => {
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         fontSize={32}
         canIncreaseFontSize={false}
         canDecreaseFontSize={true}
@@ -117,9 +205,10 @@ describe("SettingsView", () => {
 
   it("disables Reset when canResetFontSize is false", () => {
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         fontSize={13}
         canResetFontSize={false}
       />,
@@ -132,7 +221,12 @@ describe("SettingsView", () => {
 
   it("labels the font-size controls as a group", () => {
     render(
-      <SettingsView language="ja" onSaveLanguage={() => {}} fontSize={13} />,
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        fontSize={13}
+      />,
     );
     expect(
       screen.getByRole("group", { name: "ターミナルの文字サイズ" }),
@@ -140,16 +234,19 @@ describe("SettingsView", () => {
   });
 
   it("hides the clipboard-edit toggle when onSetClipboardEditModal is omitted", () => {
-    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
     expect(screen.queryByText("コピー時にクリップボード編集を表示")).toBeNull();
   });
 
   it("reflects and toggles the clipboard-edit setting", () => {
     const onSetClipboardEditModal = vi.fn();
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         clipboardEditModal={true}
         onSetClipboardEditModal={onSetClipboardEditModal}
       />,
@@ -163,16 +260,19 @@ describe("SettingsView", () => {
   });
 
   it("hides the editor field when onSaveEditor is omitted", () => {
-    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
     expect(screen.queryByText("外部エディタコマンド")).toBeNull();
   });
 
   it("reflects the current editor command and disables Save until it changes", () => {
     const onSaveEditor = vi.fn();
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         editor="cursor -g"
         onSaveEditor={onSaveEditor}
       />,
@@ -181,7 +281,6 @@ describe("SettingsView", () => {
       name: "外部エディタコマンド",
     }) as HTMLInputElement;
     expect(input.value).toBe("cursor -g");
-    // Scope to the editor field: the language field has its own "保存" button.
     const field = input.closest("div.settings-field") as HTMLElement;
     const save = within(field).getByRole("button", {
       name: "保存",
@@ -195,7 +294,9 @@ describe("SettingsView", () => {
   });
 
   it("hides the update-check entry when onCheckForUpdates is omitted", () => {
-    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
     expect(
       screen.queryByRole("button", { name: "アップデートを確認" }),
     ).toBeNull();
@@ -208,9 +309,10 @@ describe("SettingsView", () => {
       version: "0.2.0",
     } satisfies UpdateCheckResultMessage);
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         onCheckForUpdates={onCheckForUpdates}
       />,
     );
@@ -223,9 +325,10 @@ describe("SettingsView", () => {
 
   it("reports being up to date", async () => {
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         onCheckForUpdates={vi.fn().mockResolvedValue({
           t: "update.check.result",
           status: "upToDate",
@@ -239,9 +342,10 @@ describe("SettingsView", () => {
 
   it("reports an error when the check rejects", async () => {
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         onCheckForUpdates={vi.fn().mockRejectedValue(new Error("offline"))}
       />,
     );
@@ -250,23 +354,33 @@ describe("SettingsView", () => {
       await screen.findByText("アップデートを確認できませんでした。"),
     ).toBeTruthy();
   });
+});
 
-  it("hides the Developer mode section when onSetRenderer is not provided", () => {
-    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
-    expect(screen.queryByText("開発モード")).toBeNull();
+describe("SettingsModal Development tab", () => {
+  const openDeveloper = () =>
+    fireEvent.click(screen.getByRole("tab", { name: "開発モード" }));
+
+  it("keeps the Development tab available even without renderer wiring", () => {
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
+    openDeveloper();
+    expect(screen.getByRole("tab", { name: "開発モード" })).toBeTruthy();
     expect(screen.queryByLabelText("ターミナルレンダラ")).toBeNull();
   });
 
-  it("switches the renderer via the Developer mode dropdown", () => {
+  it("switches the renderer via the Development tab dropdown", () => {
     const onSetRenderer = vi.fn();
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         renderer="webgl"
         onSetRenderer={onSetRenderer}
       />,
     );
+    openDeveloper();
     const select = screen.getByLabelText(
       "ターミナルレンダラ",
     ) as HTMLSelectElement;
@@ -278,22 +392,25 @@ describe("SettingsView", () => {
   it("shows the DevTools button only when onOpenDevtools is provided", () => {
     const onOpenDevtools = vi.fn();
     const { rerender } = render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         renderer="webgl"
-        onSetRenderer={() => {}}
+        onSetRenderer={noop}
       />,
     );
+    openDeveloper();
     expect(
       screen.queryByRole("button", { name: "DevTools を開く" }),
     ).toBeNull();
     rerender(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         renderer="webgl"
-        onSetRenderer={() => {}}
+        onSetRenderer={noop}
         onOpenDevtools={onOpenDevtools}
       />,
     );
@@ -304,14 +421,16 @@ describe("SettingsView", () => {
   it("calls onOpenDebugPanel when the debug-panel button is clicked", () => {
     const onOpenDebugPanel = vi.fn();
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         renderer="webgl"
-        onSetRenderer={() => {}}
+        onSetRenderer={noop}
         onOpenDebugPanel={onOpenDebugPanel}
       />,
     );
+    openDeveloper();
     fireEvent.click(
       screen.getByRole("button", { name: "デバッグパネルを開く" }),
     );
@@ -319,7 +438,7 @@ describe("SettingsView", () => {
   });
 });
 
-describe("SettingsView Claude Code integration (#145)", () => {
+describe("SettingsModal Claude Code integration", () => {
   const status = {
     hooksRegistered: false,
     statusLineRegistered: false,
@@ -327,7 +446,9 @@ describe("SettingsView Claude Code integration (#145)", () => {
   };
 
   it("hides the integration toggle when status or handler is absent", () => {
-    render(<SettingsView language="ja" onSaveLanguage={() => {}} />);
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
     expect(
       screen.queryByText("Claude Code 連携（通知・使用率フッタ）"),
     ).toBeNull();
@@ -336,9 +457,10 @@ describe("SettingsView Claude Code integration (#145)", () => {
   it("reflects fully-registered as checked and toggles register on/off", () => {
     const onSet = vi.fn();
     const { rerender } = render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         hooksStatus={status}
         onSetHooksRegistered={onSet}
       />,
@@ -351,9 +473,10 @@ describe("SettingsView Claude Code integration (#145)", () => {
     expect(onSet).toHaveBeenCalledWith(true);
 
     rerender(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         hooksStatus={{
           hooksRegistered: true,
           statusLineRegistered: true,
@@ -373,11 +496,12 @@ describe("SettingsView Claude Code integration (#145)", () => {
 
   it("surfaces the wrap notice when a foreign statusLine conflicts", () => {
     render(
-      <SettingsView
+      <SettingsModal
         language="ja"
-        onSaveLanguage={() => {}}
+        onSaveLanguage={noop}
+        onClose={noop}
         hooksStatus={{ ...status, statusLineConflict: true }}
-        onSetHooksRegistered={() => {}}
+        onSetHooksRegistered={noop}
       />,
     );
     expect(

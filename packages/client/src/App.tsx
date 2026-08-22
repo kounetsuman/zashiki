@@ -55,6 +55,7 @@ import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ErrorDialog } from "./ui/ErrorDialog.js";
 import { ExplorerView } from "./ui/ExplorerView.js";
 import { FirstRunSetupWizard } from "./ui/FirstRunSetupWizard.js";
+import { FooterSettingsButton } from "./ui/FooterSettingsButton.js";
 import { FooterViewTabs } from "./ui/FooterViewTabs.js";
 import { HelpView } from "./ui/HelpView.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
@@ -62,7 +63,7 @@ import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
 import { NotificationView } from "./ui/NotificationView.js";
 import { SearchView } from "./ui/SearchView.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
-import { SettingsView } from "./ui/SettingsView.js";
+import { SettingsModal } from "./ui/SettingsModal.js";
 import { SourceControlView } from "./ui/SourceControlView.js";
 import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
@@ -175,6 +176,8 @@ export function App({
     loadFirstRunWizardSeen(viewStorage),
   );
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const toggleSettings = useCallback(() => setSettingsModalOpen((v) => !v), []);
 
   const { selectedView, activeView, handleViewFocus, handleSelectView } =
     useViewSelection(viewStorage);
@@ -342,6 +345,7 @@ export function App({
     activeSess,
     activeKey: tabsState.activeKey,
     handleSelectView,
+    toggleSettings,
     newSession,
     duplicateSession,
     closeTabByKey,
@@ -631,40 +635,40 @@ export function App({
           {selectedView === "help" && (
             <HelpView inactive={activeView !== "help"} />
           )}
-          {selectedView === "settings" && (
-            <SettingsView
-              language={i18n.language}
-              onSaveLanguage={saveLanguage}
-              fontSize={terminalFont.fontSize}
-              onIncreaseFontSize={terminalFont.increase}
-              onDecreaseFontSize={terminalFont.decrease}
-              onResetFontSize={terminalFont.reset}
-              canIncreaseFontSize={terminalFont.canIncrease}
-              canDecreaseFontSize={terminalFont.canDecrease}
-              canResetFontSize={terminalFont.canReset}
-              onAddOrg={() => setAddOrgOpen(true)}
-              orgs={orgs}
-              orgNotes={orgNotes}
-              orgAliases={orgAliases}
-              onSaveNote={saveOrgNote}
-              onCheckForUpdates={checkForUpdates}
-              clipboardEditModal={clipboardEdit.enabled}
-              onSetClipboardEditModal={clipboardEdit.setEnabled}
-              accountUsage={accountUsage}
-              onSetAccountUsage={saveAccountUsage}
-              editor={editor ?? ""}
-              onSaveEditor={saveEditor}
-              hooksStatus={hooksStatus ?? undefined}
-              onSetHooksRegistered={setHooksRegistered}
-              renderer={terminalRenderer.renderer}
-              onSetRenderer={terminalRenderer.setRenderer}
-              onOpenDevtools={canOpenDevtools() ? openDevtools : undefined}
-              onOpenDebugPanel={() => setDebugPanelOpen(true)}
-              inactive={activeView !== "settings"}
-            />
-          )}
         </aside>
       </div>
+      {settingsModalOpen && (
+        <SettingsModal
+          language={i18n.language}
+          onSaveLanguage={saveLanguage}
+          fontSize={terminalFont.fontSize}
+          onIncreaseFontSize={terminalFont.increase}
+          onDecreaseFontSize={terminalFont.decrease}
+          onResetFontSize={terminalFont.reset}
+          canIncreaseFontSize={terminalFont.canIncrease}
+          canDecreaseFontSize={terminalFont.canDecrease}
+          canResetFontSize={terminalFont.canReset}
+          onAddOrg={() => setAddOrgOpen(true)}
+          orgs={orgs}
+          orgNotes={orgNotes}
+          orgAliases={orgAliases}
+          onSaveNote={saveOrgNote}
+          onCheckForUpdates={checkForUpdates}
+          clipboardEditModal={clipboardEdit.enabled}
+          onSetClipboardEditModal={clipboardEdit.setEnabled}
+          accountUsage={accountUsage}
+          onSetAccountUsage={saveAccountUsage}
+          editor={editor ?? ""}
+          onSaveEditor={saveEditor}
+          hooksStatus={hooksStatus ?? undefined}
+          onSetHooksRegistered={setHooksRegistered}
+          renderer={terminalRenderer.renderer}
+          onSetRenderer={terminalRenderer.setRenderer}
+          onOpenDevtools={canOpenDevtools() ? openDevtools : undefined}
+          onOpenDebugPanel={() => setDebugPanelOpen(true)}
+          onClose={() => setSettingsModalOpen(false)}
+        />
+      )}
       {addOrgOpen && (
         <AddOrgModal
           api={reposApi}
@@ -717,6 +721,7 @@ export function App({
           onSelect={handleSelectView}
           badges={{ notification: unread }}
         />
+        <FooterSettingsButton onOpen={() => setSettingsModalOpen(true)} />
       </footer>
       {lastError !== null && (
         <ErrorDialog message={lastError} onDismiss={handleDismissError} />

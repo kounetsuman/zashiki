@@ -7,8 +7,7 @@ export type ViewId =
   | "search"
   | "sourceControl"
   | "notification"
-  | "help"
-  | "settings";
+  | "help";
 
 /**
  * Registration info for the view-switch icons in the footer. Future views (search/explorer, etc.)
@@ -53,12 +52,6 @@ export const VIEW_DEFS: readonly ViewDef[] = [
     shortcutKey: "n",
   },
   { id: "help", labelKey: "view.help", icon: "help", shortcutKey: "h" },
-  {
-    id: "settings",
-    labelKey: "view.settings",
-    icon: "settings",
-    shortcutKey: "s",
-  },
 ];
 
 /** The view selected by default (first = explorer). */

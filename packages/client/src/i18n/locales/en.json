@@ -186,6 +186,9 @@
       "en": "English"
     },
     "save": "Save",
+    "close": "Close",
+    "tabGeneral": "General",
+    "tabDeveloper": "Development mode",
     "fontSize": "Terminal font size",
     "fontSizeDecrease": "Decrease font size",
     "fontSizeIncrease": "Increase font size",
@@ -210,7 +213,6 @@
     "hooksIntegration": "Claude Code integration (notifications & usage footer)",
     "hooksIntegrationHint": "Registers zashiki's hooks and statusLine in ~/.claude/settings.json so notifications, instant refresh, and the usage footer work.",
     "hooksConflictHint": "You already have a statusLine — enabling wraps it so it keeps rendering alongside zashiki.",
-    "devSection": "Developer mode",
     "renderer": "Terminal renderer",
     "rendererWebgl": "WebGL",
     "rendererDom": "DOM",

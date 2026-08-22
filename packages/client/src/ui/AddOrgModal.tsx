@@ -9,6 +9,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { ReposAddError, type ReposApi } from "../api/repos.js";
+import { useModalEscape } from "./useModalEscape.js";
 import "./AddOrgModal.css";
 
 export interface AddOrgModalProps {
@@ -57,13 +58,7 @@ export function AddOrgModal({ api, onClose, onAdded }: AddOrgModalProps) {
     return () => controller.abort();
   }, [api]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  useModalEscape(onClose);
 
   // Debounced completion + validation. A per-run AbortController drops stale in-flight responses so a
   // slow earlier request can never overwrite a newer one.

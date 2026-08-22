@@ -8,6 +8,7 @@ export interface AppKeyboardShortcuts {
   activeSess: string | null;
   activeKey: string | null;
   handleSelectView(id: ViewId): void;
+  toggleSettings(): void;
   newSession(org: string): void;
   duplicateSession(cockpitTerminalId: string): void;
   closeTabByKey(key: string): void;
@@ -25,6 +26,7 @@ export function useAppKeyboardShortcuts({
   activeSess,
   activeKey,
   handleSelectView,
+  toggleSettings,
   newSession,
   duplicateSession,
   closeTabByKey,
@@ -33,6 +35,11 @@ export function useAppKeyboardShortcuts({
     const onKeyDown = (e: KeyboardEvent): void => {
       if (!e.ctrlKey || !e.altKey || e.metaKey) return;
       if (document.activeElement instanceof HTMLInputElement) return;
+      if (e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        toggleSettings();
+        return;
+      }
       const def = VIEW_DEFS.find((d) => d.shortcutKey === e.key.toLowerCase());
       if (def === undefined) return;
       e.preventDefault();
@@ -40,7 +47,7 @@ export function useAppKeyboardShortcuts({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleSelectView]);
+  }, [handleSelectView, toggleSettings]);
 
   useEffect(() => {
     const onContextMenu = (e: MouseEvent): void => e.preventDefault();
