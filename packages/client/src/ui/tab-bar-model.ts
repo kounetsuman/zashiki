@@ -10,11 +10,18 @@ import type { Tab, TabKind } from "../tabs/tab-model.js";
 export const TAB_ICON: Record<TabKind, string> = {
   session: "terminal",
   viewer: "description",
+  diff: "difference",
 };
 
+function basenameLabel(rel: string): { label: string; title: string } {
+  return { label: rel.split("/").pop() ?? rel, title: rel };
+}
+
 /**
- * The tab's display label and title (tooltip). For session tabs, uses resolveTitle;
- * for viewer tabs, shows the file name (basename) and attaches the repo-relative path as the title.
+ * The tab's display label and title (tooltip). For session tabs, uses resolveTitle; for viewer/diff
+ * tabs, shows the file name (basename) with the repo-relative path as the title. A viewer id is
+ * `repoPath\nrelPath`; a diff id is `side\nrepoPath\nrelPath`, so relPath is everything past the
+ * fixed leading segments (it may itself contain a newline).
  */
 export function tabLabel(
   tab: Tab,
@@ -29,7 +36,8 @@ export function tabLabel(
         : resolveTitle(effectiveCustomTitle(titles, s), s);
     return { label, title: label };
   }
-  // A viewer id is the viewerKey (repoPath and relPath joined by a newline). Display shows the file name.
-  const rel = tab.id.split("\n")[1] ?? tab.id;
-  return { label: rel.split("/").pop() ?? rel, title: rel };
+  if (tab.kind === "diff") {
+    return basenameLabel(tab.id.split("\n").slice(2).join("\n") || tab.id);
+  }
+  return basenameLabel(tab.id.split("\n").slice(1).join("\n") || tab.id);
 }

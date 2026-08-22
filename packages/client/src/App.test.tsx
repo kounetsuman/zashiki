@@ -83,6 +83,15 @@ const fakeGitApi: GitApi = {
   removeWorktree: () => Promise.resolve(),
   open: () => Promise.resolve(),
   commit: () => Promise.resolve(),
+  diff: () =>
+    Promise.resolve({
+      oldText: "",
+      newText: "",
+      binary: false,
+      tooLarge: false,
+      added: 0,
+      removed: 0,
+    }),
 };
 
 const fakeFsApi: FsApi = {

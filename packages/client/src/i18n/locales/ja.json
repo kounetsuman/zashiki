@@ -126,6 +126,16 @@
     "deleteWorktreeConfirm": "ワークツリー {{repo}} の削除を確定",
     "deleteWorktreeCancel": "ワークツリー {{repo}} を残す"
   },
+  "diff": {
+    "viewLabel": "差分 {{path}}",
+    "unified": "インライン",
+    "split": "左右",
+    "binary": "バイナリファイルのため差分は表示できません。",
+    "tooLarge": "差分が大きすぎるため表示できません。",
+    "openInEditor": "エディタで開く",
+    "failed": "差分を読み込めませんでした: {{error}}",
+    "fetchTimeout": "差分の読み込みがタイムアウトしました"
+  },
   "viewer": {
     "viewerLabel": "ビューア {{path}}",
     "copyPathLabel": "パスをコピー",

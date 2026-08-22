@@ -7,11 +7,11 @@
  * the original order is chosen deterministically (even when several vanish at once).
  */
 
-export type TabKind = "session" | "viewer";
+export type TabKind = "session" | "viewer" | "diff";
 
 export interface Tab {
   readonly kind: TabKind;
-  /** Identifier unique within a kind (session=cockpitTerminalId, viewer=fileKey). */
+  /** Identifier unique within a kind (session=cockpitTerminalId, viewer=fileKey, diff=diffKey). */
   readonly id: string;
 }
 

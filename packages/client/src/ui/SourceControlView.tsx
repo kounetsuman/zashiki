@@ -27,6 +27,13 @@ export interface SourceControlViewProps {
   orgAliases?: Record<string, string>;
   /** The actual path-copy implementation. Defaults to navigator.clipboard. For test injection. */
   copyText?(text: string): Promise<void>;
+  /** Double-clicking a file row opens its diff (staged/untracked select which versions to compare). */
+  onOpenDiff?(
+    repoPath: string,
+    file: string,
+    staged: boolean,
+    untracked: boolean,
+  ): void;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
 }
@@ -37,6 +44,7 @@ export function SourceControlView({
   orgColors = {},
   orgAliases = {},
   copyText,
+  onOpenDiff,
   inactive,
 }: SourceControlViewProps) {
   const { t } = useTranslation();
@@ -86,6 +94,7 @@ export function SourceControlView({
     requestDelete,
     confirmDelete,
     cancelDelete,
+    onOpenDiff,
   };
 
   const orgBlock = (g: OrgGroup) => {

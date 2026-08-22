@@ -42,6 +42,25 @@ pub struct GitFileEntry {
     pub path: String,
 }
 
+/// Response for `POST /api/git/diff`. Carries the two file versions so the client can render both
+/// unified and split via CodeMirror's merge view. `oldText`/`newText` are empty when `binary` or
+/// `tooLarge`, both of which are decided before either body is loaded.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiffPayload {
+    pub old_text: String,
+    pub new_text: String,
+    pub binary: bool,
+    pub too_large: bool,
+    pub added: u32,
+    pub removed: u32,
+}
+
+/// Upper bound on either side's blob size (bytes) before a diff is refused as too large.
+const DIFF_MAX_BYTES: u64 = 5 * 1024 * 1024;
+/// Upper bound on added+removed lines before a diff is refused as too large.
+const DIFF_MAX_LINES: u32 = 20_000;
+
 impl From<zashiki_core::git::GitFileEntry> for GitFileEntry {
     fn from(e: zashiki_core::git::GitFileEntry) -> Self {
         GitFileEntry {
@@ -145,6 +164,156 @@ pub async fn has_staged(path: &Path) -> bool {
     {
         Ok(output) => !output.status.success(),
         Err(_) => false,
+    }
+}
+
+/// stdout of `git ...` under the hardened write-op env (`GIT_LITERAL_PATHSPECS=1`, `core.quotepath=false`),
+/// keeping stdout even on a non-zero exit (`git diff --no-index` exits non-zero when the files differ).
+async fn git_stdout(path: &Path, args: &[&str]) -> String {
+    git_command(path, args)
+        .output()
+        .await
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default()
+}
+
+/// The byte size of a blob addressed as `<rev>:<file>` (e.g. `HEAD:app.ts`, `:app.ts`), or 0 when
+/// the object is absent (a new file at HEAD, a staged-deleted file in the index).
+async fn blob_size(path: &Path, spec: &str) -> u64 {
+    git_stdout(path, &["cat-file", "-s", spec])
+        .await
+        .trim()
+        .parse()
+        .unwrap_or(0)
+}
+
+/// The text of a blob addressed as `<rev>:<file>`, or empty when the object is absent.
+async fn show_blob(path: &Path, spec: &str) -> String {
+    git_stdout(path, &["show", spec]).await
+}
+
+/// Worktree file text, read only when the file resolves inside the repo. A symlink escaping the repo
+/// yields empty rather than following it, so a diff never discloses an out-of-repo file's contents
+/// (git's own diff never follows symlinks either; this guards our direct read).
+fn read_worktree_within_repo(repo: &Path, file: &str) -> String {
+    let (Ok(real), Ok(repo_real)) = (
+        std::fs::canonicalize(repo.join(file)),
+        std::fs::canonicalize(repo),
+    ) else {
+        return String::new();
+    };
+    if !real.starts_with(&repo_real) {
+        return String::new();
+    }
+    std::fs::read(&real)
+        .map(|b| String::from_utf8_lossy(&b).into_owned())
+        .unwrap_or_default()
+}
+
+/// Added/removed line counts from a single-path `--numstat`, plus whether git treats it as binary
+/// (numstat prints `-\t-` for binary). Absent/no-change output yields `(0, 0, false)`.
+fn parse_numstat(out: &str) -> (u32, u32, bool) {
+    let Some(line) = out.lines().next() else {
+        return (0, 0, false);
+    };
+    let mut cols = line.split('\t');
+    let a = cols.next().unwrap_or("");
+    let d = cols.next().unwrap_or("");
+    if a == "-" || d == "-" {
+        return (0, 0, true);
+    }
+    (a.parse().unwrap_or(0), d.parse().unwrap_or(0), false)
+}
+
+/// Diff for one file, returning the (old, new) versions to compare:
+/// - untracked -> (empty, worktree file)
+/// - staged    -> (HEAD blob, index blob)
+/// - changed   -> (index blob, worktree file)
+///
+/// Binary and over-limit diffs are decided from `--numstat` and `cat-file -s` before either body is
+/// read, so a huge file never has to be materialized to be refused.
+pub async fn diff(path: &Path, file: &str, staged: bool, untracked: bool) -> DiffPayload {
+    let numstat_args: Vec<&str> = if untracked {
+        vec!["diff", "--no-index", "--numstat", "--", "/dev/null", file]
+    } else if staged {
+        vec!["diff", "--cached", "--numstat", "--", file]
+    } else {
+        vec!["diff", "--numstat", "--", file]
+    };
+    let (added, removed, binary) = parse_numstat(&git_stdout(path, &numstat_args).await);
+    if binary {
+        return DiffPayload {
+            old_text: String::new(),
+            new_text: String::new(),
+            binary: true,
+            too_large: false,
+            added: 0,
+            removed: 0,
+        };
+    }
+
+    // The old side's rev token, joined as `<rev>:<file>`: "HEAD" -> HEAD:file, "" -> :file (index).
+    let (old_spec, new_from_worktree) = if untracked {
+        (None, true)
+    } else if staged {
+        (Some("HEAD"), false)
+    } else {
+        (Some(""), true)
+    };
+    let (old_size, new_size) = tokio::join!(
+        async {
+            match old_spec {
+                Some(rev) => blob_size(path, &format!("{rev}:{file}")).await,
+                None => 0,
+            }
+        },
+        async {
+            if new_from_worktree {
+                tokio::fs::metadata(path.join(file))
+                    .await
+                    .map(|m| m.len())
+                    .unwrap_or(0)
+            } else {
+                blob_size(path, &format!(":{file}")).await
+            }
+        },
+    );
+    if added.saturating_add(removed) > DIFF_MAX_LINES || old_size.max(new_size) > DIFF_MAX_BYTES {
+        return DiffPayload {
+            old_text: String::new(),
+            new_text: String::new(),
+            binary: false,
+            too_large: true,
+            added,
+            removed,
+        };
+    }
+
+    let (old_text, new_text) = tokio::join!(
+        async {
+            match old_spec {
+                Some(rev) => show_blob(path, &format!("{rev}:{file}")).await,
+                None => String::new(),
+            }
+        },
+        async {
+            if new_from_worktree {
+                let (repo, f) = (path.to_path_buf(), file.to_string());
+                tokio::task::spawn_blocking(move || read_worktree_within_repo(&repo, &f))
+                    .await
+                    .unwrap_or_default()
+            } else {
+                show_blob(path, &format!(":{file}")).await
+            }
+        },
+    );
+    DiffPayload {
+        old_text,
+        new_text,
+        binary: false,
+        too_large: false,
+        added,
+        removed,
     }
 }
 
@@ -637,5 +806,118 @@ mod tests {
         let err = remove_worktree(&main).await.unwrap_err();
         assert!(err.stderr.contains("main working tree"));
         assert!(main.exists());
+    }
+
+    #[tokio::test]
+    async fn diff_changed_modified_file_compares_index_to_worktree() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        std::fs::write(p.join("base.txt"), "changed\n").unwrap();
+
+        let d = diff(p, "base.txt", false, false).await;
+        assert!(!d.binary && !d.too_large);
+        assert_eq!(d.old_text, "base\n");
+        assert_eq!(d.new_text, "changed\n");
+        assert_eq!((d.added, d.removed), (1, 1));
+    }
+
+    #[tokio::test]
+    async fn diff_staged_side_compares_head_to_index() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        // A newly added file has no HEAD blob, so the old side is empty.
+        std::fs::write(p.join("new.txt"), "hi\n").unwrap();
+        git(p, &["add", "new.txt"]);
+
+        let d = diff(p, "new.txt", true, false).await;
+        assert_eq!(d.old_text, "");
+        assert_eq!(d.new_text, "hi\n");
+        assert_eq!(d.added, 1);
+    }
+
+    #[tokio::test]
+    async fn diff_untracked_file_is_all_new() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        std::fs::write(p.join("untracked.txt"), "u1\nu2\n").unwrap();
+
+        let d = diff(p, "untracked.txt", false, true).await;
+        assert_eq!(d.old_text, "");
+        assert_eq!(d.new_text, "u1\nu2\n");
+        assert_eq!(d.added, 2);
+    }
+
+    #[tokio::test]
+    async fn diff_deleted_file_has_empty_new() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        std::fs::remove_file(p.join("base.txt")).unwrap();
+
+        let d = diff(p, "base.txt", false, false).await;
+        assert_eq!(d.old_text, "base\n");
+        assert_eq!(d.new_text, "");
+        assert_eq!(d.removed, 1);
+    }
+
+    #[tokio::test]
+    async fn diff_binary_untracked_sets_flag_without_bodies() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        std::fs::write(p.join("blob.bin"), [0u8, 1, 2, 0, 255, 0]).unwrap();
+
+        let d = diff(p, "blob.bin", false, true).await;
+        assert!(d.binary);
+        assert_eq!(d.old_text, "");
+        assert_eq!(d.new_text, "");
+    }
+
+    #[tokio::test]
+    async fn diff_over_line_limit_is_too_large_without_bodies() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        std::fs::write(p.join("huge.txt"), "x\n".repeat((DIFF_MAX_LINES + 1) as usize)).unwrap();
+
+        let d = diff(p, "huge.txt", false, true).await;
+        assert!(d.too_large);
+        assert_eq!(d.new_text, "");
+    }
+
+    #[tokio::test]
+    async fn diff_counts_a_leading_colon_filename_via_literal_pathspecs() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        // A leading `:` is pathspec magic unless GIT_LITERAL_PATHSPECS is set; the numstat must
+        // still count the change rather than silently matching nothing.
+        std::fs::write(p.join(":weird.txt"), "orig\n").unwrap();
+        git(p, &["add", "-A"]);
+        git(p, &["commit", "-q", "-m", "add colon file"]);
+        std::fs::write(p.join(":weird.txt"), "changed\n").unwrap();
+
+        let d = diff(p, ":weird.txt", false, false).await;
+        assert_eq!((d.added, d.removed), (1, 1));
+        assert_eq!(d.old_text, "orig\n");
+        assert_eq!(d.new_text, "changed\n");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn diff_untracked_symlink_does_not_leak_outside_contents() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        init_repo(&repo);
+        let secret = dir.path().join("secret.txt");
+        std::fs::write(&secret, "TOP SECRET\n").unwrap();
+        std::os::unix::fs::symlink(&secret, repo.join("link")).unwrap();
+
+        let d = diff(&repo, "link", false, true).await;
+        assert!(!d.new_text.contains("TOP SECRET"));
     }
 }

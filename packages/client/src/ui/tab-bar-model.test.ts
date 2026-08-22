@@ -71,4 +71,23 @@ describe("tabLabel", () => {
     expect(label).toBe("bare");
     expect(title).toBe("bare");
   });
+
+  it("shows a diff tab's basename, skipping the leading side segment", () => {
+    const { label, title } = tabLabel(
+      { kind: "diff", id: "c\n/repo\nsrc/app/main.ts" } as Tab,
+      [],
+      {} as TitleMap,
+    );
+    expect(label).toBe("main.ts");
+    expect(title).toBe("src/app/main.ts");
+  });
+
+  it("keeps a newline inside a diff tab's relPath intact", () => {
+    const { title } = tabLabel(
+      { kind: "diff", id: "s\n/repo\nwe\nird.ts" } as Tab,
+      [],
+      {} as TitleMap,
+    );
+    expect(title).toBe("we\nird.ts");
+  });
 });

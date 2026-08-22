@@ -1,7 +1,11 @@
 import type { GitFileEntry, RepoStatus } from "@zashiki/shared";
+import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { GitApi } from "../api/git.js";
 import { codeClass, fileRowKey } from "./source-control-model.js";
+
+/** Delay a single click by this much so a double-click (open diff) can cancel the open-in-editor. */
+const SINGLE_CLICK_DELAY_MS = 250;
 
 export interface GitFileRowProps {
   api: GitApi;
@@ -11,9 +15,19 @@ export interface GitFileRowProps {
   copiedKey: string | null;
   run(action: Promise<void>): void;
   copy(text: string, rowKey: string): void;
+  onOpenDiff?(
+    repoPath: string,
+    file: string,
+    staged: boolean,
+    untracked: boolean,
+  ): void;
 }
 
-/** One changed/staged file: status code, path (click to open), copy path, and stage/unstage. */
+/**
+ * One changed/staged file: status code, path, copy path, and stage/unstage. A single click opens the
+ * file in the external editor; a double click opens its diff. The single click is deferred so a
+ * double click cancels it (an untracked directory has no file to diff, so it opens immediately).
+ */
 export function GitFileRow({
   api,
   repo,
@@ -22,9 +36,45 @@ export function GitFileRow({
   copiedKey,
   run,
   copy,
+  onOpenDiff,
 }: GitFileRowProps) {
   const { t } = useTranslation();
   const rowKey = fileRowKey(repo.path, staged, file.code, file.path);
+  const untracked = file.code === "??";
+  const diffable =
+    onOpenDiff !== undefined && !(untracked && file.path.endsWith("/"));
+
+  const clickTimer = useRef<number | null>(null);
+  const cancelClick = (): void => {
+    if (clickTimer.current !== null) {
+      window.clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+    }
+  };
+  useEffect(
+    () => () => {
+      if (clickTimer.current !== null) window.clearTimeout(clickTimer.current);
+    },
+    [],
+  );
+
+  const openInEditor = (): void => run(api.open(repo.path, file.path));
+  const handleClick = (): void => {
+    if (!diffable) {
+      openInEditor();
+      return;
+    }
+    cancelClick();
+    clickTimer.current = window.setTimeout(() => {
+      clickTimer.current = null;
+      openInEditor();
+    }, SINGLE_CLICK_DELAY_MS);
+  };
+  const handleDoubleClick = (): void => {
+    cancelClick();
+    onOpenDiff?.(repo.path, file.path, staged, untracked);
+  };
+
   return (
     <div className="git-file-row">
       <span className={codeClass(file.code)}>{file.code}</span>
@@ -32,7 +82,8 @@ export function GitFileRow({
         type="button"
         className="view-row git-file-name"
         title={file.path}
-        onClick={() => run(api.open(repo.path, file.path))}
+        onClick={handleClick}
+        onDoubleClick={diffable ? handleDoubleClick : undefined}
       >
         {file.path}
       </button>

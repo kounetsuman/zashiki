@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isSafeRepoRelativePath,
   isValidCommitMessage,
+  parseGitDiffResponse,
   parseGitStatus,
   parseGitStatusResponse,
   type RepoStatus,
@@ -274,5 +275,30 @@ describe("parseGitStatusResponse (per-repo fault isolation)", () => {
     });
     expect(result.repos[0]?.isWorktree).toBe(true);
     expect(result.repos[0]?.lastCommit).toBe("2026-08-22T16:21:44+09:00");
+  });
+});
+
+describe("parseGitDiffResponse", () => {
+  const ok = {
+    oldText: "a\n",
+    newText: "b\n",
+    binary: false,
+    tooLarge: false,
+    added: 1,
+    removed: 1,
+  };
+
+  it("accepts a well-formed payload", () => {
+    expect(parseGitDiffResponse(ok)).toEqual(ok);
+  });
+
+  it("accepts empty bodies for a binary or too-large diff", () => {
+    const big = { ...ok, oldText: "", newText: "", tooLarge: true };
+    expect(parseGitDiffResponse(big)).toEqual(big);
+  });
+
+  it("rejects a missing flag or a negative count", () => {
+    expect(() => parseGitDiffResponse({ ...ok, binary: undefined })).toThrow();
+    expect(() => parseGitDiffResponse({ ...ok, added: -1 })).toThrow();
   });
 });

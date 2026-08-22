@@ -30,6 +30,12 @@ export interface GitTreeHandlers {
   requestDelete(path: string): void;
   confirmDelete(path: string): void;
   cancelDelete(): void;
+  onOpenDiff?(
+    repoPath: string,
+    file: string,
+    staged: boolean,
+    untracked: boolean,
+  ): void;
 }
 
 export interface GitRepoBlockProps {
@@ -56,6 +62,7 @@ export function GitRepoBlock({ repo, indented, handlers }: GitRepoBlockProps) {
     requestDelete,
     confirmDelete,
     cancelDelete,
+    onOpenDiff,
   } = handlers;
   const exp = expanded.has(repo.path);
   const lastCommit = formatLastCommit(repo.lastCommit);
@@ -175,6 +182,7 @@ export function GitRepoBlock({ repo, indented, handlers }: GitRepoBlockProps) {
               copiedKey={copiedKey}
               run={run}
               copy={copy}
+              onOpenDiff={onOpenDiff}
             />
           ))}
         </div>
@@ -192,6 +200,7 @@ export function GitRepoBlock({ repo, indented, handlers }: GitRepoBlockProps) {
               copiedKey={copiedKey}
               run={run}
               copy={copy}
+              onOpenDiff={onOpenDiff}
             />
           ))}
         </div>
