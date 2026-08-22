@@ -39,6 +39,8 @@ pub struct ConfigView {
     /// External editor command for `POST /api/git/open` (SETTINGS). None when unset, falling back to
     /// `ZK_EDITOR` then `cursor -g`. Read live per open, so a change applies without a restart.
     pub editor: Option<String>,
+    /// Status-footer severity thresholds (SETTINGS). Defaults reproduce the built-in bands.
+    pub footer_thresholds: crate::protocol::FooterThresholds,
 }
 
 /// An immediate re-evaluation request to the poller. If `reply` is present, the

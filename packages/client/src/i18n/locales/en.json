@@ -217,6 +217,25 @@
     "editor": "External editor command",
     "editorHint": "Command used to open a file clicked in Source Control. Arguments are split on spaces and the file path is appended. Leave blank to use ZK_EDITOR, or cursor -g by default.",
     "accountUsage": "Show account usage in the footer",
+    "footerThresholds": {
+      "section": "Footer color thresholds",
+      "hint": "Value at or above which a footer cell takes each color. Uncheck a color to hide it — the reading then falls through to the next lower enabled color.",
+      "indicator": {
+        "usagePercent": "Account usage",
+        "sessionTokens": "Session tokens",
+        "elapsedMs": "Elapsed time"
+      },
+      "band": {
+        "warn": "Warn",
+        "high": "High",
+        "crit": "Critical"
+      },
+      "unit": {
+        "percent": "%",
+        "tokens": "tokens",
+        "hours": "hours"
+      }
+    },
     "hooksIntegration": "Claude Code integration (notifications & usage footer)",
     "hooksIntegrationHint": "Registers zashiki's hooks and statusLine in ~/.claude/settings.json so notifications, instant refresh, and the usage footer work.",
     "hooksConflictHint": "You already have a statusLine — enabling wraps it so it keeps rendering alongside zashiki.",

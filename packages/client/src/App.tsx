@@ -1,6 +1,8 @@
 import {
   type ClientMessage,
   claudeSessionId,
+  DEFAULT_FOOTER_THRESHOLDS,
+  type FooterThresholds,
   type HooksStatusMessage,
   resolveOrgColor,
   type ServerMessage,
@@ -160,6 +162,9 @@ export function App({
   const [addOrgOpen, setAddOrgOpen] = useState(false);
   const [accountUsage, setAccountUsage] = useState(false);
   const [editor, setEditor] = useState<string | null>(null);
+  const [footerThresholds, setFooterThresholds] = useState<FooterThresholds>(
+    DEFAULT_FOOTER_THRESHOLDS,
+  );
   const [accountUsageModalOpen, setAccountUsageModalOpen] = useState(false);
   const [hooksStatus, setHooksStatus] = useState<HooksStatusMessage | null>(
     null,
@@ -371,6 +376,7 @@ export function App({
       notifier.applyServerConfig(m.notifySound);
       setAccountUsage(m.accountUsage);
       setEditor(m.editor);
+      setFooterThresholds(m.footerThresholds);
       // Apply the display language if the config file has one (unset = null keeps browser detection).
       if (m.language) void i18n.changeLanguage(m.language);
     });
@@ -387,6 +393,17 @@ export function App({
   const saveEditor = useCallback(
     (command: string): void => {
       control.send({ t: "config.setEditor", editor: command });
+    },
+    [control],
+  );
+
+  const saveFooterThresholds = useCallback(
+    (thresholds: FooterThresholds): void => {
+      setFooterThresholds(thresholds);
+      control.send({
+        t: "config.setFooterThresholds",
+        footerThresholds: thresholds,
+      });
     },
     [control],
   );
@@ -563,6 +580,7 @@ export function App({
             <SessionStatusFooter
               usage={activeSessionUsage}
               accentColor={activeSessionAccent}
+              thresholds={footerThresholds}
             />
           )}
         </div>
@@ -660,6 +678,8 @@ export function App({
           onSetAccountUsage={saveAccountUsage}
           editor={editor ?? ""}
           onSaveEditor={saveEditor}
+          footerThresholds={footerThresholds}
+          onSaveFooterThresholds={saveFooterThresholds}
           hooksStatus={hooksStatus ?? undefined}
           onSetHooksRegistered={setHooksRegistered}
           renderer={terminalRenderer.renderer}
@@ -713,6 +733,7 @@ export function App({
           limits={accountLimits}
           enabled={accountUsage}
           onRequestEnable={() => setAccountUsageModalOpen(true)}
+          thresholds={footerThresholds.usagePercent}
         />
         {abnormal !== null && <span className="status-error">{abnormal}</span>}
         <LimitIndicator count={limitedCount} />

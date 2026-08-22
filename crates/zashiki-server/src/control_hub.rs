@@ -135,6 +135,7 @@ impl ControlHub {
                 language: state.config.language.clone(),
                 account_usage: state.config.account_usage,
                 editor: state.config.editor.clone(),
+                footer_thresholds: state.config.footer_thresholds,
             },
             ServerMessage::NotificationsSync {
                 items: state.notifications.clone(),
@@ -221,6 +222,7 @@ impl ControlHub {
             language: config.language.clone(),
             account_usage: config.account_usage,
             editor: config.editor.clone(),
+            footer_thresholds: config.footer_thresholds,
         };
         self.inner.write().unwrap().config = config;
         let _ = self.tx.send(msg);
@@ -527,6 +529,7 @@ mod tests {
                 language: None,
                 account_usage: false,
                 editor: None,
+                footer_thresholds: Default::default(),
             },
             vec![],
             snapshot_with("@1"),
@@ -663,6 +666,7 @@ mod tests {
             language: Some("en".into()),
             account_usage: false,
             editor: None,
+            footer_thresholds: Default::default(),
         });
         assert!(matches!(
             rx.recv().await.unwrap(),

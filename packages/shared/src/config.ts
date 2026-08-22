@@ -21,6 +21,71 @@ export const DEFAULT_CONFIG: ZashikiConfig = {
   language: null,
 };
 
+/** A colored band of a status-footer indicator: whether it paints and the value at or above which it applies. */
+export interface FooterBand {
+  enabled: boolean;
+  value: number;
+}
+
+/**
+ * Per-indicator severity thresholds for the session/account status footer. Only the bands each
+ * indicator renders exist here (usage warn/high/crit, tokens warn/crit, elapsed crit).
+ */
+export interface FooterThresholds {
+  usagePercent: { warn: FooterBand; high: FooterBand; crit: FooterBand };
+  sessionTokens: { warn: FooterBand; crit: FooterBand };
+  elapsedMs: { crit: FooterBand };
+}
+
+/** Thresholds in effect until a config overrides them; the sole source of the default numbers. */
+export const DEFAULT_FOOTER_THRESHOLDS: FooterThresholds = {
+  usagePercent: {
+    warn: { enabled: true, value: 50 },
+    high: { enabled: true, value: 75 },
+    crit: { enabled: true, value: 91 },
+  },
+  sessionTokens: {
+    warn: { enabled: true, value: 1_500_000 },
+    crit: { enabled: true, value: 3_000_000 },
+  },
+  elapsedMs: { crit: { enabled: true, value: 86_400_000 } },
+};
+
+function bandSchema(fallback: FooterBand) {
+  return z
+    .object({
+      enabled: z.boolean().catch(fallback.enabled).default(fallback.enabled),
+      value: z
+        .number()
+        .int()
+        .nonnegative()
+        .catch(fallback.value)
+        .default(fallback.value),
+    })
+    .catch(fallback)
+    .default(fallback);
+}
+
+function indicatorSchema<T extends Record<string, FooterBand>>(fallback: T) {
+  const shape = Object.fromEntries(
+    Object.entries(fallback).map(([band, def]) => [band, bandSchema(def)]),
+  ) as { [K in keyof T]: ReturnType<typeof bandSchema> };
+  return z.object(shape).catch(fallback).default(fallback);
+}
+
+/**
+ * Every field falls back to its default on missing or malformed input, merged per-field, so a stale
+ * or partially hand-edited config never breaks the footer.
+ */
+export const footerThresholdsSchema = z
+  .object({
+    usagePercent: indicatorSchema(DEFAULT_FOOTER_THRESHOLDS.usagePercent),
+    sessionTokens: indicatorSchema(DEFAULT_FOOTER_THRESHOLDS.sessionTokens),
+    elapsedMs: indicatorSchema(DEFAULT_FOOTER_THRESHOLDS.elapsedMs),
+  })
+  .catch(DEFAULT_FOOTER_THRESHOLDS)
+  .default(DEFAULT_FOOTER_THRESHOLDS);
+
 /** Notification channel (equivalent to ZK_NOTIFY). */
 export const notifyModeSchema = z.enum(["web", "macos", "both"]);
 

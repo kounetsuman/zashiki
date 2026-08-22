@@ -6,7 +6,10 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import type { UpdateCheckResultMessage } from "@zashiki/shared";
+import {
+  DEFAULT_FOOTER_THRESHOLDS,
+  type UpdateCheckResultMessage,
+} from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { SettingsModal } from "./SettingsModal.js";
@@ -509,5 +512,23 @@ describe("SettingsModal Claude Code integration", () => {
         "既存の statusLine があります。有効化すると、それをラップして zashiki と併存させます。",
       ),
     ).toBeTruthy();
+  });
+
+  it("shows the footer-threshold editor only when its handler is wired", () => {
+    const { rerender } = render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
+    expect(screen.queryByText("フッタの色分け閾値")).toBeNull();
+
+    rerender(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        footerThresholds={DEFAULT_FOOTER_THRESHOLDS}
+        onSaveFooterThresholds={noop}
+      />,
+    );
+    expect(screen.getByText("フッタの色分け閾値")).toBeTruthy();
   });
 });

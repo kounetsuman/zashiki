@@ -1,4 +1,9 @@
-import type { SessionUsage, UsageLimit } from "@zashiki/shared";
+import {
+  DEFAULT_FOOTER_THRESHOLDS,
+  type FooterThresholds,
+  type SessionUsage,
+  type UsageLimit,
+} from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -17,6 +22,8 @@ export interface SessionStatusFooterProps {
   usage: SessionUsage | null;
   /** org accent applied to the top border, matching the active session tab. */
   accentColor?: string;
+  /** Configured severity thresholds driving each cell's color. Defaults to the built-in bands (isolated tests). */
+  thresholds?: FooterThresholds;
 }
 
 const DASH = "–";
@@ -29,6 +36,7 @@ const DASH = "–";
 export function SessionStatusFooter({
   usage,
   accentColor,
+  thresholds = DEFAULT_FOOTER_THRESHOLDS,
 }: SessionStatusFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
@@ -47,7 +55,7 @@ export function SessionStatusFooter({
         <StatusCell
           value={value}
           caption={label}
-          severity={usageSeverity(limit.usedPercent)}
+          severity={usageSeverity(limit.usedPercent, thresholds.usagePercent)}
         />
       </span>
     );
@@ -69,7 +77,11 @@ export function SessionStatusFooter({
         <StatusCell
           value={usage ? fmtTokens(usage.sessionTokens) : DASH}
           caption={t("footer.status.session")}
-          severity={usage ? tokenSeverity(usage.sessionTokens) : undefined}
+          severity={
+            usage
+              ? tokenSeverity(usage.sessionTokens, thresholds.sessionTokens)
+              : undefined
+          }
         />
       </span>
 
@@ -81,14 +93,24 @@ export function SessionStatusFooter({
           value={usage ? fmtDuration(now - usage.turnStartedAt) : DASH}
           caption={t("footer.status.turn")}
           severity={
-            usage ? durationSeverity(now - usage.turnStartedAt) : undefined
+            usage
+              ? durationSeverity(
+                  now - usage.turnStartedAt,
+                  thresholds.elapsedMs,
+                )
+              : undefined
           }
         />
         <StatusCell
           value={usage ? fmtDuration(now - usage.sessionStartedAt) : DASH}
           caption={t("footer.status.session")}
           severity={
-            usage ? durationSeverity(now - usage.sessionStartedAt) : undefined
+            usage
+              ? durationSeverity(
+                  now - usage.sessionStartedAt,
+                  thresholds.elapsedMs,
+                )
+              : undefined
           }
         />
       </span>

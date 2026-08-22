@@ -77,6 +77,60 @@ describe("severity bands", () => {
   });
 });
 
+describe("severity with configured thresholds", () => {
+  const band = (enabled: boolean, value: number) => ({ enabled, value });
+
+  it("honors custom usage boundaries", () => {
+    const t = {
+      warn: band(true, 40),
+      high: band(true, 60),
+      crit: band(true, 80),
+    };
+    expect(usageSeverity(39, t)).toBe("");
+    expect(usageSeverity(40, t)).toBe("warn");
+    expect(usageSeverity(60, t)).toBe("high");
+    expect(usageSeverity(80, t)).toBe("crit");
+  });
+
+  it("falls through a disabled band to the next lower enabled one", () => {
+    const critOff = {
+      warn: band(true, 50),
+      high: band(true, 75),
+      crit: band(false, 91),
+    };
+    expect(usageSeverity(95, critOff)).toBe("high");
+
+    const highOff = {
+      warn: band(true, 50),
+      high: band(false, 75),
+      crit: band(true, 91),
+    };
+    expect(usageSeverity(80, highOff)).toBe("warn");
+    expect(usageSeverity(95, highOff)).toBe("crit");
+  });
+
+  it("returns no severity when every band is disabled", () => {
+    const allOff = {
+      warn: band(false, 50),
+      high: band(false, 75),
+      crit: band(false, 91),
+    };
+    expect(usageSeverity(99, allOff)).toBe("");
+  });
+
+  it("falls through tokens crit to warn when crit is disabled", () => {
+    const t = { warn: band(true, 1_500_000), crit: band(false, 3_000_000) };
+    expect(tokenSeverity(5_000_000, t)).toBe("warn");
+  });
+
+  it("never colors elapsed when its crit band is disabled", () => {
+    expect(
+      durationSeverity(999_999_999, { crit: band(false, 86_400_000) }),
+    ).toBe("");
+    expect(durationSeverity(100, { crit: band(true, 100) })).toBe("crit");
+  });
+});
+
 describe("pickAccountLimits", () => {
   it("returns null when no session carries limits", () => {
     expect(pickAccountLimits([])).toBeNull();

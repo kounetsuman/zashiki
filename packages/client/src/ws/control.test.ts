@@ -1,4 +1,4 @@
-import type { ServerMessage } from "@zashiki/shared";
+import { DEFAULT_FOOTER_THRESHOLDS, type ServerMessage } from "@zashiki/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ControlClient } from "./control.js";
@@ -173,6 +173,7 @@ describe("ControlClient", () => {
         language: null,
         accountUsage: false,
         editor: null,
+        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       },
     ]);
   });
@@ -199,6 +200,7 @@ describe("ControlClient", () => {
         language: null,
         accountUsage: false,
         editor: null,
+        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       },
     ]);
   });

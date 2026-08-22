@@ -1,4 +1,9 @@
-import type { UsageLimit, UsageLimits } from "@zashiki/shared";
+import {
+  DEFAULT_FOOTER_THRESHOLDS,
+  type FooterThresholds,
+  type UsageLimit,
+  type UsageLimits,
+} from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 import { fmtResetCountdown, usageSeverity } from "../session/status-footer.js";
@@ -12,6 +17,8 @@ export interface AccountUsageFooterProps {
   enabled: boolean;
   /** Open the opt-in modal (used only while opted out). */
   onRequestEnable(): void;
+  /** Configured usage-percent severity thresholds. Defaults to the built-in bands (isolated tests). */
+  thresholds?: FooterThresholds["usagePercent"];
 }
 
 const DASH = "–";
@@ -26,6 +33,7 @@ export function AccountUsageFooter({
   limits,
   enabled,
   onRequestEnable,
+  thresholds = DEFAULT_FOOTER_THRESHOLDS.usagePercent,
 }: AccountUsageFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
@@ -65,7 +73,9 @@ export function AccountUsageFooter({
         <StatusCell
           value={value}
           caption={label}
-          severity={limit ? usageSeverity(limit.usedPercent) : undefined}
+          severity={
+            limit ? usageSeverity(limit.usedPercent, thresholds) : undefined
+          }
         />
       </span>
     );
