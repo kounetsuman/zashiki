@@ -227,6 +227,7 @@ mod ws_control_tests {
                 language: None,
                 account_usage: false,
                 editor: None,
+                footer_thresholds: Default::default(),
             },
             vec![],
             snapshot("@1"),

@@ -1,4 +1,5 @@
 import type {
+  FooterThresholds,
   HooksStatusMessage,
   UpdateCheckResultMessage,
 } from "@zashiki/shared";
@@ -6,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
+import { FooterThresholdsField } from "./FooterThresholdsField.js";
 import { OrgNotesEditor } from "./OrgNotesEditor.js";
 import { useModalEscape } from "./useModalEscape.js";
 import "./SettingsModal.css";
@@ -70,6 +72,10 @@ export interface SettingsModalProps {
   editor?: string;
   /** Persist the editor command (Save). A blank value clears it back to the ZK_EDITOR / cursor -g fallback. */
   onSaveEditor?(command: string): void;
+  /** Current status-footer severity thresholds. Omit (with the handler) to hide the section. */
+  footerThresholds?: FooterThresholds;
+  /** Persist the status-footer severity thresholds (Save). */
+  onSaveFooterThresholds?(thresholds: FooterThresholds): void;
   /** Current Claude Code integration status (from hooks.status). Omit to hide the toggle. */
   hooksStatus?: Omit<HooksStatusMessage, "t">;
   /** Install (true) or remove (false) the integration (hooks.register / hooks.unregister). */
@@ -116,6 +122,8 @@ export function SettingsModal({
   onSetAccountUsage,
   editor,
   onSaveEditor,
+  footerThresholds,
+  onSaveFooterThresholds,
   hooksStatus,
   onSetHooksRegistered,
   renderer,
@@ -388,6 +396,13 @@ export function SettingsModal({
               </button>
             </div>
           )}
+          {onSaveFooterThresholds !== undefined &&
+            footerThresholds !== undefined && (
+              <FooterThresholdsField
+                value={footerThresholds}
+                onSave={onSaveFooterThresholds}
+              />
+            )}
           {onSetHooksRegistered !== undefined && hooksStatus !== undefined && (
             <div className="settings-field">
               <label className="settings-field settings-toggle">

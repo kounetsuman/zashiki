@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_FOOTER_THRESHOLDS } from "./config.js";
 import {
   claudeSessionId,
   clientMessageSchema,
@@ -152,6 +153,12 @@ describe("clientMessageSchema", () => {
     [{ t: "config.setAccountUsage", enabled: false }],
     [{ t: "config.setEditor", editor: "code -w" }],
     [{ t: "config.setEditor", editor: "" }],
+    [
+      {
+        t: "config.setFooterThresholds",
+        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+      },
+    ],
     [{ t: "update.check" }],
     [{ t: "update.perform" }],
   ])("accepts: %j", (msg) => {
@@ -246,6 +253,7 @@ describe("serverMessageSchema", () => {
         language: "ja",
         accountUsage: true,
         editor: "cursor -g",
+        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       },
     ],
     [
@@ -256,6 +264,18 @@ describe("serverMessageSchema", () => {
         language: null,
         accountUsage: false,
         editor: null,
+        footerThresholds: {
+          usagePercent: {
+            warn: { enabled: true, value: 40 },
+            high: { enabled: false, value: 75 },
+            crit: { enabled: true, value: 88 },
+          },
+          sessionTokens: {
+            warn: { enabled: true, value: 1_500_000 },
+            crit: { enabled: true, value: 3_000_000 },
+          },
+          elapsedMs: { crit: { enabled: false, value: 86_400_000 } },
+        },
       },
     ],
     [{ t: "update.check.result", status: "available", version: "0.2.0" }],
@@ -268,7 +288,7 @@ describe("serverMessageSchema", () => {
     expect(serverMessageSchema.parse(msg)).toEqual(msg);
   });
 
-  it("defaults omitted config.sync updateCheck/language/accountUsage/editor (compatible with old servers)", () => {
+  it("defaults omitted config.sync updateCheck/language/accountUsage/editor/footerThresholds (compatible with old servers)", () => {
     expect(
       serverMessageSchema.parse({
         t: "config.sync",
@@ -281,6 +301,7 @@ describe("serverMessageSchema", () => {
       language: null,
       accountUsage: false,
       editor: null,
+      footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
     });
   });
 

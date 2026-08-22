@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use crate::control::{ConfigView, ControlHub};
+use crate::protocol::{ElapsedBands, FooterBand, FooterThresholds, TokenBands, UsageBands};
 
 /// Polling interval for config watching.
 pub const CONFIG_POLL: Duration = Duration::from_millis(250);
@@ -54,6 +55,51 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
         language,
         account_usage: field("accountUsage", false),
         editor,
+        footer_thresholds: parse_footer_thresholds(obj),
+    }
+}
+
+/// One footer band, defaulting each sub-field independently and clamping the value to a finite,
+/// non-negative number so a stale or hand-edited config can't feed the client a broken threshold.
+fn read_band(
+    ft: Option<&serde_json::Map<String, serde_json::Value>>,
+    indicator: &str,
+    band: &str,
+    default: FooterBand,
+) -> FooterBand {
+    let node = ft.and_then(|o| o.get(indicator)).and_then(|v| v.get(band));
+    let enabled = node
+        .and_then(|n| n.get("enabled"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(default.enabled);
+    let value = node
+        .and_then(|n| n.get("value"))
+        .and_then(serde_json::Value::as_i64)
+        .filter(|n| *n >= 0)
+        .unwrap_or(default.value);
+    FooterBand::new(enabled, value)
+}
+
+fn parse_footer_thresholds(
+    obj: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> FooterThresholds {
+    let ft = obj
+        .and_then(|o| o.get("footerThresholds"))
+        .and_then(|v| v.as_object());
+    let d = FooterThresholds::default();
+    FooterThresholds {
+        usage_percent: UsageBands {
+            warn: read_band(ft, "usagePercent", "warn", d.usage_percent.warn),
+            high: read_band(ft, "usagePercent", "high", d.usage_percent.high),
+            crit: read_band(ft, "usagePercent", "crit", d.usage_percent.crit),
+        },
+        session_tokens: TokenBands {
+            warn: read_band(ft, "sessionTokens", "warn", d.session_tokens.warn),
+            crit: read_band(ft, "sessionTokens", "crit", d.session_tokens.crit),
+        },
+        elapsed_ms: ElapsedBands {
+            crit: read_band(ft, "elapsedMs", "crit", d.elapsed_ms.crit),
+        },
     }
 }
 
@@ -85,6 +131,14 @@ pub fn write_config_account_usage(path: &Path, enabled: bool) -> std::io::Result
 
 pub fn write_config_editor(path: &Path, editor: &str) -> std::io::Result<()> {
     write_config_field(path, "editor", serde_json::Value::String(editor.to_string()))
+}
+
+pub fn write_config_footer_thresholds(
+    path: &Path,
+    thresholds: &FooterThresholds,
+) -> std::io::Result<()> {
+    let value = serde_json::to_value(thresholds).unwrap_or(serde_json::Value::Null);
+    write_config_field(path, "footerThresholds", value)
 }
 
 /// Read the live-applied settings along with whether they were read successfully.
@@ -262,6 +316,44 @@ mod tests {
         // Clearing writes a blank value, which reads back as unset.
         write_config_editor(&path, "").unwrap();
         assert_eq!(read_config(&path).editor, None);
+    }
+
+    #[test]
+    fn parse_config_footer_thresholds_default_when_absent() {
+        assert_eq!(parse(json!({})).footer_thresholds, FooterThresholds::default());
+    }
+
+    #[test]
+    fn parse_config_footer_thresholds_merges_per_field_and_clamps() {
+        let c = parse(json!({
+            "footerThresholds": {
+                "usagePercent": { "warn": { "enabled": false, "value": 40 } },
+                "elapsedMs": { "crit": { "value": -5 } }
+            }
+        }));
+        // The specified band is honored.
+        assert_eq!(c.footer_thresholds.usage_percent.warn, FooterBand::new(false, 40));
+        // Unspecified bands keep their defaults (no drop to zero).
+        let d = FooterThresholds::default();
+        assert_eq!(c.footer_thresholds.usage_percent.high, d.usage_percent.high);
+        assert_eq!(c.footer_thresholds.session_tokens, d.session_tokens);
+        // A negative value is rejected back to the default.
+        assert_eq!(c.footer_thresholds.elapsed_ms.crit, d.elapsed_ms.crit);
+    }
+
+    #[test]
+    fn write_config_footer_thresholds_roundtrips_and_preserves_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"language": "en"}"#).unwrap();
+
+        let mut t = FooterThresholds::default();
+        t.usage_percent.crit = FooterBand::new(false, 88);
+        write_config_footer_thresholds(&path, &t).unwrap();
+
+        let c = read_config(&path);
+        assert_eq!(c.footer_thresholds, t);
+        assert_eq!(c.language, Some("en".into())); // existing fields are preserved
     }
 
     #[test]

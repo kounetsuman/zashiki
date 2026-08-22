@@ -77,3 +77,51 @@
 .settings-body[hidden] {
   display: none;
 }
+
+.footer-thresholds-group {
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 6px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.footer-thresholds-group legend {
+  font-size: 11px;
+  color: #999;
+  padding: 0 4px;
+}
+
+.footer-thresholds-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.footer-thresholds-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 84px;
+  cursor: pointer;
+}
+
+.footer-thresholds-value {
+  width: 96px;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  color: #ddd;
+  font: inherit;
+  padding: 3px 6px;
+}
+
+.footer-thresholds-value:focus {
+  outline: none;
+  border-color: #4a7;
+}
+
+.footer-thresholds-unit {
+  font-size: 11px;
+  color: #777;
+}

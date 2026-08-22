@@ -27,6 +27,67 @@ pub struct UsageLimits {
     pub week: Option<UsageLimit>,
 }
 
+/// A colored band of a status-footer indicator: whether it paints and the value at or above which it
+/// applies. Mirrors the shared `FooterBand` (guarded by the client's protocol tests).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FooterBand {
+    pub enabled: bool,
+    pub value: i64,
+}
+
+impl FooterBand {
+    pub const fn new(enabled: bool, value: i64) -> Self {
+        Self { enabled, value }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsageBands {
+    pub warn: FooterBand,
+    pub high: FooterBand,
+    pub crit: FooterBand,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TokenBands {
+    pub warn: FooterBand,
+    pub crit: FooterBand,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ElapsedBands {
+    pub crit: FooterBand,
+}
+
+/// Per-indicator status-footer severity thresholds. Mirrors the shared `FooterThresholds`; `Default`
+/// reproduces the built-in bands (kept in sync with shared/config by the client's protocol tests).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FooterThresholds {
+    pub usage_percent: UsageBands,
+    pub session_tokens: TokenBands,
+    pub elapsed_ms: ElapsedBands,
+}
+
+impl Default for FooterThresholds {
+    fn default() -> Self {
+        Self {
+            usage_percent: UsageBands {
+                warn: FooterBand::new(true, 50),
+                high: FooterBand::new(true, 75),
+                crit: FooterBand::new(true, 91),
+            },
+            session_tokens: TokenBands {
+                warn: FooterBand::new(true, 1_500_000),
+                crit: FooterBand::new(true, 3_000_000),
+            },
+            elapsed_ms: ElapsedBands {
+                crit: FooterBand::new(true, 86_400_000),
+            },
+        }
+    }
+}
+
 /// Session status-footer material: token totals plus the epoch-ms starting points for live elapsed.
 /// `turn` is measured from the most recent human prompt; `session` spans the whole transcript.
 /// Tokens/timestamps come from the transcript (no user setup); `limits` arrives via the statusLine bridge.
@@ -137,6 +198,10 @@ pub enum ClientMessage {
     /// config.sync, like the language change. A blank value clears it.
     #[serde(rename = "config.setEditor", rename_all = "camelCase")]
     ConfigSetEditor { editor: String },
+    /// Status-footer severity threshold change from SETTINGS. Persisted to config.json and distributed
+    /// via config.sync, like the language change.
+    #[serde(rename = "config.setFooterThresholds", rename_all = "camelCase")]
+    ConfigSetFooterThresholds { footer_thresholds: FooterThresholds },
     /// Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run
     /// wizard or SETTINGS). Idempotent merge; the resulting hooks.status is broadcast.
     #[serde(rename = "hooks.register")]
@@ -307,6 +372,7 @@ pub enum ServerMessage {
         language: Option<String>,
         account_usage: bool,
         editor: Option<String>,
+        footer_thresholds: FooterThresholds,
     },
     /// Full distribution of in-app notifications (to all control connections right after connecting
     /// and on changes; a full replacement, not a diff).
@@ -737,9 +803,14 @@ mod tests {
             language: Some("ja".into()),
             account_usage: false,
             editor: Some("cursor -g".into()),
+            footer_thresholds: FooterThresholds::default(),
         };
-        let json =
-            r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false,"editor":"cursor -g"}"#;
+        let json = concat!(
+            r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false,"editor":"cursor -g","footerThresholds":"#,
+            r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
+            r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
+            r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}}}"#
+        );
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -752,9 +823,14 @@ mod tests {
             language: None,
             account_usage: true,
             editor: None,
+            footer_thresholds: FooterThresholds::default(),
         };
-        let json =
-            r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true,"editor":null}"#;
+        let json = concat!(
+            r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true,"editor":null,"footerThresholds":"#,
+            r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
+            r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
+            r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}}}"#
+        );
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

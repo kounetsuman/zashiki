@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { footerThresholdsSchema } from "./config.js";
 import { notificationSchema } from "./notifications.js";
 
 /** Response returned by the server's /healthz endpoint. */
@@ -248,6 +249,15 @@ export const configSetEditorSchema = z.object({
 });
 
 /**
+ * Status-footer severity threshold change from SETTINGS. The server persists it to config.json and
+ * distributes config.sync, like the language change.
+ */
+export const configSetFooterThresholdsSchema = z.object({
+  t: z.literal("config.setFooterThresholds"),
+  footerThresholds: footerThresholdsSchema,
+});
+
+/**
  * Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run wizard
  * or SETTINGS). Idempotent; the server broadcasts the resulting `hooks.status`.
  */
@@ -293,6 +303,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   configUpdateSchema,
   configSetAccountUsageSchema,
   configSetEditorSchema,
+  configSetFooterThresholdsSchema,
   hooksRegisterSchema,
   hooksUnregisterSchema,
   updateCheckSchema,
@@ -374,6 +385,8 @@ export const configSyncSchema = z.object({
   accountUsage: z.boolean().catch(false).default(false),
   /** External editor command for opening files (null when unset; omitted by old servers). */
   editor: z.string().nullable().catch(null).default(null),
+  /** Status-footer severity thresholds (defaults to the current bands; omitted by old servers). */
+  footerThresholds: footerThresholdsSchema,
 });
 
 /**

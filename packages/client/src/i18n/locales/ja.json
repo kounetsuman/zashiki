@@ -210,6 +210,25 @@
     "editor": "外部エディタコマンド",
     "editorHint": "ソース管理でファイル名をクリックしたときに開くコマンド。引数は空白で分割し、末尾にファイルパスを追加します。空欄にすると ZK_EDITOR、未設定なら cursor -g を使います。",
     "accountUsage": "フッタにアカウント使用率を表示",
+    "footerThresholds": {
+      "section": "フッタの色分け閾値",
+      "hint": "フッタの各セルがその色になる下限値です。色のチェックを外すと非表示になり、1つ下の有効な色に落ちて表示されます。",
+      "indicator": {
+        "usagePercent": "アカウント使用率",
+        "sessionTokens": "セッションのトークン数",
+        "elapsedMs": "経過時間"
+      },
+      "band": {
+        "warn": "警告",
+        "high": "高",
+        "crit": "危険"
+      },
+      "unit": {
+        "percent": "%",
+        "tokens": "トークン",
+        "hours": "時間"
+      }
+    },
     "hooksIntegration": "Claude Code 連携（通知・使用率フッタ）",
     "hooksIntegrationHint": "zashiki の hooks と statusLine を ~/.claude/settings.json に登録し、通知・即時更新・使用率フッタを有効にします。",
     "hooksConflictHint": "既存の statusLine があります。有効化すると、それをラップして zashiki と併存させます。",

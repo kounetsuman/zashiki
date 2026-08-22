@@ -7,10 +7,11 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import type {
-  ClientMessage,
-  CockpitTerminalInfo,
-  ServerMessage,
+import {
+  type ClientMessage,
+  type CockpitTerminalInfo,
+  DEFAULT_FOOTER_THRESHOLDS,
+  type ServerMessage,
 } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
@@ -296,6 +297,7 @@ describe("App", () => {
         language: "en",
         accountUsage: false,
         editor: null,
+        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       }),
     );
     expect(i18n.language).toBe("en");
@@ -967,6 +969,7 @@ describe("App", () => {
         language: null,
         accountUsage: false,
         editor: null,
+        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       });
     });
     expect(notifier.isEnabled()).toBe(false);
@@ -978,6 +981,7 @@ describe("App", () => {
         language: null,
         accountUsage: false,
         editor: null,
+        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       });
     });
     expect(notifier.isEnabled()).toBe(true);

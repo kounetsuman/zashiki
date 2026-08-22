@@ -1,6 +1,10 @@
 export {
   DEFAULT_CONFIG,
+  DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_STARTUP_CONFIG,
+  type FooterBand,
+  type FooterThresholds,
+  footerThresholdsSchema,
   type NotifyMode,
   notifyModeSchema,
   parseConfig,
