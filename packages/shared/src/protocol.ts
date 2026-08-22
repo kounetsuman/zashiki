@@ -283,8 +283,8 @@ export const updateCheckSchema = z.object({
 
 /**
  * Trigger a self-update from the header Update button. On a Homebrew-cask desktop install the server
- * runs `brew upgrade --cask zashiki` and relaunches; otherwise it opens the releases page. Progress
- * arrives via `update.status`.
+ * pre-downloads the cask, then a detached helper upgrades and relaunches; otherwise it opens the
+ * releases page. Progress arrives via `update.status`.
  */
 export const updatePerformSchema = z.object({
   t: z.literal("update.perform"),
@@ -435,10 +435,12 @@ export const updateCheckResultSchema = z.object({
 });
 
 /**
- * Progress of an `update.perform`, broadcast to all connections. `running` while brew works,
- * `relaunching` once it succeeds and the app is about to quit and reopen, `opened` when the env is
- * not a cask install so the releases page was opened instead, `failed` on error (`detail` carries
- * the brew stderr tail; null otherwise).
+ * Progress of an `update.perform`, broadcast to all connections. `running` while the download runs,
+ * `relaunching` once the download is verified and the detached updater has started (the app is about
+ * to quit, upgrade, and reopen), `opened` when the env is not a cask install so the releases page was
+ * opened instead, `failed` when the download or launching the updater fails (`detail` carries the brew
+ * stderr tail; null otherwise). A failure during the detached upgrade is surfaced by the updater
+ * itself (a notification plus `~/Library/Logs/zashiki/update.log`), not here.
  */
 export const updateStatusSchema = z.object({
   t: z.literal("update.status"),

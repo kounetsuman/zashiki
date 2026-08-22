@@ -215,8 +215,8 @@ pub enum ClientMessage {
     #[serde(rename = "update.check")]
     UpdateCheck,
     /// Trigger a self-update from the header Update button. On a Homebrew-cask desktop install this
-    /// runs `brew upgrade --cask zashiki` and relaunches; otherwise it opens the releases page.
-    /// Progress is reported to all connections via `update.status`.
+    /// pre-downloads the cask, then a detached helper upgrades and relaunches; otherwise it opens the
+    /// releases page. Progress is reported to all connections via `update.status`.
     #[serde(rename = "update.perform")]
     UpdatePerform,
 }
@@ -230,10 +230,12 @@ pub enum UpdateCheckStatus {
     Error,
 }
 
-/// Progress of an `update.perform`, broadcast to all connections. `running` while brew works,
-/// `relaunching` once it succeeds and the app is about to quit and reopen, `opened` when the env
-/// isn't a cask install so the releases page was opened instead, `failed` on error (detail carries
-/// the brew stderr tail).
+/// Progress of an `update.perform`, broadcast to all connections. `running` while the download runs,
+/// `relaunching` once the download is verified and the detached updater has started (the app is about
+/// to quit, upgrade, and reopen), `opened` when the env isn't a cask install so the releases page was
+/// opened instead, `failed` when the download or launching the updater fails (detail carries the brew
+/// stderr tail). A failure during the detached upgrade is surfaced by the updater itself (a
+/// notification plus `~/Library/Logs/zashiki/update.log`), not here, since the server is gone by then.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UpdateStatusState {
