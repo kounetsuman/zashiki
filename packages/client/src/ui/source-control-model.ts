@@ -47,3 +47,20 @@ export function groupByOrg(repos: RepoStatus[]): OrgGroup[] {
 export function isFlatOrg(g: OrgGroup): boolean {
   return g.repos.length === 1 && g.repos[0]?.repo === g.org;
 }
+
+/** Leading material-symbol for a repo row: linked worktrees stand out from the main working tree. */
+export function iconForRepo(repo: RepoStatus): string {
+  return repo.isWorktree ? "account_tree" : "folder";
+}
+
+/** Only linked worktrees can be removed via `git worktree remove`. */
+export function worktreeDeletable(repo: RepoStatus): boolean {
+  return repo.isWorktree === true;
+}
+
+/** Formats the HEAD committer date for the row tooltip; empty when absent or unparseable. */
+export function formatLastCommit(lastCommit: string | undefined): string {
+  if (!lastCommit) return "";
+  const date = new Date(lastCommit);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString();
+}

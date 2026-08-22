@@ -3,8 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   codeClass,
   fileRowKey,
+  formatLastCommit,
   groupByOrg,
+  iconForRepo,
   isFlatOrg,
+  worktreeDeletable,
 } from "./source-control-model.js";
 
 function repo(org: string, name: string): RepoStatus {
@@ -69,5 +72,35 @@ describe("isFlatOrg", () => {
 
   it("is not flat when the single repo differs from the org name", () => {
     expect(isFlatOrg({ org: "a", repos: [repo("a", "b")] })).toBe(false);
+  });
+});
+
+describe("iconForRepo / worktreeDeletable", () => {
+  it("uses account_tree and allows delete for a worktree", () => {
+    const wt = { ...repo("a", "wt"), isWorktree: true };
+    expect(iconForRepo(wt)).toBe("account_tree");
+    expect(worktreeDeletable(wt)).toBe(true);
+  });
+
+  it("uses folder and forbids delete for a main working tree (or absent flag)", () => {
+    expect(iconForRepo(repo("a", "main"))).toBe("folder");
+    expect(worktreeDeletable(repo("a", "main"))).toBe(false);
+    expect(worktreeDeletable({ ...repo("a", "main"), isWorktree: false })).toBe(
+      false,
+    );
+  });
+});
+
+describe("formatLastCommit", () => {
+  it("returns empty for absent or unparseable dates", () => {
+    expect(formatLastCommit(undefined)).toBe("");
+    expect(formatLastCommit("")).toBe("");
+    expect(formatLastCommit("not-a-date")).toBe("");
+  });
+
+  it("formats a valid ISO date to a non-empty locale string", () => {
+    const out = formatLastCommit("2026-08-22T16:21:44+09:00");
+    expect(out).not.toBe("");
+    expect(out).toContain("2026");
   });
 });

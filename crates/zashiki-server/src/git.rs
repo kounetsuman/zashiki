@@ -23,11 +23,15 @@ pub struct GitStatusResponse {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RepoStatus {
     pub org: String,
     pub repo: String,
     pub path: String,
     pub branch: String,
+    pub is_worktree: bool,
+    /// Committer date of HEAD (ISO 8601), or empty when the repo has no commits.
+    pub last_commit: String,
     pub staged: Vec<GitFileEntry>,
     pub changed: Vec<GitFileEntry>,
 }
@@ -195,11 +199,20 @@ async fn resolve_branch(path: &Path) -> String {
         .to_string()
 }
 
+/// The committer date of HEAD (ISO 8601), or empty for a repo with no commits.
+async fn last_commit_iso(path: &Path) -> String {
+    git_output(path, &["log", "-1", "--format=%cI"])
+        .await
+        .trim()
+        .to_string()
+}
+
 async fn build_repo_status(r: ScannedRepo) -> RepoStatus {
     let path = Path::new(&r.path);
-    let (branch, raw) = tokio::join!(
+    let (branch, raw, last_commit) = tokio::join!(
         resolve_branch(path),
         git_output(path, &["status", "--porcelain=v1"]),
+        last_commit_iso(path),
     );
     let parsed = zashiki_core::git::parse_git_status(&raw);
     RepoStatus {
@@ -207,9 +220,18 @@ async fn build_repo_status(r: ScannedRepo) -> RepoStatus {
         repo: r.repo,
         path: r.path,
         branch,
+        is_worktree: r.is_worktree,
+        last_commit,
         staged: parsed.staged.into_iter().map(Into::into).collect(),
         changed: parsed.changed.into_iter().map(Into::into).collect(),
     }
+}
+
+/// Remove a linked worktree without `--force`, so git refuses a dirty worktree rather than
+/// discarding uncommitted work; the explicit path argument bounds what is removed.
+pub async fn remove_worktree(path: &Path) -> Result<(), GitError> {
+    let path_str = path.to_string_lossy();
+    run_git(path, &["worktree", "remove", "--", &path_str]).await
 }
 
 /// Collect each repo's status in parallel (up to 8) and return them preserving input order.
@@ -424,6 +446,7 @@ mod tests {
             org: "org1".to_string(),
             repo: "repo-a".to_string(),
             path: p.to_string_lossy().into_owned(),
+            is_worktree: false,
         }];
         let repos = git_status(scanned).await;
 
@@ -449,6 +472,7 @@ mod tests {
                 org: "o".to_string(),
                 repo: format!("r{i}"),
                 path: format!("/no/such/repo-{i}"),
+                is_worktree: false,
             })
             .collect();
         let repos = git_status(scanned).await;
@@ -468,6 +492,7 @@ mod tests {
             org: "o".to_string(),
             repo: "r".to_string(),
             path: p.to_string_lossy().into_owned(),
+            is_worktree: false,
         }];
         let repos = git_status(scanned).await;
 
@@ -484,5 +509,133 @@ mod tests {
         .to_string();
         assert!(!short_sha.is_empty());
         assert_eq!(repos[0].branch, short_sha);
+    }
+
+    /// Adds a linked worktree of `main` at `wt_path` on a new branch, returning the worktree path.
+    fn add_worktree(main: &Path, wt_path: &Path, branch: &str) {
+        git(
+            main,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                branch,
+                &wt_path.to_string_lossy(),
+            ],
+        );
+    }
+
+    #[tokio::test]
+    async fn build_repo_status_reports_worktree_flag_and_last_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        init_repo(&main);
+        let wt = dir.path().join("wt");
+        add_worktree(&main, &wt, "feature");
+
+        let main_status = build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "main".to_string(),
+            path: main.to_string_lossy().into_owned(),
+            is_worktree: false,
+        })
+        .await;
+        assert!(!main_status.is_worktree);
+        assert!(!main_status.last_commit.is_empty());
+
+        let wt_status = build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "wt".to_string(),
+            path: wt.to_string_lossy().into_owned(),
+            is_worktree: true,
+        })
+        .await;
+        assert!(wt_status.is_worktree);
+        assert!(!wt_status.last_commit.is_empty());
+    }
+
+    #[tokio::test]
+    async fn build_repo_status_empty_last_commit_before_first_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        git(p, &["init", "-q", "-b", "main"]);
+
+        let status = build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "r".to_string(),
+            path: p.to_string_lossy().into_owned(),
+            is_worktree: false,
+        })
+        .await;
+        assert_eq!(status.last_commit, "");
+    }
+
+    #[test]
+    fn repo_status_serializes_new_fields_in_camel_case() {
+        let rs = RepoStatus {
+            org: "o".to_string(),
+            repo: "r".to_string(),
+            path: "/p".to_string(),
+            branch: "main".to_string(),
+            is_worktree: true,
+            last_commit: "2026-08-22T16:21:44+09:00".to_string(),
+            staged: Vec::new(),
+            changed: Vec::new(),
+        };
+        let json = serde_json::to_string(&rs).unwrap();
+        assert!(json.contains(r#""isWorktree":true"#));
+        assert!(json.contains(r#""lastCommit":"2026-08-22T16:21:44+09:00""#));
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_removes_clean_and_keeps_branch() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        init_repo(&main);
+        let wt = dir.path().join("wt");
+        add_worktree(&main, &wt, "feature");
+        assert!(wt.exists());
+
+        remove_worktree(&wt).await.unwrap();
+        assert!(!wt.exists());
+        // The branch survives worktree removal.
+        let branches = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&main)
+            .args(["branch", "--list", "feature"])
+            .output()
+            .unwrap()
+            .stdout;
+        assert!(String::from_utf8_lossy(&branches).contains("feature"));
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_refuses_dirty_without_force() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        init_repo(&main);
+        let wt = dir.path().join("wt");
+        add_worktree(&main, &wt, "feature");
+        std::fs::write(wt.join("dirty.txt"), "uncommitted\n").unwrap();
+
+        let err = remove_worktree(&wt).await.unwrap_err();
+        assert!(err.stderr.contains("use --force"));
+        assert!(wt.exists());
+    }
+
+    #[tokio::test]
+    async fn remove_worktree_refuses_main_working_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main");
+        std::fs::create_dir_all(&main).unwrap();
+        init_repo(&main);
+
+        let err = remove_worktree(&main).await.unwrap_err();
+        assert!(err.stderr.contains("main working tree"));
+        assert!(main.exists());
     }
 }

@@ -10,6 +10,7 @@ import {
   type OrgGroup,
 } from "./source-control-model.js";
 import { useCommitDraft } from "./useCommitDraft.js";
+import { useConfirmDelete } from "./useConfirmDelete.js";
 import { useGitCopyFeedback } from "./useGitCopyFeedback.js";
 import { useGitStatus } from "./useGitStatus.js";
 import { ViewEmpty } from "./ViewEmpty.js";
@@ -67,6 +68,9 @@ export function SourceControlView({
     );
   };
 
+  const { confirmingDelete, requestDelete, confirmDelete, cancelDelete } =
+    useConfirmDelete(repos, (path) => run(api.removeWorktree(path)));
+
   const handlers: GitTreeHandlers = {
     api,
     run,
@@ -78,6 +82,10 @@ export function SourceControlView({
     setMessage,
     commit,
     onCommitKeyDown,
+    confirmingDelete,
+    requestDelete,
+    confirmDelete,
+    cancelDelete,
   };
 
   const orgBlock = (g: OrgGroup) => {

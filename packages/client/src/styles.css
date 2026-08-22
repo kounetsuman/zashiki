@@ -1514,6 +1514,48 @@ body {
   color: #fff;
 }
 
+.git-delete:hover {
+  background: #3a1f22;
+  border-color: #a04046;
+  color: #e06c75;
+}
+
+.git-delete-confirm {
+  display: flex;
+  gap: 2px;
+}
+
+.git-delete-confirm button {
+  background: transparent;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 6px;
+}
+
+.git-delete-confirm .git-delete-ok {
+  color: #e06c75;
+  border-color: #a04046;
+}
+
+.git-delete-confirm .git-delete-ok:hover {
+  background: #3a1f22;
+}
+
+.git-delete-confirm .git-delete-cancel {
+  color: #bbb;
+}
+
+.git-delete-confirm .git-delete-cancel:hover {
+  background: #333;
+  color: #fff;
+}
+
+.git-repo-icon {
+  color: #7f848e; /* type glyph = muted */
+}
+
 .git-branch {
   color: #d19a66; /* ブランチ名=オレンジ */
 }
@@ -2374,6 +2416,7 @@ body {
 
 .git-row-actions button .material-symbols-outlined,
 .git-commit-button .material-symbols-outlined,
+.git-repo-icon.material-symbols-outlined,
 .session-org-new .material-symbols-outlined,
 .tab-close .material-symbols-outlined,
 .viewer-copy .material-symbols-outlined,

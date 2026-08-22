@@ -4,7 +4,12 @@ import { useTranslation } from "react-i18next";
 import type { GitApi } from "../api/git.js";
 import { GitCommitBox } from "./GitCommitBox.js";
 import { GitFileRow } from "./GitFileRow.js";
-import { fileRowKey } from "./source-control-model.js";
+import {
+  fileRowKey,
+  formatLastCommit,
+  iconForRepo,
+  worktreeDeletable,
+} from "./source-control-model.js";
 
 /** Shared wiring for the git tree, threaded from SourceControlView down through each repo block. */
 export interface GitTreeHandlers {
@@ -21,6 +26,10 @@ export interface GitTreeHandlers {
     repo: RepoStatus,
     e: KeyboardEvent<HTMLTextAreaElement>,
   ): void;
+  confirmingDelete: string | null;
+  requestDelete(path: string): void;
+  confirmDelete(path: string): void;
+  cancelDelete(): void;
 }
 
 export interface GitRepoBlockProps {
@@ -43,14 +52,26 @@ export function GitRepoBlock({ repo, indented, handlers }: GitRepoBlockProps) {
     setMessage,
     commit,
     onCommitKeyDown,
+    confirmingDelete,
+    requestDelete,
+    confirmDelete,
+    cancelDelete,
   } = handlers;
   const exp = expanded.has(repo.path);
+  const lastCommit = formatLastCommit(repo.lastCommit);
+  const typeLabel = t(repo.isWorktree ? "git.worktree" : "git.repository");
+  const rowTitle = lastCommit
+    ? `${typeLabel} · ${t("git.lastCommit", { date: lastCommit })}`
+    : typeLabel;
+  const deletable = worktreeDeletable(repo);
+  const confirming = confirmingDelete === repo.path;
   return (
     <div className={indented ? "git-repo git-indent" : "git-repo"}>
       <div className="git-repo-line">
         <button
           type="button"
           className="view-row git-row git-repo-row"
+          title={rowTitle}
           onClick={() => toggle(repo.path)}
         >
           <span
@@ -58,6 +79,12 @@ export function GitRepoBlock({ repo, indented, handlers }: GitRepoBlockProps) {
             aria-hidden="true"
           >
             {exp ? "expand_more" : "chevron_right"}
+          </span>{" "}
+          <span
+            className="git-repo-icon material-symbols-outlined"
+            aria-hidden="true"
+          >
+            {iconForRepo(repo)}
           </span>{" "}
           <span className="git-repo-name">{repo.repo}</span>{" "}
           <span className="git-branch">{repo.branch}</span>{" "}
@@ -89,6 +116,41 @@ export function GitRepoBlock({ repo, indented, handlers }: GitRepoBlockProps) {
               remove
             </span>
           </button>
+          {deletable && !confirming && (
+            <button
+              type="button"
+              className="git-delete"
+              aria-label={t("git.deleteWorktree", { repo: repo.repo })}
+              title={t("git.deleteWorktree", { repo: repo.repo })}
+              onClick={() => requestDelete(repo.path)}
+            >
+              <span className="material-symbols-outlined" aria-hidden="true">
+                delete
+              </span>
+            </button>
+          )}
+          {deletable && confirming && (
+            <span className="git-delete-confirm">
+              <button
+                type="button"
+                className="git-delete-ok"
+                aria-label={t("git.deleteWorktreeConfirm", { repo: repo.repo })}
+                title={t("common.delete")}
+                onClick={() => confirmDelete(repo.path)}
+              >
+                {t("common.delete")}
+              </button>
+              <button
+                type="button"
+                className="git-delete-cancel"
+                aria-label={t("git.deleteWorktreeCancel", { repo: repo.repo })}
+                title={t("common.cancel")}
+                onClick={cancelDelete}
+              >
+                {t("common.cancel")}
+              </button>
+            </span>
+          )}
         </span>
       </div>
       {exp && (

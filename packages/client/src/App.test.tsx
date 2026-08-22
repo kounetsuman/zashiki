@@ -79,6 +79,7 @@ const fakeGitApi: GitApi = {
   unstage: () => Promise.resolve(),
   stageAll: () => Promise.resolve(),
   unstageAll: () => Promise.resolve(),
+  removeWorktree: () => Promise.resolve(),
   open: () => Promise.resolve(),
   commit: () => Promise.resolve(),
 };
