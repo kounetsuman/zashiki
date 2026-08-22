@@ -44,6 +44,11 @@ describe("FooterViewTabs", () => {
     expect(screen.queryByRole("radio", { name: /セッション一覧/ })).toBeNull();
   });
 
+  it("does not render settings as a radio (settings is a modal, not a switchable view)", () => {
+    render(<FooterViewTabs selected="explorer" onSelect={() => undefined} />);
+    expect(screen.queryByRole("radio", { name: "設定" })).toBeNull();
+  });
+
   it("calls onSelect with the target id on click", () => {
     const onSelect = vi.fn();
     render(<FooterViewTabs selected="explorer" onSelect={onSelect} />);

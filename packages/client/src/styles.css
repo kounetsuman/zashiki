@@ -1807,14 +1807,6 @@ body {
   border-bottom: 1px solid #333;
 }
 
-.settings-view {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border-bottom: 1px solid #333;
-}
-
 .settings-body {
   padding: 8px;
   display: flex;

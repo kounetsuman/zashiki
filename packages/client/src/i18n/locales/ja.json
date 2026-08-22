@@ -186,6 +186,9 @@
       "en": "English"
     },
     "save": "保存",
+    "close": "閉じる",
+    "tabGeneral": "一般",
+    "tabDeveloper": "開発モード",
     "fontSize": "ターミナルの文字サイズ",
     "fontSizeDecrease": "文字を小さく",
     "fontSizeIncrease": "文字を大きく",
@@ -210,7 +213,6 @@
     "hooksIntegration": "Claude Code 連携（通知・使用率フッタ）",
     "hooksIntegrationHint": "zashiki の hooks と statusLine を ~/.claude/settings.json に登録し、通知・即時更新・使用率フッタを有効にします。",
     "hooksConflictHint": "既存の statusLine があります。有効化すると、それをラップして zashiki と併存させます。",
-    "devSection": "開発モード",
     "renderer": "ターミナルレンダラ",
     "rendererWebgl": "WebGL",
     "rendererDom": "DOM",

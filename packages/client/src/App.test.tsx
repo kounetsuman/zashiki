@@ -315,7 +315,7 @@ describe("App", () => {
         reposApi={fakeReposApi}
       />,
     );
-    fireEvent.click(screen.getByRole("radio", { name: "設定" }));
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
     fireEvent.change(screen.getByLabelText("表示言語"), {
       target: { value: "en" },
     });
@@ -1565,7 +1565,8 @@ describe("App", () => {
       />,
     );
     expect(screen.queryByRole("region", { name: "デバッグ情報" })).toBeNull();
-    fireEvent.click(screen.getByRole("radio", { name: "設定" }));
+    fireEvent.click(screen.getByRole("button", { name: "設定" }));
+    fireEvent.click(screen.getByRole("tab", { name: "開発モード" }));
     fireEvent.click(
       screen.getByRole("button", { name: "デバッグパネルを開く" }),
     );
