@@ -299,6 +299,7 @@ mod tests {
                 sessions: vec![],
                 orgs: vec![],
                 org_colors: std::collections::BTreeMap::new(),
+                org_aliases: std::collections::BTreeMap::new(),
             },
         )
     }

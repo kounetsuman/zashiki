@@ -28,6 +28,8 @@ pub mod protocol;
 pub mod ps;
 pub mod shells;
 pub mod pty_host;
+pub mod notes;
+pub mod notes_watch;
 pub mod repos;
 pub mod repos_watch;
 pub mod runtime;
@@ -75,7 +77,9 @@ use crate::routes_git::{
     git_commit, git_open, git_stage, git_stage_all, git_status, git_unstage, git_unstage_all,
 };
 use crate::routes_health::{ack_last_crash, healthz, last_crash, token_probe};
-use crate::routes_repos::{fs_browse, fs_repos, fs_validate, repos_add, repos_list};
+use crate::routes_repos::{
+    fs_browse, fs_repos, fs_validate, orgs_note, repos_add, repos_list,
+};
 use crate::routes_hooks::{focus_session, hooks_event, hooks_statusline};
 use crate::routes_search::search_route;
 use crate::routes_sessions::{sessions_restore, sessions_save};
@@ -140,6 +144,7 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/fs/repos", get(fs_repos))
         .route("/api/repos/add", post(repos_add))
         .route("/api/repos/list", get(repos_list))
+        .route("/api/orgs/note", post(orgs_note))
         .route("/api/fs/list", get(fs_list))
         .route("/api/fs/validate", get(fs_validate))
         .route("/api/fs/browse", get(fs_browse))

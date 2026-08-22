@@ -93,6 +93,11 @@ export {
   ZASHIKI_RELEASES_URL,
 } from "./notifications.js";
 export {
+  ORG_NOTE_MAX_CHARS,
+  type OrgNoteRequest,
+  orgNoteRequestSchema,
+} from "./org-note.js";
+export {
   buildProcessMaps,
   findSidInTree,
   type ProcessEntry,
@@ -186,6 +191,7 @@ export {
   orgOfCwd,
   orgRoot,
   resolveOrgColor,
+  resolveOrgName,
 } from "./repos.js";
 export {
   type AddPathStatus,

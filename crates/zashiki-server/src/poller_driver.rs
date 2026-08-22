@@ -20,6 +20,7 @@ fn sync_repos(config: &mut PollConfig, repos: &SharedRepos) {
     if let Ok(guard) = repos.read() {
         config.repos_roots = guard.roots.clone();
         config.org_colors = guard.colors.clone();
+        config.org_aliases = guard.aliases.clone();
     }
 }
 
@@ -144,6 +145,7 @@ mod tests {
         PollConfig {
             repos_roots: vec!["/repos/charlie".to_string()],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
             poll_sec: 2.0,
             run_marker: None,
             bg_agent_marker: None,
@@ -156,6 +158,7 @@ mod tests {
             sessions: vec![],
             orgs: vec![],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
         }
     }
 
@@ -187,7 +190,7 @@ mod tests {
         let mut rx = hub.subscribe();
         let (_refresh_tx, refresh_rx) = mpsc::channel(8);
         let repos =
-            crate::repos::shared_repos(vec!["/repos/charlie".to_string()], Default::default());
+            crate::repos::shared_repos(vec!["/repos/charlie".to_string()], Default::default(), Default::default());
         let handle = spawn_poller(one_running_window(), config(), repos, hub, refresh_rx);
         // The immediate tick right after startup publishes the first evaluation.
         let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
@@ -203,7 +206,7 @@ mod tests {
         let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
         let (refresh_tx, refresh_rx) = mpsc::channel(8);
         let repos =
-            crate::repos::shared_repos(vec!["/repos/charlie".to_string()], Default::default());
+            crate::repos::shared_repos(vec!["/repos/charlie".to_string()], Default::default(), Default::default());
         let handle = spawn_poller(one_running_window(), config(), repos, hub, refresh_rx);
 
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();

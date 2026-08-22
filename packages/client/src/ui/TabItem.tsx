@@ -13,6 +13,8 @@ export interface TabItemProps {
   title: string;
   session: CockpitTerminalInfo | undefined;
   orgColor: string | undefined;
+  /** Resolved org display name (alias or identity) for the dot's tooltip/label. */
+  orgName: string | undefined;
   /** Whether reordering is enabled (onReorder provided by the caller). */
   reorderable: boolean;
   rename: TabRename;
@@ -33,6 +35,7 @@ export function TabItem({
   title,
   session,
   orgColor,
+  orgName,
   reorderable,
   rename,
   drag,
@@ -81,8 +84,8 @@ export function TabItem({
           className="tab-org-dot"
           role="img"
           style={{ backgroundColor: orgColor }}
-          title={session.org}
-          aria-label={`org: ${session.org}`}
+          title={orgName ?? session.org}
+          aria-label={`org: ${orgName ?? session.org}`}
         />
       )}
       {isEditing ? (

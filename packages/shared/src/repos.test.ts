@@ -7,6 +7,7 @@ import {
   orgOfCwd,
   orgRoot,
   resolveOrgColor,
+  resolveOrgName,
 } from "./repos.js";
 
 // Reading and parsing repos.conf is server/infra/repos.ts's (readConfRoots) responsibility.
@@ -89,6 +90,20 @@ describe("orgColor (stable hash-based coloring of org names; the default when th
   it("the palette can be swapped out (theme injection)", () => {
     const palette = ["#111111", "#222222"];
     expect(palette).toContain(orgColor("anything", palette));
+  });
+});
+
+describe("resolveOrgName (explicit alias → org identity if absent)", () => {
+  it("prefers the explicit alias from repos.conf when present", () => {
+    expect(resolveOrgName("whiskey", { whiskey: "Frontend" })).toBe("Frontend");
+  });
+
+  it("falls back to the org identity (root basename) when there is no alias", () => {
+    expect(resolveOrgName("whiskey", {})).toBe("whiskey");
+  });
+
+  it("when the explicit alias is an empty string, falls back to the identity rather than blank (invalid-payload defense)", () => {
+    expect(resolveOrgName("whiskey", { whiskey: "" })).toBe("whiskey");
   });
 });
 

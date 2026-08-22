@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
+import { OrgNotesEditor } from "./OrgNotesEditor.js";
 import { ViewHeader } from "./ViewHeader.js";
 import { viewClass } from "./views.js";
 import {
@@ -44,6 +45,14 @@ export interface SettingsViewProps {
   canResetFontSize?: boolean;
   /** Open the "add org" modal (shared with the SESSION LIST header). Omit to hide the entry. */
   onAddOrg?(): void;
+  /** Orgs available for note editing (display order). Omit to hide the org-notes editor. */
+  orgs?: string[];
+  /** org → stored Markdown note (from notes.sync). */
+  orgNotes?: Record<string, string>;
+  /** org → display alias, for labeling the note picker. */
+  orgAliases?: Record<string, string>;
+  /** Persist an org's note (a blank value removes it). Omit (with `orgs`) to hide the editor. */
+  onSaveNote?(org: string, text: string): void;
   /**
    * Run an on-demand update check (sends `update.check` and resolves with the server's reply).
    * Omit to hide the entry (e.g. in isolated tests without a control channel).
@@ -94,6 +103,10 @@ export function SettingsView({
   canDecreaseFontSize = true,
   canResetFontSize = true,
   onAddOrg,
+  orgs,
+  orgNotes,
+  orgAliases,
+  onSaveNote,
   onCheckForUpdates,
   clipboardEditModal,
   onSetClipboardEditModal,
@@ -240,6 +253,19 @@ export function SettingsView({
             <button type="button" className="settings-save" onClick={onAddOrg}>
               {t("settings.addOrg")}
             </button>
+          </div>
+        )}
+        {onSaveNote !== undefined && orgs !== undefined && (
+          <div className="settings-field settings-field-column">
+            <span className="settings-label">
+              {t("settings.orgNotesLabel")}
+            </span>
+            <OrgNotesEditor
+              orgs={orgs}
+              notes={orgNotes ?? {}}
+              aliases={orgAliases ?? {}}
+              onSave={onSaveNote}
+            />
           </div>
         )}
         {onSetClipboardEditModal !== undefined && (

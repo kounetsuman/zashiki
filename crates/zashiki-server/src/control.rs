@@ -163,6 +163,7 @@ mod tests {
                 sessions: Vec::new(),
                 orgs: Vec::new(),
                 org_colors: BTreeMap::new(),
+                org_aliases: BTreeMap::new(),
             }
         }
 
@@ -182,7 +183,7 @@ mod tests {
             ControlServices {
                 hub: ControlHub::new(ConfigView::default(), vec![], empty_snapshot()),
                 refresh,
-                repos: crate::repos::shared_repos(vec![], Default::default()),
+                repos: crate::repos::shared_repos(vec![], Default::default(), Default::default()),
                 launch_claude: false,
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions,
@@ -224,8 +225,8 @@ mod tests {
         async fn connect(port: u16) -> Ws {
             let url = format!("ws://127.0.0.1:{port}/ws/control");
             let mut ws = tokio_tungstenite::connect_async(&url).await.unwrap().0;
-            // Skip the config.sync / notifications.sync / state.sync / hooks.status sent right after connecting.
-            for _ in 0..4 {
+            // Skip the config.sync / notifications.sync / state.sync / hooks.status / notes.sync sent right after connecting.
+            for _ in 0..5 {
                 let _ = next_json(&mut ws).await;
             }
             ws
@@ -261,7 +262,7 @@ mod tests {
             ControlServices {
                 hub: ControlHub::new(ConfigView::default(), vec![], empty_snapshot()),
                 refresh,
-                repos: crate::repos::shared_repos(vec![], Default::default()),
+                repos: crate::repos::shared_repos(vec![], Default::default(), Default::default()),
                 launch_claude: false,
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
@@ -281,7 +282,7 @@ mod tests {
             ControlServices {
                 hub: ControlHub::new(ConfigView::default(), vec![], empty_snapshot()),
                 refresh,
-                repos: crate::repos::shared_repos(vec![], Default::default()),
+                repos: crate::repos::shared_repos(vec![], Default::default(), Default::default()),
                 launch_claude: false,
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions: Arc::new(crate::session_registry::SessionRegistry::new()),

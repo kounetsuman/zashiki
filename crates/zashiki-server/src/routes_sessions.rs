@@ -100,6 +100,7 @@ mod sessions_persist_rest_tests {
             sessions: vec![],
             orgs: vec![],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
         }
     }
 
@@ -111,7 +112,7 @@ mod sessions_persist_rest_tests {
         ControlServices {
             hub: ControlHub::new(ConfigView::default(), vec![], empty_snapshot()),
             refresh,
-            repos: crate::repos::shared_repos(vec![], Default::default()),
+            repos: crate::repos::shared_repos(vec![], Default::default(), Default::default()),
             launch_claude: true,
             terms: Arc::new(std::sync::Mutex::new(TermRegistry::new())),
             sessions,

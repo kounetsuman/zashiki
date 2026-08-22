@@ -5,6 +5,7 @@ import {
   type FsValidateResponse,
   fsListResponseSchema,
   fsValidateResponseSchema,
+  type OrgNoteRequest,
   type ReposListResponse,
   reposListResponseSchema,
 } from "@zashiki/shared";
@@ -21,6 +22,8 @@ export interface ReposApi {
   browse(path: string, signal?: AbortSignal): Promise<FsListResponse>;
   /** The org roots currently registered in repos.conf (name + absolute path). */
   list(signal?: AbortSignal): Promise<ReposListResponse>;
+  /** Save an org's note (a blank `text` removes it). The updated set arrives via notes.sync. */
+  setNote(org: string, text: string): Promise<void>;
 }
 
 /** Error thrown by {@link ReposApi.add}. `code` is the server's stable reason (localized by the UI). */
@@ -97,6 +100,18 @@ export function createReposApi(
         throw new ReposAddError(message, code);
       }
       return reposListResponseSchema.parse(await res.json());
+    },
+    async setNote(org, text) {
+      const body: OrgNoteRequest = { org, text };
+      const res = await fetchFn(`${base}/api/orgs/note`, {
+        method: "POST",
+        headers: { ...authHeaders(token), "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const { message, code } = await errorOf(res);
+        throw new ReposAddError(message, code);
+      }
     },
   };
 }

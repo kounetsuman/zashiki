@@ -50,6 +50,7 @@ describe("decodeServerMessage", () => {
       cockpitTerminals: [],
       orgs: [],
       orgColors: {},
+      orgAliases: {},
     });
   });
 

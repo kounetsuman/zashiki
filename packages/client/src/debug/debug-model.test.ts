@@ -145,6 +145,7 @@ describe("describeServerEvent", () => {
         cockpitTerminals: [],
         orgs: [],
         orgColors: {},
+        orgAliases: {},
       }),
     ).toBeNull();
     expect(

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
 
 use tokio::sync::broadcast;
@@ -12,6 +12,8 @@ struct HubState {
     config: ConfigView,
     notifications: Vec<Notification>,
     snapshot: StateSnapshot,
+    /// Per-org notes (org → Markdown), delivered on connect and re-broadcast on any note change.
+    notes: BTreeMap<String, String>,
     /// Presence of zashiki's integration in ~/.claude/settings.json, delivered on connect and after
     /// register/unregister. Defaults to "not registered" until the startup probe (runtime) sets it.
     hooks_status: RegistrationStatus,
@@ -66,6 +68,7 @@ pub(crate) fn state_sync_of(snapshot: &StateSnapshot) -> ServerMessage {
         cockpit_terminals: snapshot.sessions.clone(),
         orgs: snapshot.orgs.clone(),
         org_colors: snapshot.org_colors.clone(),
+        org_aliases: snapshot.org_aliases.clone(),
     }
 }
 
@@ -109,6 +112,7 @@ impl ControlHub {
                 config,
                 notifications,
                 snapshot,
+                notes: BTreeMap::new(),
                 last_notification_at: 0,
                 rate_limits: HashMap::new(),
                 hooks_status: RegistrationStatus::default(),
@@ -121,8 +125,8 @@ impl ControlHub {
         self.tx.subscribe()
     }
 
-    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status).
-    pub(crate) fn connect_messages(&self) -> [ServerMessage; 4] {
+    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status -> notes.sync).
+    pub(crate) fn connect_messages(&self) -> [ServerMessage; 5] {
         let state = self.inner.read().unwrap();
         [
             ServerMessage::ConfigSync {
@@ -137,6 +141,9 @@ impl ControlHub {
             },
             state_sync_of(&state.snapshot),
             hooks_status_message(state.hooks_status),
+            ServerMessage::NotesSync {
+                notes: state.notes.clone(),
+            },
         ]
     }
 
@@ -250,6 +257,21 @@ impl ControlHub {
         };
         self.inner.write().unwrap().notifications = notifications;
         let _ = self.tx.send(msg);
+    }
+
+    /// Stores the per-org notes and broadcasts notes.sync. Called with the freshly read store on the
+    /// startup scan, a REST write, and an external-edit watch tick.
+    pub fn publish_notes(&self, notes: BTreeMap<String, String>) {
+        let msg = ServerMessage::NotesSync {
+            notes: notes.clone(),
+        };
+        self.inner.write().unwrap().notes = notes;
+        let _ = self.tx.send(msg);
+    }
+
+    /// The currently held per-org notes (for a REST handler to diff/return without a disk re-read).
+    pub fn notes(&self) -> BTreeMap<String, String> {
+        self.inner.read().unwrap().notes.clone()
     }
 
     /// The number of connected control WS clients (subscribers = WS connections only; used for the macOS fallback decision).
@@ -454,6 +476,7 @@ mod tests {
             }],
             orgs: vec!["org".to_string()],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
         }
     }
 
@@ -513,6 +536,29 @@ mod tests {
         assert!(matches!(msgs[1], ServerMessage::NotificationsSync { .. }));
         assert!(matches!(msgs[2], ServerMessage::StateSync { .. }));
         assert!(matches!(msgs[3], ServerMessage::HooksStatus { .. }));
+        assert!(matches!(msgs[4], ServerMessage::NotesSync { .. }));
+    }
+
+    #[tokio::test]
+    async fn publish_notes_stores_and_broadcasts_notes_sync() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+        hub.publish_notes(BTreeMap::from([("acme".to_string(), "# Acme\n".to_string())]));
+        assert_eq!(
+            hub.notes(),
+            BTreeMap::from([("acme".to_string(), "# Acme\n".to_string())])
+        );
+        // The new note is delivered on connect too (index 4).
+        assert!(matches!(
+            &hub.connect_messages()[4],
+            ServerMessage::NotesSync { notes } if notes.get("acme").map(String::as_str) == Some("# Acme\n")
+        ));
+        match rx.try_recv() {
+            Ok(ServerMessage::NotesSync { notes }) => {
+                assert_eq!(notes.get("acme").map(String::as_str), Some("# Acme\n"));
+            }
+            other => panic!("expected notes.sync broadcast, got {other:?}"),
+        }
     }
 
     #[tokio::test]

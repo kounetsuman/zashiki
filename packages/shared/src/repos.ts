@@ -76,6 +76,19 @@ export function resolveOrgColor(
   return explicit[org] || orgColor(org, palette);
 }
 
+/**
+ * Determines an org's display name: the explicit alias from repos.conf (`aliases`) if present,
+ * otherwise the org identity itself (the root basename). Mirrors {@link resolveOrgColor} — the
+ * grouping key stays the org identity, only the rendered label changes. An empty alias (e.g. an
+ * invalid payload) falls back to the identity rather than rendering blank (`||`, not `??`).
+ */
+export function resolveOrgName(
+  org: string,
+  aliases: Readonly<Record<string, string>>,
+): string {
+  return aliases[org] || org;
+}
+
 /** Display-name list of all orgs in the conf (order-preserving dedup). Also the anchor for always showing orgs with zero cockpit terminals. */
 export function orgNames(roots: readonly string[]): string[] {
   const seen = new Set<string>();

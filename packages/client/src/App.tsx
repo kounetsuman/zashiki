@@ -189,6 +189,8 @@ export function App({
     cockpitTerminals,
     orgs,
     orgColors,
+    orgAliases,
+    orgNotes,
     notifications,
     lastError,
     selectedCockpitTerminalId,
@@ -385,6 +387,14 @@ export function App({
     [control],
   );
 
+  // Persist an org note over REST; the server broadcasts notes.sync so the store updates on success.
+  const saveOrgNote = useCallback(
+    (org: string, text: string): void => {
+      void reposApi.setNote(org, text);
+    },
+    [reposApi],
+  );
+
   // Track the Claude Code integration status the server pushes (on connect and after each change).
   useEffect(() => {
     return control.onMessage((m) => {
@@ -489,6 +499,7 @@ export function App({
             cockpitTerminals={cockpitTerminals}
             conversationTitles={conversationTitles}
             orgColors={orgColors}
+            orgAliases={orgAliases}
             onActivate={activateTabByKey}
             onClose={closeTabByKey}
             onCloseAll={closeAllTabs}
@@ -556,6 +567,7 @@ export function App({
             cockpitTerminals={cockpitTerminals}
             orgs={orgs}
             orgColors={orgColors}
+            orgAliases={orgAliases}
             conversationTitles={conversationTitles}
             connected={controlStatus === "open"}
             selectedCockpitTerminalId={activeSess}
@@ -576,6 +588,7 @@ export function App({
             <ExplorerView
               api={fsApi}
               orgColors={orgColors}
+              orgAliases={orgAliases}
               onOpenFile={openViewer}
               inactive={activeView !== "explorer"}
             />
@@ -584,6 +597,7 @@ export function App({
             <SearchView
               api={searchApi}
               orgColors={orgColors}
+              orgAliases={orgAliases}
               onOpen={(file, _line) =>
                 openViewer(repoPathOfSearchFile(file), file.relPath)
               }
@@ -595,6 +609,7 @@ export function App({
               api={gitApi}
               onGitDirty={onGitDirty}
               orgColors={orgColors}
+              orgAliases={orgAliases}
               inactive={activeView !== "sourceControl"}
             />
           )}
@@ -628,6 +643,10 @@ export function App({
               canDecreaseFontSize={terminalFont.canDecrease}
               canResetFontSize={terminalFont.canReset}
               onAddOrg={() => setAddOrgOpen(true)}
+              orgs={orgs}
+              orgNotes={orgNotes}
+              orgAliases={orgAliases}
+              onSaveNote={saveOrgNote}
               onCheckForUpdates={checkForUpdates}
               clipboardEditModal={clipboardEdit.enabled}
               onSetClipboardEditModal={clipboardEdit.setEnabled}

@@ -76,6 +76,7 @@ mod ws_control_tests {
             }],
             orgs: vec!["org".to_string()],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
         }
     }
 
@@ -86,7 +87,7 @@ mod ws_control_tests {
         ControlServices {
             hub,
             refresh,
-            repos: crate::repos::shared_repos(repos_roots, Default::default()),
+            repos: crate::repos::shared_repos(repos_roots, Default::default(), Default::default()),
             launch_claude: false,
             terms: Arc::new(std::sync::Mutex::new(TermRegistry::new())),
             sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
@@ -149,12 +150,12 @@ mod ws_control_tests {
         }
     }
 
-    /// Skips the 4 stages sent on connect (config/notifications/state/hooks.status).
+    /// Skips the 5 stages sent on connect (config/notifications/state/hooks.status/notes).
     async fn drain_handshake<S>(ws: &mut S)
     where
         S: StreamExt<Item = Result<TMsg, tokio_tungstenite::tungstenite::Error>> + Unpin,
     {
-        for _ in 0..4 {
+        for _ in 0..5 {
             next_text(ws).await;
         }
     }
@@ -190,6 +191,7 @@ mod ws_control_tests {
             ],
             orgs: vec![],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
         };
         let hub = ControlHub::new(ConfigView::default(), vec![], snapshot);
         let app = build_router(ServerConfig {
@@ -239,6 +241,7 @@ mod ws_control_tests {
         let state = next_text(&mut ws).await;
         assert!(state.contains(r#""t":"state.sync""#) && state.contains("@1"));
         assert!(next_text(&mut ws).await.contains(r#""t":"hooks.status""#));
+        assert!(next_text(&mut ws).await.contains(r#""t":"notes.sync""#));
 
         // An invalid message -> error response. The error also accumulates into NOTIFICATION.
         ws.send(TMsg::Text("not json".to_string())).await.unwrap();
@@ -273,6 +276,7 @@ mod ws_control_tests {
             projects_root: tmp.path().to_path_buf(),
             repos_roots: vec!["/repos/charlie".to_string()],
             org_colors: std::collections::BTreeMap::new(),
+            org_aliases: std::collections::BTreeMap::new(),
             repos_conf: None,
             poll_sec: 60.0, // Slow the periodic tick so the response comes via the refresh path.
             run_marker: None,

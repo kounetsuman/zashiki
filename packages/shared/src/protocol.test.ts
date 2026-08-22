@@ -196,6 +196,7 @@ describe("serverMessageSchema", () => {
         ],
         orgs: ["kilo"],
         orgColors: { kilo: "#7aa2f7" },
+        orgAliases: { kilo: "Kilo Team" },
       },
     ],
     [
@@ -217,6 +218,7 @@ describe("serverMessageSchema", () => {
         ],
         orgs: ["acme", "globex", "initech"],
         orgColors: {},
+        orgAliases: {},
       },
     ],
     [
@@ -261,6 +263,7 @@ describe("serverMessageSchema", () => {
     [{ t: "update.status", state: "relaunching", detail: null }],
     [{ t: "update.status", state: "opened", detail: null }],
     [{ t: "update.status", state: "failed", detail: "boom" }],
+    [{ t: "notes.sync", notes: { acme: "# Acme\n- customer\n" } }],
   ])("accepts: %j", (msg) => {
     expect(serverMessageSchema.parse(msg)).toEqual(msg);
   });

@@ -278,6 +278,9 @@ pub enum ServerMessage {
         /// org name -> display color. An empty map when omitted (tolerant of rolling updates).
         #[serde(default)]
         org_colors: BTreeMap<String, String>,
+        /// org name -> display alias. An empty map when omitted (tolerant of rolling updates).
+        #[serde(default)]
+        org_aliases: BTreeMap<String, String>,
     },
     #[serde(rename = "term.reconnect", rename_all = "camelCase")]
     TermReconnect { term_ids: Vec<String> },
@@ -309,6 +312,10 @@ pub enum ServerMessage {
     /// and on changes; a full replacement, not a diff).
     #[serde(rename = "notifications.sync")]
     NotificationsSync { items: Vec<Notification> },
+    /// Full distribution of per-org notes (org → Markdown text; to all control connections right after
+    /// connecting and whenever a note is written or externally edited). A full replacement, not a diff.
+    #[serde(rename = "notes.sync", rename_all = "camelCase")]
+    NotesSync { notes: BTreeMap<String, String> },
     /// Whether zashiki's Claude Code integration is present in ~/.claude/settings.json (sent right
     /// after connecting and after each register/unregister). Drives the first-run wizard and the
     /// SETTINGS toggle. `status_line_conflict` means a non-zashiki statusLine is present (registering
@@ -455,8 +462,9 @@ mod tests {
             }],
             orgs: vec!["org1".into()],
             org_colors: BTreeMap::from([("org1".to_string(), "#7ec699".to_string())]),
+            org_aliases: BTreeMap::from([("org1".to_string(), "Team One".to_string())]),
         };
-        let json = r##"{"t":"state.sync","cockpitTerminals":[{"cockpitTerminalId":"@1","name":"repo","org":"org1","repo":"repo","state":"running","title":null,"active":true}],"orgs":["org1"],"orgColors":{"org1":"#7ec699"}}"##;
+        let json = r##"{"t":"state.sync","cockpitTerminals":[{"cockpitTerminalId":"@1","name":"repo","org":"org1","repo":"repo","state":"running","title":null,"active":true}],"orgs":["org1"],"orgColors":{"org1":"#7ec699"},"orgAliases":{"org1":"Team One"}}"##;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -472,6 +480,7 @@ mod tests {
                 cockpit_terminals: vec![],
                 orgs: vec![],
                 org_colors: BTreeMap::new(),
+                org_aliases: BTreeMap::new(),
             }
         );
     }
@@ -573,8 +582,9 @@ mod tests {
             }],
             orgs: vec![],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
         };
-        let json = r#"{"t":"state.sync","cockpitTerminals":[{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{}}"#;
+        let json = r#"{"t":"state.sync","cockpitTerminals":[{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{},"orgAliases":{}}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
@@ -867,6 +877,16 @@ mod tests {
             }],
         };
         let json = r#"{"t":"notifications.sync","items":[{"id":"e1","level":"error","title":"internal","body":"boom","createdAt":3000,"sticky":false,"dismissible":true,"toast":false}]}"#;
+        assert_eq!(to_json(&msg), json);
+        assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
+    }
+
+    #[test]
+    fn notes_sync_matches_wire() {
+        let msg = ServerMessage::NotesSync {
+            notes: BTreeMap::from([("acme".to_string(), "# Acme\n".to_string())]),
+        };
+        let json = r##"{"t":"notes.sync","notes":{"acme":"# Acme\n"}}"##;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

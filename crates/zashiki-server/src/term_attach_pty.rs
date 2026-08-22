@@ -378,6 +378,7 @@ mod tests {
             sessions: Vec::new(),
             orgs: Vec::new(),
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
         }
     }
 
@@ -424,7 +425,7 @@ mod tests {
         ControlServices {
             hub: ControlHub::new(ConfigView::default(), vec![], empty_snapshot()),
             refresh,
-            repos: crate::repos::shared_repos(vec![], Default::default()),
+            repos: crate::repos::shared_repos(vec![], Default::default(), Default::default()),
             launch_claude: false,
             terms,
             sessions,

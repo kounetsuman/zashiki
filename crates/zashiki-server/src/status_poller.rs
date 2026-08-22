@@ -95,6 +95,7 @@ impl StatusPoller {
             orgs: build_orgs(&config.repos_roots, &sessions),
             sessions,
             org_colors: config.org_colors.clone(),
+            org_aliases: config.org_aliases.clone(),
         };
         let changed = self.last.as_ref() != Some(&snapshot);
         self.last = Some(snapshot.clone());
@@ -356,6 +357,7 @@ mod tests {
         PollConfig {
             repos_roots: vec!["/repos/charlie".to_string()],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
             poll_sec: 2.0,
             run_marker: None,
             bg_agent_marker: None,

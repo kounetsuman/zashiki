@@ -67,6 +67,7 @@ mod tests {
         let repos = shared_repos(
             vec![format!("{}/charlie", dir.path().display())],
             Default::default(),
+            Default::default(),
         );
         let (tx, mut rx) = mpsc::channel(8);
         let _task = spawn_repos_watch(path.clone(), repos.clone(), tx, Duration::from_millis(10));

@@ -1,4 +1,8 @@
-import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
+import {
+  type CockpitTerminalInfo,
+  resolveOrgColor,
+  resolveOrgName,
+} from "@zashiki/shared";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
@@ -19,6 +23,8 @@ export interface CockpitTerminalListViewProps {
   orgs: string[];
   /** org name -> display color (as noted in repos.conf). Unspecified orgs use the default color (white). */
   orgColors?: Record<string, string>;
+  /** org name -> display alias (as noted in repos.conf). Unspecified orgs are shown by their identity. */
+  orgAliases?: Record<string, string>;
   selectedCockpitTerminalId: string | null;
   onSelect(cockpitTerminalId: string): void;
   onNew(org: string): void;
@@ -74,6 +80,7 @@ export function CockpitTerminalListView({
   cockpitTerminals,
   orgs,
   orgColors = {},
+  orgAliases = {},
   selectedCockpitTerminalId,
   onSelect,
   onNew,
@@ -257,7 +264,7 @@ export function CockpitTerminalListView({
                     {isCollapsed ? "chevron_right" : "expand_more"}
                   </span>{" "}
                   <span className="session-org-label">
-                    {org} ({orgSessions.length})
+                    {resolveOrgName(org, orgAliases)} ({orgSessions.length})
                   </span>
                 </button>
                 <button

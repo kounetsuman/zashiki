@@ -135,6 +135,7 @@ async fn main() {
         projects_root: projects_root.clone(),
         repos_roots,
         org_colors: repos.color_by_org,
+        org_aliases: repos.alias_by_org,
         repos_conf: repos_conf.clone(),
         poll_sec,
         run_marker: std::env::var("ZK_RUN_MARKER").ok(),
