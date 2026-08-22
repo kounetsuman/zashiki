@@ -319,6 +319,11 @@ export const stateSyncSchema = z.object({
    * Defaults to an empty map when omitted, for old-server compatibility (so state.sync is not dropped during rolling updates).
    */
   orgColors: z.record(z.string(), z.string()).default({}),
+  /**
+   * org name → display alias (as noted in repos.conf). Unspecified orgs are absent (shown by identity).
+   * Defaults to an empty map when omitted, for old-server compatibility (so state.sync is not dropped during rolling updates).
+   */
+  orgAliases: z.record(z.string(), z.string()).default({}),
 });
 
 export const termReconnectSchema = z.object({
@@ -384,6 +389,16 @@ export const notificationsSyncSchema = z.object({
 });
 
 /**
+ * Full distribution of per-org notes (org name → Markdown text). Sent once right after connecting
+ * (same manner as config.sync) and re-sent whenever a note is written or externally edited. The
+ * client replaces the whole map (the set is small, so a full replacement beats add/remove diffing).
+ */
+export const notesSyncSchema = z.object({
+  t: z.literal("notes.sync"),
+  notes: z.record(z.string(), z.string()).default({}),
+});
+
+/**
  * Whether zashiki's Claude Code integration is present in ~/.claude/settings.json. Sent right after
  * connecting and after each register/unregister. Drives the first-run wizard and the SETTINGS toggle.
  * `statusLineConflict` means a non-zashiki statusLine occupies the slot (registering wraps it to
@@ -427,6 +442,7 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   errorMessageSchema,
   configSyncSchema,
   notificationsSyncSchema,
+  notesSyncSchema,
   hooksStatusSchema,
   updateCheckResultSchema,
   updateStatusSchema,
@@ -440,6 +456,7 @@ export type StateSyncMessage = z.infer<typeof stateSyncSchema>;
 export type NotifyMessage = z.infer<typeof notifySchema>;
 export type ConfigSyncMessage = z.infer<typeof configSyncSchema>;
 export type NotificationsSyncMessage = z.infer<typeof notificationsSyncSchema>;
+export type NotesSyncMessage = z.infer<typeof notesSyncSchema>;
 export type UpdateCheckResultMessage = z.infer<typeof updateCheckResultSchema>;
 export type UpdateStatusMessage = z.infer<typeof updateStatusSchema>;
 export type UpdateStatusState = UpdateStatusMessage["state"];

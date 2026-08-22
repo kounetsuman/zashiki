@@ -162,7 +162,13 @@ describe("DebugView", () => {
     );
     act(() => c.msg({ t: "git.dirty" }));
     act(() =>
-      c.msg({ t: "state.sync", cockpitTerminals: [], orgs: [], orgColors: {} }),
+      c.msg({
+        t: "state.sync",
+        cockpitTerminals: [],
+        orgs: [],
+        orgColors: {},
+        orgAliases: {},
+      }),
     );
     expect(screen.getByText('notify waiting @1 "x"')).toBeTruthy();
     expect(screen.getByText("git.dirty")).toBeTruthy();

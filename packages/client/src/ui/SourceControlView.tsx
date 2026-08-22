@@ -1,4 +1,4 @@
-import { resolveOrgColor } from "@zashiki/shared";
+import { resolveOrgColor, resolveOrgName } from "@zashiki/shared";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { GitApi } from "../api/git.js";
@@ -22,6 +22,8 @@ export interface SourceControlViewProps {
   onGitDirty(fn: () => void): () => void;
   /** org -> display color (explicit color from repos.conf). Unspecified orgs get an auto color. */
   orgColors?: Record<string, string>;
+  /** org -> display alias (from repos.conf). Unspecified orgs are shown by their identity. */
+  orgAliases?: Record<string, string>;
   /** The actual path-copy implementation. Defaults to navigator.clipboard. For test injection. */
   copyText?(text: string): Promise<void>;
   /** Apply a faint overlay when inactive. */
@@ -32,6 +34,7 @@ export function SourceControlView({
   api,
   onGitDirty,
   orgColors = {},
+  orgAliases = {},
   copyText,
   inactive,
 }: SourceControlViewProps) {
@@ -108,7 +111,7 @@ export function SourceControlView({
             className="git-org-name"
             style={{ color: resolveOrgColor(g.org, orgColors) }}
           >
-            {g.org}
+            {resolveOrgName(g.org, orgAliases)}
           </span>{" "}
           ({g.repos.length})
         </button>

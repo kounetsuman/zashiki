@@ -147,13 +147,24 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: { o: "#7aa2f7" },
+      orgAliases: { o: "Octagon" },
     });
     expect(t.store.getSnapshot().cockpitTerminals).toEqual([session]);
     expect(t.store.getSnapshot().orgs).toEqual(["o"]);
     expect(t.store.getSnapshot().orgColors).toEqual({ o: "#7aa2f7" });
+    expect(t.store.getSnapshot().orgAliases).toEqual({ o: "Octagon" });
     t.control.emit({ t: "error", code: "x", message: "boom" });
     expect(t.store.getSnapshot().lastError).toBe("x: boom");
     expect(t.changes.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("mirrors notes.sync into the snapshot (full replacement)", () => {
+    const t = setup();
+    t.control.emit({ t: "notes.sync", notes: { o: "# O\n- customer\n" } });
+    expect(t.store.getSnapshot().orgNotes).toEqual({ o: "# O\n- customer\n" });
+    // A later sync replaces the whole map (retraction of removed orgs).
+    t.control.emit({ t: "notes.sync", notes: {} });
+    expect(t.store.getSnapshot().orgNotes).toEqual({});
   });
 
   it("surfaces invalid_message as an actionable outdated-server hint (not the raw code)", () => {
@@ -254,6 +265,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: [],
       orgColors: {},
+      orgAliases: {},
     });
     t.control.emit({
       t: "notify",
@@ -289,6 +301,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: [],
       orgColors: {},
+      orgAliases: {},
     });
     t.control.emit({ t: "select", cockpitTerminalId: "@1" });
     expect(t.focused).toEqual([1]);
@@ -304,6 +317,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: [],
       orgColors: {},
+      orgAliases: {},
     });
     t.control.emit({ t: "select", cockpitTerminalId: "@2" });
     expect(t.focused).toEqual([]);
@@ -318,6 +332,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.store.markNewRequested();
     t.control.emit({
@@ -325,6 +340,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@5");
     expect(t.selected).toEqual(["@5"]);
@@ -337,6 +353,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.store.markNewRequested();
     t.control.emit({
@@ -344,6 +361,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@7"), sessionWith("@3")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@7");
   });
@@ -355,12 +373,14 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.control.emit({
       t: "state.sync",
       cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
     expect(t.selected).toEqual([]);
@@ -373,6 +393,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.store.markNewRequested();
     t.control.emit({
@@ -380,6 +401,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
     t.control.emit({
@@ -387,6 +409,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@9")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@9");
   });
@@ -398,6 +421,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.store.markNewRequested();
     t.control.emit({ t: "error", code: "unknown_org", message: "x" });
@@ -406,6 +430,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().selectedCockpitTerminalId).toBeNull();
   });
@@ -422,6 +447,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().focusNonce).toBe(0);
     t.store.markNewRequested();
@@ -430,6 +456,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().focusNonce).toBe(1);
   });
@@ -441,6 +468,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.store.markNewRequested();
     t.control.emit({
@@ -448,6 +476,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@2")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().focusNonce).toBe(1);
     t.store.markNewRequested();
@@ -456,6 +485,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@2"), sessionWith("@3")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().focusNonce).toBe(2);
   });
@@ -467,12 +497,14 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.control.emit({
       t: "state.sync",
       cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().focusNonce).toBe(0);
   });
@@ -484,6 +516,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.store.markNewRequested();
     t.control.emit({
@@ -491,6 +524,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().focusNonce).toBe(0);
   });
@@ -511,6 +545,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@2")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.store.selectCockpitTerminal("@2");
     expect(t.store.getSnapshot().focusNonce).toBe(0);
@@ -523,6 +558,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     t.store.markNewRequested();
     t.control.emit({ t: "error", code: "unknown_org", message: "x" });
@@ -531,6 +567,7 @@ describe("createAppStore", () => {
       cockpitTerminals: [session, sessionWith("@5")],
       orgs: ["o"],
       orgColors: {},
+      orgAliases: {},
     });
     expect(t.store.getSnapshot().focusNonce).toBe(0);
   });

@@ -4,6 +4,7 @@ import {
   fileIconKind,
   joinRepoRelative,
   resolveOrgColor,
+  resolveOrgName,
 } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,6 +31,8 @@ export interface ExplorerViewProps {
   api: FsApi;
   /** org -> display color (explicit color from repos.conf). Unspecified orgs get an auto color. */
   orgColors?: Record<string, string>;
+  /** org -> display alias (from repos.conf). Unspecified orgs are shown by their identity. */
+  orgAliases?: Record<string, string>;
   /**
    * Hook point for file clicks (the viewer's connection target).
    * While this is unfinished, selection only is supported and a no-op is passed.
@@ -42,6 +45,7 @@ export interface ExplorerViewProps {
 export function ExplorerView({
   api,
   orgColors = {},
+  orgAliases = {},
   onOpenFile,
   inactive,
 }: ExplorerViewProps) {
@@ -228,8 +232,8 @@ export function ExplorerView({
                   className="org-dot"
                   role="img"
                   style={{ backgroundColor: resolveOrgColor(r.org, orgColors) }}
-                  title={r.org}
-                  aria-label={`org: ${r.org}`}
+                  title={resolveOrgName(r.org, orgAliases)}
+                  aria-label={`org: ${resolveOrgName(r.org, orgAliases)}`}
                 />
               </button>
               {exp && renderEntries(r.path, rootDir, 1)}

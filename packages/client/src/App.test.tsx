@@ -102,6 +102,7 @@ const fakeReposApi: ReposApi = {
     Promise.resolve({ status: "ok", org: path.split("/").pop() ?? path }),
   browse: () => Promise.resolve({ entries: [], truncated: false }),
   list: () => Promise.resolve({ orgs: [] }),
+  setNote: () => Promise.resolve(),
 };
 
 function fakeAppSession() {
@@ -346,6 +347,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(screen.getByText("kilo (2)")).toBeTruthy();
@@ -373,6 +375,7 @@ describe("App", () => {
         cockpitTerminals: [],
         orgs: ["kilo", "delta"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(screen.getByText("delta (0)")).toBeTruthy();
@@ -398,6 +401,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: [],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(
@@ -427,6 +431,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: [],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
@@ -460,6 +465,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     fireEvent.contextMenu(screen.getByText(/kilo \(/));
@@ -494,6 +500,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(terminalFocusNonce()).toBe(0);
@@ -516,6 +523,7 @@ describe("App", () => {
         cockpitTerminals: [...cockpitTerminals, newWindow],
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(terminalFocusNonce()).toBe(1);
@@ -541,6 +549,7 @@ describe("App", () => {
         cockpitTerminals: twoOrgSessions,
         orgs: ["kilo", "delta"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     fireEvent.click(screen.getByRole("button", { name: ROW_APP }));
@@ -567,6 +576,7 @@ describe("App", () => {
         cockpitTerminals: twoOrgSessions,
         orgs: ["kilo", "delta"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     // Default highlight = the active @1 (kilo).
@@ -604,6 +614,7 @@ describe("App", () => {
         cockpitTerminals: [],
         orgs: [],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     pressCmdN();
@@ -630,6 +641,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: [],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     // bootstrap opens the @1 (zashiki) tab. Double-clicking tango opens @2 and makes it active.
@@ -667,6 +679,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: [],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     // bootstrap opens @1 (zashiki); double-clicking tango opens @2 -> two tabs.
@@ -706,6 +719,7 @@ describe("App", () => {
         cockpitTerminals: [],
         orgs: [],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(() => pressCmdW()).not.toThrow();
@@ -741,6 +755,7 @@ describe("App", () => {
         ] as CockpitTerminalInfo[],
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     const ev = pressCmdR();
@@ -774,6 +789,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     const ev = pressCmdR();
@@ -851,6 +867,7 @@ describe("App", () => {
         ],
         orgs: [],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     act(() =>
@@ -1066,6 +1083,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(screen.queryByText("セッションがありません")).toBeNull();
@@ -1092,6 +1110,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     // Always shown. The footer toggle icons have no session radio.
@@ -1130,6 +1149,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     // The old key is not read -> the default explorer is shown and git is not.
@@ -1167,6 +1187,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(inList().getByRole("button", { name: ROW_ZASHIKI })).toBeTruthy();
@@ -1199,6 +1220,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     const mainArea = container.querySelector('[data-view="main"]');
@@ -1593,6 +1615,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(f.suspend).not.toHaveBeenCalled();
@@ -1603,6 +1626,7 @@ describe("App", () => {
         cockpitTerminals: [],
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(f.suspend).toHaveBeenCalledTimes(1);
@@ -1613,6 +1637,7 @@ describe("App", () => {
         cockpitTerminals,
         orgs: ["kilo"],
         orgColors: {},
+        orgAliases: {},
       }),
     );
     expect(f.resume).toHaveBeenCalled();

@@ -148,7 +148,7 @@ pub(crate) async fn repos_add(State(state): State<AppState>, body: axum::body::B
         }
         repos::AddPathStatus::Ok(org) => org,
     };
-    match repos::append_root_to_conf(&conf_path, &path, req.color.as_deref()) {
+    match repos::append_root_to_conf(&conf_path, &path, None, req.color.as_deref()) {
         Err(e) => {
             return json_error_with_code(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -173,6 +173,59 @@ pub(crate) async fn repos_add(State(state): State<AppState>, body: axum::body::B
         let _ = control.refresh.send(RefreshRequest { reply: None }).await;
     }
     Json(serde_json::json!({ "org": org })).into_response()
+}
+
+/// Must equal the client's `ORG_NOTE_MAX_CHARS` (packages/shared/src/org-note.ts).
+const ORG_NOTE_MAX_CHARS: usize = 100_000;
+
+#[derive(Deserialize)]
+struct OrgNoteBody {
+    org: String,
+    text: String,
+}
+
+/// `POST /api/orgs/note`. Persists a per-org note as `<repos.conf dir>/notes/<org>.md` (a blank/
+/// whitespace-only `text` deletes it), then re-reads the store and broadcasts notes.sync so every
+/// client reflects the change without a restart. Returns `{"ok": true}`.
+pub(crate) async fn orgs_note(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let Some(conf_path) = (*state.repos_conf).clone() else {
+        return json_error_with_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "repos.conf path is not configured",
+            "no_conf",
+        );
+    };
+    let Ok(req) = serde_json::from_slice::<OrgNoteBody>(&body) else {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "invalid request body",
+            "invalid_body",
+        );
+    };
+    if crate::notes::note_file_name(&req.org).is_none() {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "org is not a valid note name",
+            "org_invalid",
+        );
+    }
+    // Counts by string length to match the client's `ORG_NOTE_MAX_CHARS` (keep the two values equal).
+    if req.text.chars().count() > ORG_NOTE_MAX_CHARS {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "note is too long",
+            "text_too_long",
+        );
+    }
+    let dir = crate::notes::notes_dir_for_conf(&conf_path);
+    if let Err(e) = crate::notes::write_note(&dir, &req.org, &req.text) {
+        return json_error_with_code(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string(), "io");
+    }
+    // Re-read the whole store (not just the edited org) so the broadcast is the authoritative set.
+    if let Some(control) = &state.control {
+        control.hub.publish_notes(crate::notes::read_notes(&dir));
+    }
+    Json(serde_json::json!({ "ok": true })).into_response()
 }
 
 #[derive(Deserialize)]
@@ -360,6 +413,55 @@ mod repos_add_rest_tests {
         assert_eq!(s, StatusCode::BAD_REQUEST);
     }
 
+    async fn send_note(app: axum::Router, body: &str) -> (StatusCode, String) {
+        let req = HttpRequest::builder()
+            .method("POST")
+            .uri("/api/orgs/note?token=t")
+            .header("host", OK_HOST)
+            .header("x-zashiki-token", "t")
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    #[tokio::test]
+    async fn note_write_creates_file_then_blank_removes_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        std::fs::write(&conf, "").unwrap();
+        let note_path = dir.path().join("notes/acme.md");
+
+        let (s, b) = send_note(app(conf.clone()), r##"{"org":"acme","text":"# Acme\n"}"##).await;
+        assert_eq!(s, StatusCode::OK, "body: {b}");
+        assert_eq!(std::fs::read_to_string(&note_path).unwrap(), "# Acme\n");
+
+        let (s2, _) = send_note(app(conf), r#"{"org":"acme","text":"   "}"#).await;
+        assert_eq!(s2, StatusCode::OK);
+        assert!(!note_path.exists());
+    }
+
+    #[tokio::test]
+    async fn note_invalid_org_returns_400() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        let (s, _b) = send_note(app(conf), r#"{"org":"../evil","text":"x"}"#).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn note_over_length_cap_returns_400_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        let big = "x".repeat(100_001);
+        let (s, _b) = send_note(app(conf), &format!(r#"{{"org":"acme","text":"{big}"}}"#)).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert!(!dir.path().join("notes/acme.md").exists());
+    }
+
     /// End-to-end: with a live control runtime, adding an org updates the shared live set and the
     /// new org appears in state.sync without a restart (the core "immediate reflection" contract).
     #[tokio::test]
@@ -378,6 +480,7 @@ mod repos_add_rest_tests {
             projects_root: dir.path().to_path_buf(),
             repos_roots: vec![],
             org_colors: std::collections::BTreeMap::new(),
+            org_aliases: std::collections::BTreeMap::new(),
             repos_conf: Some(conf.clone()),
             poll_sec: 0.05,
             run_marker: None,

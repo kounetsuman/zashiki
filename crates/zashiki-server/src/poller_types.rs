@@ -80,6 +80,7 @@ pub trait PollerPorts {
 pub struct PollConfig {
     pub repos_roots: Vec<String>,
     pub org_colors: BTreeMap<String, String>,
+    pub org_aliases: BTreeMap<String, String>,
     pub poll_sec: f64,
     pub run_marker: Option<String>,
     pub bg_agent_marker: Option<String>,
@@ -93,4 +94,5 @@ pub struct StateSnapshot {
     pub sessions: Vec<CockpitTerminalInfo>,
     pub orgs: Vec<String>,
     pub org_colors: BTreeMap<String, String>,
+    pub org_aliases: BTreeMap<String, String>,
 }

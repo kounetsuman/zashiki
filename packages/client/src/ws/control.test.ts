@@ -45,7 +45,13 @@ describe("ControlClient", () => {
     ws.emitMessage("broken{{{"); // invalid JSON is ignored
     ws.emitMessage(JSON.stringify({ t: "unknown-type" })); // schema violations are ignored
     expect(messages).toEqual([
-      { t: "state.sync", cockpitTerminals: [], orgs: [], orgColors: {} },
+      {
+        t: "state.sync",
+        cockpitTerminals: [],
+        orgs: [],
+        orgColors: {},
+        orgAliases: {},
+      },
     ]);
     expect(statuses).toEqual(["connecting", "open"]);
   });

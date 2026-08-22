@@ -13,6 +13,10 @@ export interface AppState {
   orgs: string[];
   /** org name -> display color (declared alongside repos.conf). Unspecified orgs are absent and rendered with the default color. */
   orgColors: Record<string, string>;
+  /** org name -> display alias (declared alongside repos.conf). Unspecified orgs are absent and rendered by their identity. */
+  orgAliases: Record<string, string>;
+  /** org name -> free-form Markdown note. Absent orgs have no note. Delivered via notes.sync. */
+  orgNotes: Record<string, string>;
   /** In-app notifications. The server holds them and broadcasts the full set via notifications.sync. */
   notifications: Notification[];
   lastError: string | null;
@@ -113,6 +117,8 @@ const INITIAL_STATE: AppState = {
   cockpitTerminals: [],
   orgs: [],
   orgColors: {},
+  orgAliases: {},
+  orgNotes: {},
   notifications: [],
   lastError: null,
   selectedCockpitTerminalId: null,
@@ -173,6 +179,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           cockpitTerminals: m.cockpitTerminals,
           orgs: m.orgs,
           orgColors: m.orgColors,
+          orgAliases: m.orgAliases,
           selectedCockpitTerminalId: added,
           focusNonce: state.focusNonce + 1,
           resizeNonce: state.resizeNonce + 1,
@@ -183,11 +190,15 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           cockpitTerminals: m.cockpitTerminals,
           orgs: m.orgs,
           orgColors: m.orgColors,
+          orgAliases: m.orgAliases,
         });
       }
     } else if (m.t === "notifications.sync") {
       // The full notification list held by the server. Replace it wholesale.
       setState({ notifications: m.items });
+    } else if (m.t === "notes.sync") {
+      // The full per-org notes map held by the server. Replace it wholesale.
+      setState({ orgNotes: m.notes });
     } else if (m.t === "term.reconnect") {
       // zk-* was recreated during restore, so reattach the pty.
       deps.session.reconnect();

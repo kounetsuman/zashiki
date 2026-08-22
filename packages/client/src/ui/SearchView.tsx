@@ -1,5 +1,5 @@
 import type { SearchFile, SearchResponse } from "@zashiki/shared";
-import { resolveOrgColor } from "@zashiki/shared";
+import { resolveOrgColor, resolveOrgName } from "@zashiki/shared";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -12,6 +12,8 @@ export interface SearchViewProps {
   api: SearchApi;
   /** org → display color (explicit colors from repos.conf). Unspecified orgs get an auto-assigned color. */
   orgColors?: Record<string, string>;
+  /** org → display alias (from repos.conf). Unspecified orgs are shown by their identity. */
+  orgAliases?: Record<string, string>;
   /**
    * "Open" target for clicking a result row (the viewer). While the viewer is
    * unfinished, leaving this unspecified means display-only. When specified, the
@@ -41,6 +43,7 @@ function totalMatches(res: SearchResponse): number {
 export function SearchView({
   api,
   orgColors = {},
+  orgAliases = {},
   onOpen,
   inactive,
 }: SearchViewProps) {
@@ -125,8 +128,8 @@ export function SearchView({
               className="org-dot"
               role="img"
               style={{ backgroundColor: resolveOrgColor(file.org, orgColors) }}
-              title={file.org}
-              aria-label={`org: ${file.org}`}
+              title={resolveOrgName(file.org, orgAliases)}
+              aria-label={`org: ${resolveOrgName(file.org, orgAliases)}`}
             />{" "}
             {file.repo}
           </span>{" "}

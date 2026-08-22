@@ -1,4 +1,4 @@
-# repos.conf and org colors
+# repos.conf, org names, and colors
 
 The repositories that zashiki lists are determined by `~/.zashiki/repos.conf`. One path per line; anything after `#` and blank lines are ignored. The final directory name of each path becomes the org (group).
 
@@ -6,6 +6,18 @@ The repositories that zashiki lists are determined by `~/.zashiki/repos.conf`. O
 /Users/you/workspace/whiskey
 /Users/you/workspace/charlie
 ```
+
+## Giving an org a display name (alias)
+
+Add an `@Alias` token to a path line to show that org under a chosen name (the grouping identity stays the final directory name — only the label changes). Handy when you want a nicer heading without renaming the directory.
+
+```
+/Users/you/workspace/foo   @Frontend   #7aa2f7
+```
+
+- The line format is `path [@alias] [#color]`, in that order (the alias comes before the color).
+- The alias is a single whitespace-separated token (no spaces inside it).
+- If multiple orgs share the same final name, the alias written first is used.
 
 ## Coloring an org
 

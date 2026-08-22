@@ -32,12 +32,14 @@ fn normalize_lexical(path: &Path) -> PathBuf {
     out
 }
 
-/// The result of reading repos.conf as a list of absolute-path roots plus an org→color map.
+/// The result of reading repos.conf as a list of absolute-path roots plus per-org display maps.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ReposConf {
     pub roots: Vec<PathBuf>,
     /// org (root basename) → color (`#rgb`/`#rrggbb`, lowercased). First occurrence wins for a given org.
     pub color_by_org: BTreeMap<String, String>,
+    /// org (root basename) → display alias (`@Name` token). First occurrence wins for a given org.
+    pub alias_by_org: BTreeMap<String, String>,
 }
 
 /// Whether the token is `#rgb` / `#rrggbb`.
@@ -48,6 +50,24 @@ fn is_color_token(token: &str) -> bool {
         }
         None => false,
     }
+}
+
+/// Whether the token is an alias (`@` followed by at least one character).
+fn is_alias_token(token: &str) -> bool {
+    token.strip_prefix('@').is_some_and(|rest| !rest.is_empty())
+}
+
+/// Splits an optional trailing whitespace-separated alias token (`@Name`) off the end of `head`
+/// (the part of a line before any color/comment `#`). The remainder is the path, so internal
+/// whitespace in the path is preserved; an alias is only taken when a non-empty path precedes it.
+fn split_trailing_alias(head: &str) -> (&str, Option<String>) {
+    let trimmed = head.trim_end();
+    if let Some((rest, last)) = trimmed.rsplit_once(char::is_whitespace) {
+        if is_alias_token(last) && !rest.trim().is_empty() {
+            return (rest.trim_end(), Some(last[1..].to_string()));
+        }
+    }
+    (trimmed, None)
 }
 
 /// Resolves a path line to an absolute path (`~`/`~/` expand to home, `~user` is discarded, relative paths are based on cwd, then lexically normalized).
@@ -69,58 +89,69 @@ fn expand_root(line: &str, home: &Path, cwd: &Path) -> Option<PathBuf> {
     Some(normalize_lexical(&expanded))
 }
 
-/// Parses the body of repos.conf into a list of roots plus org colors (pure function).
-/// Everything after `#` is a comment, but it is picked up as a color only when whitespace-separated and a valid color token (a `#` adjacent to the path is a comment).
-/// Internal whitespace in the path is preserved. The color is bound to org=basename, first occurrence wins.
+/// Parses the body of repos.conf into a list of roots plus per-org colors and aliases (pure function).
+/// A line is `path [@alias] [#color]`: everything after `#` is a comment, picked up as a color only when
+/// whitespace-separated and a valid color token (a `#` adjacent to the path is a comment); a trailing
+/// whitespace-separated `@alias` token (before the color) sets the org's display name. Internal whitespace
+/// in the path is preserved. Color and alias are bound to org=basename, first occurrence wins.
 pub fn parse_conf(text: &str, home: &Path, cwd: &Path) -> ReposConf {
     let mut seen = HashSet::new();
     let mut roots = Vec::new();
     let mut color_by_org = BTreeMap::new();
+    let mut alias_by_org = BTreeMap::new();
     for raw in text.lines() {
         let line = raw.trim();
-        let (path, color) = match line.find('#') {
+        let (path, alias, color) = match line.find('#') {
             None => {
                 if line.is_empty() {
                     continue;
                 }
-                (line, None)
+                let (path, alias) = split_trailing_alias(line);
+                (path, alias, None)
             }
             Some(hash) => {
-                let path = line[..hash].trim_end();
+                let before = &line[..hash];
+                let (path, alias) = split_trailing_alias(before);
                 if path.is_empty() {
                     continue; // A leading `#` (comment line / leading color token) has no path, so drop it.
                 }
-                // A `#` adjacent to the path is a comment as before (not treated as a color).
-                let separated = line[..hash]
-                    .chars()
-                    .next_back()
-                    .is_some_and(char::is_whitespace);
+                // A `#` adjacent to the path (or alias) is a comment as before (not treated as a color).
+                let separated = before.chars().next_back().is_some_and(char::is_whitespace);
                 let color = if separated {
                     let head = line[hash..].split_whitespace().next().unwrap_or("");
                     is_color_token(head).then(|| head.to_ascii_lowercase())
                 } else {
                     None
                 };
-                (path, color)
+                (path, alias, color)
             }
         };
+        if path.is_empty() {
+            continue;
+        }
         let Some(abs) = expand_root(path, home, cwd) else {
             continue;
         };
         if seen.insert(abs.clone()) {
             roots.push(abs.clone());
         }
-        if let Some(color) = color {
+        if color.is_some() || alias.is_some() {
             let org = abs
                 .file_name()
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
-            color_by_org.entry(org).or_insert(color);
+            if let Some(color) = color {
+                color_by_org.entry(org.clone()).or_insert(color);
+            }
+            if let Some(alias) = alias {
+                alias_by_org.entry(org).or_insert(alias);
+            }
         }
     }
     ReposConf {
         roots,
         color_by_org,
+        alias_by_org,
     }
 }
 
@@ -129,15 +160,21 @@ pub fn parse_conf_roots(text: &str, home: &Path, cwd: &Path) -> Vec<PathBuf> {
     parse_conf(text, home, cwd).roots
 }
 
-/// Renders one repos.conf line from a verbatim path and an optional color token.
-/// The path is written as given (so `~` stays portable). The color is separated by
-/// whitespace, which is exactly what makes `parse_conf` read it as a color rather than a comment.
-pub fn format_conf_line(path: &str, color: Option<&str>) -> String {
-    let path = path.trim();
-    match color {
-        Some(color) => format!("{path}   {color}"),
-        None => path.to_string(),
+/// Renders one repos.conf line from a verbatim path plus optional alias (`@Name`) and color tokens.
+/// The path is written as given (so `~` stays portable). Alias and color are whitespace-separated,
+/// which is exactly what makes `parse_conf` read them back rather than as a comment. Order is
+/// `path [@alias] [#color]`, matching the parse order.
+pub fn format_conf_line(path: &str, alias: Option<&str>, color: Option<&str>) -> String {
+    let mut out = path.trim().to_string();
+    if let Some(alias) = alias {
+        out.push_str("   @");
+        out.push_str(alias);
     }
+    if let Some(color) = color {
+        out.push_str("   ");
+        out.push_str(color);
+    }
+    out
 }
 
 /// The result of adding a root line to repos.conf text.
@@ -156,6 +193,7 @@ pub enum AddOutcome {
 pub fn add_root_line(
     text: &str,
     path: &str,
+    alias: Option<&str>,
     color: Option<&str>,
     home: &Path,
     cwd: &Path,
@@ -170,7 +208,7 @@ pub fn add_root_line(
     if !out.is_empty() && !out.ends_with('\n') {
         out.push('\n');
     }
-    out.push_str(&format_conf_line(trimmed, color));
+    out.push_str(&format_conf_line(trimmed, alias, color));
     out.push('\n');
     AddOutcome::Added(out)
 }
@@ -203,11 +241,12 @@ fn write_repos_conf_atomic(path: &Path, text: &str) -> std::io::Result<()> {
 pub fn append_root_to_conf(
     conf_path: &Path,
     path: &str,
+    alias: Option<&str>,
     color: Option<&str>,
 ) -> std::io::Result<AddOutcome> {
     let text = std::fs::read_to_string(conf_path).unwrap_or_default();
     let (home, cwd) = conf_home_cwd();
-    match add_root_line(&text, path, color, &home, &cwd) {
+    match add_root_line(&text, path, alias, color, &home, &cwd) {
         AddOutcome::Duplicate => Ok(AddOutcome::Duplicate),
         AddOutcome::Added(new_text) => {
             write_repos_conf_atomic(conf_path, &new_text)?;
@@ -240,23 +279,32 @@ pub fn read_repos_conf(conf_path: &Path) -> ReposConf {
 
 /// Live repos.conf-derived state shared by the poller, session.new org validation, and the
 /// repos.conf watcher. Swapped wholesale on reload so all readers see a consistent set.
-/// `roots` are absolute-path strings; `colors` maps org (basename) to its display color.
+/// `roots` are absolute-path strings; `colors`/`aliases` map org (basename) to its display color/name.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ReposState {
     pub roots: Vec<String>,
     pub colors: BTreeMap<String, String>,
+    pub aliases: BTreeMap<String, String>,
 }
 
 /// A cloneable handle to the current {@link ReposState}. Reads are short-lived (per poll tick /
 /// per session.new); writes happen only on add or on an external repos.conf edit.
 pub type SharedRepos = Arc<RwLock<ReposState>>;
 
-/// Wraps roots + colors into a {@link SharedRepos} handle.
-pub fn shared_repos(roots: Vec<String>, colors: BTreeMap<String, String>) -> SharedRepos {
-    Arc::new(RwLock::new(ReposState { roots, colors }))
+/// Wraps roots + colors + aliases into a {@link SharedRepos} handle.
+pub fn shared_repos(
+    roots: Vec<String>,
+    colors: BTreeMap<String, String>,
+    aliases: BTreeMap<String, String>,
+) -> SharedRepos {
+    Arc::new(RwLock::new(ReposState {
+        roots,
+        colors,
+        aliases,
+    }))
 }
 
-/// Reads repos.conf into a {@link ReposState} (roots as strings + org colors; graceful on missing/unreadable).
+/// Reads repos.conf into a {@link ReposState} (roots as strings + org colors/aliases; graceful on missing/unreadable).
 pub fn read_repos_state(conf_path: &Path) -> ReposState {
     let conf = read_repos_conf(conf_path);
     ReposState {
@@ -266,6 +314,7 @@ pub fn read_repos_state(conf_path: &Path) -> ReposState {
             .map(|p| p.to_string_lossy().into_owned())
             .collect(),
         colors: conf.color_by_org,
+        aliases: conf.alias_by_org,
     }
 }
 
@@ -420,11 +469,19 @@ rel/dir
     }
 
     #[test]
-    fn format_conf_line_appends_color_whitespace_separated() {
-        assert_eq!(format_conf_line("/tmp/foo", None), "/tmp/foo");
+    fn format_conf_line_appends_alias_and_color_whitespace_separated() {
+        assert_eq!(format_conf_line("/tmp/foo", None, None), "/tmp/foo");
         assert_eq!(
-            format_conf_line("  ~/ws/foo  ", Some("#7aa2f7")),
+            format_conf_line("  ~/ws/foo  ", None, Some("#7aa2f7")),
             "~/ws/foo   #7aa2f7"
+        );
+        assert_eq!(
+            format_conf_line("/tmp/foo", Some("Frontend"), None),
+            "/tmp/foo   @Frontend"
+        );
+        assert_eq!(
+            format_conf_line("/tmp/foo", Some("Frontend"), Some("#7aa2f7")),
+            "/tmp/foo   @Frontend   #7aa2f7"
         );
     }
 
@@ -432,7 +489,7 @@ rel/dir
     fn add_root_line_appends_line_and_reparses_as_root() {
         let home = Path::new("/home/u");
         let cwd = Path::new("/work");
-        let AddOutcome::Added(text) = add_root_line("", "~/ws/foo", None, home, cwd) else {
+        let AddOutcome::Added(text) = add_root_line("", "~/ws/foo", None, None, home, cwd) else {
             panic!("expected Added");
         };
         assert_eq!(text, "~/ws/foo\n");
@@ -447,7 +504,7 @@ rel/dir
         let home = Path::new("/home/u");
         let cwd = Path::new("/work");
         let AddOutcome::Added(text) =
-            add_root_line("/tmp/a", "/tmp/b", Some("#f00"), home, cwd)
+            add_root_line("/tmp/a", "/tmp/b", None, Some("#f00"), home, cwd)
         else {
             panic!("expected Added");
         };
@@ -463,17 +520,17 @@ rel/dir
         let cwd = Path::new("/work");
         // Already present as an absolute root; the tilde form expands to the same path.
         assert_eq!(
-            add_root_line("/home/u/ws/foo\n", "~/ws/foo", None, home, cwd),
+            add_root_line("/home/u/ws/foo\n", "~/ws/foo", None, None, home, cwd),
             AddOutcome::Duplicate
         );
         // A `..` form that normalizes onto an existing root is also a duplicate.
         assert_eq!(
-            add_root_line("/tmp/a\n", "/tmp/x/../a", None, home, cwd),
+            add_root_line("/tmp/a\n", "/tmp/x/../a", None, None, home, cwd),
             AddOutcome::Duplicate
         );
         // A different basename under the same parent is NOT a duplicate (dedup is by path, not org).
         assert!(matches!(
-            add_root_line("/ws/foo\n", "/ws/bar", None, home, cwd),
+            add_root_line("/ws/foo\n", "/ws/bar", None, None, home, cwd),
             AddOutcome::Added(_)
         ));
     }
@@ -487,7 +544,7 @@ rel/dir
         let path = target.to_string_lossy().into_owned();
 
         // First add: the line is written and reads back as a root.
-        let outcome = append_root_to_conf(&conf, &path, Some("#7aa2f7")).unwrap();
+        let outcome = append_root_to_conf(&conf, &path, None, Some("#7aa2f7")).unwrap();
         assert!(matches!(outcome, AddOutcome::Added(_)));
         let state = read_repos_state(&conf);
         assert_eq!(state.roots, vec![path.clone()]);
@@ -496,7 +553,7 @@ rel/dir
         // Re-adding the same path is a Duplicate and leaves the file untouched.
         let before = std::fs::read_to_string(&conf).unwrap();
         assert_eq!(
-            append_root_to_conf(&conf, &path, None).unwrap(),
+            append_root_to_conf(&conf, &path, None, None).unwrap(),
             AddOutcome::Duplicate
         );
         assert_eq!(std::fs::read_to_string(&conf).unwrap(), before);
@@ -510,7 +567,7 @@ rel/dir
         std::fs::create_dir_all(&target).unwrap();
         let path = target.to_string_lossy().into_owned();
         assert!(matches!(
-            append_root_to_conf(&conf, &path, None).unwrap(),
+            append_root_to_conf(&conf, &path, None, None).unwrap(),
             AddOutcome::Added(_)
         ));
         assert_eq!(read_repos_state(&conf).roots, vec![path]);
@@ -556,6 +613,73 @@ rel/dir
                 ("whiskey".to_string(), "#7aa2f7".to_string()),
                 ("charlie".to_string(), "#98c379".to_string()),
             ])
+        );
+    }
+
+    #[test]
+    fn parse_conf_binds_alias_and_color_in_any_combination() {
+        let conf = parse_conf(
+            "/tmp/foo   @Frontend   #7aa2f7\n/tmp/bar   @Backend\n/tmp/baz   #98c379\n",
+            Path::new("/home"),
+            Path::new("/work"),
+        );
+        assert_eq!(
+            conf.roots,
+            vec![
+                PathBuf::from("/tmp/foo"),
+                PathBuf::from("/tmp/bar"),
+                PathBuf::from("/tmp/baz"),
+            ]
+        );
+        assert_eq!(
+            conf.alias_by_org,
+            BTreeMap::from([
+                ("foo".to_string(), "Frontend".to_string()),
+                ("bar".to_string(), "Backend".to_string()),
+            ])
+        );
+        assert_eq!(
+            conf.color_by_org,
+            BTreeMap::from([
+                ("foo".to_string(), "#7aa2f7".to_string()),
+                ("baz".to_string(), "#98c379".to_string()),
+            ])
+        );
+    }
+
+    #[test]
+    fn parse_conf_alias_adjacent_to_path_is_part_of_path() {
+        // No whitespace before `@`, so it is part of the path, not an alias (mirrors the `#` adjacency rule).
+        let conf = parse_conf("/tmp/a@x\n", Path::new("/home"), Path::new("/work"));
+        assert_eq!(conf.roots, vec![PathBuf::from("/tmp/a@x")]);
+        assert!(conf.alias_by_org.is_empty());
+    }
+
+    #[test]
+    fn parse_conf_alias_first_occurrence_wins_for_same_basename() {
+        let conf = parse_conf(
+            "/a/foo   @First\n/b/foo   @Second\n",
+            Path::new("/home"),
+            Path::new("/work"),
+        );
+        // Both roots are kept (dedup is by absolute path); the alias binds to org=basename, first wins.
+        assert_eq!(
+            conf.roots,
+            vec![PathBuf::from("/a/foo"), PathBuf::from("/b/foo")]
+        );
+        assert_eq!(
+            conf.alias_by_org,
+            BTreeMap::from([("foo".to_string(), "First".to_string())])
+        );
+    }
+
+    #[test]
+    fn parse_conf_alias_preserves_internal_whitespace_in_path() {
+        let conf = parse_conf("/tmp/a  b   @Name\n", Path::new("/home"), Path::new("/work"));
+        assert_eq!(conf.roots, vec![PathBuf::from("/tmp/a  b")]);
+        assert_eq!(
+            conf.alias_by_org,
+            BTreeMap::from([("a  b".to_string(), "Name".to_string())])
         );
     }
 
@@ -666,7 +790,7 @@ rel/dir
         );
 
         // Once registered, the same path (even via a `..` detour) is a Duplicate.
-        append_root_to_conf(&conf, &path, None).unwrap();
+        append_root_to_conf(&conf, &path, None, None).unwrap();
         assert_eq!(classify_add_path(&conf, &path), AddPathStatus::Duplicate);
         let detour = format!("{}/../myorg", target.to_string_lossy());
         assert_eq!(classify_add_path(&conf, &detour), AddPathStatus::Duplicate);
@@ -679,7 +803,7 @@ rel/dir
         let outside = dir.path().join("elsewhere");
         let org = outside.join("acme");
         std::fs::create_dir_all(&org).unwrap();
-        append_root_to_conf(&conf, &org.to_string_lossy(), None).unwrap();
+        append_root_to_conf(&conf, &org.to_string_lossy(), None, None).unwrap();
 
         let roots = browse_roots(&conf);
         // The parent of the registered root is browseable (orgs outside HOME stay reachable).

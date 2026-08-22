@@ -48,7 +48,11 @@ export function getHelpTopics(locale: string): HelpTopic[] {
  * Topics not listed here fall into the trailing "Other" on the HelpView side (so nothing is dropped).
  */
 export const HELP_CATEGORIES: HelpCategoryDef[] = [
-  { id: "config", titleKey: "help.category.config", topicIds: ["repos-conf"] },
+  {
+    id: "config",
+    titleKey: "help.category.config",
+    topicIds: ["repos-conf", "org-notes"],
+  },
   {
     id: "general",
     titleKey: "help.category.general",

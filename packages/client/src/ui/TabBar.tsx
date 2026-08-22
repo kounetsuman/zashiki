@@ -1,4 +1,8 @@
-import { type CockpitTerminalInfo, resolveOrgColor } from "@zashiki/shared";
+import {
+  type CockpitTerminalInfo,
+  resolveOrgColor,
+  resolveOrgName,
+} from "@zashiki/shared";
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
@@ -21,6 +25,8 @@ export interface TabBarProps {
   conversationTitles: TitleMap;
   /** org -> display color (explicit color from repos.conf). Unspecified orgs fall back to auto coloring. */
   orgColors?: Record<string, string>;
+  /** org -> display alias (from repos.conf). Unspecified orgs are shown by their identity. */
+  orgAliases?: Record<string, string>;
   onActivate(key: string): void;
   onClose(key: string): void;
   /** Closes every open tab. The "close all" menu item is hidden when unspecified. */
@@ -56,6 +62,7 @@ export function TabBar({
   cockpitTerminals,
   conversationTitles,
   orgColors = {},
+  orgAliases = {},
   onActivate,
   onClose,
   onCloseAll,
@@ -103,6 +110,10 @@ export function TabBar({
           session !== undefined
             ? resolveOrgColor(session.org, orgColors)
             : undefined;
+        const orgName =
+          session !== undefined
+            ? resolveOrgName(session.org, orgAliases)
+            : undefined;
         return (
           <TabItem
             key={key}
@@ -113,6 +124,7 @@ export function TabBar({
             title={title}
             session={session}
             orgColor={orgColor}
+            orgName={orgName}
             reorderable={onReorder !== undefined}
             rename={rename}
             drag={drag}

@@ -25,6 +25,8 @@ pub struct ControlRuntimeConfig {
     pub repos_roots: Vec<String>,
     /// org (basename) → display color (annotated in repos.conf; the orgColors of state.sync).
     pub org_colors: BTreeMap<String, String>,
+    /// org (basename) → display alias (annotated in repos.conf; the orgAliases of state.sync).
+    pub org_aliases: BTreeMap<String, String>,
     /// Path to repos.conf. If Some, a resident watch task applies external edits live (None disables it).
     pub repos_conf: Option<PathBuf>,
     pub poll_sec: f64,
@@ -52,6 +54,7 @@ fn empty_snapshot() -> StateSnapshot {
         sessions: Vec::new(),
         orgs: Vec::new(),
         org_colors: BTreeMap::new(),
+        org_aliases: BTreeMap::new(),
     }
 }
 
@@ -97,10 +100,12 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     // The hook route (write) and the poller (read) share the same store: the seam for event-authoritative state.
     let hook_events = Arc::new(crate::hook_event_store::HookEventStore::new());
     // The live repos set shared by the poller, session.new validation, and the repos watcher.
-    let repos = crate::repos::shared_repos(config.repos_roots, config.org_colors);
+    let repos =
+        crate::repos::shared_repos(config.repos_roots, config.org_colors, config.org_aliases);
     let poll_config = PollConfig {
         repos_roots: Vec::new(),
         org_colors: BTreeMap::new(),
+        org_aliases: BTreeMap::new(),
         poll_sec: config.poll_sec,
         run_marker: config.run_marker,
         bg_agent_marker: config.bg_agent_marker,
@@ -115,6 +120,15 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     );
     spawn_poller(ports, poll_config, repos.clone(), hub.clone(), refresh_rx);
     if let Some(path) = config.repos_conf {
+        // Seed the hub with the per-org notes on disk (so they ride the connect handshake) and watch
+        // the notes dir for external edits, both keyed off the same repos.conf location.
+        let notes_dir = crate::notes::notes_dir_for_conf(&path);
+        hub.publish_notes(crate::notes::read_notes(&notes_dir));
+        crate::notes_watch::spawn_notes_watch(
+            notes_dir,
+            hub.clone(),
+            crate::notes_watch::NOTES_POLL,
+        );
         crate::repos_watch::spawn_repos_watch(
             path,
             repos.clone(),
@@ -155,6 +169,7 @@ mod tests {
             projects_root: tmp.path().to_path_buf(),
             repos_roots: vec!["/repos/charlie".to_string()],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
             repos_conf: None,
             poll_sec: 0.1,
             run_marker: None,
@@ -195,6 +210,7 @@ mod tests {
             projects_root: tmp.path().to_path_buf(),
             repos_roots: vec!["/repos/charlie".to_string()],
             org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
             repos_conf: None,
             poll_sec: 0.1,
             run_marker: None,
