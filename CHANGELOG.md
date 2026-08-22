@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-22
+
+### Added
+
+- A first-run setup wizard, with a Settings opt-in for registering the Claude Code hook and statusLine bridge (#145)
+- Mark, delete, and date worktrees directly from Source Control (#167)
+- Org display aliases and per-org notes (#163)
+- A persistent, rotating, redacted server log (#160)
+- External-dependency boundary failures now surface as Warn notifications (#159)
+- A configurable external-editor command in the Settings view (#157)
+- Configurable session status footer severity thresholds in Settings (#169)
+
+### Changed
+
+- The Settings view is now a modal with General and Development tabs (#166)
+- Session state is now event-authoritative, with a screen-scrape fallback (#146)
+- Vertically center session-row activity icons and always show the subagent count (#149)
+
+### Fixed
+
+- Disable WebKit autocorrect on the Search input and ignore IME-confirming Enter (#151)
+- Restore scrolling in the Viewer code view (#152)
+
 ## [0.8.0] - 2026-08-21
 
 ### Added
@@ -129,7 +152,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/kounetsuman/zashiki/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kounetsuman/zashiki/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/kounetsuman/zashiki/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/kounetsuman/zashiki/compare/v0.5.0...v0.6.0
