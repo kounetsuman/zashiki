@@ -11,6 +11,7 @@ import {
   fmtDuration,
   fmtResetCountdown,
   fmtTokens,
+  fmtWeekResetCountdown,
   tokenSeverity,
   usageSeverity,
 } from "../session/status-footer.js";
@@ -42,12 +43,17 @@ export function SessionStatusFooter({
   const now = useNow(1_000);
   const limits = usage?.limits;
 
-  const limitCell = (limit: UsageLimit, label: string, title: string) => {
+  const limitCell = (
+    limit: UsageLimit,
+    label: string,
+    title: string,
+    fmtCountdown: (ms: number) => string = fmtResetCountdown,
+  ) => {
     const value =
       limit.resetsAt !== undefined
         ? t("footer.status.percentReset", {
             percent: limit.usedPercent,
-            time: fmtResetCountdown(limit.resetsAt - now),
+            time: fmtCountdown(limit.resetsAt - now),
           })
         : `${limit.usedPercent}%`;
     return (
@@ -134,6 +140,7 @@ export function SessionStatusFooter({
               limits.week,
               t("footer.status.week"),
               t("footer.status.weekTitle"),
+              fmtWeekResetCountdown,
             )}
         </span>
       )}
