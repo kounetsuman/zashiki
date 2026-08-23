@@ -165,13 +165,9 @@
     "status": {
       "turn": "ターン",
       "session": "セッション",
-      "fiveHour": "5h",
-      "week": "週",
       "percentReset": "{{percent}}% · {{time}}",
       "tokensTitle": "API が扱ったトークン — 今ターン / セッション累計",
-      "elapsedTitle": "経過時間 — 今ターン / セッション累計",
-      "fiveHourTitle": "5時間セッション使用率",
-      "weekTitle": "週間使用率"
+      "elapsedTitle": "経過時間 — 今ターン / セッション累計"
     },
     "account": {
       "session": "現在のセッション",
