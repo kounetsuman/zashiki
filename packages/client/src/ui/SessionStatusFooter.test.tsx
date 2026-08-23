@@ -32,15 +32,9 @@ describe("SessionStatusFooter", () => {
     }
   });
 
-  it("omits the limits group until the bridge reports usage", () => {
-    render(<SessionStatusFooter usage={base} />);
-    expect(screen.queryByText("speed")).toBeNull();
-  });
-
   it("shows dashes for every cell before a transcript is readable", () => {
     render(<SessionStatusFooter usage={null} />);
     expect(screen.getAllByText("–").length).toBe(4);
-    expect(screen.queryByText("speed")).toBeNull();
   });
 
   it("tints the top border with the org accent color", () => {
@@ -57,7 +51,7 @@ describe("SessionStatusFooter", () => {
     expect(footer.style.borderTopColor).toBe("");
   });
 
-  it("shows per-limit percentages with their severity when present", () => {
+  it("never renders account-wide rate-limit cells, even when the bridge reports them", () => {
     render(
       <SessionStatusFooter
         usage={{
@@ -69,8 +63,8 @@ describe("SessionStatusFooter", () => {
         }}
       />,
     );
-    expect(screen.getByText("speed")).toBeTruthy();
-    expect(screen.getByText("92%").className).toContain("ss-crit");
-    expect(screen.getByText("61%").className).toContain("ss-warn");
+    expect(screen.queryByText("speed")).toBeNull();
+    expect(screen.queryByText("92%")).toBeNull();
+    expect(screen.queryByText("61%")).toBeNull();
   });
 });

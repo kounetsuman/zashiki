@@ -567,10 +567,6 @@ body {
   min-width: 0;
 }
 
-.ss-group-limits {
-  margin-left: auto;
-}
-
 .ss-icon {
   flex: none;
   font-size: 15px;
