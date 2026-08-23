@@ -40,19 +40,18 @@ describe("ClipboardEditModal", () => {
     );
   });
 
-  it("exposes the help tooltip", () => {
+  it("shows the inline description", () => {
     renderModal();
-    const help = screen.getByRole("img", { name: /折り返された1行コマンド/ });
-    expect(help.getAttribute("title")).toContain("折り返された1行コマンド");
+    expect(screen.getByText(/折り返された1行コマンド/)).toBeTruthy();
   });
 
-  it("writes the edited text to the clipboard and closes on OK", () => {
+  it("closes without touching the clipboard when the close button is pressed", () => {
     const { onClose } = renderModal();
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "claude --flag" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "OK" }));
-    expect(writeText).toHaveBeenCalledWith("claude --flag");
+    fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
+    expect(writeText).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
 
