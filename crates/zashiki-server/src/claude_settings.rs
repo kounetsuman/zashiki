@@ -7,6 +7,11 @@ use serde_json::{json, Map, Value};
 
 pub const NOTIFY_SCRIPT: &str = "notify-event.sh";
 pub const STATUSLINE_SCRIPT: &str = "statusline.sh";
+/// Claude Code's `refreshInterval` (seconds): re-runs the statusLine on a timer on top of its
+/// event-driven renders, so the account-usage footer keeps refreshing rate_limits while a session
+/// idles at a reached limit. Added only when zashiki owns the whole statusLine; wrapping a user's
+/// command leaves their sibling fields (a refreshInterval of their own included) untouched.
+const STATUSLINE_REFRESH_INTERVAL_SECS: u64 = 10;
 const LEGACY_STATUSLINE_PREFIX: &str = "ZK_LEGACY_STATUSLINE=";
 /// Env-assignment prefix zashiki writes on every command it registers. An entry is "ours" iff it
 /// carries this marker or its command path equals the currently resolved script — path-independent so
@@ -236,7 +241,11 @@ fn register_statusline(root: &mut Map<String, Value>, paths: &ScriptPaths) {
         None => {
             root.insert(
                 "statusLine".to_string(),
-                json!({ "type": "command", "command": statusline_plain(paths) }),
+                json!({
+                    "type": "command",
+                    "command": statusline_plain(paths),
+                    "refreshInterval": STATUSLINE_REFRESH_INTERVAL_SECS,
+                }),
             );
         }
         Some(Value::Object(_)) => {
@@ -246,16 +255,19 @@ fn register_statusline(root: &mut Map<String, Value>, paths: &ScriptPaths) {
             };
             let parsed = parse_command(&cmd);
             let is_ours = parsed.has_marker || parsed.command_token.as_deref() == Some(paths.statusline.as_str());
-            let desired = if is_ours {
-                match parsed.legacy_statusline {
-                    Some(legacy) => statusline_wrapped(paths, &legacy),
-                    None => statusline_plain(paths),
-                }
-            } else {
-                statusline_wrapped(paths, &cmd)
+            let legacy = if is_ours { parsed.legacy_statusline } else { Some(cmd.clone()) };
+            let desired = match &legacy {
+                Some(legacy) => statusline_wrapped(paths, legacy),
+                None => statusline_plain(paths),
             };
             if cmd != desired {
                 obj.insert("command".to_string(), Value::String(desired));
+            }
+            if legacy.is_none() {
+                obj.insert(
+                    "refreshInterval".to_string(),
+                    json!(STATUSLINE_REFRESH_INTERVAL_SECS),
+                );
             }
         }
         Some(_) => {}
@@ -418,10 +430,35 @@ mod tests {
             out["statusLine"]["command"],
             json!("ZK_ZASHIKI=1 '/opt/zashiki/hooks/statusline.sh'")
         );
+        assert_eq!(out["statusLine"]["refreshInterval"], json!(10));
         assert_eq!(
             out["hooks"]["Stop"][0]["hooks"][0]["command"],
             json!("ZK_ZASHIKI=1 '/opt/zashiki/hooks/notify-event.sh' done")
         );
+    }
+
+    #[test]
+    fn register_upgrades_plain_ours_statusline_with_refresh_interval() {
+        let input = v(r#"{"statusLine":{"type":"command","command":"ZK_ZASHIKI=1 '/opt/zashiki/hooks/statusline.sh'"}}"#);
+        let (out, changed) = merge_register(&input, &paths());
+        assert!(changed);
+        assert_eq!(out["statusLine"]["refreshInterval"], json!(10));
+    }
+
+    #[test]
+    fn register_does_not_add_refresh_interval_to_a_wrapped_foreign_statusline() {
+        let input = v(r#"{"statusLine":{"type":"command","command":"~/bin/my-statusline.sh"}}"#);
+        let (out, _) = merge_register(&input, &paths());
+        assert!(out["statusLine"].get("refreshInterval").is_none());
+    }
+
+    #[test]
+    fn register_preserves_a_foreign_statuslines_own_refresh_interval_across_round_trip() {
+        let input = v(r#"{"statusLine":{"type":"command","command":"~/mine.sh","refreshInterval":3}}"#);
+        let (reg, _) = merge_register(&input, &paths());
+        assert_eq!(reg["statusLine"]["refreshInterval"], json!(3));
+        let (back, _) = merge_unregister(&reg, &paths());
+        assert_eq!(bytes(&back), bytes(&input));
     }
 
     #[test]

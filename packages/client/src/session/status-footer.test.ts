@@ -5,6 +5,7 @@ import {
   fmtDuration,
   fmtResetCountdown,
   fmtTokens,
+  fmtWeekResetCountdown,
   pickAccountLimits,
   tokenSeverity,
   usageSeverity,
@@ -59,6 +60,21 @@ describe("fmtResetCountdown", () => {
   it("shows a floor marker under a minute and clamps negatives", () => {
     expect(fmtResetCountdown(30_000)).toBe("<1m");
     expect(fmtResetCountdown(-5_000)).toBe("<1m");
+  });
+});
+
+describe("fmtWeekResetCountdown", () => {
+  it("always renders days through seconds, zero-padding non-leading units", () => {
+    expect(
+      fmtWeekResetCountdown(
+        6 * 86_400_000 + 8 * 3_600_000 + 2 * 60_000 + 3_000,
+      ),
+    ).toBe("6d08h02m03s");
+    expect(fmtWeekResetCountdown(9_000)).toBe("0d00h00m09s");
+  });
+
+  it("clamps negatives to zero", () => {
+    expect(fmtWeekResetCountdown(-5_000)).toBe("0d00h00m00s");
   });
 });
 

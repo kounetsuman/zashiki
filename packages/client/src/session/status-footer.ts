@@ -53,6 +53,21 @@ export function fmtResetCountdown(ms: number): string {
   return "<1m";
 }
 
+/**
+ * Reset countdown at full day-to-second precision, non-leading units zero-padded: `6d08h02m03s`.
+ * The weekly window spans days, so its cell always carries days and live-ticking seconds rather than
+ * the coarse minute resolution of {@link fmtResetCountdown}. Negative clamps to 0.
+ */
+export function fmtWeekResetCountdown(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1_000));
+  const d = Math.floor(total / 86_400);
+  const h = Math.floor((total % 86_400) / 3_600);
+  const m = Math.floor((total % 3_600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d}d${pad(h)}h${pad(m)}m${pad(s)}s`;
+}
+
 /** Percentage severity; a disabled band is skipped so the reading falls through to the next lower enabled band. */
 export function usageSeverity(
   percent: number,

@@ -6,7 +6,11 @@ import {
 } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
-import { fmtResetCountdown, usageSeverity } from "../session/status-footer.js";
+import {
+  fmtResetCountdown,
+  fmtWeekResetCountdown,
+  usageSeverity,
+} from "../session/status-footer.js";
 import { StatusCell } from "./StatusCell.js";
 import { useNow } from "./useNow.js";
 
@@ -58,6 +62,7 @@ export function AccountUsageFooter({
     limit: UsageLimit | undefined,
     label: string,
     title: string,
+    fmtCountdown: (ms: number) => string = fmtResetCountdown,
   ) => {
     const value =
       limit === undefined
@@ -65,7 +70,7 @@ export function AccountUsageFooter({
         : limit.resetsAt !== undefined
           ? t("footer.status.percentReset", {
               percent: limit.usedPercent,
-              time: fmtResetCountdown(limit.resetsAt - now),
+              time: fmtCountdown(limit.resetsAt - now),
             })
           : `${limit.usedPercent}%`;
     return (
@@ -95,6 +100,7 @@ export function AccountUsageFooter({
         limits?.week,
         t("footer.account.week"),
         t("footer.account.weekTitle"),
+        fmtWeekResetCountdown,
       )}
     </span>
   );
