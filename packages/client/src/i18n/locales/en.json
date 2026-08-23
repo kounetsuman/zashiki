@@ -32,8 +32,8 @@
   },
   "clipboardEdit": {
     "title": "Edit clipboard",
-    "help": "Copying a one-liner that was hard-wrapped at the terminal width pulls in line breaks. Remove them here before pasting, then press OK to re-copy.",
-    "ok": "OK",
+    "description": "Copying a one-liner that was hard-wrapped at the terminal width pulls in line breaks. Remove them here and re-copy the text before closing.",
+    "close": "Close",
     "neverShow": "Don't show this again"
   },
   "terminal": {

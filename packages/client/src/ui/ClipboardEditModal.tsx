@@ -13,8 +13,9 @@ export interface ClipboardEditModalProps {
 }
 
 /**
- * A scratchpad for the copied selection so a hard-wrapped one-liner can be rejoined by hand before
- * pasting. OK writes the edited text back to the clipboard; Escape / backdrop dismiss without writing.
+ * A scratchpad for the just-copied selection so a hard-wrapped one-liner can be rejoined by hand and
+ * re-copied manually before pasting. The dialog never writes to the clipboard itself: the button,
+ * Escape, and backdrop all dismiss without touching it.
  */
 export function ClipboardEditModal({
   text,
@@ -27,11 +28,6 @@ export function ClipboardEditModal({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => textareaRef.current?.focus(), []);
-
-  const confirm = (): void => {
-    void navigator.clipboard?.writeText(value).catch(() => undefined);
-    onClose();
-  };
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: overlay only captures outside clicks (Escape is handled by the dialog onKeyDown)
@@ -48,17 +44,8 @@ export function ClipboardEditModal({
           e.stopPropagation();
         }}
       >
-        <div className="clip-edit-head">
-          <h2 className="clip-edit-title">{t("clipboardEdit.title")}</h2>
-          <span
-            className="clip-edit-help material-symbols-outlined"
-            role="img"
-            aria-label={t("clipboardEdit.help")}
-            title={t("clipboardEdit.help")}
-          >
-            help
-          </span>
-        </div>
+        <h2 className="clip-edit-title">{t("clipboardEdit.title")}</h2>
+        <p className="clip-edit-desc">{t("clipboardEdit.description")}</p>
         <textarea
           ref={textareaRef}
           className="clip-edit-textarea"
@@ -75,8 +62,8 @@ export function ClipboardEditModal({
           <span>{t("clipboardEdit.neverShow")}</span>
         </label>
         <div className="clip-edit-actions">
-          <button type="button" className="clip-edit-ok" onClick={confirm}>
-            {t("clipboardEdit.ok")}
+          <button type="button" className="clip-edit-close" onClick={onClose}>
+            {t("clipboardEdit.close")}
           </button>
         </div>
       </div>
