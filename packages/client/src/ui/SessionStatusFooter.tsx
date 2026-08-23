@@ -2,18 +2,14 @@ import {
   DEFAULT_FOOTER_THRESHOLDS,
   type FooterThresholds,
   type SessionUsage,
-  type UsageLimit,
 } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 import {
   durationSeverity,
   fmtDuration,
-  fmtResetCountdown,
   fmtTokens,
-  fmtWeekResetCountdown,
   tokenSeverity,
-  usageSeverity,
 } from "../session/status-footer.js";
 import { StatusCell } from "./StatusCell.js";
 import { useNow } from "./useNow.js";
@@ -31,8 +27,7 @@ const DASH = "–";
 
 /**
  * Status area docked under the terminal for the active session: tokens and elapsed time (this turn /
- * this session) plus, when the statusLine bridge is configured, the account usage limits with a live
- * reset countdown. Elapsed and countdown re-tick each second off the server-provided epoch anchors.
+ * this session). Elapsed re-ticks each second off the server-provided epoch anchors.
  */
 export function SessionStatusFooter({
   usage,
@@ -41,31 +36,6 @@ export function SessionStatusFooter({
 }: SessionStatusFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
-  const limits = usage?.limits;
-
-  const limitCell = (
-    limit: UsageLimit,
-    label: string,
-    title: string,
-    fmtCountdown: (ms: number) => string = fmtResetCountdown,
-  ) => {
-    const value =
-      limit.resetsAt !== undefined
-        ? t("footer.status.percentReset", {
-            percent: limit.usedPercent,
-            time: fmtCountdown(limit.resetsAt - now),
-          })
-        : `${limit.usedPercent}%`;
-    return (
-      <span className="ss-group" title={title}>
-        <StatusCell
-          value={value}
-          caption={label}
-          severity={usageSeverity(limit.usedPercent, thresholds.usagePercent)}
-        />
-      </span>
-    );
-  };
 
   return (
     <footer
@@ -120,30 +90,6 @@ export function SessionStatusFooter({
           }
         />
       </span>
-
-      {limits !== undefined && (limits.fiveHour || limits.week) && (
-        <span className="ss-group ss-group-limits">
-          <span
-            className="material-symbols-outlined ss-icon"
-            aria-hidden="true"
-          >
-            speed
-          </span>
-          {limits.fiveHour &&
-            limitCell(
-              limits.fiveHour,
-              t("footer.status.fiveHour"),
-              t("footer.status.fiveHourTitle"),
-            )}
-          {limits.week &&
-            limitCell(
-              limits.week,
-              t("footer.status.week"),
-              t("footer.status.weekTitle"),
-              fmtWeekResetCountdown,
-            )}
-        </span>
-      )}
     </footer>
   );
 }

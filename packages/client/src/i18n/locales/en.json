@@ -165,13 +165,9 @@
     "status": {
       "turn": "turn",
       "session": "session",
-      "fiveHour": "5h",
-      "week": "week",
       "percentReset": "{{percent}}% · {{time}}",
       "tokensTitle": "Tokens the API touched — this turn / this session",
-      "elapsedTitle": "Elapsed — this turn / this session",
-      "fiveHourTitle": "5-hour session usage",
-      "weekTitle": "Weekly usage"
+      "elapsedTitle": "Elapsed — this turn / this session"
     },
     "account": {
       "session": "Current session",
