@@ -85,6 +85,7 @@ import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
 import { useCrashReport } from "./ui/useCrashReport.js";
 import { useDiff } from "./ui/useDiff.js";
+import { useGitStatus } from "./ui/useGitStatus.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
@@ -536,6 +537,9 @@ export function App({
     [control],
   );
 
+  // Owned above the conditionally-mounted SourceControlView so status survives left-view switches.
+  const gitStatus = useGitStatus(gitApi, onGitDirty);
+
   // On-demand "Check for updates" (SETTINGS): send update.check and resolve with the server's
   // update.check.result. Not connected (send=false) / no response (timeout) rejects so the view
   // shows an error. The 15s window covers the server's 10s GitHub request timeout.
@@ -632,7 +636,7 @@ export function App({
             {selectedView === "sourceControl" && (
               <SourceControlView
                 api={gitApi}
-                onGitDirty={onGitDirty}
+                gitStatus={gitStatus}
                 orgColors={orgColors}
                 orgAliases={orgAliases}
                 onOpenDiff={openDiff}
