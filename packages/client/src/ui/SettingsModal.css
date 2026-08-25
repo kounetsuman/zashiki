@@ -11,8 +11,9 @@
 .settings-modal {
   display: flex;
   flex-direction: column;
-  width: min(520px, 92vw);
-  max-height: min(80vh, 720px);
+  width: 80vw;
+  height: 80vh;
+  overflow: hidden;
   background: #1e1e1e;
   border: 1px solid #444;
   border-radius: 6px;
@@ -48,30 +49,50 @@
   color: #fff;
 }
 
-.settings-tabs {
+/* Header on top; below it the body (left) and the vertical menu (right) share the row. */
+.settings-main {
   display: flex;
-  gap: 4px;
-  padding: 8px 8px 0;
-  border-bottom: 1px solid #333;
+  flex-direction: row-reverse;
+  flex: 1;
+  min-height: 0;
 }
 
-.settings-tab {
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+  min-width: 140px;
+  padding: 8px;
+  border-left: 1px solid #333;
+}
+
+.settings-nav-item {
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 4px;
   color: #999;
   font: inherit;
-  padding: 6px 12px;
+  text-align: left;
+  padding: 6px 10px;
   cursor: pointer;
 }
 
-.settings-tab:hover {
+.settings-nav-item:hover {
   color: #ddd;
+  background: #2a2a2a;
 }
 
-.settings-tab.is-active {
+.settings-nav-item.is-active {
   color: #ddd;
-  border-bottom-color: #4a7;
+  background: #2a2a2a;
+  border-left: 2px solid #4a7;
+  padding-left: 8px;
+}
+
+.settings-body {
+  flex: 1;
+  min-width: 0;
 }
 
 .settings-body[hidden] {

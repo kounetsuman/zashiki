@@ -96,9 +96,10 @@ function toLocale(lang: string): Locale {
 }
 
 /**
- * Settings modal opened from the footer gear: a General tab (display language, terminal font size,
- * updates, orgs, integration toggles, external editor) and a Developer mode tab (renderer switch,
- * DevTools, debug panel). Both tab bodies stay mounted so unsaved drafts survive a tab switch.
+ * Settings modal opened from the footer gear, sized to 80% of the window with a scrollable body. A
+ * right-side menu switches between a General panel (display language, terminal font size, updates,
+ * orgs, integration toggles, external editor) and a Developer mode panel (renderer switch, DevTools,
+ * debug panel). Both panels stay mounted so unsaved drafts survive a switch.
  */
 export function SettingsModal({
   language,
@@ -200,272 +201,283 @@ export function SettingsModal({
             </span>
           </button>
         </header>
-        <div className="settings-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            id="settings-tab-general"
-            aria-selected={tab === "general"}
-            aria-controls="settings-panel-general"
-            className={`settings-tab${tab === "general" ? " is-active" : ""}`}
-            onClick={() => setTab("general")}
+        <div className="settings-main">
+          <nav
+            className="settings-nav"
+            role="tablist"
+            aria-orientation="vertical"
           >
-            {t("settings.tabGeneral")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="settings-tab-developer"
-            aria-selected={tab === "developer"}
-            aria-controls="settings-panel-developer"
-            className={`settings-tab${tab === "developer" ? " is-active" : ""}`}
-            onClick={() => setTab("developer")}
-          >
-            {t("settings.tabDeveloper")}
-          </button>
-        </div>
-        <div
-          className="settings-body"
-          role="tabpanel"
-          id="settings-panel-general"
-          aria-labelledby="settings-tab-general"
-          hidden={tab !== "general"}
-        >
-          <label className="settings-field">
-            <span className="settings-label">{t("settings.language")}</span>
-            <select
-              className="settings-select"
-              value={draft}
-              onChange={(e) => setDraft(toLocale(e.target.value))}
+            <button
+              type="button"
+              role="tab"
+              id="settings-tab-general"
+              aria-selected={tab === "general"}
+              aria-controls="settings-panel-general"
+              className={`settings-nav-item${tab === "general" ? " is-active" : ""}`}
+              onClick={() => setTab("general")}
             >
-              {SUPPORTED_LOCALES.map((loc) => (
-                <option key={loc} value={loc}>
-                  {t(`settings.languageOption.${loc}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            className="settings-save"
-            disabled={draft === current}
-            onClick={() => onSaveLanguage(draft)}
+              {t("settings.tabGeneral")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="settings-tab-developer"
+              aria-selected={tab === "developer"}
+              aria-controls="settings-panel-developer"
+              className={`settings-nav-item${tab === "developer" ? " is-active" : ""}`}
+              onClick={() => setTab("developer")}
+            >
+              {t("settings.tabDeveloper")}
+            </button>
+          </nav>
+          <div
+            className="settings-body"
+            role="tabpanel"
+            id="settings-panel-general"
+            aria-labelledby="settings-tab-general"
+            hidden={tab !== "general"}
           >
-            {t("settings.save")}
-          </button>
-          {fontSize !== undefined && (
-            <fieldset className="settings-field font-size-field">
-              <legend className="settings-label">
-                {t("settings.fontSize")}
-              </legend>
-              <div className="font-size-controls">
-                <button
-                  type="button"
-                  className="font-size-button"
-                  aria-label={t("settings.fontSizeDecrease")}
-                  title={t("settings.fontSizeDecrease")}
-                  disabled={!canDecreaseFontSize}
-                  onClick={onDecreaseFontSize}
-                >
-                  A-
-                </button>
-                <span className="font-size-value" aria-live="polite">
-                  {fontSize}px
+            <label className="settings-field">
+              <span className="settings-label">{t("settings.language")}</span>
+              <select
+                className="settings-select"
+                value={draft}
+                onChange={(e) => setDraft(toLocale(e.target.value))}
+              >
+                {SUPPORTED_LOCALES.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {t(`settings.languageOption.${loc}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="settings-save"
+              disabled={draft === current}
+              onClick={() => onSaveLanguage(draft)}
+            >
+              {t("settings.save")}
+            </button>
+            {fontSize !== undefined && (
+              <fieldset className="settings-field font-size-field">
+                <legend className="settings-label">
+                  {t("settings.fontSize")}
+                </legend>
+                <div className="font-size-controls">
+                  <button
+                    type="button"
+                    className="font-size-button"
+                    aria-label={t("settings.fontSizeDecrease")}
+                    title={t("settings.fontSizeDecrease")}
+                    disabled={!canDecreaseFontSize}
+                    onClick={onDecreaseFontSize}
+                  >
+                    A-
+                  </button>
+                  <span className="font-size-value" aria-live="polite">
+                    {fontSize}px
+                  </span>
+                  <button
+                    type="button"
+                    className="font-size-button"
+                    aria-label={t("settings.fontSizeIncrease")}
+                    title={t("settings.fontSizeIncrease")}
+                    disabled={!canIncreaseFontSize}
+                    onClick={onIncreaseFontSize}
+                  >
+                    A+
+                  </button>
+                  <button
+                    type="button"
+                    className="font-size-reset"
+                    disabled={!canResetFontSize}
+                    onClick={onResetFontSize}
+                  >
+                    {t("settings.fontSizeReset")}
+                  </button>
+                </div>
+              </fieldset>
+            )}
+            {onCheckForUpdates !== undefined && (
+              <div className="settings-field">
+                <span className="settings-label">
+                  {t("settings.updateSection")}
                 </span>
                 <button
                   type="button"
-                  className="font-size-button"
-                  aria-label={t("settings.fontSizeIncrease")}
-                  title={t("settings.fontSizeIncrease")}
-                  disabled={!canIncreaseFontSize}
-                  onClick={onIncreaseFontSize}
+                  className="settings-save"
+                  disabled={updateCheck.phase === "checking"}
+                  onClick={runUpdateCheck}
                 >
-                  A+
+                  {t("settings.checkForUpdates")}
                 </button>
+                {updateCheck.phase !== "idle" && (
+                  <span className="settings-update-status" aria-live="polite">
+                    {updateCheck.phase === "checking" &&
+                      t("settings.updateChecking")}
+                    {updateCheck.phase === "available" &&
+                      t("settings.updateAvailable", {
+                        version: updateCheck.version ?? "",
+                      })}
+                    {updateCheck.phase === "upToDate" &&
+                      t("settings.updateUpToDate")}
+                    {updateCheck.phase === "error" && t("settings.updateError")}
+                  </span>
+                )}
+              </div>
+            )}
+            {onAddOrg !== undefined && (
+              <div className="settings-field">
+                <span className="settings-label">
+                  {t("settings.orgSection")}
+                </span>
                 <button
                   type="button"
-                  className="font-size-reset"
-                  disabled={!canResetFontSize}
-                  onClick={onResetFontSize}
+                  className="settings-save"
+                  onClick={onAddOrg}
                 >
-                  {t("settings.fontSizeReset")}
+                  {t("settings.addOrg")}
                 </button>
               </div>
-            </fieldset>
-          )}
-          {onCheckForUpdates !== undefined && (
-            <div className="settings-field">
-              <span className="settings-label">
-                {t("settings.updateSection")}
-              </span>
-              <button
-                type="button"
-                className="settings-save"
-                disabled={updateCheck.phase === "checking"}
-                onClick={runUpdateCheck}
-              >
-                {t("settings.checkForUpdates")}
-              </button>
-              {updateCheck.phase !== "idle" && (
-                <span className="settings-update-status" aria-live="polite">
-                  {updateCheck.phase === "checking" &&
-                    t("settings.updateChecking")}
-                  {updateCheck.phase === "available" &&
-                    t("settings.updateAvailable", {
-                      version: updateCheck.version ?? "",
-                    })}
-                  {updateCheck.phase === "upToDate" &&
-                    t("settings.updateUpToDate")}
-                  {updateCheck.phase === "error" && t("settings.updateError")}
-                </span>
-              )}
-            </div>
-          )}
-          {onAddOrg !== undefined && (
-            <div className="settings-field">
-              <span className="settings-label">{t("settings.orgSection")}</span>
-              <button
-                type="button"
-                className="settings-save"
-                onClick={onAddOrg}
-              >
-                {t("settings.addOrg")}
-              </button>
-            </div>
-          )}
-          {onSaveNote !== undefined && orgs !== undefined && (
-            <div className="settings-field settings-field-column">
-              <span className="settings-label">
-                {t("settings.orgNotesLabel")}
-              </span>
-              <OrgNotesEditor
-                orgs={orgs}
-                notes={orgNotes ?? {}}
-                aliases={orgAliases ?? {}}
-                onSave={onSaveNote}
-              />
-            </div>
-          )}
-          {onSetClipboardEditModal !== undefined && (
-            <label className="settings-field settings-toggle">
-              <input
-                type="checkbox"
-                checked={clipboardEditModal ?? true}
-                onChange={(e) => onSetClipboardEditModal(e.target.checked)}
-              />
-              <span className="settings-label">
-                {t("settings.clipboardEditModal")}
-              </span>
-            </label>
-          )}
-          {onSetAccountUsage !== undefined && (
-            <label className="settings-field settings-toggle">
-              <input
-                type="checkbox"
-                checked={accountUsage ?? false}
-                onChange={(e) => onSetAccountUsage(e.target.checked)}
-              />
-              <span className="settings-label">
-                {t("settings.accountUsage")}
-              </span>
-            </label>
-          )}
-          {onSaveEditor !== undefined && (
-            <div className="settings-field">
-              <label className="settings-field">
-                <span className="settings-label">{t("settings.editor")}</span>
-                <input
-                  type="text"
-                  className="settings-input"
-                  value={editorDraft}
-                  placeholder="cursor -g"
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoCorrect="off"
-                  onChange={(e) => setEditorDraft(e.target.value)}
-                />
-              </label>
-              <span className="settings-hint">{t("settings.editorHint")}</span>
-              <button
-                type="button"
-                className="settings-save"
-                disabled={editorDraft.trim() === currentEditor}
-                onClick={() => onSaveEditor(editorDraft.trim())}
-              >
-                {t("settings.save")}
-              </button>
-            </div>
-          )}
-          {onSaveFooterThresholds !== undefined &&
-            footerThresholds !== undefined && (
-              <FooterThresholdsField
-                value={footerThresholds}
-                onSave={onSaveFooterThresholds}
-              />
             )}
-          {onSetHooksRegistered !== undefined && hooksStatus !== undefined && (
-            <div className="settings-field">
+            {onSaveNote !== undefined && orgs !== undefined && (
+              <div className="settings-field settings-field-column">
+                <span className="settings-label">
+                  {t("settings.orgNotesLabel")}
+                </span>
+                <OrgNotesEditor
+                  orgs={orgs}
+                  notes={orgNotes ?? {}}
+                  aliases={orgAliases ?? {}}
+                  onSave={onSaveNote}
+                />
+              </div>
+            )}
+            {onSetClipboardEditModal !== undefined && (
               <label className="settings-field settings-toggle">
                 <input
                   type="checkbox"
-                  checked={
-                    hooksStatus.hooksRegistered &&
-                    hooksStatus.statusLineRegistered
-                  }
-                  onChange={(e) => onSetHooksRegistered(e.target.checked)}
+                  checked={clipboardEditModal ?? true}
+                  onChange={(e) => onSetClipboardEditModal(e.target.checked)}
                 />
                 <span className="settings-label">
-                  {t("settings.hooksIntegration")}
+                  {t("settings.clipboardEditModal")}
                 </span>
               </label>
-              <span className="settings-hint">
-                {hooksStatus.statusLineConflict
-                  ? t("settings.hooksConflictHint")
-                  : t("settings.hooksIntegrationHint")}
-              </span>
-            </div>
-          )}
-        </div>
-        <div
-          className="settings-body"
-          role="tabpanel"
-          id="settings-panel-developer"
-          aria-labelledby="settings-tab-developer"
-          hidden={tab !== "developer"}
-        >
-          {onSetRenderer !== undefined && (
-            <label className="settings-field">
-              <span className="settings-label">{t("settings.renderer")}</span>
-              <select
-                className="settings-select"
-                value={renderer ?? DEFAULT_XTERM_RENDERER}
-                onChange={(e) =>
-                  onSetRenderer(e.target.value === "dom" ? "dom" : "webgl")
-                }
+            )}
+            {onSetAccountUsage !== undefined && (
+              <label className="settings-field settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={accountUsage ?? false}
+                  onChange={(e) => onSetAccountUsage(e.target.checked)}
+                />
+                <span className="settings-label">
+                  {t("settings.accountUsage")}
+                </span>
+              </label>
+            )}
+            {onSaveEditor !== undefined && (
+              <div className="settings-field">
+                <label className="settings-field">
+                  <span className="settings-label">{t("settings.editor")}</span>
+                  <input
+                    type="text"
+                    className="settings-input"
+                    value={editorDraft}
+                    placeholder="cursor -g"
+                    spellCheck={false}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    onChange={(e) => setEditorDraft(e.target.value)}
+                  />
+                </label>
+                <span className="settings-hint">
+                  {t("settings.editorHint")}
+                </span>
+                <button
+                  type="button"
+                  className="settings-save"
+                  disabled={editorDraft.trim() === currentEditor}
+                  onClick={() => onSaveEditor(editorDraft.trim())}
+                >
+                  {t("settings.save")}
+                </button>
+              </div>
+            )}
+            {onSaveFooterThresholds !== undefined &&
+              footerThresholds !== undefined && (
+                <FooterThresholdsField
+                  value={footerThresholds}
+                  onSave={onSaveFooterThresholds}
+                />
+              )}
+            {onSetHooksRegistered !== undefined &&
+              hooksStatus !== undefined && (
+                <div className="settings-field">
+                  <label className="settings-field settings-toggle">
+                    <input
+                      type="checkbox"
+                      checked={
+                        hooksStatus.hooksRegistered &&
+                        hooksStatus.statusLineRegistered
+                      }
+                      onChange={(e) => onSetHooksRegistered(e.target.checked)}
+                    />
+                    <span className="settings-label">
+                      {t("settings.hooksIntegration")}
+                    </span>
+                  </label>
+                  <span className="settings-hint">
+                    {hooksStatus.statusLineConflict
+                      ? t("settings.hooksConflictHint")
+                      : t("settings.hooksIntegrationHint")}
+                  </span>
+                </div>
+              )}
+          </div>
+          <div
+            className="settings-body"
+            role="tabpanel"
+            id="settings-panel-developer"
+            aria-labelledby="settings-tab-developer"
+            hidden={tab !== "developer"}
+          >
+            {onSetRenderer !== undefined && (
+              <label className="settings-field">
+                <span className="settings-label">{t("settings.renderer")}</span>
+                <select
+                  className="settings-select"
+                  value={renderer ?? DEFAULT_XTERM_RENDERER}
+                  onChange={(e) =>
+                    onSetRenderer(e.target.value === "dom" ? "dom" : "webgl")
+                  }
+                >
+                  <option value="webgl">{t("settings.rendererWebgl")}</option>
+                  <option value="dom">{t("settings.rendererDom")}</option>
+                </select>
+              </label>
+            )}
+            {onOpenDevtools !== undefined && (
+              <button
+                type="button"
+                className="settings-save"
+                onClick={onOpenDevtools}
               >
-                <option value="webgl">{t("settings.rendererWebgl")}</option>
-                <option value="dom">{t("settings.rendererDom")}</option>
-              </select>
-            </label>
-          )}
-          {onOpenDevtools !== undefined && (
-            <button
-              type="button"
-              className="settings-save"
-              onClick={onOpenDevtools}
-            >
-              {t("settings.openDevtools")}
-            </button>
-          )}
-          {onOpenDebugPanel !== undefined && (
-            <button
-              type="button"
-              className="settings-save"
-              onClick={onOpenDebugPanel}
-            >
-              {t("settings.openDebugPanel")}
-            </button>
-          )}
+                {t("settings.openDevtools")}
+              </button>
+            )}
+            {onOpenDebugPanel !== undefined && (
+              <button
+                type="button"
+                className="settings-save"
+                onClick={onOpenDebugPanel}
+              >
+                {t("settings.openDebugPanel")}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
