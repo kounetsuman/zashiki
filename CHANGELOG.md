@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-25
+
+### Added
+
+- Toggle the Explorer view with Cmd+B (#221)
+- Group worktrees under their repository in the Explorer, with per-extension file icons (#234)
+- Line numbering and trailing-whitespace trimming in the clipboard edit modal (#227)
+
+### Changed
+
+- The usage gauge now tracks window time and pins each cell to its widest reading so the width no longer jitters (#225)
+- Refined the Help and Settings modals for scannability, with a guard against discarding unsaved edits (#228)
+- UI chrome is no longer drag-selectable; the terminal and content stay selectable (#231)
+- Source Control keeps its state across view switches (#233)
+
+### Fixed
+
+- Self-update now refreshes the Homebrew tap first so a new release installs (#223)
+- Help search commits on IME confirmation and shows a result count (#235)
+
 ## [0.12.0] - 2026-08-25
 
 ### Added
@@ -205,7 +225,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/kounetsuman/zashiki/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kounetsuman/zashiki/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kounetsuman/zashiki/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kounetsuman/zashiki/compare/v0.9.0...v0.10.0
