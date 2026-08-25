@@ -6,8 +6,9 @@
 //! reopens the bundle. It must terminate the app itself rather than let brew's `uninstall quit:` do
 //! it: a SIGTERM bypasses the guarded-quit dialog and makes the cask quit a no-op, and detaching
 //! keeps the helper out of the sidecar process group that the quit tears down. Steps and brew output
-//! append to `~/Library/Logs/zashiki/update.log`; `brew fetch` runs in-process first so a download
-//! failure is reportable while the app is alive.
+//! append to `~/Library/Logs/zashiki/update.log`. Before detaching, `brew update` (best-effort)
+//! refreshes the tap and `brew fetch` pre-downloads the target version, both while the app is alive so
+//! a download failure is reportable.
 //!
 //! The version-comparison / gating decisions are pure and unit-tested below; the process
 //! orchestration around them is thin.
@@ -151,10 +152,24 @@ async fn is_cask_installed(brew: &Path, cask: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Refresh the tap so the subsequent fetch/upgrade see newly published casks. The detached upgrade
+/// runs with `HOMEBREW_NO_AUTO_UPDATE=1`, so without this brew compares against the stale local
+/// definition and reports "already latest". Best-effort by design: `brew update` refreshes every tap,
+/// so an unrelated tap error or a transient network blip must not block an upgrade that can still
+/// proceed from the cached definition.
+async fn run_brew_update(brew: &Path) -> Result<(), String> {
+    run_brew(brew, &["update"]).await
+}
+
 /// Pre-download and verify the cask; the detached upgrade reuses this cache.
 async fn run_brew_fetch(brew: &Path) -> Result<(), String> {
+    run_brew(brew, &["fetch", "--cask", CASK_NAME]).await
+}
+
+/// Run `brew` with the given args in-process, mapping a non-zero exit to the tail of its stderr.
+async fn run_brew(brew: &Path, args: &[&str]) -> Result<(), String> {
     let out = tokio::process::Command::new(brew)
-        .args(["fetch", "--cask", CASK_NAME])
+        .args(args)
         .stdin(Stdio::null())
         .output()
         .await
@@ -214,6 +229,9 @@ pub async fn perform_update(hub: Arc<ControlHub>, app_version_present: bool) {
         }
         UpdateMode::Brew { brew, bundle } => {
             hub.broadcast(status(UpdateStatusState::Running, None));
+            if let Err(e) = run_brew_update(&brew).await {
+                tracing::warn!("self-update: brew update failed; upgrading against the cached tap: {e}");
+            }
             match run_brew_fetch(&brew).await {
                 Ok(()) => match spawn_update(&brew, &bundle, shell_pid, server_port()) {
                     Ok(()) => hub.broadcast(status(UpdateStatusState::Relaunching, None)),
