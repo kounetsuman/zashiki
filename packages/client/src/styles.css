@@ -1797,15 +1797,11 @@ body {
 
 /* search ビュー（VSCode SEARCH 相当。issue #59） */
 
-/* SESSION LIST 50% 固定（#152）の下で残り 50% を埋める。旧 45% だと下端に
- * 5% の空白が残るため 50% に合わせる。 */
 .search-view {
   flex: 1;
   min-height: 0;
-  max-height: 50%;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid #333;
 }
 
 .search-input-row {
