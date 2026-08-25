@@ -202,7 +202,7 @@ export function SettingsModal({
           </button>
         </header>
         <div className="settings-main">
-          <nav
+          <div
             className="settings-nav"
             role="tablist"
             aria-orientation="vertical"
@@ -229,7 +229,7 @@ export function SettingsModal({
             >
               {t("settings.tabDeveloper")}
             </button>
-          </nav>
+          </div>
           <div
             className="settings-body"
             role="tabpanel"

@@ -4,6 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { SearchApi } from "../api/search.js";
+import { Loading } from "./Loading.js";
 import { ViewEmpty } from "./ViewEmpty.js";
 import { ViewHeader } from "./ViewHeader.js";
 import { viewClass } from "./views.js";
@@ -52,19 +53,24 @@ export function SearchView({
   const [options, setOptions] = useState<Options>(INITIAL_OPTIONS);
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // Generation counter to avoid a late, stale response reverting the display.
   const generation = useRef(0);
 
   const runSearch = useCallback(async (): Promise<void> => {
     const trimmed = query.trim();
+    // Bump first so an empty submit also invalidates any in-flight search;
+    // its late response must not repopulate a view the user just cleared.
+    generation.current += 1;
+    const gen = generation.current;
     if (trimmed === "") {
       setResult(null);
       setError(null);
+      setSearching(false);
       return;
     }
-    generation.current += 1;
-    const gen = generation.current;
+    setSearching(true);
     try {
       const res = await api.search({ query, ...options });
       if (gen !== generation.current) return;
@@ -75,6 +81,10 @@ export function SearchView({
         setError(String(err));
         setResult(null);
       }
+    } finally {
+      // A superseded search must not clear the spinner out from under the
+      // newer one still in flight.
+      if (gen === generation.current) setSearching(false);
     }
   }, [api, query, options]);
 
@@ -179,16 +189,22 @@ export function SearchView({
           {optionButton("regex", ".*", t("search.regex"))}
         </span>
       </div>
-      {error !== null && <div className="search-error">{error}</div>}
-      {result !== null &&
-        (result.files.length === 0 ? (
-          <ViewEmpty>{t("search.noResults")}</ViewEmpty>
-        ) : (
-          <div className="search-summary">
-            {`${t("search.summary", { matches: totalMatches(result), files: result.files.length })}${result.truncated ? t("search.andMore") : ""}`}
-          </div>
-        ))}
-      <div className="search-tree">{result?.files.map(fileBlock)}</div>
+      {searching ? (
+        <Loading label={t("search.searching")} />
+      ) : (
+        <>
+          {error !== null && <div className="search-error">{error}</div>}
+          {result !== null &&
+            (result.files.length === 0 ? (
+              <ViewEmpty>{t("search.noResults")}</ViewEmpty>
+            ) : (
+              <div className="search-summary">
+                {`${t("search.summary", { matches: totalMatches(result), files: result.files.length })}${result.truncated ? t("search.andMore") : ""}`}
+              </div>
+            ))}
+          <div className="search-tree">{result?.files.map(fileBlock)}</div>
+        </>
+      )}
     </section>
   );
 }
