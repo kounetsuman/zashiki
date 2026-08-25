@@ -161,6 +161,8 @@ describe("clientMessageSchema", () => {
     ],
     [{ t: "update.check" }],
     [{ t: "update.perform" }],
+    [{ t: "account.refresh", restartSessions: true }],
+    [{ t: "account.refresh", restartSessions: false }],
   ])("accepts: %j", (msg) => {
     expect(clientMessageSchema.parse(msg)).toEqual(msg);
   });
@@ -177,6 +179,8 @@ describe("clientMessageSchema", () => {
     [{ t: "config.setAccountUsage", enabled: "yes" }], // enabled not a boolean
     [{ t: "config.setEditor" }], // editor missing
     [{ t: "config.setEditor", editor: 1 }], // editor not a string
+    [{ t: "account.refresh" }], // restartSessions missing
+    [{ t: "account.refresh", restartSessions: "yes" }], // restartSessions not a boolean
     [{ t: "nope" }],
     ["hello"],
     [null],
@@ -284,8 +288,18 @@ describe("serverMessageSchema", () => {
     [{ t: "update.status", state: "opened", detail: null }],
     [{ t: "update.status", state: "failed", detail: "boom" }],
     [{ t: "notes.sync", notes: { acme: "# Acme\n- customer\n" } }],
+    [{ t: "account.status", loggedIn: true, email: "user@example.com" }],
+    [{ t: "account.status", loggedIn: false, email: null }],
   ])("accepts: %j", (msg) => {
     expect(serverMessageSchema.parse(msg)).toEqual(msg);
+  });
+
+  it("defaults omitted account.status loggedIn/email off (compatible with old servers)", () => {
+    expect(serverMessageSchema.parse({ t: "account.status" })).toEqual({
+      t: "account.status",
+      loggedIn: false,
+      email: null,
+    });
   });
 
   it("defaults omitted config.sync updateCheck/language/accountUsage/editor/footerThresholds (compatible with old servers)", () => {

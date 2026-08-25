@@ -225,6 +225,12 @@ pub enum ClientMessage {
     /// releases page. Progress is reported to all connections via `update.status`.
     #[serde(rename = "update.perform")]
     UpdatePerform,
+    /// Re-read the signed-in Claude account and reply with `account.status`. When `restart_sessions`
+    /// is true the server first restarts every Cockpit Terminal with `--resume` so their `claude`
+    /// re-reads the switched account (the client sets it only after confirming, and only when running
+    /// Cockpit Terminals exist).
+    #[serde(rename = "account.refresh", rename_all = "camelCase")]
+    AccountRefresh { restart_sessions: bool },
 }
 
 /// Result of an on-demand update check, sent only to the requester so SETTINGS can show feedback.
@@ -413,6 +419,14 @@ pub enum ServerMessage {
     UpdateStatus {
         state: UpdateStatusState,
         detail: Option<String>,
+    },
+    /// The signed-in Claude account (from `claude auth status`), sent right after connecting and again
+    /// in reply to each `account.refresh`. `email` is null when not signed in or the status is
+    /// unreadable. Auth is global per OS user, so this reflects every session at once.
+    #[serde(rename = "account.status", rename_all = "camelCase")]
+    AccountStatus {
+        logged_in: bool,
+        email: Option<String>,
     },
 }
 
@@ -880,6 +894,34 @@ mod tests {
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg, ClientMessage::UpdatePerform);
         assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn account_refresh_roundtrips_and_matches_wire() {
+        let json = r#"{"t":"account.refresh","restartSessions":true}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg, ClientMessage::AccountRefresh { restart_sessions: true });
+        assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn account_status_matches_wire() {
+        let signed_in = ServerMessage::AccountStatus {
+            logged_in: true,
+            email: Some("user@example.com".into()),
+        };
+        assert_eq!(
+            to_json(&signed_in),
+            r#"{"t":"account.status","loggedIn":true,"email":"user@example.com"}"#
+        );
+        let signed_out = ServerMessage::AccountStatus {
+            logged_in: false,
+            email: None,
+        };
+        assert_eq!(
+            to_json(&signed_out),
+            r#"{"t":"account.status","loggedIn":false,"email":null}"#
+        );
     }
 
     #[test]

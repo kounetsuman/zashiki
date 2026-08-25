@@ -227,8 +227,8 @@ mod tests {
         async fn connect(port: u16) -> Ws {
             let url = format!("ws://127.0.0.1:{port}/ws/control");
             let mut ws = tokio_tungstenite::connect_async(&url).await.unwrap().0;
-            // Skip the config.sync / notifications.sync / state.sync / hooks.status / notes.sync sent right after connecting.
-            for _ in 0..5 {
+            // Skip the config.sync / notifications.sync / state.sync / hooks.status / notes.sync / account.status sent right after connecting.
+            for _ in 0..6 {
                 let _ = next_json(&mut ws).await;
             }
             ws

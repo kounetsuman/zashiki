@@ -161,6 +161,18 @@ pub(crate) async fn handle_client_message(
             tokio::spawn(async move { crate::self_update::perform_update(hub, present).await });
             true
         }
+        // Re-read the signed-in account and broadcast account.status. When asked, first restart every
+        // running Cockpit Terminal so a switched account reaches the already-running claude processes
+        // too (the client only sets restart_sessions after confirming, and only when sessions exist).
+        ClientMessage::AccountRefresh { restart_sessions } => {
+            if restart_sessions {
+                crate::control_account::restart_all_for_account(services).await;
+            }
+            let claude = crate::session_launch::resolve_claude_program();
+            let status = crate::account_status::read_account_status(&claude).await;
+            services.hub.publish_account_status(status);
+            true
+        }
         ClientMessage::CockpitTerminalNew { org, resume_sid } => {
             handle_session_new(socket, services, &org, resume_sid.as_deref()).await
         }

@@ -1,0 +1,37 @@
+.account-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #999;
+}
+
+.account-indicator-email {
+  font-size: 12px;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-indicator-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+}
+
+.account-indicator-refresh:hover {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.account-indicator-refresh .material-symbols-outlined {
+  font-size: 16px;
+}

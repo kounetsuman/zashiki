@@ -252,6 +252,13 @@
     "openDevtools": "Open DevTools",
     "openDebugPanel": "Open debug panel"
   },
+  "account": {
+    "notSignedIn": "Not signed in",
+    "refreshTooltip": "Switching accounts? Refresh to apply it to all sessions.",
+    "confirmTitle": "Apply account to all sessions?",
+    "confirmBody": "{{count}} running session(s) will be restarted to apply the switched account. Their conversations are kept.",
+    "confirmApply": "Restart & apply"
+  },
   "accountUsage": {
     "title": "Show Claude Code account usage",
     "body": "Relay Claude Code's 5-hour and weekly account usage to the footer. zashiki wires it up per launch without editing your ~/.claude settings.",

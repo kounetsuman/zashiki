@@ -151,12 +151,12 @@ mod ws_control_tests {
         }
     }
 
-    /// Skips the 5 stages sent on connect (config/notifications/state/hooks.status/notes).
+    /// Skips the 6 stages sent on connect (config/notifications/state/hooks.status/notes/account.status).
     async fn drain_handshake<S>(ws: &mut S)
     where
         S: StreamExt<Item = Result<TMsg, tokio_tungstenite::tungstenite::Error>> + Unpin,
     {
-        for _ in 0..5 {
+        for _ in 0..6 {
             next_text(ws).await;
         }
     }
@@ -245,6 +245,7 @@ mod ws_control_tests {
         assert!(state.contains(r#""t":"state.sync""#) && state.contains("@1"));
         assert!(next_text(&mut ws).await.contains(r#""t":"hooks.status""#));
         assert!(next_text(&mut ws).await.contains(r#""t":"notes.sync""#));
+        assert!(next_text(&mut ws).await.contains(r#""t":"account.status""#));
 
         // An invalid message -> error response. The error also accumulates into NOTIFICATION.
         ws.send(TMsg::Text("not json".to_string())).await.unwrap();

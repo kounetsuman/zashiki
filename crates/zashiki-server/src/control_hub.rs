@@ -3,6 +3,7 @@ use std::sync::{Arc, RwLock};
 
 use tokio::sync::broadcast;
 
+use crate::account_status::AccountStatus;
 use crate::claude_settings::RegistrationStatus;
 use crate::control::ConfigView;
 use crate::protocol::{Notification, ServerMessage, CockpitTerminalInfo, UsageLimits};
@@ -17,6 +18,9 @@ struct HubState {
     /// Presence of zashiki's integration in ~/.claude/settings.json, delivered on connect and after
     /// register/unregister. Defaults to "not registered" until the startup probe (runtime) sets it.
     hooks_status: RegistrationStatus,
+    /// The signed-in Claude account, delivered on connect and re-read on each account.refresh. Defaults
+    /// to logged-out until the startup probe (runtime) sets it.
+    account_status: AccountStatus,
     /// The createdAt of the last enqueued notification. Kept monotonically increasing so
     /// occurrence order is preserved even for bursts within the same millisecond.
     last_notification_at: u64,
@@ -116,6 +120,7 @@ impl ControlHub {
                 last_notification_at: 0,
                 rate_limits: HashMap::new(),
                 hooks_status: RegistrationStatus::default(),
+                account_status: AccountStatus::default(),
             }),
             tx,
         })
@@ -125,8 +130,8 @@ impl ControlHub {
         self.tx.subscribe()
     }
 
-    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status -> notes.sync).
-    pub(crate) fn connect_messages(&self) -> [ServerMessage; 5] {
+    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status -> notes.sync -> account.status).
+    pub(crate) fn connect_messages(&self) -> [ServerMessage; 6] {
         let state = self.inner.read().unwrap();
         [
             ServerMessage::ConfigSync {
@@ -145,6 +150,7 @@ impl ControlHub {
             ServerMessage::NotesSync {
                 notes: state.notes.clone(),
             },
+            state.account_status.to_message(),
         ]
     }
 
@@ -250,6 +256,14 @@ impl ControlHub {
     pub fn publish_hooks_status(&self, status: RegistrationStatus) {
         self.inner.write().unwrap().hooks_status = status;
         let _ = self.tx.send(hooks_status_message(status));
+    }
+
+    /// Stores the signed-in account and broadcasts account.status to all connections (startup probe
+    /// and after each account.refresh).
+    pub fn publish_account_status(&self, status: AccountStatus) {
+        let msg = status.to_message();
+        self.inner.write().unwrap().account_status = status;
+        let _ = self.tx.send(msg);
     }
 
     /// Stores the notification list and broadcasts notifications.sync to all connections.

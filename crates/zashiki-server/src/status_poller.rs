@@ -9,8 +9,8 @@ use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
     apply_startup_grace, count_running_subagents, detect_state, fallback_state,
-    hook_event_fresh_within_sec, is_limit_reached, is_menu_open, resolve_state, startup_grace_polls,
-    subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
+    hook_event_fresh_within_sec, is_limit_reached, is_menu_open, resolve_state, skill_agents_running,
+    startup_grace_polls, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
 use crate::jsonl::{first_user_title, last_user_or_assistant_event};
@@ -125,6 +125,7 @@ impl StatusPoller {
             .is_some_and(|k| !self.title_cache.contains_key(k));
 
         let in_mode = is_pane_in_mode(win, &picked.pane_id);
+        let mut skill_agents: Option<usize> = None;
         let (mut state, limited, menu_open) = if in_mode {
             (
                 self.prev_states
@@ -150,6 +151,7 @@ impl StatusPoller {
                     bg_agent_marker: config.bg_agent_marker.as_deref(),
                 },
             );
+            skill_agents = skill_agents_running(&capture);
             let limited = is_limit_reached(&capture, resolve_limit_marker(config));
             let markers = resolve_menu_markers(config);
             let marker_refs: Vec<&str> = markers.iter().map(String::as_str).collect();
@@ -228,7 +230,9 @@ impl StatusPoller {
 
         let mut running_subagents = 0;
         if state == CockpitTerminalState::RunningBgAgent {
-            if let Some(sid) = &sid {
+            if let Some(n) = skill_agents {
+                running_subagents = n;
+            } else if let Some(sid) = &sid {
                 let ages = ports.subagent_ages(&cwd, sid).await;
                 running_subagents =
                     count_running_subagents(&ages, subagent_fresh_within_sec(config.poll_sec));
@@ -612,6 +616,30 @@ mod tests {
         assert_eq!(snap.sessions[0].state, "running_bg_agent");
         // Within the 30s freshness threshold there are 2 (1.0/5.0); 100.0 is past freshness.
         assert_eq!(snap.sessions[0].running_subagents, Some(2));
+    }
+
+    #[tokio::test]
+    async fn skill_agent_tray_counts_running_subagents_from_capture() {
+        let cap = "▶▶ auto mode on (shift+tab to cycle) · ← for agents\n\n○ deep-research  Deep research harness — synthesize a cited report.  22/28 agents done · 2m 31s · ↓ 885.0k tokens";
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap.to_string())]),
+            // A stale FS scan must be ignored in favor of the tray line's own count.
+            subagent_ages: HashMap::from([(
+                format!("/repos/charlie/app\u{0}{SID}"),
+                vec![1.0],
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "running_bg_agent");
+        assert_eq!(snap.sessions[0].running_subagents, Some(6));
     }
 
     #[tokio::test]

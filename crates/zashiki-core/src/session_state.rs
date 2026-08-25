@@ -232,6 +232,71 @@ pub fn has_bg_agent(capture: &str, marker: &str) -> bool {
     false
 }
 
+/// The still-running agent count parsed from the skill/workflow agent-tray progress line
+/// (`… N/M agents done · …`) in the bottom window: `total - done` when `total > done`, else `None`
+/// (a finished tray must not read as busy).
+pub fn skill_agents_running(capture: &str) -> Option<usize> {
+    bottom_non_empty_lines(capture)
+        .iter()
+        .find_map(|line| parse_agents_done(line))
+}
+
+/// Scans a line for `<done>/<total>\s+agents?\s+done`, returning `total - done` when `total > done`.
+fn parse_agents_done(line: &str) -> Option<usize> {
+    let chars: Vec<char> = line.chars().collect();
+    (0..chars.len()).find_map(|i| match_agents_done_at(&chars, i))
+}
+
+fn match_agents_done_at(chars: &[char], start: usize) -> Option<usize> {
+    if start > 0 && chars[start - 1].is_ascii_digit() {
+        return None;
+    }
+    let (done, i) = take_number(chars, start)?;
+    if chars.get(i) != Some(&'/') {
+        return None;
+    }
+    let (total, i) = take_number(chars, i + 1)?;
+    let i = skip_ws_required(chars, i)?;
+    let i = take_ascii(chars, i, "agents").or_else(|| take_ascii(chars, i, "agent"))?;
+    let i = skip_ws_required(chars, i)?;
+    let i = take_ascii(chars, i, "done")?;
+    if chars.get(i).is_some_and(|c| c.is_ascii_alphanumeric()) {
+        return None;
+    }
+    (total > done).then(|| total - done)
+}
+
+/// Parses a run of ASCII digits from `start`, returning (value, index-after); `None` if no digit.
+fn take_number(chars: &[char], start: usize) -> Option<(usize, usize)> {
+    let mut i = start;
+    let mut val: usize = 0;
+    while let Some(d) = chars.get(i).and_then(|c| c.to_digit(10)) {
+        val = val.saturating_mul(10).saturating_add(d as usize);
+        i += 1;
+    }
+    (i > start).then_some((val, i))
+}
+
+fn skip_ws_required(chars: &[char], start: usize) -> Option<usize> {
+    let mut i = start;
+    while i < chars.len() && is_js_whitespace(chars[i]) {
+        i += 1;
+    }
+    (i > start).then_some(i)
+}
+
+/// Matches the literal ASCII `word` at `start` (case-sensitive), returning the index after it.
+fn take_ascii(chars: &[char], start: usize, word: &str) -> Option<usize> {
+    let mut i = start;
+    for wc in word.chars() {
+        if chars.get(i) != Some(&wc) {
+            return None;
+        }
+        i += 1;
+    }
+    Some(i)
+}
+
 /// Whether the line contains a spot where `❯` is followed (optionally with whitespace) by `[0-9]+.` (`/❯\s*[0-9]+\./`).
 fn has_cursor_number(line: &str) -> bool {
     let chars: Vec<char> = line.chars().collect();
@@ -317,7 +382,7 @@ fn resolve<'a>(marker: Option<&'a str>, default: &'a str) -> &'a str {
 }
 
 /// Capture-primary detection that treats the conversation pane's actual screen as authoritative
-/// (priority: wizard > running > bg > no_claude > idle). `Idle` means "no hint on screen", and the
+/// (priority: wizard > running > bg (panel or skill agent-tray) > no_claude > idle). `Idle` means "no hint on screen", and the
 /// caller chains it into the jsonl fallback via `fallback_state`.
 pub fn detect_state(capture: &str, opts: &DetectStateOptions) -> CockpitTerminalState {
     if is_wizard(capture) {
@@ -329,7 +394,8 @@ pub fn detect_state(capture: &str, opts: &DetectStateOptions) -> CockpitTerminal
     if has_bg_agent(
         capture,
         resolve(opts.bg_agent_marker, DEFAULT_BG_AGENT_MARKER),
-    ) {
+    ) || skill_agents_running(capture).is_some()
+    {
         return CockpitTerminalState::RunningBgAgent;
     }
     if !opts.has_claude {
@@ -500,6 +566,9 @@ mod tests {
     const CAP_BG_HISTORY_QUOTE: &str =
         "過去メッセージ ◯ を含む\n✻ Brewed for 1m\n───\n❯\n───\n  token\n  ⏵⏵ bypass ... ← for agents";
     const CAP_BG_SHORT: &str = "  ⏺ main\n  ◯ x";
+    const CAP_SKILL_TRAY: &str = "▶▶ auto mode on (shift+tab to cycle) · ← for agents\n\n○ deep-research  Deep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.  22/28 agents done · 2m 31s · ↓ 885.0k tokens";
+    const CAP_SKILL_TRAY_ALL_DONE: &str = "▶▶ auto mode on (shift+tab to cycle) · ← for agents\n\n○ deep-research  Deep research harness — synthesize a cited report.  28/28 agents done · 3m 4s · ↓ 1.1M tokens";
+    const CAP_SKILL_TRAY_QUOTED_IN_HISTORY: &str = "⏺ 過去ログに \"22/28 agents done\" と出ていた話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
     const CAP_WIZARD_TWO_CHOICE: &str = "❯ 1. Yes\n  2. No";
     const CAP_WIZARD_SINGLE: &str = "❯ 1. Yes";
     const CAP_WIZARD_WITH_MARKER: &str =
@@ -627,6 +696,44 @@ mod tests {
             detect_state(CAP_BG_SHORT, &claude()),
             CockpitTerminalState::RunningBgAgent
         );
+    }
+
+    #[test]
+    fn skill_agent_tray_is_running_bg_agent() {
+        assert_eq!(
+            detect_state(CAP_SKILL_TRAY, &claude()),
+            CockpitTerminalState::RunningBgAgent
+        );
+    }
+
+    #[test]
+    fn skill_agent_tray_all_done_is_idle() {
+        assert_eq!(
+            detect_state(CAP_SKILL_TRAY_ALL_DONE, &claude()),
+            CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
+    fn skill_agent_tray_quoted_in_history_is_idle() {
+        assert_eq!(
+            detect_state(CAP_SKILL_TRAY_QUOTED_IN_HISTORY, &claude()),
+            CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
+    fn skill_agents_running_parses_still_running_count() {
+        assert_eq!(skill_agents_running(CAP_SKILL_TRAY), Some(6));
+        assert_eq!(skill_agents_running(CAP_SKILL_TRAY_ALL_DONE), None);
+        assert_eq!(skill_agents_running("1/1 agent done"), None);
+        assert_eq!(skill_agents_running("0/3 agents done"), Some(3));
+        assert_eq!(skill_agents_running("no agents here"), None);
+        assert_eq!(skill_agents_running("3/2 agents done"), None);
+        assert_eq!(skill_agents_running("22/28 agentsdone"), None);
+        assert_eq!(skill_agents_running("22/28 agent done"), Some(6));
+        assert_eq!(skill_agents_running("22/28 agents done · 2m 31s"), Some(6));
+        assert_eq!(skill_agents_running("22/28 agents doneness reached"), None);
     }
 
     #[test]
@@ -1300,3 +1407,4 @@ mod tests {
         }
     }
 }
+
