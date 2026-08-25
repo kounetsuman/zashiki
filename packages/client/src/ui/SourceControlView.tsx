@@ -12,15 +12,15 @@ import {
 import { useCommitDraft } from "./useCommitDraft.js";
 import { useConfirmDelete } from "./useConfirmDelete.js";
 import { useGitCopyFeedback } from "./useGitCopyFeedback.js";
-import { useGitStatus } from "./useGitStatus.js";
+import type { GitStatus } from "./useGitStatus.js";
 import { ViewEmpty } from "./ViewEmpty.js";
 import { ViewHeader } from "./ViewHeader.js";
 import { viewClass } from "./views.js";
 
 export interface SourceControlViewProps {
   api: GitApi;
-  /** Subscribe to git.dirty on the control WS (returns an unsubscribe). Triggers refetch. */
-  onGitDirty(fn: () => void): () => void;
+  /** Repo status plus refetch/setError, owned by App; this view is presentational over it. */
+  gitStatus: GitStatus;
   /** org -> display color (explicit color from repos.conf). Unspecified orgs get an auto color. */
   orgColors?: Record<string, string>;
   /** org -> display alias (from repos.conf). Unspecified orgs are shown by their identity. */
@@ -40,7 +40,7 @@ export interface SourceControlViewProps {
 
 export function SourceControlView({
   api,
-  onGitDirty,
+  gitStatus,
   orgColors = {},
   orgAliases = {},
   copyText,
@@ -48,10 +48,7 @@ export function SourceControlView({
   inactive,
 }: SourceControlViewProps) {
   const { t } = useTranslation();
-  const { repos, skipped, error, loading, refetch, setError } = useGitStatus(
-    api,
-    onGitDirty,
-  );
+  const { repos, skipped, error, loading, refetch, setError } = gitStatus;
   const { copiedKey, copy } = useGitCopyFeedback(setError, copyText);
   const { messages, setMessage, commit, onCommitKeyDown } = useCommitDraft(
     api,

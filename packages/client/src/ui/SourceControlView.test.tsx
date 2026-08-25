@@ -11,10 +11,42 @@ import type {
   GitStatusResult,
   RepoStatus,
 } from "@zashiki/shared";
+import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { GitApi } from "../api/git.js";
 import { SourceControlView } from "./SourceControlView.js";
+import { useGitStatus } from "./useGitStatus.js";
+
+interface StatusHostProps {
+  api: GitApi;
+  onGitDirty(fn: () => void): () => void;
+  copyText?: (text: string) => Promise<void>;
+  onOpenDiff?: (
+    repoPath: string,
+    file: string,
+    staged: boolean,
+    untracked: boolean,
+  ) => void;
+}
+
+/** Stands in for App: owns useGitStatus and feeds it down, mirroring the app's wiring. */
+function StatusHost({
+  api,
+  onGitDirty,
+  copyText,
+  onOpenDiff,
+}: StatusHostProps) {
+  const gitStatus = useGitStatus(api, onGitDirty);
+  return (
+    <SourceControlView
+      api={api}
+      gitStatus={gitStatus}
+      copyText={copyText}
+      onOpenDiff={onOpenDiff}
+    />
+  );
+}
 
 function repo(partial: Partial<RepoStatus>): RepoStatus {
   return {
@@ -110,7 +142,7 @@ function renderView(repos: RepoStatus[], withDiff = false): Harness {
   const copied: string[] = [];
   const diffed: string[][] = [];
   render(
-    <SourceControlView
+    <StatusHost
       api={api}
       onGitDirty={(fn) => {
         dirtyListeners.add(fn);
@@ -499,7 +531,7 @@ describe("SourceControlView", () => {
         }),
     };
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -534,7 +566,7 @@ describe("SourceControlView", () => {
     };
     const dirty = new Set<() => void>();
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={(fn) => {
           dirty.add(fn);
@@ -587,7 +619,7 @@ describe("SourceControlView", () => {
         }),
     };
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -628,7 +660,7 @@ describe("SourceControlView", () => {
         }),
     };
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -663,7 +695,7 @@ describe("SourceControlView", () => {
         }),
     };
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -702,7 +734,7 @@ describe("SourceControlView", () => {
         }),
     };
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -737,7 +769,7 @@ describe("SourceControlView", () => {
         }),
     };
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={() => () => {}}
         copyText={() => Promise.resolve()}
@@ -774,7 +806,7 @@ describe("SourceControlView", () => {
     };
     const dirty = new Set<() => void>();
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={(fn) => {
           dirty.add(fn);
@@ -820,7 +852,7 @@ describe("SourceControlView", () => {
     };
     const dirty = new Set<() => void>();
     render(
-      <SourceControlView
+      <StatusHost
         api={api}
         onGitDirty={(fn) => {
           dirty.add(fn);
@@ -859,5 +891,38 @@ describe("SourceControlView", () => {
     // Shows as a repo row, not an org row (with "(1)").
     expect(row?.textContent).not.toContain("(1)");
     expect(row?.querySelector(".git-branch")).not.toBeNull();
+  });
+
+  it("reopening after the view was closed shows repos immediately with no loading UI or refetch (state lives above the view)", async () => {
+    const api = createFakeGitApi(twoRepoFixture());
+    function Host() {
+      const gitStatus = useGitStatus(api, () => () => {});
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <button type="button" onClick={() => setOpen((v) => !v)}>
+            toggle
+          </button>
+          {open && (
+            <SourceControlView
+              api={api}
+              gitStatus={gitStatus}
+              copyText={() => Promise.resolve()}
+            />
+          )}
+        </>
+      );
+    }
+    render(<Host />);
+    await screen.findByRole("button", { name: /org1 \(2\)/ });
+    expect(api.statusCalls).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    expect(screen.queryByRole("button", { name: /org1 \(2\)/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: /org1 \(2\)/ })).toBeTruthy();
+    expect(api.statusCalls).toBe(1);
   });
 });
