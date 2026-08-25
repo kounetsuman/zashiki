@@ -2095,10 +2095,77 @@ textarea {
   padding: 2px 8px;
 }
 
-.explorer-file::before {
-  content: "•";
-  color: #666;
-  margin-right: 4px;
+/* Row glyphs: fixed-width arrow/spacer so file names (no chevron) align under dir names. */
+.explorer-row .view-arrow,
+.explorer-arrow-spacer {
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+}
+
+.explorer-row .material-symbols-outlined {
+  font-size: 16px;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.explorer-icon {
+  color: #8a9099;
+}
+
+/* File-type icon colors, keyed on the `data-icon` (fileIconKind) of the file row. */
+.explorer-file[data-icon="ts"] .explorer-file-icon {
+  color: #4a9df0;
+}
+.explorer-file[data-icon="js"] .explorer-file-icon {
+  color: #e6cd54;
+}
+.explorer-file[data-icon="json"] .explorer-file-icon {
+  color: #cbcb41;
+}
+.explorer-file[data-icon="md"] .explorer-file-icon,
+.explorer-file[data-icon="readme"] .explorer-file-icon {
+  color: #6a9fb5;
+}
+.explorer-file[data-icon="css"] .explorer-file-icon {
+  color: #4aa3df;
+}
+.explorer-file[data-icon="html"] .explorer-file-icon {
+  color: #e08a4c;
+}
+.explorer-file[data-icon="rust"] .explorer-file-icon {
+  color: #d99a72;
+}
+.explorer-file[data-icon="toml"] .explorer-file-icon,
+.explorer-file[data-icon="yaml"] .explorer-file-icon {
+  color: #a98fd6;
+}
+.explorer-file[data-icon="shell"] .explorer-file-icon {
+  color: #89c76a;
+}
+.explorer-file[data-icon="image"] .explorer-file-icon {
+  color: #b07fd0;
+}
+.explorer-file[data-icon="git"] .explorer-file-icon {
+  color: #ef6a4c;
+}
+.explorer-file[data-icon="docker"] .explorer-file-icon {
+  color: #4a9fed;
+}
+.explorer-file[data-icon="npm"] .explorer-file-icon {
+  color: #d16060;
+}
+
+/* Repository group: heading over its main working tree and linked worktrees. */
+.explorer-group-name {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.explorer-repo-tag {
+  margin-left: 6px;
+  font-size: 11px;
+  color: #888;
 }
 
 .explorer-truncated {

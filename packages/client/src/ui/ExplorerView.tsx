@@ -2,6 +2,7 @@ import {
   type FsEntry,
   type FsRepo,
   fileIconKind,
+  groupReposByRepository,
   joinRepoRelative,
   resolveOrgColor,
   resolveOrgName,
@@ -12,6 +13,26 @@ import { useTranslation } from "react-i18next";
 import type { FsApi } from "../api/fs.js";
 import { ViewHeader } from "./ViewHeader.js";
 import { viewClass } from "./views.js";
+
+/** Material Symbol glyph per `fileIconKind` result; color is applied in CSS via `data-icon`. */
+const FILE_ICON_GLYPH: Record<string, string> = {
+  ts: "code",
+  js: "javascript",
+  json: "data_object",
+  md: "description",
+  readme: "article",
+  css: "css",
+  html: "html",
+  rust: "code",
+  toml: "settings",
+  yaml: "settings",
+  shell: "terminal",
+  git: "commit",
+  docker: "deployed_code",
+  npm: "deployed_code",
+  image: "image",
+  file: "draft",
+};
 
 /**
  * Key for the expanded set and cache (repoPath and the repo-relative dir joined
@@ -58,6 +79,10 @@ export function ExplorerView({
     new Map(),
   );
   const [selected, setSelected] = useState<string | null>(null);
+  // Repository groups start expanded; only explicit collapses are tracked (by group key).
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   // Per-directory generation (discard stale responses from a close-then-reopen).
   const generations = useRef(new Map<string, number>());
 
@@ -121,6 +146,15 @@ export function ExplorerView({
     });
   };
 
+  const toggleGroup = (groupKey: string): void => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) next.delete(groupKey);
+      else next.add(groupKey);
+      return next;
+    });
+  };
+
   const clickFile = (repoPath: string, file: string): void => {
     setSelected(dirKey(repoPath, file));
     onOpenFile?.(repoPath, file);
@@ -155,6 +189,12 @@ export function ExplorerView({
                   >
                     {exp ? "expand_more" : "chevron_right"}
                   </span>{" "}
+                  <span
+                    className="explorer-icon material-symbols-outlined"
+                    aria-hidden="true"
+                  >
+                    {exp ? "folder_open" : "folder"}
+                  </span>{" "}
                   <span className="explorer-name">{e.name}</span>
                 </button>
                 {exp && renderEntries(repoPath, childDir, depth + 1)}
@@ -170,11 +210,18 @@ export function ExplorerView({
                   ? "view-row view-row-hover view-row-selected explorer-row explorer-file"
                   : "view-row view-row-hover explorer-row explorer-file"
               }
-              style={{ paddingLeft: `${depth * 12 + 20}px` }}
+              style={{ paddingLeft: `${depth * 12 + 8}px` }}
               title={childDir}
               data-icon={fileIconKind(e.name)}
               onClick={() => clickFile(repoPath, childDir)}
             >
+              <span className="explorer-arrow-spacer" aria-hidden="true" />{" "}
+              <span
+                className="explorer-icon explorer-file-icon material-symbols-outlined"
+                aria-hidden="true"
+              >
+                {FILE_ICON_GLYPH[fileIconKind(e.name)] ?? "draft"}
+              </span>{" "}
               <span className="explorer-name">{e.name}</span>
             </button>
           );
@@ -182,12 +229,58 @@ export function ExplorerView({
         {data.truncated && (
           <div
             className="explorer-truncated"
-            style={{ paddingLeft: `${depth * 12 + 20}px` }}
+            style={{ paddingLeft: `${depth * 12 + 8}px` }}
           >
             {t("explorer.truncated")}
           </div>
         )}
       </>
+    );
+  };
+
+  const renderRepoNode = (
+    r: FsRepo,
+    depth: number,
+    { showOrgDot, taggable }: { showOrgDot: boolean; taggable: boolean },
+  ) => {
+    const key = dirKey(r.path, "");
+    const exp = expanded.has(key);
+    return (
+      <div key={r.path} className="explorer-repo">
+        <button
+          type="button"
+          className="view-row view-row-hover explorer-row explorer-repo-row"
+          style={{ paddingLeft: `${depth * 12 + 8}px` }}
+          onClick={() => toggleDir(r.path, "")}
+        >
+          <span
+            className="view-arrow material-symbols-outlined"
+            aria-hidden="true"
+          >
+            {exp ? "expand_more" : "chevron_right"}
+          </span>{" "}
+          <span
+            className="explorer-icon material-symbols-outlined"
+            aria-hidden="true"
+          >
+            {r.isWorktree ? "account_tree" : "folder"}
+          </span>{" "}
+          <span className="explorer-repo-name">{r.repo}</span>
+          {taggable && !r.isWorktree && (
+            <span className="explorer-repo-tag">{t("explorer.mainTree")}</span>
+          )}
+          {showOrgDot && (
+            <span
+              className="org-dot"
+              role="img"
+              style={{ backgroundColor: resolveOrgColor(r.org, orgColors) }}
+              title={resolveOrgName(r.org, orgAliases)}
+              aria-label={`org: ${resolveOrgName(r.org, orgAliases)}`}
+            />
+          )}
+        </button>
+        {exp && renderEntries(r.path, "", depth + 1)}
+      </div>
     );
   };
 
@@ -210,33 +303,41 @@ export function ExplorerView({
       </ViewHeader>
       {rootError !== null && <div className="explorer-error">{rootError}</div>}
       <div className="view-tree">
-        {repos.map((r) => {
-          const rootDir = "";
-          const key = dirKey(r.path, rootDir);
-          const exp = expanded.has(key);
+        {groupReposByRepository(repos).map((g) => {
+          const [first, ...worktrees] = g.repos;
+          if (first && worktrees.length === 0) {
+            return renderRepoNode(first, 0, {
+              showOrgDot: true,
+              taggable: false,
+            });
+          }
+          const collapsed = collapsedGroups.has(g.key);
           return (
-            <div key={r.path} className="explorer-repo">
+            <div key={g.key} className="explorer-repo-group">
               <button
                 type="button"
-                className="view-row view-row-hover explorer-row explorer-repo-row"
-                onClick={() => toggleDir(r.path, rootDir)}
+                className="view-row view-row-hover explorer-row explorer-group-row"
+                onClick={() => toggleGroup(g.key)}
               >
                 <span
                   className="view-arrow material-symbols-outlined"
                   aria-hidden="true"
                 >
-                  {exp ? "expand_more" : "chevron_right"}
+                  {collapsed ? "chevron_right" : "expand_more"}
                 </span>{" "}
-                <span className="explorer-repo-name">{r.repo}</span>{" "}
+                <span className="explorer-group-name">{g.label}</span>{" "}
                 <span
                   className="org-dot"
                   role="img"
-                  style={{ backgroundColor: resolveOrgColor(r.org, orgColors) }}
-                  title={resolveOrgName(r.org, orgAliases)}
-                  aria-label={`org: ${resolveOrgName(r.org, orgAliases)}`}
+                  style={{ backgroundColor: resolveOrgColor(g.org, orgColors) }}
+                  title={resolveOrgName(g.org, orgAliases)}
+                  aria-label={`org: ${resolveOrgName(g.org, orgAliases)}`}
                 />
               </button>
-              {exp && renderEntries(r.path, rootDir, 1)}
+              {!collapsed &&
+                g.repos.map((r) =>
+                  renderRepoNode(r, 1, { showOrgDot: false, taggable: true }),
+                )}
             </div>
           );
         })}

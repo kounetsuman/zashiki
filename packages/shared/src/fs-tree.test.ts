@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   type FsEntry,
+  type FsRepo,
   fileIconKind,
   fsListRequestSchema,
   fsListResponseSchema,
+  groupReposByRepository,
   joinRepoRelative,
   sortFsEntries,
 } from "./fs-tree.js";
@@ -99,6 +101,74 @@ describe("fileIconKind (extension/name -> icon kind)", () => {
   it("no extension or unknown extension is file", () => {
     expect(fileIconKind("LICENSE")).toBe("file");
     expect(fileIconKind("data.xyz")).toBe("file");
+  });
+});
+
+describe("groupReposByRepository", () => {
+  const repo = (
+    over: Partial<FsRepo> & Pick<FsRepo, "repo" | "path">,
+  ): FsRepo => ({
+    org: "kounetsuman",
+    ...over,
+  });
+
+  it("collects worktrees under the main working tree they share (via mainPath)", () => {
+    const main = repo({ repo: "zashiki", path: "/ws/kounetsuman/zashiki" });
+    const wtA = repo({
+      repo: "zashiki-163-notes",
+      path: "/ws/kounetsuman/zashiki-163-notes",
+      isWorktree: true,
+      mainPath: "/ws/kounetsuman/zashiki",
+    });
+    const wtB = repo({
+      repo: "zashiki-release-0.9.0",
+      path: "/ws/kounetsuman/zashiki-release-0.9.0",
+      isWorktree: true,
+      mainPath: "/ws/kounetsuman/zashiki",
+    });
+    const groups = groupReposByRepository([wtB, main, wtA]);
+    expect(groups).toHaveLength(1);
+    const g = groups[0];
+    expect(g.key).toBe("/ws/kounetsuman/zashiki");
+    expect(g.label).toBe("zashiki");
+    expect(g.org).toBe("kounetsuman");
+    expect(g.repos.map((r) => r.repo)).toEqual([
+      "zashiki",
+      "zashiki-163-notes",
+      "zashiki-release-0.9.0",
+    ]);
+  });
+
+  it("keeps a repo with no worktrees as its own single-member group", () => {
+    const a = repo({ repo: "alpha", path: "/ws/kounetsuman/alpha" });
+    const b = repo({ repo: "beta", path: "/ws/kounetsuman/beta" });
+    const groups = groupReposByRepository([b, a]);
+    expect(groups.map((g) => g.label)).toEqual(["alpha", "beta"]);
+    expect(groups.every((g) => g.repos.length === 1)).toBe(true);
+  });
+
+  it("groups worktrees even when their main working tree is not in the set", () => {
+    const wt = repo({
+      repo: "zashiki-163-notes",
+      path: "/ws/kounetsuman/zashiki-163-notes",
+      isWorktree: true,
+      mainPath: "/elsewhere/zashiki",
+    });
+    const groups = groupReposByRepository([wt]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].key).toBe("/elsewhere/zashiki");
+    expect(groups[0].label).toBe("zashiki");
+    expect(groups[0].repos).toEqual([wt]);
+  });
+
+  it("falls back to grouping on the repo's own path when mainPath is absent (version skew)", () => {
+    const a = repo({ repo: "zashiki", path: "/ws/kounetsuman/zashiki" });
+    const b = repo({
+      repo: "zashiki-163-notes",
+      path: "/ws/kounetsuman/zashiki-163-notes",
+    });
+    const groups = groupReposByRepository([a, b]);
+    expect(groups.map((g) => g.repos.length)).toEqual([1, 1]);
   });
 });
 
