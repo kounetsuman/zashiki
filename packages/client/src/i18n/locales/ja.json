@@ -152,6 +152,7 @@
   "help": {
     "search": "ヘルプを検索",
     "noResults": "該当するヘルプがありません",
+    "resultCount": "{{count}} 件",
     "close": "閉じる",
     "category": {
       "config": "設定ファイル",

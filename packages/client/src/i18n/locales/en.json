@@ -152,6 +152,7 @@
   "help": {
     "search": "Search help",
     "noResults": "No matching help",
+    "resultCount": "{{count}} result(s)",
     "close": "Close",
     "category": {
       "config": "Configuration",
