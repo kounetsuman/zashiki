@@ -1,3 +1,4 @@
+import { isTauri } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
@@ -12,6 +13,7 @@ import {
 } from "../lib/terminal-fit.js";
 import { stripTerminalReplies } from "../lib/terminal-reply.js";
 import type { SearchResults } from "../lib/terminal-search.js";
+import { wheelDeltaToLines } from "../lib/terminal-wheel.js";
 import type { TerminalViewSession } from "./TerminalView.js";
 import { handleTerminalKey } from "./terminal-key-handler.js";
 import { buildTerminalOptions } from "./terminal-options.js";
@@ -180,6 +182,26 @@ export function useXtermTerminal({
         openClipboardEdit,
       }),
     );
+
+    // In the packaged Tauri app the webview is WKWebView, whose user agent has no "Safari" token, so
+    // xterm's user-agent-based wheel path is skipped and the wheel does not scroll the scrollback
+    // (issue #195). Only there do we take over: on the normal buffer, translate the wheel to a line
+    // count and scroll ourselves, returning false to cancel xterm's own handling (no double scroll).
+    // A served build in a real browser keeps xterm's native wheel, which already works there. On the
+    // alternate buffer we defer to xterm so a full-screen app still receives the wheel as input.
+    if (isTauri()) {
+      term.attachCustomWheelEventHandler((e) => {
+        if (term.buffer.active.type === "alternate") return true;
+        const el = term.element;
+        const cellHeightPx =
+          el && term.rows > 0
+            ? el.clientHeight / term.rows
+            : fontSizeRef.current;
+        const lines = wheelDeltaToLines(e, cellHeightPx, term.rows);
+        if (lines !== 0) term.scrollLines(lines);
+        return false;
+      });
+    }
 
     let copyTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleCopy = (): void => {
