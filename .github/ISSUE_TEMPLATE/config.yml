@@ -1,4 +1,11 @@
-# zashiki は Discussions を使わず Issues 一本で運用する方針のため、
-# 空の Issue を禁止し、テンプレ（バグ報告 / 機能提案）経由の起票のみ許可する。
-# Discussions を有効化していないので contact_links は設けない。
+# Issue はテンプレ（バグ報告 / 機能提案）経由の起票のみ許可し、空の Issue は禁止する。
+# 仕様・設計が未確定の提案・相談は Issue ではなく Discussions で扱い、完了条件を定義できて
+# 初めて Issue に切り出す。方針は CLAUDE.md「Issues vs. Discussions」を参照。
 blank_issues_enabled: false
+contact_links:
+  - name: アイデア・仕様相談（Discussions / Ideas）
+    url: https://github.com/kounetsuman/zashiki/discussions/categories/ideas
+    about: 完了条件がまだ定義できない提案・設計相談はこちら。仕様が固まったら Issue に切り出します。
+  - name: 質問（Discussions / Q&A）
+    url: https://github.com/kounetsuman/zashiki/discussions/categories/q-a
+    about: 使い方の質問はこちら。

@@ -6,7 +6,7 @@ Thank you for your interest in contributing to zashiki. Bug reports, feature pro
 
 ## Getting Started
 
-- For bugs and requests, please first open an [Issue](../../issues) (or use an existing related Issue if one exists).
+- For a **bug** or a **settled spec** (one you can state a clear completion condition for), open an [Issue](../../issues) — or reuse a related existing one. For an **open-ended idea or proposal** whose spec isn't settled yet, start a [Discussion](../../discussions) instead; it becomes an Issue once the completion condition is clear. See "Issues vs. Discussions" in [CLAUDE.md](./CLAUDE.md).
 - **Do not report security vulnerabilities in public Issues.** Instead, report them privately following the procedure in [SECURITY.md](./SECURITY.md).
 - By participating, you agree to follow the [Code of Conduct (CODE_OF_CONDUCT.md)](./CODE_OF_CONDUCT.md).
 

@@ -6,6 +6,8 @@ body:
     attributes:
       value: |
         提案ありがとうございます。重複を避けるため、既存の Issue（closed 含む）を先に検索してください。
+
+        **仕様や完了条件がまだ固まっていない提案は、Issue ではなく [Discussions（Ideas）](https://github.com/kounetsuman/zashiki/discussions/categories/ideas) へ。** Issue は「達成すれば close できる」完了条件を1つ書けるものだけを対象にします（方針は CLAUDE.md「Issues vs. Discussions」）。
   - type: textarea
     id: problem
     attributes:
@@ -17,6 +19,13 @@ body:
     id: solution
     attributes:
       label: 提案する解決策
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: 完了条件
+      description: これを満たせば close できる、という状態を1つ書いてください。書けない場合は先に Discussions で仕様を詰めてください。
     validations:
       required: true
   - type: textarea
