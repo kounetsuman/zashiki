@@ -636,13 +636,27 @@ body {
 
 /* ---- メインエリア上部の統合タブ列（issue #149） ---- */
 
-.app-header,
 .update-banner {
   display: flex;
   justify-content: flex-end;
   align-items: center;
   flex: none;
   padding: 4px 10px;
+  background: #171717;
+  border-bottom: 1px solid #333;
+}
+
+/* On macOS the window uses an overlay title bar, so the webview reaches up into the native title bar
+ * band. The account indicator rides in that band, right-aligned clear of the traffic lights, and the
+ * empty space stays draggable via data-tauri-drag-region. The fixed height matches the native band so
+ * the indicator lines up with the traffic lights; on other platforms it reads as a normal top bar. */
+.title-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
   background: #171717;
   border-bottom: 1px solid #333;
 }
