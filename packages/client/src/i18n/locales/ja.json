@@ -176,7 +176,10 @@
       "sessionTitle": "Claude Code 現在のセッション（5時間）使用率",
       "weekTitle": "Claude Code 今週の使用率",
       "enableTitle": "Claude Code のアカウント使用率を表示（クリックで有効化）",
-      "resetsAt": "{{time}} まで"
+      "resetsAt": "{{time}} まで",
+      "modeRemaining": "残時間",
+      "modeElapsed": "経過時間",
+      "modeToggleTitle": "使用時間の残／経過を切替（現在: {{mode}}）"
     }
   },
   "update": {

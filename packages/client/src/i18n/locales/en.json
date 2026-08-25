@@ -176,7 +176,10 @@
       "sessionTitle": "Claude Code current session (5-hour) usage",
       "weekTitle": "Claude Code current week usage",
       "enableTitle": "Show Claude Code account usage (click to enable)",
-      "resetsAt": "until {{time}}"
+      "resetsAt": "until {{time}}",
+      "modeRemaining": "remaining",
+      "modeElapsed": "elapsed",
+      "modeToggleTitle": "Toggle usage time — remaining / elapsed (now: {{mode}})"
     }
   },
   "update": {

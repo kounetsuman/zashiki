@@ -2,16 +2,22 @@ import { describe, expect, it } from "vitest";
 
 import {
   durationSeverity,
+  FIVE_HOUR_WINDOW_MS,
   fmtDuration,
   fmtResetClock,
   fmtResetCountdown,
   fmtTokens,
   fmtWeekResetCountdown,
+  loadUsageTimeMode,
+  nextUsageTimeMode,
   pickAccountLimits,
+  saveUsageTimeMode,
   tokenSeverity,
   usageBandReached,
+  usageDisplayMs,
   usageRemainingPercent,
   usageSeverity,
+  WEEK_WINDOW_MS,
 } from "./status-footer.js";
 
 describe("fmtTokens", () => {
@@ -252,5 +258,63 @@ describe("pickAccountLimits", () => {
       fiveHour: { usedPercent: 5, resetsAt: 300 },
       week: { usedPercent: 70, resetsAt: 900 },
     });
+  });
+});
+
+describe("usageDisplayMs", () => {
+  it("returns the raw time to reset in remaining mode", () => {
+    expect(usageDisplayMs("remaining", 5_000, 1_000, FIVE_HOUR_WINDOW_MS)).toBe(
+      4_000,
+    );
+  });
+
+  it("derives elapsed as window minus remaining", () => {
+    const now = 1_000;
+    const resetsAt = now + 2 * 3_600_000;
+    expect(usageDisplayMs("elapsed", resetsAt, now, FIVE_HOUR_WINDOW_MS)).toBe(
+      3 * 3_600_000,
+    );
+  });
+
+  it("clamps elapsed into [0, window] past the reset", () => {
+    const now = 10_000;
+    expect(usageDisplayMs("elapsed", now - 1_000, now, WEEK_WINDOW_MS)).toBe(
+      WEEK_WINDOW_MS,
+    );
+    expect(
+      usageDisplayMs("elapsed", now + WEEK_WINDOW_MS + 1_000, now, WEEK_WINDOW_MS),
+    ).toBe(0);
+  });
+});
+
+describe("nextUsageTimeMode", () => {
+  it("toggles between the two modes", () => {
+    expect(nextUsageTimeMode("remaining")).toBe("elapsed");
+    expect(nextUsageTimeMode("elapsed")).toBe("remaining");
+  });
+});
+
+describe("usage time mode persistence", () => {
+  function memoryStorage(seed?: string) {
+    const map = new Map<string, string>();
+    if (seed !== undefined) map.set("zk.footer.usageTimeMode", seed);
+    return {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      read: () => map.get("zk.footer.usageTimeMode"),
+    };
+  }
+
+  it("defaults to remaining when unset, null storage, or unrecognized", () => {
+    expect(loadUsageTimeMode(null)).toBe("remaining");
+    expect(loadUsageTimeMode(memoryStorage())).toBe("remaining");
+    expect(loadUsageTimeMode(memoryStorage("bogus"))).toBe("remaining");
+  });
+
+  it("round-trips a saved mode", () => {
+    const storage = memoryStorage();
+    saveUsageTimeMode(storage, "elapsed");
+    expect(storage.read()).toBe("elapsed");
+    expect(loadUsageTimeMode(storage)).toBe("elapsed");
   });
 });
