@@ -1315,6 +1315,21 @@ body {
   min-width: 0;
 }
 
+.account-usage-value {
+  position: relative;
+  display: inline-block;
+}
+
+.account-usage-value-sizer {
+  visibility: hidden;
+}
+
+.account-usage-value-live {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
 .account-usage-meter {
   width: 100%;
   min-width: 44px;
