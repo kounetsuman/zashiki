@@ -43,7 +43,7 @@ function bottomNonEmptyLines(capture: string): string[] {
  * (no paren, "for"), `… (ctrl+o to expand)`, and inline `…(30s)` (closing with
  * no separator).
  */
-const LIVE_SPINNER_TIMER = /…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s[^)]*[·↓]/;
+const LIVE_SPINNER_TIMER = /…\s*\((?:\d+h\s*)?(?:\d+m\s*)?\d+s[^)·↓(…]*[·↓]/;
 
 /**
  * Whether a running spinner line is visible in the bottom of the pane (last 8

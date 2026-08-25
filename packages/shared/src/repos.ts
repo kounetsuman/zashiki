@@ -2,9 +2,11 @@
 // Reading, parsing, and absolutizing repos.conf is consolidated into server/infra/repos.ts (readConfRoots).
 // This module only does string comparison over a list of absolute root paths passed as arguments.
 
+import { stripTrailingSlashes } from "./path-slash.js";
+
 /** The last element of a path (shared also runs in the browser, so node:path is not used). */
 function basename(path: string): string {
-  const trimmed = path.replace(/\/+$/, "");
+  const trimmed = stripTrailingSlashes(path);
   const last = trimmed.split("/").pop();
   return last !== undefined && last.length > 0 ? last : trimmed;
 }

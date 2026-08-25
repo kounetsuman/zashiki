@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { stripSurroundingSlashes, stripTrailingSlashes } from "./path-slash.js";
+
 /**
  * REST types for the explorer panel's directory listing, plus pure logic
  * for tree display (sorting and path joining).
@@ -76,7 +78,7 @@ export function sortFsEntries(entries: readonly FsEntry[]): FsEntry[] {
  * request. Does not add leading/trailing extra `/`.
  */
 export function joinRepoRelative(dir: string, name: string): string {
-  const base = dir.replace(/^\/+|\/+$/g, "");
+  const base = stripSurroundingSlashes(dir);
   return base === "" ? name : `${base}/${name}`;
 }
 
@@ -141,7 +143,7 @@ function repoGroupKey(repo: FsRepo): string {
 }
 
 function baseName(path: string): string {
-  const trimmed = path.replace(/\/+$/, "");
+  const trimmed = stripTrailingSlashes(path);
   const slash = trimmed.lastIndexOf("/");
   return slash >= 0 ? trimmed.slice(slash + 1) : trimmed;
 }

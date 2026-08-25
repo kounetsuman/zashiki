@@ -44,6 +44,74 @@ export interface ProcessEntry {
   args: string;
 }
 
+const WHITESPACE = /\s/;
+const DIGITS = /^\d+$/;
+
+interface PsColumn {
+  text: string;
+  /** Offset just past this column in the source line. */
+  end: number;
+}
+
+/** Splits a line into whitespace-delimited columns without regex backtracking. */
+function psColumns(line: string): PsColumn[] {
+  const columns: PsColumn[] = [];
+  let i = 0;
+  while (i < line.length) {
+    while (i < line.length && WHITESPACE.test(line[i] ?? "")) i++;
+    if (i >= line.length) break;
+    const start = i;
+    while (i < line.length && !WHITESPACE.test(line[i] ?? "")) i++;
+    columns.push({ text: line.slice(start, i), end: i });
+  }
+  return columns;
+}
+
+/** Offset of the first non-whitespace char at or after `from` (clamped to length). */
+function skipWhitespace(line: string, from: number): number {
+  let i = from;
+  while (i < line.length && WHITESPACE.test(line[i] ?? "")) i++;
+  return i;
+}
+
+/**
+ * Parses one ps line into pid/ppid/args (null when it is not a valid row).
+ * `end < line.length` for the ppid column requires at least one whitespace
+ * separator after it, so args (which keeps its original internal spacing) can be
+ * empty only when the row ends in trailing whitespace — matching the old regex.
+ */
+function parsePsLine(line: string): ProcessEntry | null {
+  const [c0, c1, c2] = psColumns(line);
+  if (
+    c0 &&
+    c1 &&
+    DIGITS.test(c0.text) &&
+    DIGITS.test(c1.text) &&
+    c1.end < line.length
+  ) {
+    return {
+      pid: Number(c0.text),
+      ppid: Number(c1.text),
+      args: line.slice(skipWhitespace(line, c1.end)),
+    };
+  }
+  if (
+    c0 &&
+    c1 &&
+    c2 &&
+    DIGITS.test(c1.text) &&
+    DIGITS.test(c2.text) &&
+    c2.end < line.length
+  ) {
+    return {
+      pid: Number(c1.text),
+      ppid: Number(c2.text),
+      args: line.slice(skipWhitespace(line, c2.end)),
+    };
+  }
+  return null;
+}
+
 /**
  * Parses ps output (invalid lines are skipped).
  * Accepts both `pid ppid args` (old) and `tty pid ppid args` (`-o tty=,...`)
@@ -52,14 +120,10 @@ export interface ProcessEntry {
  * The old format is never misread when args starts with a non-numeric word (the old format's first column is always a numeric pid).
  */
 export function parsePsSnapshot(psOutput: string): ProcessEntry[] {
-  const withTty = /^\s*\S+\s+(\d+)\s+(\d+)\s+(.*)$/;
-  const noTty = /^\s*(\d+)\s+(\d+)\s+(.*)$/;
   const entries: ProcessEntry[] = [];
-  for (const line of psOutput.split("\n")) {
-    const m = noTty.exec(line) ?? withTty.exec(line);
-    if (!m || m[1] === undefined || m[2] === undefined || m[3] === undefined)
-      continue;
-    entries.push({ pid: Number(m[1]), ppid: Number(m[2]), args: m[3] });
+  for (const line of psOutput.split(/\r?\n/)) {
+    const entry = parsePsLine(line);
+    if (entry) entries.push(entry);
   }
   return entries;
 }

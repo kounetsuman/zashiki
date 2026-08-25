@@ -66,6 +66,38 @@ describe("parsePsSnapshot (parsing ps -o pid=,ppid=,args= output)", () => {
       { pid: 400, ppid: 1, args: "-zsh" },
     ]);
   });
+
+  it("parses CRLF-terminated output without leaking the carriage return into args", () => {
+    expect(
+      parsePsSnapshot("  100 1 /sbin/launchd\r\n  200 100 claude\r\n"),
+    ).toEqual([
+      { pid: 100, ppid: 1, args: "/sbin/launchd" },
+      { pid: 200, ppid: 100, args: "claude" },
+    ]);
+  });
+
+  it("preserves multiple internal spaces in args", () => {
+    expect(parsePsSnapshot("  100  200 node   a.js   b.js\n")).toEqual([
+      { pid: 100, ppid: 200, args: "node   a.js   b.js" },
+    ]);
+  });
+
+  it("keeps args empty when the row ends in trailing whitespace after ppid", () => {
+    expect(parsePsSnapshot("100 200 \n")).toEqual([
+      { pid: 100, ppid: 200, args: "" },
+    ]);
+  });
+
+  it("skips a row that has no whitespace after ppid (no args column)", () => {
+    expect(parsePsSnapshot("100 200")).toEqual([]);
+  });
+
+  it("stays linear on pathological whitespace-heavy input (ReDoS guard)", () => {
+    const line = `${" ".repeat(100000)}100 200${" ".repeat(100000)}x\n`;
+    const start = performance.now();
+    expect(parsePsSnapshot(line)).toEqual([{ pid: 100, ppid: 200, args: "x" }]);
+    expect(performance.now() - start).toBeLessThan(100);
+  });
 });
 
 describe("findSidInTree (BFS port of dom_find_sid_in_tree)", () => {
