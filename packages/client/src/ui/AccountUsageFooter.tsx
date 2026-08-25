@@ -12,6 +12,7 @@ import {
   usageSeverity,
 } from "../session/status-footer.js";
 import { StatusCell } from "./StatusCell.js";
+import { Tooltip } from "./Tooltip.js";
 import { useNow } from "./useNow.js";
 
 export interface AccountUsageFooterProps {
@@ -74,7 +75,7 @@ export function AccountUsageFooter({
             })
           : `${limit.usedPercent}%`;
     return (
-      <span className="ss-group" title={title}>
+      <Tooltip className="ss-group" label={title}>
         <StatusCell
           value={value}
           caption={label}
@@ -82,7 +83,7 @@ export function AccountUsageFooter({
             limit ? usageSeverity(limit.usedPercent, thresholds) : undefined
           }
         />
-      </span>
+      </Tooltip>
     );
   };
 
