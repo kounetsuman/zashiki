@@ -175,7 +175,8 @@
       "week": "Current week",
       "sessionTitle": "Claude Code current session (5-hour) usage",
       "weekTitle": "Claude Code current week usage",
-      "enableTitle": "Show Claude Code account usage (click to enable)"
+      "enableTitle": "Show Claude Code account usage (click to enable)",
+      "resetsAt": "until {{time}}"
     }
   },
   "update": {
@@ -268,6 +269,13 @@
     "subscriptionNote": "Usage appears only for Claude.ai Pro/Max sessions, after the first response.",
     "resumeNote": "{{count}} running cockpit terminal(s) will show usage only after you resume them.",
     "enable": "Enable",
+    "close": "Close"
+  },
+  "usageWarning": {
+    "title": "Approaching the usage limit",
+    "body": "You will be locked out in {{percent}}%. Keep an eye on your usage.",
+    "unlockAt": "Unlock time: {{time}}",
+    "notify": "{{percent}}% left before lockout · unlocks at {{time}}",
     "close": "Close"
   },
   "firstRun": {

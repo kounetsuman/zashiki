@@ -40,4 +40,21 @@ describe("AccountUsageFooter", () => {
     expect(screen.queryByRole("button")).toBeNull();
     expect(container.querySelectorAll(".ss-group")).toHaveLength(2);
   });
+
+  it("appends the local reset time to the tooltip when the reset is known", () => {
+    const resetsAt = Date.now() + 2 * 3_600_000;
+    const { container } = render(
+      <AccountUsageFooter
+        limits={{ fiveHour: { usedPercent: 20, resetsAt } }}
+        enabled
+        onRequestEnable={() => undefined}
+      />,
+    );
+    const clock = new Intl.DateTimeFormat(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(resetsAt);
+    const title = container.querySelector(".ss-group")?.getAttribute("title");
+    expect(title).toContain(clock);
+  });
 });

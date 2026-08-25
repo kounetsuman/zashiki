@@ -5,6 +5,7 @@
 
 import {
   DEFAULT_FOOTER_THRESHOLDS,
+  type FooterBand,
   type FooterThresholds,
   type UsageLimit,
   type UsageLimits,
@@ -119,4 +120,60 @@ export function pickAccountLimits(
   }
   if (!fiveHour && !week) return null;
   return { fiveHour, week };
+}
+
+export interface ResetClockOpts {
+  now: number;
+  locale?: string;
+  timeZone?: string;
+}
+
+const CLOCK_OPTS = {
+  time: { hour: "2-digit", minute: "2-digit" },
+  weekday: { weekday: "short" },
+} as const satisfies Record<string, Intl.DateTimeFormatOptions>;
+
+const clockFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function clockPart(
+  ms: number,
+  locale: string | undefined,
+  timeZone: string | undefined,
+  kind: keyof typeof CLOCK_OPTS,
+): string {
+  const key = `${locale ?? ""}|${timeZone ?? ""}|${kind}`;
+  let fmt = clockFormatters.get(key);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat(locale, { ...CLOCK_OPTS[kind], timeZone });
+    clockFormatters.set(key, fmt);
+  }
+  return fmt.format(ms);
+}
+
+/**
+ * Absolute local time a usage window resets at, for the footer tooltip. Within a day of `now` it reads
+ * as a bare clock (`15:30`); further out it prefixes the weekday (`Wed 15:30`) since the weekly window
+ * sits days away. The clock follows the locale (a 12-hour locale renders `03:30 PM`). `locale`/`timeZone`
+ * default to the runtime's and are injectable so the format is unit-tested deterministically.
+ */
+export function fmtResetClock(
+  ms: number,
+  { now, locale, timeZone }: ResetClockOpts,
+): string {
+  const time = clockPart(ms, locale, timeZone, "time");
+  if (ms - now < 86_400_000) return time;
+  return `${clockPart(ms, locale, timeZone, "weekday")} ${time}`;
+}
+
+/** Whether a limit has reached an enabled band's value — the gate for painting crit and raising the near-limit warning. */
+export function usageBandReached(
+  limit: UsageLimit | undefined,
+  band: FooterBand,
+): boolean {
+  return limit !== undefined && band.enabled && limit.usedPercent >= band.value;
+}
+
+/** Headroom left before lockout, clamped to 0..100. Drives the warning's "locked out in {n}%" copy. */
+export function usageRemainingPercent(usedPercent: number): number {
+  return Math.max(0, Math.min(100, 100 - usedPercent));
 }
