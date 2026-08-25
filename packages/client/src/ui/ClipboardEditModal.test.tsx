@@ -17,12 +17,14 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-function renderModal(overrides: Partial<{ enabled: boolean }> = {}) {
+function renderModal(
+  overrides: Partial<{ enabled: boolean; text: string }> = {},
+) {
   const onClose = vi.fn();
   const onSetEnabled = vi.fn();
   render(
     <ClipboardEditModal
-      text={"claude \\\n  --flag"}
+      text={overrides.text ?? "claude \\\n  --flag"}
       enabled={overrides.enabled ?? true}
       onSetEnabled={onSetEnabled}
       onClose={onClose}
@@ -38,6 +40,19 @@ describe("ClipboardEditModal", () => {
     expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
       "claude \\\n  --flag",
     );
+  });
+
+  it("strips trailing whitespace from each prefilled line, keeping indentation", () => {
+    renderModal({ text: "claude   \n  --flag\t" });
+    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
+      "claude\n  --flag",
+    );
+  });
+
+  it("numbers every line so newlines are visible", () => {
+    renderModal({ text: "a\nb\nc" });
+    const gutter = document.querySelector(".clip-edit-gutter");
+    expect(gutter?.textContent).toBe("1\n2\n3");
   });
 
   it("shows the inline description", () => {

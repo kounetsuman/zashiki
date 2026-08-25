@@ -25,3 +25,14 @@ export function shouldOpenClipboardEditModal(
 ): boolean {
   return enabled && selection.includes("\n");
 }
+
+/**
+ * Removes each row's trailing spaces/tabs while preserving newlines and leading indentation: a
+ * terminal-wrapped selection pads every row out to the terminal width, which is noise once rejoined.
+ */
+export function trimLineEndWhitespace(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/, ""))
+    .join("\n");
+}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { trimLineEndWhitespace } from "../lib/clipboard-edit-modal.js";
 import "./ClipboardEditModal.css";
 
 export interface ClipboardEditModalProps {
@@ -24,10 +25,16 @@ export function ClipboardEditModal({
   onClose,
 }: ClipboardEditModalProps) {
   const { t } = useTranslation();
-  const [value, setValue] = useState(text);
+  const [value, setValue] = useState(() => trimLineEndWhitespace(text));
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const gutterRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => textareaRef.current?.focus(), []);
+
+  const lineNumbers = value
+    .split("\n")
+    .map((_, i) => i + 1)
+    .join("\n");
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: overlay only captures outside clicks (Escape is handled by the dialog onKeyDown)
@@ -46,13 +53,23 @@ export function ClipboardEditModal({
       >
         <h2 className="clip-edit-title">{t("clipboardEdit.title")}</h2>
         <p className="clip-edit-desc">{t("clipboardEdit.description")}</p>
-        <textarea
-          ref={textareaRef}
-          className="clip-edit-textarea"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          spellCheck={false}
-        />
+        <div className="clip-edit-editor">
+          <div className="clip-edit-gutter" ref={gutterRef} aria-hidden="true">
+            {lineNumbers}
+          </div>
+          <textarea
+            ref={textareaRef}
+            className="clip-edit-textarea"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onScroll={(e) => {
+              if (gutterRef.current)
+                gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+            spellCheck={false}
+            wrap="off"
+          />
+        </div>
         <label className="clip-edit-never">
           <input
             type="checkbox"

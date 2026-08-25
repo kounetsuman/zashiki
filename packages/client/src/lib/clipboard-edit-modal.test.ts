@@ -5,6 +5,7 @@ import {
   loadClipboardEditEnabled,
   saveClipboardEditEnabled,
   shouldOpenClipboardEditModal,
+  trimLineEndWhitespace,
 } from "./clipboard-edit-modal.js";
 
 function fakeStorage(initial: Record<string, string> = {}) {
@@ -55,5 +56,23 @@ describe("shouldOpenClipboardEditModal", () => {
     expect(shouldOpenClipboardEditModal(true, "single line")).toBe(false);
     expect(shouldOpenClipboardEditModal(true, "")).toBe(false);
     expect(shouldOpenClipboardEditModal(false, "a\nb")).toBe(false);
+  });
+});
+
+describe("trimLineEndWhitespace", () => {
+  it("drops trailing spaces and tabs from each line", () => {
+    expect(trimLineEndWhitespace("claude   \n  --flag\t\n")).toBe(
+      "claude\n  --flag\n",
+    );
+  });
+
+  it("keeps leading indentation and the newlines themselves", () => {
+    expect(trimLineEndWhitespace("  a  \n\n  b")).toBe("  a\n\n  b");
+  });
+
+  it("leaves clean text unchanged", () => {
+    expect(trimLineEndWhitespace("claude \\\n  --flag")).toBe(
+      "claude \\\n  --flag",
+    );
   });
 });
