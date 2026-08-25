@@ -77,7 +77,10 @@ export function HelpModal({
             );
           })}
         </div>
-        <div className="modal-body help-modal-body" role="tabpanel">
+        <div
+          className="modal-body help-modal-body scrollbar-persistent"
+          role="tabpanel"
+        >
           <input
             className="help-search"
             type="text"

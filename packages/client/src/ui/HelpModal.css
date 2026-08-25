@@ -25,12 +25,14 @@
 .help-topics {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 26px;
 }
 
 .help-topic-title {
-  margin: 0 0 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--modal-text);
+  margin: 0 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--modal-border);
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
 }

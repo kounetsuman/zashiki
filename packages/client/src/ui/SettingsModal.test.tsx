@@ -146,6 +146,39 @@ describe("SettingsModal General tab", () => {
     expect(onSaveLanguage).toHaveBeenCalledWith("en");
   });
 
+  it("surfaces the unsaved-changes bar on a draft edit and saves it via Save all", () => {
+    const onSaveLanguage = vi.fn();
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={onSaveLanguage}
+        onClose={noop}
+      />,
+    );
+    expect(screen.queryByText("編集が保存されていません")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("表示言語"), {
+      target: { value: "en" },
+    });
+    expect(screen.getByText("編集が保存されていません")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "すべて保存" }));
+    expect(onSaveLanguage).toHaveBeenCalledWith("en");
+  });
+
+  it("reverts a draft edit and hides the bar via Discard", () => {
+    render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
+    const select = screen.getByLabelText("表示言語") as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: "en" } });
+    expect(screen.getByText("編集が保存されていません")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "破棄" }));
+    expect(select.value).toBe("ja");
+    expect(screen.queryByText("編集が保存されていません")).toBeNull();
+  });
+
   it("does not render the font-size controls when fontSize is omitted", () => {
     render(
       <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,

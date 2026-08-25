@@ -2,6 +2,8 @@ import type { FooterBand, FooterThresholds } from "@zashiki/shared";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useUnsavedField } from "./unsaved-changes.js";
+
 type IndicatorKey = keyof FooterThresholds;
 type BandKey = "warn" | "high" | "crit";
 
@@ -81,6 +83,10 @@ export function FooterThresholdsField({
   useEffect(() => setDraft(value), [persisted]);
 
   const dirty = JSON.stringify(draft) !== persisted;
+  useUnsavedField("footer-thresholds", dirty, {
+    save: () => onSave(draft),
+    discard: () => setDraft(value),
+  });
 
   return (
     <div className="settings-field settings-field-column footer-thresholds">

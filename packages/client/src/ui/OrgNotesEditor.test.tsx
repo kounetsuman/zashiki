@@ -73,4 +73,42 @@ describe("OrgNotesEditor", () => {
     fireEvent.click(screen.getByRole("button"));
     expect(onSave).toHaveBeenCalledWith("a", "# hi");
   });
+
+  it("renders a live Markdown preview of the draft", () => {
+    render(
+      <OrgNotesEditor
+        orgs={["a"]}
+        notes={{ a: "" }}
+        aliases={{}}
+        onSave={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("ここにプレビューが表示されます")).toBeTruthy();
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "# Hello\n\nbody text" },
+    });
+    expect(screen.getByRole("heading", { name: "Hello" })).toBeTruthy();
+    expect(screen.getByText("body text")).toBeTruthy();
+  });
+
+  it("numbers each line in the gutter", () => {
+    const { container } = render(
+      <OrgNotesEditor
+        orgs={["a"]}
+        notes={{ a: "" }}
+        aliases={{}}
+        onSave={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "l1\nl2\nl3" },
+    });
+    expect(container.querySelector(".org-notes-gutter")?.textContent).toBe(
+      "123",
+    );
+    // The gutter draws one number per newline, so the textarea must not soft-wrap or the numbers
+    // would drift against wrapped rows.
+    expect(screen.getByRole("textbox").getAttribute("wrap")).toBe("off");
+  });
 });
