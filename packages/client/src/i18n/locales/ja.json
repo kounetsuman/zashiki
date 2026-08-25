@@ -175,7 +175,8 @@
       "week": "今週",
       "sessionTitle": "Claude Code 現在のセッション（5時間）使用率",
       "weekTitle": "Claude Code 今週の使用率",
-      "enableTitle": "Claude Code のアカウント使用率を表示（クリックで有効化）"
+      "enableTitle": "Claude Code のアカウント使用率を表示（クリックで有効化）",
+      "resetsAt": "{{time}} まで"
     }
   },
   "update": {
@@ -265,6 +266,13 @@
     "subscriptionNote": "使用率は Claude.ai Pro/Max のセッションで、最初の応答以降にのみ表示されます。",
     "resumeNote": "起動中の cockpit ターミナル {{count}} 件は、resume するまで使用率が表示されません。",
     "enable": "有効化",
+    "close": "閉じる"
+  },
+  "usageWarning": {
+    "title": "まもなく利用上限に達します",
+    "body": "あと {{percent}}% で利用不可になります。利用状況を注視してください。",
+    "unlockAt": "ロック解除時刻：{{time}}",
+    "notify": "利用不可まであと {{percent}}% · {{time}} に解除",
     "close": "閉じる"
   },
   "firstRun": {

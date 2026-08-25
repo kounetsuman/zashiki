@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest";
 import {
   durationSeverity,
   fmtDuration,
+  fmtResetClock,
   fmtResetCountdown,
   fmtTokens,
   fmtWeekResetCountdown,
   pickAccountLimits,
   tokenSeverity,
+  usageBandReached,
+  usageRemainingPercent,
   usageSeverity,
 } from "./status-footer.js";
 
@@ -144,6 +147,51 @@ describe("severity with configured thresholds", () => {
       durationSeverity(999_999_999, { crit: band(false, 86_400_000) }),
     ).toBe("");
     expect(durationSeverity(100, { crit: band(true, 100) })).toBe("crit");
+  });
+});
+
+describe("fmtResetClock", () => {
+  const base = { locale: "en-GB", timeZone: "UTC" };
+  const noon = Date.UTC(2026, 0, 1, 12, 0, 0);
+
+  it("renders a bare clock when the reset is within a day", () => {
+    expect(fmtResetClock(noon + 3 * 3_600_000, { now: noon, ...base })).toBe(
+      "15:00",
+    );
+  });
+
+  it("prefixes the weekday when the reset is a day or more out", () => {
+    const twoDaysOut = noon + 2 * 86_400_000 + 3 * 3_600_000;
+    expect(fmtResetClock(twoDaysOut, { now: noon, ...base })).toBe("Sat 15:00");
+  });
+
+  it("follows the locale's clock convention", () => {
+    expect(
+      fmtResetClock(noon + 3 * 3_600_000, {
+        now: noon,
+        locale: "en-US",
+        timeZone: "UTC",
+      }),
+    ).toMatch(/03:00.PM/);
+  });
+});
+
+describe("usageBandReached", () => {
+  const band = (enabled: boolean, value: number) => ({ enabled, value });
+
+  it("is true only for a defined limit at or over an enabled band", () => {
+    expect(usageBandReached(undefined, band(true, 91))).toBe(false);
+    expect(usageBandReached({ usedPercent: 90 }, band(true, 91))).toBe(false);
+    expect(usageBandReached({ usedPercent: 91 }, band(true, 91))).toBe(true);
+    expect(usageBandReached({ usedPercent: 99 }, band(false, 91))).toBe(false);
+  });
+});
+
+describe("usageRemainingPercent", () => {
+  it("returns the headroom clamped to 0..100", () => {
+    expect(usageRemainingPercent(91)).toBe(9);
+    expect(usageRemainingPercent(0)).toBe(100);
+    expect(usageRemainingPercent(120)).toBe(0);
   });
 });
 

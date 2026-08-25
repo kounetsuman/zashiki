@@ -45,7 +45,11 @@ import {
 } from "./lib/first-run-wizard.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
-import { pickAccountLimits } from "./session/status-footer.js";
+import {
+  fmtResetClock,
+  pickAccountLimits,
+  usageRemainingPercent,
+} from "./session/status-footer.js";
 import type { TermAttachStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
 import { tabKey } from "./tabs/tab-model.js";
@@ -74,6 +78,7 @@ import { TabBar } from "./ui/TabBar.js";
 import { TerminalView, type TerminalViewSession } from "./ui/TerminalView.js";
 import { Toaster } from "./ui/Toaster.js";
 import { UpdateBanner } from "./ui/UpdateBanner.js";
+import { UsageLimitWarningDialog } from "./ui/UsageLimitWarningDialog.js";
 import { useAppKeyboardShortcuts } from "./ui/useAppKeyboardShortcuts.js";
 import { useAppTabs } from "./ui/useAppTabs.js";
 import { useClipboardCopy } from "./ui/useClipboardCopy.js";
@@ -84,6 +89,7 @@ import { useDiff } from "./ui/useDiff.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
+import { useUsageLimitWarning } from "./ui/useUsageLimitWarning.js";
 import { useViewer } from "./ui/useViewer.js";
 import { useViewSelection } from "./ui/useViewSelection.js";
 import { useXtermRenderer } from "./ui/useXtermRenderer.js";
@@ -223,6 +229,18 @@ export function App({
   ).length;
   // Account-wide Claude Code usage for the global footer (null until a session reports limits).
   const accountLimits = pickAccountLimits(cockpitTerminals);
+  const usageWarning = useUsageLimitWarning({
+    limit: accountLimits?.fiveHour,
+    band: footerThresholds.usagePercent.crit,
+    notifier,
+    buildNotification: (limit) => ({
+      title: t("usageWarning.title"),
+      body: t("usageWarning.notify", {
+        percent: usageRemainingPercent(limit.usedPercent),
+        time: fmtResetClock(limit.resetsAt ?? Date.now(), { now: Date.now() }),
+      }),
+    }),
+  });
 
   const controlStatus = useSyncExternalStore(
     useCallback((cb: () => void) => control.onStatus(() => cb()), [control]),
@@ -782,6 +800,17 @@ export function App({
           runningCount={cockpitTerminals.filter((s) => s.sid).length}
           onEnable={() => saveAccountUsage(true)}
           onClose={() => setAccountUsageModalOpen(false)}
+        />
+      )}
+      {usageWarning.open && accountLimits?.fiveHour?.resetsAt !== undefined && (
+        <UsageLimitWarningDialog
+          remainingPercent={usageRemainingPercent(
+            accountLimits.fiveHour.usedPercent,
+          )}
+          unlockTime={fmtResetClock(accountLimits.fiveHour.resetsAt, {
+            now: Date.now(),
+          })}
+          onClose={usageWarning.dismiss}
         />
       )}
       {shouldShowFirstRunWizard(wizardSeen, hooksStatus) && (

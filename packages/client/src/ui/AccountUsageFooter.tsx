@@ -7,6 +7,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import {
+  fmtResetClock,
   fmtResetCountdown,
   fmtWeekResetCountdown,
   usageSeverity,
@@ -74,8 +75,14 @@ export function AccountUsageFooter({
               time: fmtCountdown(limit.resetsAt - now),
             })
           : `${limit.usedPercent}%`;
+    const tooltip =
+      limit?.resetsAt !== undefined
+        ? `${title} · ${t("footer.account.resetsAt", {
+            time: fmtResetClock(limit.resetsAt, { now }),
+          })}`
+        : title;
     return (
-      <Tooltip className="ss-group" label={title}>
+      <Tooltip className="ss-group" label={tooltip}>
         <StatusCell
           value={value}
           caption={label}
