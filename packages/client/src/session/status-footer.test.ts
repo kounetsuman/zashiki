@@ -282,7 +282,12 @@ describe("usageDisplayMs", () => {
       WEEK_WINDOW_MS,
     );
     expect(
-      usageDisplayMs("elapsed", now + WEEK_WINDOW_MS + 1_000, now, WEEK_WINDOW_MS),
+      usageDisplayMs(
+        "elapsed",
+        now + WEEK_WINDOW_MS + 1_000,
+        now,
+        WEEK_WINDOW_MS,
+      ),
     ).toBe(0);
   });
 });

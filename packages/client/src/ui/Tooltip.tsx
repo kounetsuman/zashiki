@@ -19,7 +19,7 @@ export function Tooltip({
   );
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: hover-only tooltip trigger; accessible name is on aria-label
+    // biome-ignore lint/a11y/useSemanticElements: labeled hover group; a fieldset/section would distort the status-bar layout
     <span
       className={className}
       role="group"
