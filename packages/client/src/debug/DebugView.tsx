@@ -8,9 +8,9 @@ import {
   describeServerEvent,
   type ProtocolLogEntry,
   pushRing,
+  sessionName,
   summarizeSessions,
   type TermDebugSnapshot,
-  tmuxSessionName,
 } from "./debug-model.js";
 
 const MAX_PROTOCOL_TAIL = 40;
@@ -37,7 +37,7 @@ export interface DebugSession {
 export interface DebugViewProps {
   control: DebugControl;
   session: DebugSession;
-  /** The latest state.sync snapshot (tmux window layout / state poller result). */
+  /** The latest state.sync snapshot (state poller result). */
   cockpitTerminals: readonly CockpitTerminalInfo[];
   /** Clock source for tests (defaults to Date.now). */
   now?: () => number;
@@ -134,8 +134,8 @@ export function DebugView({
           <dd>{termSnap.cockpitTerminalId ?? "-"}</dd>
           <dt>termId</dt>
           <dd>{termSnap.termId ?? "-"}</dd>
-          <dt>tmux</dt>
-          <dd>{tmuxSessionName(termSnap.termId) ?? "-"}</dd>
+          <dt>session</dt>
+          <dd>{sessionName(termSnap.termId) ?? "-"}</dd>
           <dt>suspended</dt>
           <dd>{String(termSnap.suspended)}</dd>
         </dl>

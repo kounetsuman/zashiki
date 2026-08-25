@@ -1,8 +1,7 @@
-//! Persistence of the session list and resume at daemon startup (tmux removal / Decision 1).
+//! Persistence of the session list and resume at daemon startup.
 //!
-//! Decision 1: do not keep live processes. Persist the session list to disk and, at daemon startup,
-//! relaunch from it via `claude --resume <sid>` (no re-run needed). The tmux version **typed**
-//! `claude --resume` into each window on restore, but without tmux it is enough to **make the PTY command
+//! Rather than keeping live processes, persist the session list to disk and, at daemon startup,
+//! relaunch from it via `claude --resume <sid>` (no re-run needed). It is enough to **make the PTY command
 //! itself `claude --resume <sid>`**. The save format (`saves/last.tsv` = `widx\twname\tcwd\tsid` TSV) reuses
 //! [`zashiki_core::save_file`]. Not yet wired into the runtime (daemon startup flow) (non-destructive). The
 //! source of truth is the `tests` at the end.

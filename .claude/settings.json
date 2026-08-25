@@ -5,8 +5,7 @@
       "Bash(gh *)",
       "Bash(pnpm *)",
       "Bash(node *)",
-      "Bash(npx *)",
-      "Bash(tmux *)"
+      "Bash(npx *)"
     ],
     "deny": []
   },

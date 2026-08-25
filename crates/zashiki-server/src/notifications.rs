@@ -69,7 +69,7 @@ pub fn notify_notification(
 /// Fixed id for the PTY-exhaustion notification. Coalesces consecutive failures into one entry (the upsert key).
 pub const PTY_EXHAUSTION_ID: &str = "pty-exhausted";
 
-/// Whether this is a PTY-exhaustion (ENXIO-family) message originating from tmux / portable-pty.
+/// Whether this is a PTY-exhaustion (ENXIO-family) message from PTY allocation.
 /// A `fork failed` on EAGAIN alone (process-count limit) is a different cause, so it isn't caught.
 pub fn is_pty_exhaustion(message: &str) -> bool {
     let m = message.to_lowercase();

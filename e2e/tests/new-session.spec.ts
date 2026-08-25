@@ -77,8 +77,7 @@ test.describe("Creating a new session from the SESSION LIST", () => {
   });
 
   // Story: opening a new session actually attaches the terminal, and typed input echoes back.
-  // Under owned, if term.open/select does not branch for tmux, the terminal stays empty and
-  // an internal error appears (tmux select-window $N:UUID can't find window). This thinly
+  // If attach is broken, the terminal stays empty and an internal error appears. This thinly
   // guards the path "create -> auto-select -> attach -> echo". Because of ZK_NO_CLAUDE a
   // plain shell starts, so echo is reflected back verbatim.
   test("opening a new session attaches the terminal and typed input echoes back (not empty, no error)", async ({
@@ -106,7 +105,7 @@ test.describe("Creating a new session from the SESSION LIST", () => {
 
     await expect(terminal).toContainText(marker, { timeout: 10_000 });
 
-    // Under owned, if term.select hits tmux, an internal error shows in a dialog. Assert it does not.
+    // If attach fails, an internal error shows in a dialog. Assert it does not.
     await expect(page.getByRole("alertdialog", { name: "Error" })).toHaveCount(
       0,
     );

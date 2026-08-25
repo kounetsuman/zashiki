@@ -67,14 +67,14 @@ a human verifies the following before release.
 
 ### Scrolling
 
-- [ ] The wheel enters tmux copy-mode and history can be scrolled back (delegated to tmux, not xterm.js's scrollback)
-- [ ] `q` during copy-mode / scrolling to the bottom returns to normal display
-- [ ] Key input (such as `q`) reaches the terminal even during copy-mode
+- [ ] The wheel scrolls back through xterm.js's own scrollback and reaches the first prompt
+- [ ] Scrolling to the bottom returns to the live view
+- [ ] Key input (such as `q`) still reaches the terminal while scrolled up
 - [ ] The UI does not freeze even during heavy output (such as `yes`) (flow control; it catches up after being stopped)
 
 ### Copy
 
-- [ ] Shift+drag allows text selection in xterm.js (does not conflict with tmux's mouse mode)
+- [ ] Shift+drag allows text selection in xterm.js (does not conflict with the application's mouse mode)
 - [ ] Selecting automatically copies to the clipboard (verify by pasting into another app)
 - [ ] Copying lines containing Japanese or box-drawing characters is not garbled
 - [ ] Right-click brings up the browser's standard context menu

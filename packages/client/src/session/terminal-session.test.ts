@@ -293,7 +293,7 @@ describe("TerminalSession", () => {
     expect(received).toEqual(["\x1b[H\x1b[2J"]);
   });
 
-  it("does not emit the clear sequence on a 4404 disconnect (tmux is still alive)", () => {
+  it("does not emit the clear sequence on a 4404 disconnect (the PTY is still alive)", () => {
     const { sockets, session } = setup();
     const received: string[] = [];
     session.onData((d) => received.push(d));

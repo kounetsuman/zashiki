@@ -51,9 +51,9 @@ describe("stripTerminalReplies", () => {
   });
 
   it("does not swallow non-XTVERSION DCS on the input path", () => {
-    // tmux passthrough, sixel, and DCS embedded in pasted text must survive: only the
+    // termcap queries, sixel, and DCS embedded in pasted text must survive: only the
     // XTVERSION ">|" form is a reply we generated, everything else is legitimate input.
-    expect(stripTerminalReplies("\x1bPtmux;\x1b\\")).toBe("\x1bPtmux;\x1b\\");
+    expect(stripTerminalReplies("\x1bP+q544e\x1b\\")).toBe("\x1bP+q544e\x1b\\");
     expect(stripTerminalReplies("\x1bPq#0;2;0;0;0#0~~\x1b\\")).toBe(
       "\x1bPq#0;2;0;0;0#0~~\x1b\\",
     );

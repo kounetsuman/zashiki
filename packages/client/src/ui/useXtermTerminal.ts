@@ -129,9 +129,8 @@ export function useXtermTerminal({
     let lastRows = 0;
 
     // Unify start / resize on the measured actual size. If term.open runs at 80x24 while cells
-    // are still unsettled, the pty=tmux window gets pinned to 80x24, and in window-size latest
-    // environments even other grouped cockpit terminals displaying the same window get dragged to 80x24,
-    // causing Claude to flap on re-render (endless footer repetition). So we don't start until an actual size is available.
+    // are still unsettled, the owned PTY gets pinned to 80x24, causing Claude to flap on
+    // re-render (endless footer repetition). So we don't start until an actual size is available.
     const applySize = (): void => {
       const size = measure();
       if (!size) return;
@@ -195,7 +194,7 @@ export function useXtermTerminal({
 
     // xterm sends terminal-generated reports through onData alongside keystrokes: focus reports
     // (ESC[I/ESC[O) when focus tracking is on, and query replies (device attributes, XTVERSION,
-    // OSC color, cursor position) when tmux re-queries capabilities on window re-attach. At a bare
+    // OSC color, cursor position) when capabilities are re-queried on window re-attach. At a bare
     // shell prompt the pty echoes these as garbage, so drop them before sending. If nothing remains
     // after stripping, don't send.
     const disposables = [

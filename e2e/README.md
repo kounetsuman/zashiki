@@ -9,7 +9,7 @@ Browser-mode E2E tests (Playwright). The UI is verified in the browser
 
 - `harness/boot.mjs` — A server harness that programmatically boots `createZashikiServer` with a **fixed token**.
   Launched from Playwright's `webServer`. It never touches real ps / real `~/.claude/projects` / real sessions,
-  and listens deterministically with an isolated tmux socket and fixture organizations.
+  and listens deterministically with fixture organizations.
 - `harness/constants.ts` — Port, fixed token, and fixture organizations (shared between the harness and the tests).
 - `harness/app.ts` — Entry helpers such as `gotoApp(page)` (opens with `?token=` and waits for the shell to render).
 - `tests/*.spec.ts` — Specs per feature domain. 1 describe = 1 user story,
@@ -31,5 +31,5 @@ Locally, `reuseExistingServer` reuses an existing server.
 ## Scope (current)
 
 - Only the **happy path** is implemented (app shell boot, view switching, session-list headings).
-- session-lifecycle / terminal-io requiring real tmux + fake claude, plus error and boundary cases, are follow-up issues.
-- IME composition and tmux-owned scrollback/copy cannot be faithfully reproduced in Playwright, so they are out of scope.
+- session-lifecycle / terminal-io requiring a real PTY + fake claude, plus error and boundary cases, are follow-up issues.
+- IME composition and terminal scrollback/copy cannot be faithfully reproduced in Playwright, so they are out of scope.

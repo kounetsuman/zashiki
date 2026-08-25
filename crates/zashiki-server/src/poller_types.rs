@@ -47,7 +47,7 @@ pub struct HookEventAge {
 /// still satisfy this as a plain `async fn`; RPITIT).
 pub trait PollerPorts {
     fn list_work_windows(&self) -> impl Future<Output = Vec<CockpitTerminal>> + Send;
-    /// The visible screen of the capture target pane (pane_id for tmux). Empty string on failure.
+    /// The visible screen of the capture target pane. Empty string on failure.
     fn capture_pane(&self, target: &str) -> impl Future<Output = String> + Send;
     fn ps_snapshot(&self) -> impl Future<Output = String> + Send;
     /// The head/tail slices of jsonl (None if the sid is unresolved or unread).

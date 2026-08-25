@@ -2,7 +2,7 @@
  * Observation logic for the PTY (pseudo-terminal) budget (macOS only).
  *
  * On a development machine, login shells leaked by e2e ate up `kern.tty.ptmx_max`,
- * breaking tmux's new-window / session restore with `fork failed: Device not configured`
+ * breaking session creation / restore with `fork failed: Device not configured`
  * (ENXIO). This module holds only "observation" pure functions (actually running
  * ps / sysctl is server/infra's job; no automatic kill is included).
  *
@@ -122,7 +122,7 @@ export function canCreatePty(
 }
 
 /**
- * Whether this is a tmux-originated pty allocation failure (ENXIO family). A
+ * Whether this is a pty allocation failure (ENXIO family). A
  * `fork failed` due to EAGAIN (process-count limit) is a different cause, so it is not picked up on its own (to prevent misdiagnosis).
  */
 export function isPtyExhaustionError(message: string): boolean {
@@ -137,7 +137,7 @@ export function isPtyExhaustionError(message: string): boolean {
 }
 
 /**
- * Translates a raw tmux error into a typed PTY-exhaustion message.
+ * Translates a raw PTY allocation error into a typed PTY-exhaustion message.
  * Since used is a lower bound, it prefixes `≥`, and it appends the original text for debugging.
  */
 export function translatePtyError(

@@ -1,7 +1,6 @@
-//! Launch plan for a new owned session (tmux removal / Path 2).
+//! Launch plan for a new owned session.
 //!
-//! The tmux version of `session.new` created a tmux `new-window` and typed `claude --session-id <sid>`
-//! via send-keys. In owned mode without tmux, it is enough to **make the PTY command itself launch claude**
+//! In owned mode, it is enough to **make the PTY command itself launch claude**
 //! (symmetric with the resume in [`crate::session_restore`]). Here we build a pure-data launch plan and
 //! map it onto [`crate::pty_host::PtyConfig`] and [`crate::session_registry::SessionMeta`]. The source of
 //! truth for behavior is the `tests` at the end.
@@ -23,8 +22,7 @@ pub struct NewSessionPlan {
 
 /// Builds a launch plan for a new session from a resolved cwd and claude path (pure function). If
 /// `launch_claude` is true, it launches `<claude> --session-id <sid>` and **falls back to the login
-/// shell after it exits** (symmetric with the tmux version keeping the shell around; a gap-filler before
-/// cutover). If false, it launches the login shell directly.
+/// shell after it exits** (keeping the pane alive). If false, it launches the login shell directly.
 /// The caller passes the cwd and claude path already resolved via [`resolve_cwd`] / [`resolve_claude_program`].
 #[allow(clippy::too_many_arguments)]
 pub fn plan_new_session(
@@ -60,7 +58,7 @@ pub fn plan_new_session(
 }
 
 /// Appended to every claude launch payload so the login shell takes over after claude exits (no `exec`
-/// replacement of claude itself), keeping the pane alive (symmetric with the tmux version keeping the shell around).
+/// replacement of claude itself), keeping the pane alive.
 const SHELL_TAKEOVER_TAIL: &str = r#"exec "${SHELL:-/bin/sh}""#;
 
 /// Wrap a string as a single POSIX `sh` argument (single-quoted, embedded quotes escaped).

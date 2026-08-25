@@ -11,11 +11,9 @@ Node server を撤去し、コアロジックを Rust へ寄せる取り組み�
 
 ## 目標アーキテクチャ
 
-**独立 Rust server（常駐可）**。Node server を Rust server バイナリで置換し、Tauri は接続する（in-process link や FFI/napi は採らない = tmux 撤去後の常駐と両立せず、Node 同梱が残るため）。
+**独立 Rust server（常駐可）**。Node server を Rust server バイナリで置換し、Tauri は接続する（in-process link や FFI/napi は採らない = 常駐と両立せず、Node 同梱が残るため）。
 
-## 段階移行
+## 設計方針
 
-- **Phase A**: Rust server を Node の drop-in 置換にする。**client を無改修に保つ条件 = wire を不変に保つこと**（[`packages/shared/README.md`](../packages/shared/README.ja.md) の wire 契約）。tmux は Rust server が内包する。
-- **Phase B**: tmux を撤去する。`portable-pty` 直管理 + ヘッドレス vterm で `capture-pane` を置換し、セッション永続化を launchd 常駐で自前化する。
-
-順序: Rust server 成立（tmux 内包）→ tmux 撤去は Rust 側で一度だけ（TS で PTY 直管理を作り込む二重投資を避ける）。
+- **client を無改修に保つ**ため、**wire を不変に保つ**（[`packages/shared/README.md`](../packages/shared/README.ja.md) の wire 契約）。
+- server が各セッションの PTY を単一所有・単一読み取りし（`portable-pty`）、外部マルチプレクサに頼らずヘッドレス vterm（`vt100`）で可視画面を再構成する。

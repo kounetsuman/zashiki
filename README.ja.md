@@ -58,7 +58,7 @@ Server (Rust / zashiki-server)
 Claude Code（サーバが所有する PTY 上で動く）
 ```
 
-- サーバが各セッションの PTY を単一所有し、ヘッドレス vt100 で画面を再構成する（tmux 非依存）
+- サーバが各セッションの PTY を単一所有し、ヘッドレス vt100 で画面を再構成する
 - セッション一覧はデーモン（launchd）起動時に `claude --resume` で永続化・復元される
 - 状態（running / idle / waiting）を一覧表示し、waiting でデスクトップ通知が飛ぶ
 

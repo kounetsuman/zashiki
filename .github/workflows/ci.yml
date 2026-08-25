@@ -73,7 +73,7 @@ jobs:
         run: pnpm test
 
   # ブラウザモード e2e（Playwright / issue #200）。正常系のみ・薄く疎通を守る。
-  # サーバは boot.mjs が Rust zashiki-server を owned モードで固定トークン起動する（tmux/Node 非依存）。
+  # サーバは boot.mjs が Rust zashiki-server を owned モードで固定トークン起動する（Node 非依存）。
   # 重いので PR でのみ・JS/Rust いずれかが変わった時だけ回す（マージ後の main では PR で検証済みのため回さない）。
   e2e:
     needs: changes

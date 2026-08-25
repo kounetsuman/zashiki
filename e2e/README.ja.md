@@ -9,7 +9,7 @@
 
 - `harness/boot.mjs` — `createZashikiServer` を**固定トークン**でプログラム起動するサーバハーネス。
   Playwright の `webServer` から起動する。実 ps / 実 `~/.claude/projects` / 実セッションに触れず、
-  隔離 tmux ソケットとフィクスチャ組織で決定的に待ち受ける。
+  フィクスチャ組織で決定的に待ち受ける。
 - `harness/constants.ts` — ポート・固定トークン・フィクスチャ組織（ハーネスとテストで共有）。
 - `harness/app.ts` — `gotoApp(page)` などの入口ヘルパ（`?token=` 付きで開き、シェル描画を待つ）。
 - `tests/*.spec.ts` — 機能ドメインごとの spec。1 describe = 1 ユーザーストーリー、
@@ -31,5 +31,5 @@ pnpm e2e                   # ルートから e2e を実行（= playwright test�
 ## スコープ（現状）
 
 - 実装済みは**正常系のみ**（アプリシェル起動・ビュー切替・セッション一覧の見出し）。
-- 実 tmux + fake claude を要する session-lifecycle / terminal-io、異常系・境界は後続 issue。
-- IME 合成・tmux 所有のスクロールバック/コピーは Playwright で忠実再現できないためスコープ外。
+- 実 PTY + fake claude を要する session-lifecycle / terminal-io、異常系・境界は後続 issue。
+- IME 合成・端末のスクロールバック/コピーは Playwright で忠実再現できないためスコープ外。

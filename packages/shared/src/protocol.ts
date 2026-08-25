@@ -12,7 +12,7 @@ export type HealthResponse = z.infer<typeof healthResponseSchema>;
 
 /**
  * Terminal view ID (expected to be a client-generated UUID).
- * Only alphanumerics and hyphens are allowed, since it is embedded in the tmux session name `zk-<termId>`.
+ * Only alphanumerics and hyphens are allowed, since it is embedded in the server session name `zk-<termId>`.
  */
 export const termIdSchema = z
   .string()
@@ -24,9 +24,9 @@ export const termIdSchema = z
 export type TermId = z.infer<typeof termIdSchema>;
 
 /**
- * Immutable session (window) ID. Its form differs by backend:
- * - tmux: canonical window ID `@N` (immutable across rename and renumber)
+ * Immutable session (window) ID. Two forms exist:
  * - owned: SessionRegistry's immutable ID (UUID)
+ * - legacy: canonical window ID `@N` (immutable across rename and renumber)
  *
  * Both forms are accepted (restricting to only one would reject the entire
  * state.sync originating from owned, so new/restored cockpit terminals would never appear
@@ -36,7 +36,7 @@ export const cockpitTerminalIdSchema = z
   .string()
   .regex(
     /^(@\d+|[A-Za-z0-9][A-Za-z0-9-]{0,127})$/,
-    "cockpitTerminalId must be a tmux window_id (@N) or an owned session id",
+    "cockpitTerminalId must be a legacy window id (@N) or an owned session id",
   );
 
 export type CockpitTerminalId = z.infer<typeof cockpitTerminalIdSchema>;

@@ -1,15 +1,13 @@
-//! The core block of removing tmux (Phase B in crates/README).
+//! The PTY host — the server directly owns and reads each session's PTY.
 //!
 //! Design principle (proven in the PoC and agreed upon):
 //! **The server is the sole PTY owner and reader of each session, and views (browsers) subscribe to
-//! the server.** Because size authority is consolidated to a single point in the server, tmux's
-//! grouped sessions (the shared-window contention of `window-size latest`) structurally disappear.
+//! the server.** Because size authority is consolidated to a single point in the server, there is no
+//! shared-window size contention between views.
 //!
 //! One session = one `PtySession`. A single reader thread reads the PTY output and:
-//! - accumulates the full output in a [`ScrollbackBuffer`] for replay on attach (a replacement for
-//!   tmux scrollback),
-//! - feeds the same byte stream to [`vt100`] to reconstruct the visible screen (a replacement for
-//!   tmux `capture-pane`),
+//! - accumulates the full output in a [`ScrollbackBuffer`] for replay on attach,
+//! - feeds the same byte stream to [`vt100`] to reconstruct the visible screen,
 //! - fans out to all subscribers via broadcast.
 //!
 //! Not yet wired into the runtime (WS routes); non-breaking. The cutover comes later.
@@ -99,7 +97,7 @@ const SIG_KILL: i32 = 9;
 
 /// The return of [`PtySession::subscribe`]. Drawing `replay` (the full history up to the
 /// subscription point) fully first, then streaming the live chunks from `receiver`, restores the
-/// screen on connect even without tmux.
+/// screen on connect.
 pub struct Subscription {
     /// The full scrollback contents at the subscription point (raw bytes of all output so far).
     pub replay: Vec<u8>,
@@ -205,8 +203,7 @@ impl PtySession {
         Ok(())
     }
 
-    /// Plain text of the headless-reconstructed visible screen (equivalent to tmux `capture-pane`;
-    /// passed to state detection).
+    /// Plain text of the headless-reconstructed visible screen (passed to state detection).
     pub fn screen_contents(&self) -> String {
         lock_recover(&self.inner).parser.screen().contents()
     }
@@ -327,8 +324,8 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
     }
 }
 
-/// An append-only buffer that retains the full raw output of a session (a replacement for tmux
-/// scrollback). Nothing is evicted, so replay on attach can restore the session from its very first
+/// An append-only buffer that retains the full raw output of a session (the scrollback).
+/// Nothing is evicted, so replay on attach can restore the session from its very first
 /// prompt; the aggregate memory across sessions is watched by the scrollback-memory monitor via
 /// [`len`](Self::len) rather than bounded here.
 struct ScrollbackBuffer {

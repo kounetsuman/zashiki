@@ -1,4 +1,4 @@
-//! Owned-PTY bridge for `/ws/term/<termId>` (post-tmux removal).
+//! Owned-PTY bridge for `/ws/term/<termId>`.
 //!
 //! Built on the premise that the server is the sole PTY owner and reader (see [`crate::pty_host`]),
 //! the browser **subscribes** to a [`PtySession`] in [`crate::session_registry::SessionRegistry`].
@@ -17,13 +17,13 @@
 //! - A broadcast `Lagged` recovers automatically by re-subscribing and resending the current screen
 //!   (redraw sequence only). We do not resend the raw replay here, to avoid duplicating scrollback
 //!   the client already holds.
-//! - **Backpressure: never propagate one subscriber's lag to the PTY itself**. The tmux-era strategy
-//!   of "stop draining out_rx and let the PTY stall" is not used for an owned PTY (it would drag down
+//! - **Backpressure: never propagate one subscriber's lag to the PTY itself**. A "stop draining out_rx
+//!   and let the PTY stall" strategy is not used for an owned PTY (it would drag down
 //!   the other subscribers and the poller). While paused we **drain and discard** the broadcast, and
 //!   on resume we resend the current screen (`contents_formatted`) to reconcile.
 //!
 //! The source of truth for behavior is the `tests` at the end of this file (a real axum WS + an echo
-//! PTY via `sh -c cat`; no tmux required).
+//! PTY via `sh -c cat`).
 
 use std::sync::Arc;
 
@@ -34,9 +34,9 @@ use crate::control::ControlServices;
 use crate::pty_host::PtySession;
 use crate::term_registry::AttachOutcome;
 
-/// UTF-16 code-unit count of an outgoing binary frame (same definition as the tmux-era
-/// [`crate::term_attach`], so the unit matches the client's term.ack on both ends. ASCII borrows with
-/// no allocation, and incomplete UTF-8 degrades symmetrically to the replacement character).
+/// UTF-16 code-unit count of an outgoing binary frame (the unit matches the client's term.ack on both
+/// ends. ASCII borrows with no allocation, and incomplete UTF-8 degrades symmetrically to the
+/// replacement character).
 fn utf16_units(data: &[u8]) -> u64 {
     String::from_utf8_lossy(data).encode_utf16().count() as u64
 }
@@ -74,7 +74,7 @@ fn apply_term_size(session: &PtySession, services: &ControlServices, term_id: &s
     }
 }
 
-/// Handle one `/ws/term` connection by subscribing to the owned PTY (tmux-independent).
+/// Handle one `/ws/term` connection by subscribing to the owned PTY.
 /// Upper bound for waiting on a term.select bind when attaching in an unbound state (term.open had no
 /// cockpitTerminalId). The client always sends term.select immediately after attach (onOpen), so it is normally
 /// bound right away.
@@ -247,8 +247,7 @@ async fn run_bridge(
                     break;
                 }
             }
-            // Always drain live output (even while paused, drain and discard = never stall the PTY
-            // itself; the opposite of the tmux version).
+            // Always drain live output (even while paused, drain and discard = never stall the PTY itself).
             live = sub.receiver.recv() => match live {
                 Ok(chunk) => {
                     if paused {
@@ -355,8 +354,8 @@ async fn run_bridge(
             },
         }
     }
-    // The PTY itself is shared with other subscribers/the poller, so we do not kill it here (unlike the
-    // tmux version). The subscribe/receiver are released when sub is dropped. Stopping the PtySession is
+    // The PTY itself is shared with other subscribers/the poller, so we do not kill it here.
+    // The subscribe/receiver are released when sub is dropped. Stopping the PtySession is
     // SessionRegistry::remove's job.
 }
 

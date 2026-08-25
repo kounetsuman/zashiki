@@ -1,10 +1,9 @@
-//! Switches the **screen source** for session state detection from tmux `capture-pane` to
-//! pty_host's headless vt100-reconstructed screen (tmux removal, step ③).
+//! Provides the **screen source** for session state detection: pty_host's headless
+//! vt100-reconstructed screen.
 //!
 //! The detection logic itself (priority order wizard > running > bg_agent > no_claude > idle)
-//! **reuses as-is** the pure function [`zashiki_core::session_state::detect_state`]. This only
-//! swaps the visible-screen text that the tmux poller obtained via `capturePane(paneId)` for
-//! [`PtySession::screen_contents`] (raw PTY output reconstructed by vt100). Not yet wired into
+//! **reuses as-is** the pure function [`zashiki_core::session_state::detect_state`]. The visible-screen
+//! text comes from [`PtySession::screen_contents`] (raw PTY output reconstructed by vt100). Not yet wired into
 //! the poller loop (periodic execution, jsonl fallback merge); non-destructive. The behavioral
 //! source of truth is the `tests` at the end of the file.
 
@@ -12,7 +11,7 @@ use crate::pty_host::PtySession;
 use zashiki_core::session_state::{detect_state, DetectStateOptions, CockpitTerminalState};
 
 /// Detect a session's current state from the headless reconstructed screen (vt100).
-/// This replaces tmux `capture-pane` → `detectState` (only the screen source changes; detection stays the core pure function).
+/// The screen source is the vt100-reconstructed screen; detection stays the core pure function.
 pub fn poll_state(session: &PtySession, opts: &DetectStateOptions) -> CockpitTerminalState {
     detect_state(&session.screen_contents(), opts)
 }
