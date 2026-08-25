@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-25
+
+### Added
+
+- A loading spinner inside Search View while a search runs (#207)
+- A usage meter in the account footer, with a toggle between remaining and elapsed time (#216)
+
+### Changed
+
+- Moved the signed-in account indicator into the native macOS title bar (#209)
+- Search View now fills the full height of the left area (#210)
+- The active tab's org color now extends as a full-width line under the tab bar (#212)
+- Refined the Settings modal layout and visual tone (#214)
+- Help is now a modal built on the shared Modal shell (#218)
+
 ## [0.11.0] - 2026-08-25
 
 ### Added
@@ -190,7 +205,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/kounetsuman/zashiki/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kounetsuman/zashiki/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kounetsuman/zashiki/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kounetsuman/zashiki/compare/v0.8.0...v0.9.0
