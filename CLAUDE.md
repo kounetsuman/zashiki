@@ -23,6 +23,16 @@ There is no dedicated design-documentation directory (`docs/`). Consolidate into
 - **Design is expressed through descriptive, declarative implementation and appropriate abstraction**. If a comment is still needed, use an inline comment (following the comment conventions); if it's needed across directories, use each directory's `README.md`.
   - Don't reference retired design documents from comments (don't add new section-number pointers). Put cross-cutting "why" in the relevant directory's README, and point to the tests rather than restating the spec detail.
 
+## Issues vs. Discussions
+
+An Issue must have a **defined completion condition** — a single, unambiguous "when is this done".
+
+- **Bug** → done when it no longer reproduces.
+- **Settled spec** → done when the spec is met (its tests pass).
+- **Open-ended idea / proposal / design** whose spec is not yet settled → **Discussions**, not an Issue. Decide there whether and how to turn it into a spec; only once the completion condition is clear do you cut an Issue for it.
+
+Do not open an Issue you cannot state a completion condition for, and do not use a tracking Issue to hold open-ended design (split the settled, completion-bearing parts into their own Issues and keep the rest in a Discussion).
+
 ## Bilingual Markdown
 
 When you create a new Markdown document (README, guide, etc.), author it in both supported languages: English as the default `X.md` and Japanese as `X.ja.md`, cross-linked in the header — mirroring the root `README.md` / `README.ja.md` convention (`**English** | [日本語](./README.ja.md)` and `[English](./README.md) | **日本語**`).

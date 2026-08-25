@@ -6,7 +6,7 @@ zashiki への貢献に興味を持っていただきありがとうございま
 
 ## はじめに
 
-- バグ・要望は、まず [Issue](../../issues) を立ててください（関連する既存 Issue があればそちらへ）。
+- **バグ**、または**完了条件を明示できる確定仕様**は [Issue](../../issues) を立ててください（関連する既存 Issue があればそちらへ）。**仕様が未確定の提案・アイデア**は Issue でなく [Discussions](../../discussions) から始めてください。完了条件が固まった時点で Issue に切り出します。詳細は [CLAUDE.md](./CLAUDE.md) の「Issues vs. Discussions」を参照。
 - **セキュリティ脆弱性は公開 Issue に書かず**、[SECURITY.md](./SECURITY.ja.md) の手順で非公開に報告してください。
 - 参加にあたっては [行動規範（CODE_OF_CONDUCT.md）](./CODE_OF_CONDUCT.ja.md) に従ってください。
 
