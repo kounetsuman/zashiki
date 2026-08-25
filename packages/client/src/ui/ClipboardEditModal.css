@@ -31,19 +31,47 @@
   color: #999;
 }
 
-.clip-edit-textarea {
+.clip-edit-editor {
+  display: flex;
   box-sizing: border-box;
-  width: 100%;
   height: 40vh;
-  padding: 8px 10px;
   background: #141414;
   border: 1px solid #333;
   border-radius: 4px;
-  color: #cbd;
+  overflow: hidden;
+  resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
   line-height: 1.5;
-  resize: vertical;
+}
+
+.clip-edit-gutter {
+  flex: 0 0 auto;
+  padding: 8px 8px 8px 10px;
+  overflow: hidden;
+  color: #555;
+  text-align: right;
+  white-space: pre;
+  user-select: none;
+}
+
+.clip-edit-textarea {
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  color: #cbd;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre;
+  overflow: auto;
+  resize: none;
+}
+
+.clip-edit-textarea:focus {
+  outline: none;
 }
 
 .clip-edit-never {
