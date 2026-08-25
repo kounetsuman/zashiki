@@ -4,6 +4,7 @@
 //! and `/ws/term` channels, and the status poller, behind Host/Origin verification, token auth for
 //! `/api/*`, and static serving of the client dist.
 
+pub mod account_status;
 pub mod claude_projects;
 pub mod claude_settings;
 pub mod claude_settings_io;
@@ -51,6 +52,7 @@ pub mod update_checker;
 mod app_state;
 mod poller_types;
 mod poller_eval_helpers;
+mod control_account;
 mod control_dispatch;
 mod control_hub;
 mod control_session;

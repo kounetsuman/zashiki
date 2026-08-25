@@ -19,6 +19,8 @@ export interface AppState {
   orgNotes: Record<string, string>;
   /** In-app notifications. The server holds them and broadcasts the full set via notifications.sync. */
   notifications: Notification[];
+  /** The signed-in Claude account (auth is global per OS user). Delivered via account.status. */
+  account: { loggedIn: boolean; email: string | null };
   lastError: string | null;
   selectedCockpitTerminalId: string | null;
   /**
@@ -120,6 +122,7 @@ const INITIAL_STATE: AppState = {
   orgAliases: {},
   orgNotes: {},
   notifications: [],
+  account: { loggedIn: false, email: null },
   lastError: null,
   selectedCockpitTerminalId: null,
   focusNonce: 0,
@@ -199,6 +202,8 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     } else if (m.t === "notes.sync") {
       // The full per-org notes map held by the server. Replace it wholesale.
       setState({ orgNotes: m.notes });
+    } else if (m.t === "account.status") {
+      setState({ account: { loggedIn: m.loggedIn, email: m.email } });
     } else if (m.t === "term.reconnect") {
       // zk-* was recreated during restore, so reattach the pty.
       deps.session.reconnect();

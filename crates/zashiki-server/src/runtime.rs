@@ -80,6 +80,14 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
             crate::now_ms(),
         );
     }
+    // Probe the signed-in account off the boot path so the first connect carries a real account.status.
+    {
+        let hub = hub.clone();
+        tokio::spawn(async move {
+            let claude = crate::session_launch::resolve_claude_program();
+            hub.publish_account_status(crate::account_status::read_account_status(&claude).await);
+        });
+    }
     let config_path = config.config_path;
     if let Some(path) = config_path.clone() {
         spawn_config_watch(path, hub.clone(), CONFIG_POLL);
@@ -183,17 +191,22 @@ mod tests {
             app_version: None,
         });
         let mut rx = services.hub.subscribe();
-        let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
-            .await
-            .expect("poller should publish within timeout")
-            .expect("broadcast open");
-        match msg {
-            ServerMessage::StateSync { cockpit_terminals: sessions, orgs, .. } => {
-                assert!(sessions.is_empty());
-                assert_eq!(orgs, vec!["charlie".to_string()]);
+        let state = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match rx.recv().await {
+                    Ok(ServerMessage::StateSync { cockpit_terminals: sessions, orgs, .. }) => {
+                        return Some((sessions, orgs));
+                    }
+                    Ok(_) => continue,
+                    Err(_) => return None,
+                }
             }
-            other => panic!("expected state.sync, got {other:?}"),
-        }
+        })
+        .await
+        .expect("poller should publish within timeout")
+        .expect("broadcast open");
+        assert!(state.0.is_empty());
+        assert_eq!(state.1, vec!["charlie".to_string()]);
     }
 
     /// The poller sees the same registry as session.new. Having an owned PTY registered in the registry

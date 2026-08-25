@@ -290,6 +290,18 @@ export const updatePerformSchema = z.object({
   t: z.literal("update.perform"),
 });
 
+/**
+ * Re-read the signed-in Claude account and reply with `account.status`. Claude Code auth is global per
+ * OS user, so a switch reaches new sessions automatically but not already-running ones. When
+ * `restartSessions` is true the server first restarts every Cockpit Terminal with `--resume` so their
+ * `claude` re-reads the switched account (the client sets it only after confirming, and only when
+ * running Cockpit Terminals exist).
+ */
+export const accountRefreshSchema = z.object({
+  t: z.literal("account.refresh"),
+  restartSessions: z.boolean(),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   termOpenSchema,
   termResizeSchema,
@@ -308,9 +320,11 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   hooksUnregisterSchema,
   updateCheckSchema,
   updatePerformSchema,
+  accountRefreshSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
+export type AccountRefreshMessage = z.infer<typeof accountRefreshSchema>;
 export type NotificationDismissMessage = z.infer<
   typeof notificationDismissSchema
 >;
@@ -448,6 +462,17 @@ export const updateStatusSchema = z.object({
   detail: z.string().nullable(),
 });
 
+/**
+ * The signed-in Claude account (from `claude auth status`). Sent right after connecting and again in
+ * reply to each `account.refresh`. `email` is null when not signed in or when the status could not be
+ * read. Auth is global per OS user, so this reflects every session at once.
+ */
+export const accountStatusSchema = z.object({
+  t: z.literal("account.status"),
+  loggedIn: z.boolean().catch(false).default(false),
+  email: z.string().nullable().catch(null).default(null),
+});
+
 export const serverMessageSchema = z.discriminatedUnion("t", [
   stateSyncSchema,
   termReconnectSchema,
@@ -461,9 +486,11 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   hooksStatusSchema,
   updateCheckResultSchema,
   updateStatusSchema,
+  accountStatusSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+export type AccountStatusMessage = z.infer<typeof accountStatusSchema>;
 export type HooksStatusMessage = z.infer<typeof hooksStatusSchema>;
 export type SelectMessage = z.infer<typeof selectSchema>;
 export type ErrorMessage = z.infer<typeof errorMessageSchema>;

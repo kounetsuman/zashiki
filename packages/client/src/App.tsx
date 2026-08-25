@@ -49,6 +49,7 @@ import { pickAccountLimits } from "./session/status-footer.js";
 import type { TermAttachStatus } from "./session/terminal-session.js";
 import { createAppStore } from "./state/app-store.js";
 import { tabKey } from "./tabs/tab-model.js";
+import { AccountIndicator } from "./ui/AccountIndicator.js";
 import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
 import { AccountUsageModal } from "./ui/AccountUsageModal.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
@@ -203,6 +204,7 @@ export function App({
     orgAliases,
     orgNotes,
     notifications,
+    account,
     lastError,
     selectedCockpitTerminalId,
     focusNonce,
@@ -431,6 +433,13 @@ export function App({
     [control],
   );
 
+  const refreshAccount = useCallback(
+    (restartSessions: boolean): void => {
+      control.send({ t: "account.refresh", restartSessions });
+    },
+    [control],
+  );
+
   const saveEditor = useCallback(
     (command: string): void => {
       control.send({ t: "config.setEditor", editor: command });
@@ -545,6 +554,13 @@ export function App({
 
   return (
     <div className="app">
+      <div className="app-header">
+        <AccountIndicator
+          email={account.email}
+          runningCount={cockpitTerminals.length}
+          onRefresh={refreshAccount}
+        />
+      </div>
       <UpdateBanner
         version={updateVersion}
         updating={selfUpdate.updating}
