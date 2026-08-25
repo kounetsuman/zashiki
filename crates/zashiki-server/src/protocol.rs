@@ -135,6 +135,12 @@ pub struct CockpitTerminalInfo {
     /// For backward compatibility with older servers, false is not sent (not sent = treated as false).
     #[serde(default, skip_serializing_if = "is_false")]
     pub limited: bool,
+    /// Flag indicating one of Claude Code's built-in menu/overlay screens (/usage, /status, /login,
+    /// /model, /mcp, …) is open, detected from the captured screen. Orthogonal to the primary state:
+    /// it only overrides the rendered state glyph. For backward compatibility with older servers,
+    /// false is not sent (not sent = treated as false).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub menu_open: bool,
     /// Token totals and elapsed anchors for the session status footer (absent for old servers, or
     /// while there is no readable transcript). `limits` inside is filled only when the statusLine
     /// bridge is configured.
@@ -526,6 +532,7 @@ mod tests {
                 running_subagents: None,
                 shells_running: None,
                 limited: false,
+                menu_open: false,
                 usage: None,
             }],
             orgs: vec!["org1".into()],
@@ -646,6 +653,7 @@ mod tests {
                 running_subagents: Some(3),
                 shells_running: None,
                 limited: false,
+                menu_open: false,
                 usage: None,
             }],
             orgs: vec![],
@@ -671,6 +679,7 @@ mod tests {
             running_subagents: None,
             shells_running: Some(2),
             limited: false,
+            menu_open: false,
             usage: None,
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
@@ -692,6 +701,7 @@ mod tests {
             running_subagents: None,
             shells_running: None,
             limited: false,
+            menu_open: false,
             usage: None,
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":false}"#;
@@ -714,6 +724,7 @@ mod tests {
             running_subagents: None,
             shells_running: None,
             limited: false,
+            menu_open: false,
             usage: None,
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"sid":"0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f","active":true}"#;
@@ -735,6 +746,7 @@ mod tests {
             running_subagents: None,
             shells_running: None,
             limited: false,
+            menu_open: false,
             usage: Some(SessionUsage {
                 turn_tokens: 1200,
                 session_tokens: 3_400_000,
@@ -771,6 +783,7 @@ mod tests {
             running_subagents: None,
             shells_running: None,
             limited: false,
+            menu_open: false,
             usage: Some(SessionUsage {
                 turn_tokens: 0,
                 session_tokens: 500,

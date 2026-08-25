@@ -486,6 +486,7 @@ mod repos_add_rest_tests {
             run_marker: None,
             bg_agent_marker: None,
             limit_marker: None,
+            menu_markers: None,
             launch_claude: false,
             config: ConfigView::default(),
             config_path: None,

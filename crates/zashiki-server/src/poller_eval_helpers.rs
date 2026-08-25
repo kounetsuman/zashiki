@@ -1,7 +1,9 @@
 //! The pure evaluation helpers of the status poller.
 
 use zashiki_core::repos::org_names;
-use zashiki_core::session_state::{CockpitTerminalState, DEFAULT_LIMIT_MARKER};
+use zashiki_core::session_state::{
+    CockpitTerminalState, DEFAULT_LIMIT_MARKER, DEFAULT_MENU_MARKERS,
+};
 
 use zashiki_core::process_tree::find_sid_in_tree;
 
@@ -26,6 +28,25 @@ pub(crate) fn resolve_limit_marker(config: &PollConfig) -> &str {
     match config.limit_marker.as_deref() {
         Some(m) if !m.is_empty() => m,
         _ => DEFAULT_LIMIT_MARKER,
+    }
+}
+
+/// Resolves the menu markers by splitting the comma-separated override on commas (trimmed, empties
+/// dropped); an unset or all-empty override falls back to DEFAULT_MENU_MARKERS.
+pub(crate) fn resolve_menu_markers(config: &PollConfig) -> Vec<String> {
+    let parsed: Vec<String> = config
+        .menu_markers
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string)
+        .collect();
+    if parsed.is_empty() {
+        DEFAULT_MENU_MARKERS.iter().map(|m| m.to_string()).collect()
+    } else {
+        parsed
     }
 }
 

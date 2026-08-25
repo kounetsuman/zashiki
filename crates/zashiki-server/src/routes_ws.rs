@@ -72,6 +72,7 @@ mod ws_control_tests {
                 running_subagents: Some(0),
                 shells_running: None,
                 limited: false,
+                menu_open: false,
                 usage: None,
             }],
             orgs: vec!["org".to_string()],
@@ -173,6 +174,7 @@ mod ws_control_tests {
             running_subagents: subagents,
             shells_running: shells,
             limited: false,
+            menu_open: false,
             usage: None,
         }
     }
@@ -283,6 +285,7 @@ mod ws_control_tests {
             run_marker: None,
             bg_agent_marker: None,
             limit_marker: None,
+            menu_markers: None,
             launch_claude: false,
             config: ConfigView::default(),
             config_path: None,

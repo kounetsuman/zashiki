@@ -474,6 +474,7 @@ mod tests {
                 running_subagents: Some(0),
                 shells_running: None,
                 limited: false,
+                menu_open: false,
                 usage: None,
             }],
             orgs: vec!["org".to_string()],
@@ -495,6 +496,7 @@ mod tests {
             running_subagents: subagents,
             shells_running: shells,
             limited: false,
+            menu_open: false,
             usage: None,
         }
     }

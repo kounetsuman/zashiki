@@ -131,6 +131,13 @@ export const cockpitTerminalInfoSchema = z.object({
    */
   limited: z.boolean().optional(),
   /**
+   * Whether one of Claude Code's built-in menu/overlay screens (/usage, /status, /login, /model,
+   * /mcp, …) is open. Detected from the captured screen (isMenuOpen in shared/session-state.ts).
+   * Orthogonal to the main state: it only overrides the rendered state glyph (settings icon).
+   * optional for old-server compatibility (not sent is treated as false).
+   */
+  menuOpen: z.boolean().optional(),
+  /**
    * Token totals and elapsed anchors for the session status footer. Absent for old servers or when
    * the transcript can't be read; `limits` inside is present only when the statusLine bridge is set up.
    */

@@ -141,6 +141,7 @@ async fn main() {
         run_marker: std::env::var("ZK_RUN_MARKER").ok(),
         bg_agent_marker: std::env::var("ZK_BG_AGENT_MARKER").ok(),
         limit_marker: std::env::var("ZK_LIMIT_MARKER").ok(),
+        menu_markers: std::env::var("ZK_MENU_MARKERS").ok(),
         // ZK_NO_CLAUDE=1 suppresses claude auto-launch (launches by default).
         launch_claude,
         config,

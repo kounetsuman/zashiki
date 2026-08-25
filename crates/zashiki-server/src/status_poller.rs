@@ -9,7 +9,7 @@ use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
     apply_startup_grace, count_running_subagents, detect_state, fallback_state,
-    hook_event_fresh_within_sec, is_limit_reached, resolve_state, startup_grace_polls,
+    hook_event_fresh_within_sec, is_limit_reached, is_menu_open, resolve_state, startup_grace_polls,
     subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
@@ -24,8 +24,8 @@ pub use crate::poller_types::{
 };
 
 use crate::poller_eval_helpers::{
-    build_orgs, is_pane_in_mode, last_path_segment, pick_pane, resolve_limit_marker, roots_ref,
-    state_wire,
+    build_orgs, is_pane_in_mode, last_path_segment, pick_pane, resolve_limit_marker,
+    resolve_menu_markers, roots_ref, state_wire,
 };
 
 /// The server-side state poller (the core evaluation logic). It holds the previous state for pane_in_mode skips
@@ -37,6 +37,8 @@ pub struct StatusPoller {
     prev_states: HashMap<String, CockpitTerminalState>,
     /// The previous limited of windows whose decision was skipped due to pane_in_mode (carried over because the capture becomes history and cannot be re-decided).
     prev_limited: HashMap<String, bool>,
+    /// The previous menu_open of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited).
+    prev_menu_open: HashMap<String, bool>,
     /// The consecutive no_claude poll count per window (material for the startup grace decision). Reset to 0 on anything other than no_claude.
     no_claude_streak: HashMap<String, u32>,
     /// The most recent picked pane pid per window. The basis for detecting a window rebuild from restore/kill
@@ -87,6 +89,7 @@ impl StatusPoller {
             sessions.iter().map(|s| s.cockpit_terminal_id.as_str()).collect();
         self.prev_states.retain(|id, _| live.contains(id.as_str()));
         self.prev_limited.retain(|id, _| live.contains(id.as_str()));
+        self.prev_menu_open.retain(|id, _| live.contains(id.as_str()));
         self.no_claude_streak
             .retain(|id, _| live.contains(id.as_str()));
         self.last_pid.retain(|id, _| live.contains(id.as_str()));
@@ -122,13 +125,17 @@ impl StatusPoller {
             .is_some_and(|k| !self.title_cache.contains_key(k));
 
         let in_mode = is_pane_in_mode(win, &picked.pane_id);
-        let (mut state, limited) = if in_mode {
+        let (mut state, limited, menu_open) = if in_mode {
             (
                 self.prev_states
                     .get(&win.cockpit_terminal_id)
                     .copied()
                     .unwrap_or(CockpitTerminalState::Unknown),
                 self.prev_limited
+                    .get(&win.cockpit_terminal_id)
+                    .copied()
+                    .unwrap_or(false),
+                self.prev_menu_open
                     .get(&win.cockpit_terminal_id)
                     .copied()
                     .unwrap_or(false),
@@ -144,7 +151,10 @@ impl StatusPoller {
                 },
             );
             let limited = is_limit_reached(&capture, resolve_limit_marker(config));
-            (state, limited)
+            let markers = resolve_menu_markers(config);
+            let marker_refs: Vec<&str> = markers.iter().map(String::as_str).collect();
+            let menu_open = is_menu_open(&capture, &marker_refs);
+            (state, limited, menu_open)
         };
 
         let mut slices: Option<Slices> = None;
@@ -258,6 +268,8 @@ impl StatusPoller {
         self.prev_states
             .insert(win.cockpit_terminal_id.clone(), scrape_state);
         self.prev_limited.insert(win.cockpit_terminal_id.clone(), limited);
+        self.prev_menu_open
+            .insert(win.cockpit_terminal_id.clone(), menu_open);
         Some(CockpitTerminalInfo {
             cockpit_terminal_id: win.cockpit_terminal_id.clone(),
             name: win.name.clone(),
@@ -270,6 +282,7 @@ impl StatusPoller {
             running_subagents: Some(running_subagents as u32),
             shells_running,
             limited,
+            menu_open,
             usage,
         })
     }
@@ -362,6 +375,7 @@ mod tests {
             run_marker: None,
             bg_agent_marker: None,
             limit_marker: None,
+            menu_markers: None,
         }
     }
 
@@ -457,6 +471,25 @@ mod tests {
         let s = &snap.sessions[0];
         assert_eq!(s.state, "running");
         assert!(s.limited);
+    }
+
+    /// A capture showing a Claude Code menu/overlay puts menu_open=true on the wire (default markers).
+    #[tokio::test]
+    async fn menu_overlay_sets_menu_open_flag() {
+        let cap = "\n   Select login method\n   1. Claude account\n   2. Console\n".to_string();
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap)]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert!(snap.sessions[0].menu_open);
     }
 
     /// A window with claude absent is starting while within the startup grace and settles to no_claude once the grace is exceeded.

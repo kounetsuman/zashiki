@@ -7,6 +7,21 @@ export const DEFAULT_BG_AGENT_MARKER = "◯";
 export const DEFAULT_LIMIT_MARKER = "usage limit reached";
 
 /**
+ * Distinctive header phrases of Claude Code's built-in menu/overlay screens (`/login`, `/status`,
+ * `/usage`, `/model`, `/mcp`, and the wider settings family). A session showing one of these is
+ * sitting in a menu rather than mid-task, so the session list swaps its state glyph for a settings
+ * icon. Best-effort defaults matched case-insensitively; extend or replace via `ZK_MENU_MARKERS`
+ * when Claude Code's wording changes (the same escape-hatch idea as the run/limit markers).
+ */
+export const DEFAULT_MENU_MARKERS: readonly string[] = [
+  "Select login method",
+  "Claude Code Status",
+  "Current week (all models)",
+  "Select Model",
+  "Manage MCP servers",
+];
+
+/**
  * The last 8 non-empty lines: a width that absorbs the real layout where, below
  * the running spinner, there are 3 input-box lines plus a mode/shortcut/warning
  * status line. We count non-empty lines because the bottom is padded with blank
@@ -65,6 +80,31 @@ export function isLimitReached(
   return bottomNonEmptyLines(capture).some((line) =>
     line.toLowerCase().includes(needle),
   );
+}
+
+// Leading line decoration (whitespace or a box-border/bullet glyph) stripped before a menu marker
+// is tested at the start of a line, so a centered or box-framed overlay title still matches.
+const MENU_LINE_DECORATION = /^[\s│┃|╎┆>*•·\-─]+/;
+
+/**
+ * Whether one of Claude Code's built-in menu/overlay screens is open, i.e. a marker heads any line of
+ * the captured screen (case-insensitive, after stripping leading whitespace/border glyphs). Requiring
+ * the marker to head a line — not merely appear anywhere — keeps a phrase quoted mid-sentence in the
+ * conversation body from tripping the flag, while still scanning the whole capture (overlays render
+ * centered, not pinned to the bottom like the running/limit banners). Orthogonal to the main state —
+ * it only overrides the rendered glyph, so it is not folded into detectState. An empty marker list
+ * (or all-empty markers) yields false.
+ */
+export function isMenuOpen(
+  capture: string,
+  markers: readonly string[] = DEFAULT_MENU_MARKERS,
+): boolean {
+  const needles = markers.filter((m) => m !== "").map((m) => m.toLowerCase());
+  if (needles.length === 0) return false;
+  return capture.split("\n").some((line) => {
+    const head = line.replace(MENU_LINE_DECORATION, "").toLowerCase();
+    return needles.some((n) => head.startsWith(n));
+  });
 }
 
 /**

@@ -63,6 +63,7 @@
   "sessionList": {
     "ariaLabel": "Session list",
     "limitReached": "Usage limit reached",
+    "menuOpen": "In a Claude Code menu",
     "addOrg": "Add org",
     "orgToggleTitle": "{{org}} (click to fold / + for new session / Ctrl-N)",
     "newSessionInOrg": "New session in {{org}}",

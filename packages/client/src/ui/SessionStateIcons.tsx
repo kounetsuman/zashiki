@@ -17,6 +17,9 @@ const STATE_ICONS: Record<CockpitTerminalState, string> = {
 
 const FRESH_ICON = "start";
 
+// A Claude Code menu/overlay (/usage, /status, /login, …) being open replaces the state glyph with this gear.
+const MENU_ICON = "settings";
+
 // Activity-chip glyphs. These sit beside the state glyph as chips, not overlaid on it.
 const BG_AGENT_GLYPH = "robot_2";
 const SHELL_GLYPH = "terminal";
@@ -24,7 +27,7 @@ const SHELL_GLYPH = "terminal";
 // Reaching the usage limit overlays this top-right badge on the state glyph. Orthogonal to the state.
 const LIMIT_BADGE = "error";
 
-/** Lifecycle-state glyph; background activity lives in ActivityChips, only the limit badge stays overlaid. */
+/** Lifecycle-state glyph; a Claude Code menu overrides it with a gear, background activity lives in ActivityChips, only the limit badge stays overlaid. */
 export function StateIcon({
   session,
   fresh,
@@ -33,8 +36,13 @@ export function StateIcon({
   fresh: boolean;
 }) {
   const { t } = useTranslation();
-  const stateClass = fresh ? "fresh" : session.state;
-  const glyph = fresh ? FRESH_ICON : STATE_ICONS[session.state];
+  const menuOpen = session.menuOpen === true;
+  const stateClass = menuOpen ? "menu" : fresh ? "fresh" : session.state;
+  const glyph = menuOpen
+    ? MENU_ICON
+    : fresh
+      ? FRESH_ICON
+      : STATE_ICONS[session.state];
   const showLimited = session.limited === true;
   return (
     <span
@@ -43,6 +51,7 @@ export function StateIcon({
     >
       <span
         className={`material-symbols-outlined state-stack-glyph state-${stateClass}`}
+        title={menuOpen ? t("sessionList.menuOpen") : undefined}
       >
         {glyph}
       </span>
