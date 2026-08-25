@@ -111,6 +111,7 @@
     "matchCase": "大文字と小文字を区別",
     "wholeWord": "単語単位で一致",
     "regex": "正規表現を使用",
+    "searching": "検索中…",
     "noResults": "結果なし",
     "summary": "{{matches}} 件（{{files}} ファイル）",
     "andMore": " 以上"

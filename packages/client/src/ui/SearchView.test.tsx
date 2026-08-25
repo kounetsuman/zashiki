@@ -76,6 +76,51 @@ describe("SearchView", () => {
     expect(screen.getByText("const foo = 1;")).toBeTruthy();
   });
 
+  it("shows the loading spinner while a search is in flight and clears it when the result arrives", async () => {
+    let resolve!: (res: SearchResponse) => void;
+    const api: SearchApi = {
+      search() {
+        return new Promise<SearchResponse>((r) => {
+          resolve = r;
+        });
+      },
+    };
+    render(<SearchView api={api} />);
+    await act(async () => {
+      typeAndEnter("foo");
+    });
+    expect(screen.getByRole("status")).toBeTruthy();
+    await act(async () => {
+      resolve({ truncated: false, files: [file({})] });
+    });
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+    expect(screen.getByText("src/a.ts")).toBeTruthy();
+  });
+
+  it("ignores an in-flight search's late response after the query is cleared", async () => {
+    let resolve!: (res: SearchResponse) => void;
+    const api: SearchApi = {
+      search() {
+        return new Promise<SearchResponse>((r) => {
+          resolve = r;
+        });
+      },
+    };
+    render(<SearchView api={api} />);
+    await act(async () => {
+      typeAndEnter("foo");
+    });
+    // Clear the input and submit before "foo" resolves.
+    await act(async () => {
+      typeAndEnter("");
+    });
+    await act(async () => {
+      resolve({ truncated: false, files: [file({})] });
+    });
+    expect(screen.queryByText("src/a.ts")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("does not call the API on an empty query", async () => {
     const api = createFakeApi({ truncated: false, files: [] });
     render(<SearchView api={api} />);

@@ -111,6 +111,7 @@
     "matchCase": "Match case",
     "wholeWord": "Match whole word",
     "regex": "Use regular expression",
+    "searching": "Searching…",
     "noResults": "No results",
     "summary": "{{matches}} matches ({{files}} files)",
     "andMore": " or more"
