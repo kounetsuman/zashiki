@@ -452,8 +452,10 @@ describe("isRunning / hasBgAgent / isWizard (unit checks of the boundaries)", ()
     expect(isRunning("完了… (5s)ago")).toBe(false);
   });
 
-  it("isRunning: stays linear on a long separator-less timer paren (ReDoS guard)", () => {
-    const line = `✻ Working… (1s${"a".repeat(200000)})`;
+  it("isRunning: stays linear on many repeated timer-paren openings (ReDoS guard)", () => {
+    // Many `…(0s` starts are the pump that makes the live-timer scan quadratic
+    // unless its trailing class excludes `(`/`…`; assert it now runs in linear time.
+    const line = "…(0s".repeat(100000);
     const start = performance.now();
     expect(isRunning(line)).toBe(false);
     expect(performance.now() - start).toBeLessThan(100);
