@@ -558,6 +558,7 @@ body {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
+  user-select: none;
 }
 
 .ss-group {
@@ -598,6 +599,21 @@ body {
 
 .ss-val.ss-crit {
   color: #ff6b6b;
+}
+
+.app-tooltip {
+  position: fixed;
+  transform: translateY(-100%) translateY(-6px);
+  z-index: 1000;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #2a2d31;
+  border: 1px solid #3a3d42;
+  color: #e6e6e6;
+  font-size: 11px;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
 }
 
 /* ---- メインエリア上部の統合タブ列（issue #149） ---- */
@@ -1208,6 +1224,7 @@ body {
   border-top: 1px solid #333;
   color: #888;
   flex: none;
+  user-select: none;
 }
 
 /* Claude Code アカウント使用量（現在のセッション / 今週）を status-bar 左端に出す。

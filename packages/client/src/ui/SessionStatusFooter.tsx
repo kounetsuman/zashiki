@@ -12,6 +12,7 @@ import {
   tokenSeverity,
 } from "../session/status-footer.js";
 import { StatusCell } from "./StatusCell.js";
+import { Tooltip } from "./Tooltip.js";
 import { useNow } from "./useNow.js";
 
 export interface SessionStatusFooterProps {
@@ -42,7 +43,7 @@ export function SessionStatusFooter({
       className="session-status"
       style={accentColor ? { borderTopColor: accentColor } : undefined}
     >
-      <span className="ss-group" title={t("footer.status.tokensTitle")}>
+      <Tooltip className="ss-group" label={t("footer.status.tokensTitle")}>
         <span className="material-symbols-outlined ss-icon" aria-hidden="true">
           generating_tokens
         </span>
@@ -59,9 +60,9 @@ export function SessionStatusFooter({
               : undefined
           }
         />
-      </span>
+      </Tooltip>
 
-      <span className="ss-group" title={t("footer.status.elapsedTitle")}>
+      <Tooltip className="ss-group" label={t("footer.status.elapsedTitle")}>
         <span className="material-symbols-outlined ss-icon" aria-hidden="true">
           schedule
         </span>
@@ -89,7 +90,7 @@ export function SessionStatusFooter({
               : undefined
           }
         />
-      </span>
+      </Tooltip>
     </footer>
   );
 }
