@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-25
+
+### Added
+
+- Show the signed-in Claude account, with a refresh that fans out to all sessions (#184)
+- A settings icon in the session list while a Claude Code menu is open (#190)
+- Footer tooltip now shows the local reset time and warns as you approach the session limit (#201)
+
+### Changed
+
+- Reworked the layout into LEFT / CENTER / RIGHT areas with a navigation activity bar (#198)
+- The Settings modal is now fixed to 80% of the window with a right-side menu (#197)
+- The active tab's bottom border is tinted with the org color (#196)
+- The Clipboard edit modal shows its help inline and no longer re-copies to the clipboard on close — it is a pure scratchpad (#178)
+- The weekly usage reset countdown now shows days through seconds (#182)
+
+### Removed
+
+- Account-wide rate-limit cells (5-hour / weekly) from the session status footer; they remain in the account-usage footer, which reports the account-wide maximum rather than a session's stale-low snapshot (#180)
+
+### Fixed
+
+- The account-usage footer stays in sync while a session sits idle at a reached limit (#182)
+- The global footer picks the freshest account-usage reading (#192)
+- Scroll the terminal scrollback with the mouse wheel under WKWebView (#195)
+- Detect a skill/workflow agent tray as a running background agent (#185)
+- Stop status-bar drag-selection and make hover tooltips show reliably (#186)
+
 ## [0.10.0] - 2026-08-23
 
 ### Added
@@ -162,7 +190,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/kounetsuman/zashiki/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/kounetsuman/zashiki/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/kounetsuman/zashiki/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/kounetsuman/zashiki/compare/v0.7.0...v0.8.0
