@@ -8,7 +8,7 @@ import {
   type HelpCategoryDef,
   type HelpTopic,
 } from "../help/help-model.js";
-import { MarkdownView } from "../help/MarkdownView.js";
+import { Highlighted, MarkdownView } from "../help/MarkdownView.js";
 import { Modal } from "./Modal.js";
 import "./HelpModal.css";
 
@@ -122,8 +122,10 @@ export function HelpModal({
             <div className="help-topics">
               {shownTopics.map((topic) => (
                 <section key={topic.id} aria-label={topic.title}>
-                  <h3 className="help-topic-title">{topic.title}</h3>
-                  <MarkdownView source={topic.body} />
+                  <h3 className="help-topic-title">
+                    <Highlighted text={topic.title} query={query} />
+                  </h3>
+                  <MarkdownView source={topic.body} query={query} />
                 </section>
               ))}
             </div>

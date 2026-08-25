@@ -49,3 +49,10 @@
   padding: 0 3px;
   border-radius: 3px;
 }
+
+.help-md-mark {
+  background: var(--modal-accent);
+  color: #0a0a0a;
+  border-radius: 2px;
+  padding: 0 1px;
+}

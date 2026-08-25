@@ -124,6 +124,36 @@ export function filterTopics(
   );
 }
 
+/** One slice of a highlighted string: consecutive text, flagged when it is a query occurrence. */
+export interface HighlightSegment {
+  text: string;
+  match: boolean;
+}
+
+/** Splits `text` into consecutive segments, flagging each case-insensitive occurrence of `query` (a blank query yields one unmarked segment). */
+export function splitHighlight(
+  text: string,
+  query: string,
+): HighlightSegment[] {
+  const q = query.trim().toLowerCase();
+  if (q === "") return [{ text, match: false }];
+  const lower = text.toLowerCase();
+  const segments: HighlightSegment[] = [];
+  let from = 0;
+  for (;;) {
+    const at = lower.indexOf(q, from);
+    if (at < 0) {
+      if (from < text.length)
+        segments.push({ text: text.slice(from), match: false });
+      break;
+    }
+    if (at > from) segments.push({ text: text.slice(from, at), match: false });
+    segments.push({ text: text.slice(at, at + q.length), match: true });
+    from = at + q.length;
+  }
+  return segments;
+}
+
 // ---- Lightweight markdown (a minimal subset for our own authored content) ----
 
 export type InlineSpan =
