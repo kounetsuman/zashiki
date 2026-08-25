@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+# 全ジョブは checkout と読み取りしか行わないため、GITHUB_TOKEN を読み取り専用に絞る。
+permissions:
+  contents: read
+
 # 連続 push した際、進行中の古い run を即キャンセルして Actions 分を節約する。
 # main への push は完走させる（マージ後の正準ビルドを取りこぼさない）。
 concurrency:
