@@ -47,9 +47,9 @@ const DASH = "–";
 /**
  * Claude Code account usage — the current 5-hour session and the current week — pinned to the left of
  * the global status-bar, independent of the active tab. While opted out, only the gauge icon shows,
- * clickable to open the opt-in modal. While opted in, each cell shows its used-percent meter plus a
- * dash-until-known reading that re-ticks each second; clicking the gauge flips every cell between the
- * remaining (`−`) and elapsed (`+`) time, and the choice is persisted.
+ * clickable to open the opt-in modal. While opted in, clicking the gauge flips every cell between the
+ * remaining (`−`) and elapsed (`+`) time; each cell's meter tracks that time as a fraction of the
+ * window, so the bar fills in elapsed mode and drains in remaining mode.
  */
 export function AccountUsageFooter({
   limits,
@@ -95,17 +95,27 @@ export function AccountUsageFooter({
     const severity = limit
       ? usageSeverity(limit.usedPercent, thresholds)
       : undefined;
+    const displayMs =
+      limit?.resetsAt !== undefined
+        ? usageDisplayMs(mode, limit.resetsAt, now, windowMs)
+        : undefined;
     const value =
       limit === undefined
         ? DASH
-        : limit.resetsAt !== undefined
+        : displayMs !== undefined
           ? t("footer.status.percentReset", {
               percent: limit.usedPercent,
-              time: fmtCountdown(
-                usageDisplayMs(mode, limit.resetsAt, now, windowMs),
-              ),
+              time: fmtCountdown(displayMs),
             })
           : `${limit.usedPercent}%`;
+    const meterPercent =
+      displayMs !== undefined
+        ? (displayMs / windowMs) * 100
+        : (limit?.usedPercent ?? 0);
+    const widest = t("footer.status.percentReset", {
+      percent: 100,
+      time: fmtCountdown(windowMs),
+    });
     const tooltip =
       limit?.resetsAt !== undefined
         ? `${title} · ${t("footer.account.resetsAt", {
@@ -115,7 +125,18 @@ export function AccountUsageFooter({
     return (
       <Tooltip className="ss-group" label={tooltip}>
         <span className="account-usage-cell">
-          <StatusCell value={value} caption={label} severity={severity} />
+          <StatusCell
+            value={
+              <span className="account-usage-value">
+                <span className="account-usage-value-sizer" aria-hidden="true">
+                  {widest}
+                </span>
+                <span className="account-usage-value-live">{value}</span>
+              </span>
+            }
+            caption={label}
+            severity={severity}
+          />
           {limit && (
             <span className="account-usage-meter" aria-hidden="true">
               <span
@@ -124,7 +145,9 @@ export function AccountUsageFooter({
                     ? `account-usage-meter-fill ss-${severity}`
                     : "account-usage-meter-fill"
                 }
-                style={{ width: `${Math.min(100, limit.usedPercent)}%` }}
+                style={{
+                  width: `${Math.max(0, Math.min(100, meterPercent))}%`,
+                }}
               />
             </span>
           )}

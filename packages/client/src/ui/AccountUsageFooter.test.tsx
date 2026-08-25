@@ -40,7 +40,7 @@ describe("AccountUsageFooter", () => {
     expect(container.querySelectorAll(".ss-group")).toHaveLength(0);
   });
 
-  it("renders the two usage cells and each cell's used-percent meter while opted in", () => {
+  it("renders the two usage cells and falls back to the used-percent meter when no reset is known", () => {
     const { container } = render(
       <AccountUsageFooter
         limits={LIMITS}
@@ -57,6 +57,53 @@ describe("AccountUsageFooter", () => {
     const [sessionFill, weekFill] = fills;
     expect(sessionFill?.style.width).toBe("20%");
     expect(weekFill?.style.width).toBe("40%");
+  });
+
+  it("sizes each meter to the displayed time fraction of its window and flips it with the mode", () => {
+    const now = Date.now();
+    const { container } = render(
+      <AccountUsageFooter
+        limits={{ fiveHour: { usedPercent: 20, resetsAt: now + 60 * 60_000 } }}
+        enabled
+        onRequestEnable={() => undefined}
+        storage={memoryStorage()}
+      />,
+    );
+    const width = () =>
+      parseFloat(
+        container.querySelector<HTMLElement>(".account-usage-meter-fill")?.style
+          .width ?? "",
+      );
+
+    // Remaining mode: 1h left of the 5h window ≈ 20% (independent of the 20% used).
+    expect(width()).toBeGreaterThan(19.5);
+    expect(width()).toBeLessThan(20.5);
+
+    fireEvent.click(screen.getByRole("button"));
+
+    // Elapsed mode: 4h elapsed of the 5h window ≈ 80% — the gauge visibly flips.
+    expect(width()).toBeGreaterThan(79.5);
+    expect(width()).toBeLessThan(80.5);
+  });
+
+  it("reserves each cell's width for its longest reading so the value doesn't jitter as it ticks", () => {
+    const now = Date.now();
+    const { container } = render(
+      <AccountUsageFooter
+        limits={{
+          fiveHour: { usedPercent: 20, resetsAt: now + 60 * 60_000 },
+          week: { usedPercent: 40, resetsAt: now + 3 * 86_400_000 },
+        }}
+        enabled
+        onRequestEnable={() => undefined}
+        storage={memoryStorage()}
+      />,
+    );
+    const sizers = container.querySelectorAll(".account-usage-value-sizer");
+    expect([...sizers].map((s) => s.textContent)).toEqual([
+      "100% · 5h00m",
+      "100% · 7d00h00m00s",
+    ]);
   });
 
   it("appends the local reset time to the tooltip when the reset is known", () => {

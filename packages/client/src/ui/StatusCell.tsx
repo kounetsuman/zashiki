@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import type { Severity } from "../session/status-footer.js";
 
 /** A value with a small uppercase caption, tinted by severity; the footers' shared display unit. */
@@ -6,7 +8,7 @@ export function StatusCell({
   caption,
   severity,
 }: {
-  value: string;
+  value: ReactNode;
   caption: string;
   severity?: Severity;
 }) {
