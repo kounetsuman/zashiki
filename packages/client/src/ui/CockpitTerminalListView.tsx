@@ -48,8 +48,6 @@ export interface CockpitTerminalListViewProps {
   connected?: boolean;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
-  /** Render at full height (height:100%) when the bottom view is closed. */
-  full?: boolean;
   /**
    * Duplicate the target session into a new independent cockpit terminal (forks the Claude session).
    * If omitted, the item is not shown in the row menu.
@@ -90,7 +88,6 @@ export function CockpitTerminalListView({
   conversationTitles = {},
   connected = true,
   inactive,
-  full,
   onDuplicate,
   onCopySessionId,
   onRename,
@@ -197,9 +194,7 @@ export function CockpitTerminalListView({
 
   return (
     <aside
-      className={`${viewClass("session-list", inactive)}${
-        full ? " session-list-full" : ""
-      }`}
+      className={viewClass("session-list", inactive)}
       data-view="sessions"
       aria-label={t("sessionList.ariaLabel")}
       // biome-ignore lint/a11y/noNoninteractiveTabindex: receiver for the keybindings (Ctrl-N/X) when the view is focused
