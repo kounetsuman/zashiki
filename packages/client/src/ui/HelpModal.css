@@ -17,6 +17,12 @@
   border-color: var(--modal-accent);
 }
 
+.help-result-count {
+  margin: -6px 0 0;
+  font-size: 12px;
+  color: var(--modal-text-muted);
+}
+
 .help-empty {
   margin: 0;
   color: var(--modal-text-muted);

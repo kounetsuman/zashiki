@@ -77,6 +77,31 @@ describe("HelpModal", () => {
     expect(screen.queryByText("repos.conf と org の色")).toBeNull();
   });
 
+  it("holds filtering mid-IME-composition and commits on composition end", () => {
+    render(
+      <HelpModal topics={topics} categories={categories} onClose={noop} />,
+    );
+    const input = screen.getByLabelText("ヘルプを検索");
+    fireEvent.compositionStart(input);
+    fireEvent.change(input, { target: { value: "ki-ba" } });
+    expect(screen.getByText("repos.conf と org の色")).toBeTruthy();
+    expect(screen.queryByText("キーバインド")).toBeNull();
+
+    fireEvent.compositionEnd(input, { target: { value: "キーバインド" } });
+    expect(screen.getByText("キーバインド")).toBeTruthy();
+    expect(screen.queryByText("repos.conf と org の色")).toBeNull();
+  });
+
+  it("shows the result count while searching", () => {
+    render(
+      <HelpModal topics={topics} categories={categories} onClose={noop} />,
+    );
+    fireEvent.change(screen.getByLabelText("ヘルプを検索"), {
+      target: { value: "セッション" },
+    });
+    expect(screen.getByText("1 件")).toBeTruthy();
+  });
+
   it("shows the empty state when nothing matches the search", () => {
     render(
       <HelpModal topics={topics} categories={categories} onClose={noop} />,
