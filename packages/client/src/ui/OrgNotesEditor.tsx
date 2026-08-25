@@ -48,7 +48,7 @@ export function OrgNotesEditor({
   return (
     <div className="settings-org-notes">
       <select
-        className="settings-org-notes-picker"
+        className="settings-select settings-org-notes-picker"
         value={selected}
         aria-label={t("settings.orgNotesPicker")}
         onChange={(e) => setSelected(e.target.value)}
@@ -60,7 +60,7 @@ export function OrgNotesEditor({
         ))}
       </select>
       <textarea
-        className="settings-org-notes-text"
+        className="settings-input settings-org-notes-text"
         value={draft}
         maxLength={ORG_NOTE_MAX_CHARS}
         placeholder={t("settings.orgNotesPlaceholder")}
