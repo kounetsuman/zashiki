@@ -18,10 +18,14 @@ pub(crate) struct FsReposResponse {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct FsRepo {
     org: String,
     repo: String,
     path: String,
+    is_worktree: bool,
+    /// Main working tree this repo groups under (its own path for a main tree).
+    main_path: String,
 }
 
 /// Response for `GET /api/repos/list` (`ReposListResponse`).
@@ -66,10 +70,20 @@ pub(crate) async fn fs_repos(State(state): State<AppState>) -> Json<FsReposRespo
     let repos = scan(&state)
         .await
         .into_iter()
-        .map(|r| FsRepo {
-            org: r.org,
-            repo: r.repo,
-            path: r.path,
+        .map(|r| {
+            let main_path = if r.is_worktree {
+                repos::worktree_main_path(std::path::Path::new(&r.path))
+                    .unwrap_or_else(|| r.path.clone())
+            } else {
+                r.path.clone()
+            };
+            FsRepo {
+                org: r.org,
+                repo: r.repo,
+                is_worktree: r.is_worktree,
+                main_path,
+                path: r.path,
+            }
         })
         .collect();
     Json(FsReposResponse { repos })

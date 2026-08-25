@@ -7,7 +7,12 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import type { FsEntry, FsListResponse, FsReposResponse } from "@zashiki/shared";
+import type {
+  FsEntry,
+  FsListResponse,
+  FsRepo,
+  FsReposResponse,
+} from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { FsApi } from "../api/fs.js";
@@ -29,15 +34,16 @@ function resp(entries: FsEntry[], truncated = false): FsListResponse {
   return { entries, truncated };
 }
 
-function createFakeFsApi(tree: Record<string, FsListResponse>): FakeFsApi {
+function createFakeFsApi(
+  tree: Record<string, FsListResponse>,
+  repos: FsRepo[] = [{ org: "org1", repo: "repo-a", path: REPO }],
+): FakeFsApi {
   const api: FakeFsApi = {
     listCalls: [],
     tree: new Map(Object.entries(tree)),
     deferred: null,
     repos(): Promise<FsReposResponse> {
-      return Promise.resolve({
-        repos: [{ org: "org1", repo: "repo-a", path: REPO }],
-      });
+      return Promise.resolve({ repos });
     },
     list(repoPath, dir): Promise<FsListResponse> {
       api.listCalls.push([repoPath, dir]);
@@ -170,6 +176,55 @@ describe("ExplorerView", () => {
     });
     // Since it is collapsed, the stale response's contents are not shown.
     expect(screen.queryByText("stale.txt")).toBeNull();
+  });
+
+  it("groups a repo and its linked worktrees under one heading (main first, worktrees after)", async () => {
+    const main = "/ws/org1/proj";
+    const wt = "/ws/org1/proj-42-fix";
+    const api = createFakeFsApi({}, [
+      {
+        org: "org1",
+        repo: "proj",
+        path: main,
+        isWorktree: false,
+        mainPath: main,
+      },
+      {
+        org: "org1",
+        repo: "proj-42-fix",
+        path: wt,
+        isWorktree: true,
+        mainPath: main,
+      },
+    ]);
+    await renderView(api);
+    await waitFor(() => screen.getByText("proj-42-fix"));
+    expect(screen.getAllByText("proj").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("main")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByText("proj-42-fix"));
+    });
+    expect(api.listCalls).toContainEqual([wt, ""]);
+  });
+
+  it("renders a per-extension icon on file rows (data-icon reflects fileIconKind)", async () => {
+    const api = createFakeFsApi({
+      "": resp([
+        { name: "app.ts", kind: "file" },
+        { name: "main.rs", kind: "file" },
+      ]),
+    });
+    await renderView(api);
+    await waitFor(() => screen.getByText("repo-a"));
+    await act(async () => {
+      fireEvent.click(screen.getByText("repo-a"));
+    });
+    const ts = await waitFor(() => screen.getByText("app.ts"));
+    const tsRow = ts.closest(".explorer-file");
+    const rsRow = screen.getByText("main.rs").closest(".explorer-file");
+    expect(tsRow?.getAttribute("data-icon")).toBe("ts");
+    expect(rsRow?.getAttribute("data-icon")).toBe("rust");
+    expect(tsRow?.querySelector(".explorer-file-icon")).toBeTruthy();
   });
 
   it("shows the header as EXPLORER (uppercase, shared view-title)", async () => {

@@ -44,7 +44,9 @@ export {
   fsListResponseSchema,
   fsRepoSchema,
   fsReposResponseSchema,
+  groupReposByRepository,
   joinRepoRelative,
+  type RepoGroup,
   sortFsEntries,
 } from "./fs-tree.js";
 export {

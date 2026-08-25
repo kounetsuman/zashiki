@@ -388,26 +388,31 @@ fn is_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-/// Whether `path` is a linked worktree (as opposed to a main working tree or a submodule).
-/// A linked worktree's `.git` is a file whose `gitdir:` target sits directly under a `worktrees`
-/// directory (`.../worktrees/<name>`); a submodule instead points under `.../modules/<name>`.
-pub fn is_linked_worktree(path: &Path) -> bool {
+/// The main working tree a linked worktree belongs to — the anchor that groups it with its
+/// siblings in the explorer. A worktree's `.git` file reads `gitdir: <MAIN>/.git/worktrees/<name>`,
+/// so the main working tree is that target stripped of `/.git/worktrees/<name>`. `None` when `path`
+/// is a main working tree, a submodule (`.../modules/<name>`), or the pointer is malformed.
+pub fn worktree_main_path(path: &Path) -> Option<String> {
     let dot_git = path.join(".git");
     if !dot_git.is_file() {
-        return false;
+        return None;
     }
-    let Ok(content) = std::fs::read_to_string(&dot_git) else {
-        return false;
-    };
+    let content = std::fs::read_to_string(&dot_git).ok()?;
     let target = content
         .lines()
-        .find_map(|line| line.strip_prefix("gitdir:"))
-        .unwrap_or("")
+        .find_map(|line| line.strip_prefix("gitdir:"))?
         .trim();
-    Path::new(target)
-        .parent()
-        .and_then(|parent| parent.file_name())
-        .is_some_and(|name| name == "worktrees")
+    let worktrees_dir = Path::new(target).parent()?;
+    if worktrees_dir.file_name()? != "worktrees" {
+        return None;
+    }
+    let main = worktrees_dir.parent()?.parent()?;
+    Some(main.to_string_lossy().into_owned())
+}
+
+/// Whether `path` is a linked worktree (as opposed to a main working tree or a submodule).
+pub fn is_linked_worktree(path: &Path) -> bool {
+    worktree_main_path(path).is_some()
 }
 
 /// Visible subdirectories directly under `dir` (excluding those starting with `.`).
@@ -888,5 +893,29 @@ rel/dir
         let plain = base.join("plain");
         std::fs::create_dir_all(&plain).unwrap();
         assert!(!is_linked_worktree(&plain));
+    }
+
+    #[test]
+    fn worktree_main_path_strips_git_worktrees_name_to_the_main_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+
+        let worktree = base.join("wt");
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(worktree.join(".git"), "gitdir: /repo/.git/worktrees/wt\n").unwrap();
+        assert_eq!(
+            worktree_main_path(&worktree),
+            Some("/repo".to_string()),
+            "the main tree is the gitdir target stripped of /.git/worktrees/<name>"
+        );
+
+        let main = base.join("main");
+        std::fs::create_dir_all(main.join(".git")).unwrap();
+        assert_eq!(worktree_main_path(&main), None);
+
+        let submodule = base.join("sub");
+        std::fs::create_dir_all(&submodule).unwrap();
+        std::fs::write(submodule.join(".git"), "gitdir: /repo/.git/modules/sub\n").unwrap();
+        assert_eq!(worktree_main_path(&submodule), None);
     }
 }

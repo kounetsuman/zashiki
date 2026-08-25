@@ -147,7 +147,8 @@
     "readTimeout": "Reading timed out"
   },
   "explorer": {
-    "truncated": "Showing partial results (too many entries)"
+    "truncated": "Showing partial results (too many entries)",
+    "mainTree": "main"
   },
   "help": {
     "search": "Search help",

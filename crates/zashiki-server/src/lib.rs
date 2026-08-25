@@ -475,8 +475,8 @@ mod tests {
         assert_eq!(
             body,
             format!(
-                r#"{{"repos":[{{"org":"org1","repo":"repo-a","path":"{}"}}]}}"#,
-                expected_path.display()
+                r#"{{"repos":[{{"org":"org1","repo":"repo-a","path":"{p}","isWorktree":false,"mainPath":"{p}"}}]}}"#,
+                p = expected_path.display()
             )
         );
     }
