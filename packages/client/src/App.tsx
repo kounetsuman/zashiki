@@ -571,7 +571,7 @@ export function App({
 
   return (
     <div className="app">
-      <div className="app-header">
+      <div className="title-bar" data-tauri-drag-region="">
         <AccountIndicator
           email={account.email}
           runningCount={cockpitTerminals.length}
