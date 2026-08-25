@@ -17,7 +17,7 @@ export interface AppKeyboardShortcuts {
 
 /**
  * Wires the global keyboard shortcuts. The view switches use Ctrl+Alt+<key> and the actions use
- * meta keys (Cmd+R/N/W), so they do not collide with each other or with the view-local Ctrl-N/X.
+ * meta keys (Cmd+B/R/N/W), so they do not collide with each other or with the view-local Ctrl-N/X.
  * Meta keys pass through to the browser even while the terminal is focused, so the actions work there;
  * the Ctrl+Alt switches pass through only while a text input/terminal is not being typed in.
  */
@@ -61,6 +61,18 @@ export function useAppKeyboardShortcuts({
     window.addEventListener("contextmenu", onContextMenu);
     return () => window.removeEventListener("contextmenu", onContextMenu);
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== "b" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
+        return;
+      }
+      e.preventDefault();
+      handleSelectView("explorer");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleSelectView]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {

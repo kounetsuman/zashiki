@@ -17,6 +17,8 @@ Use `Ctrl+Alt+<key>` to toggle each view's visibility.
 - `Ctrl+Alt+G`: Source Control
 - `Ctrl+Alt+N`: Notifications
 
+`Cmd+B` also toggles the Explorer, and (like the other meta shortcuts) works even while the terminal is focused.
+
 ## Help and Settings
 
 Both open as a modal dialog (Escape or the close button dismisses it).
