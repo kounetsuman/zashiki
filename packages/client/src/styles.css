@@ -2019,10 +2019,10 @@ body {
 }
 
 .settings-body {
-  padding: 8px;
+  padding: 20px 22px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 22px;
   overflow-y: auto;
   min-height: 0;
 }
@@ -2030,60 +2030,62 @@ body {
 .settings-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+}
+
+.settings-field-column {
+  gap: 8px;
 }
 
 .settings-label {
-  font-size: 11px;
-  color: #999;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--settings-text-dim);
 }
 
 .settings-toggle {
   flex-direction: row;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
 }
 
+.settings-toggle .settings-label {
+  font-weight: 400;
+}
+
 .settings-hint {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
-  color: #777;
+  color: var(--settings-text-muted);
 }
 
-.settings-select {
-  background: #1e1e1e;
-  border: 1px solid #333;
-  color: #ddd;
-  font: inherit;
-  padding: 3px 6px;
-}
-
-.settings-select:focus {
-  outline: none;
-  border-color: #4a7;
-}
-
+.settings-select,
 .settings-input {
-  background: #1e1e1e;
-  border: 1px solid #333;
-  color: #ddd;
+  max-width: 420px;
+  background: var(--settings-control-bg);
+  border: 1px solid var(--settings-border);
+  border-radius: var(--settings-radius);
+  color: var(--settings-text);
   font: inherit;
-  padding: 3px 6px;
+  padding: 6px 9px;
 }
 
+.settings-select:focus,
 .settings-input:focus {
   outline: none;
-  border-color: #4a7;
+  border-color: var(--settings-accent);
 }
 
 .settings-save {
   align-self: flex-start;
-  background: #2a2a2a;
-  border: 1px solid #444;
-  color: #ddd;
+  background: var(--settings-control-bg);
+  border: 1px solid var(--settings-border-strong);
+  border-radius: var(--settings-radius);
+  color: var(--settings-text);
   font: inherit;
-  padding: 4px 12px;
+  padding: 7px 16px;
   cursor: pointer;
 }
 
@@ -2093,12 +2095,13 @@ body {
 }
 
 .settings-save:not(:disabled):hover {
-  border-color: #4a7;
+  background: var(--settings-control-bg-hover);
+  border-color: var(--settings-accent);
 }
 
 .settings-update-status {
-  font-size: 11px;
-  color: #999;
+  font-size: 12px;
+  color: var(--settings-text-dim);
 }
 
 /* fieldset for the terminal font-size group: strip the default border/padding so it matches the
@@ -2117,12 +2120,13 @@ body {
 }
 
 .font-size-button {
-  background: #2a2a2a;
-  border: 1px solid #444;
-  color: #ddd;
+  background: var(--settings-control-bg);
+  border: 1px solid var(--settings-border-strong);
+  border-radius: var(--settings-radius);
+  color: var(--settings-text);
   font: inherit;
-  min-width: 32px;
-  padding: 4px 8px;
+  min-width: 34px;
+  padding: 6px 10px;
   cursor: pointer;
 }
 
@@ -2132,28 +2136,29 @@ body {
 }
 
 .font-size-button:not(:disabled):hover {
-  border-color: #4a7;
+  background: var(--settings-control-bg-hover);
+  border-color: var(--settings-accent);
 }
 
 .font-size-value {
   min-width: 42px;
   text-align: center;
-  color: #ddd;
+  color: var(--settings-text);
   font-variant-numeric: tabular-nums;
 }
 
 .font-size-reset {
   background: none;
   border: none;
-  color: #999;
+  color: var(--settings-text-dim);
   font: inherit;
-  padding: 4px 6px;
+  padding: 6px 8px;
   cursor: pointer;
   text-decoration: underline;
 }
 
 .font-size-reset:not(:disabled):hover {
-  color: #ddd;
+  color: var(--settings-text);
 }
 
 .font-size-reset:disabled {
