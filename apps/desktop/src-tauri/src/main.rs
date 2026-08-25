@@ -79,7 +79,7 @@ fn main() {
             let loading: tauri::Url = pages::data_url(&pages::loading_html())
                 .parse()
                 .expect("data URL は常にパース可能");
-            let window = match tauri::WebviewWindowBuilder::new(
+            let builder = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
                 tauri::WebviewUrl::External(loading),
@@ -90,9 +90,12 @@ fn main() {
             .devtools(true)
             // WKWebView's OS-level drag-drop handler swallows HTML5 dragover/drop events,
             // which breaks in-page tab reordering. Disable it so DOM drag-and-drop works.
-            .disable_drag_drop_handler()
-            .build()
-            {
+            .disable_drag_drop_handler();
+            // Overlay the title bar so the webview reaches into it; the account indicator sits there,
+            // right of the native traffic lights. macOS-only builder method.
+            #[cfg(target_os = "macos")]
+            let builder = builder.title_bar_style(tauri::TitleBarStyle::Overlay);
+            let window = match builder.build() {
                 Ok(window) => window,
                 Err(e) => {
                     // In an environment where the window itself can't be created, there's no surface to show the user.
