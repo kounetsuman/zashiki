@@ -69,6 +69,56 @@ export function fmtWeekResetCountdown(ms: number): string {
   return `${d}d${pad(h)}h${pad(m)}m${pad(s)}s`;
 }
 
+/** Which time an account-usage cell shows: how long until the window resets, or how long since it opened. */
+export type UsageTimeMode = "remaining" | "elapsed";
+
+/**
+ * Fixed lengths of Claude Code's usage windows. Elapsed isn't reported directly, so it's derived as
+ * `window − remaining`; these spans are what that derivation needs.
+ */
+export const FIVE_HOUR_WINDOW_MS = 5 * 3_600_000;
+export const WEEK_WINDOW_MS = 7 * 86_400_000;
+
+/**
+ * Milliseconds a usage cell feeds its countdown formatter. `remaining` is the raw time to reset
+ * (`resetsAt − now`); `elapsed` is time since the window opened, derived as `windowMs − remaining` and
+ * clamped into `[0, windowMs]` so a reading past its reset stays inside the window.
+ */
+export function usageDisplayMs(
+  mode: UsageTimeMode,
+  resetsAt: number,
+  now: number,
+  windowMs: number,
+): number {
+  const remaining = resetsAt - now;
+  if (mode === "remaining") return remaining;
+  return Math.max(0, Math.min(windowMs, windowMs - remaining));
+}
+
+/** The other mode; the footer's gauge icon toggles between the two. */
+export function nextUsageTimeMode(mode: UsageTimeMode): UsageTimeMode {
+  return mode === "remaining" ? "elapsed" : "remaining";
+}
+
+type StoragePart = Pick<Storage, "getItem" | "setItem">;
+
+/** localStorage key for the account-usage time mode (client-only; follows the "zk.*" convention). */
+export const USAGE_TIME_MODE_KEY = "zk.footer.usageTimeMode";
+
+/** Persisted time mode, defaulting to `remaining` when unset or unrecognized. */
+export function loadUsageTimeMode(storage: StoragePart | null): UsageTimeMode {
+  return storage?.getItem(USAGE_TIME_MODE_KEY) === "elapsed"
+    ? "elapsed"
+    : "remaining";
+}
+
+export function saveUsageTimeMode(
+  storage: StoragePart | null,
+  mode: UsageTimeMode,
+): void {
+  storage?.setItem(USAGE_TIME_MODE_KEY, mode);
+}
+
 /** Percentage severity; a disabled band is skipped so the reading falls through to the next lower enabled band. */
 export function usageSeverity(
   percent: number,

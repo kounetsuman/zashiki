@@ -26,6 +26,16 @@ describe("Tooltip", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
+  it("carries the label on aria-label, not a native title that stacks a second tooltip", () => {
+    const { container } = render(
+      <Tooltip label="hello" className="ss-group">
+        <span>x</span>
+      </Tooltip>,
+    );
+    expect(trigger(container).getAttribute("aria-label")).toBe("hello");
+    expect(trigger(container).hasAttribute("title")).toBe(false);
+  });
+
   it("keeps the tooltip visible across parent re-renders", () => {
     const { container, rerender } = render(
       <Tooltip label="hello" className="ss-group">
