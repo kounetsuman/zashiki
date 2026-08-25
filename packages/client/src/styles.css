@@ -694,6 +694,7 @@ body {
   max-width: 220px;
   border-right: 1px solid #2a2a2a;
   border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
   background: #232323;
   color: #9a9a9a;
 }
@@ -715,11 +716,12 @@ body {
   box-shadow: inset 2px 0 0 0 #4a6da7;
 }
 
-/* 選択中タブ（VSCode 風。上ボーダー + 明るい背景/文字）。 */
+/* 選択中タブ（VSCode 風。上下ボーダー + 明るい背景/文字）。org 色が解決できるタブは上下とも inline style で上書きされる。 */
 .tab.tab-active {
   background: #1e1e1e;
   color: #fff;
   border-top-color: #4a6da7;
+  border-bottom-color: #4a6da7;
 }
 
 .tab-main {
