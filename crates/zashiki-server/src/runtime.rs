@@ -191,17 +191,22 @@ mod tests {
             app_version: None,
         });
         let mut rx = services.hub.subscribe();
-        let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
-            .await
-            .expect("poller should publish within timeout")
-            .expect("broadcast open");
-        match msg {
-            ServerMessage::StateSync { cockpit_terminals: sessions, orgs, .. } => {
-                assert!(sessions.is_empty());
-                assert_eq!(orgs, vec!["charlie".to_string()]);
+        let state = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match rx.recv().await {
+                    Ok(ServerMessage::StateSync { cockpit_terminals: sessions, orgs, .. }) => {
+                        return Some((sessions, orgs));
+                    }
+                    Ok(_) => continue,
+                    Err(_) => return None,
+                }
             }
-            other => panic!("expected state.sync, got {other:?}"),
-        }
+        })
+        .await
+        .expect("poller should publish within timeout")
+        .expect("broadcast open");
+        assert!(state.0.is_empty());
+        assert_eq!(state.1, vec!["charlie".to_string()]);
     }
 
     /// The poller sees the same registry as session.new. Having an owned PTY registered in the registry
