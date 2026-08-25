@@ -91,9 +91,9 @@ export function tokenSeverity(
 
 /**
  * Account usage is global to the Claude account, yet each session reports it independently via the
- * statusLine bridge. Collapse the cockpit terminals to one reading per limit by taking the highest usedPercent
- * seen (usage climbs monotonically within a window), carrying that reading's reset time. Returns null
- * when no session carries limits yet, so the global footer indicator stays hidden until data arrives.
+ * statusLine bridge. Collapse the cockpit terminals to one reading per limit by taking the freshest
+ * `updatedAt` seen, so the reading from whichever session most recently did something wins. Returns
+ * null when no session carries limits yet, so the global footer indicator stays hidden.
  */
 export function pickAccountLimits(
   cockpitTerminals: readonly {
@@ -101,17 +101,21 @@ export function pickAccountLimits(
   }[],
 ): UsageLimits | null {
   let fiveHour: UsageLimit | undefined;
+  let fiveHourAt = Number.NEGATIVE_INFINITY;
   let week: UsageLimit | undefined;
+  let weekAt = Number.NEGATIVE_INFINITY;
   for (const session of cockpitTerminals) {
     const limits = session.usage?.limits;
     if (!limits) continue;
-    if (
-      limits.fiveHour &&
-      (!fiveHour || limits.fiveHour.usedPercent > fiveHour.usedPercent)
-    )
+    const at = limits.updatedAt ?? 0;
+    if (limits.fiveHour && at >= fiveHourAt) {
       fiveHour = limits.fiveHour;
-    if (limits.week && (!week || limits.week.usedPercent > week.usedPercent))
+      fiveHourAt = at;
+    }
+    if (limits.week && at >= weekAt) {
       week = limits.week;
+      weekAt = at;
+    }
   }
   if (!fiveHour && !week) return null;
   return { fiveHour, week };

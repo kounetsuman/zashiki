@@ -122,6 +122,7 @@ describe("cockpitTerminalInfoSchema", () => {
         limits: {
           fiveHour: { usedPercent: 42, resetsAt: 1700010000000 },
           week: { usedPercent: 61 },
+          updatedAt: 1700009000000,
         },
       },
     };

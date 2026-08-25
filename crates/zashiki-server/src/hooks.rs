@@ -38,7 +38,14 @@ pub fn parse_statusline_limits(json: &Value) -> Option<(String, UsageLimits)> {
     if five_hour.is_none() && week.is_none() {
         return None;
     }
-    Some((sid.to_string(), UsageLimits { five_hour, week }))
+    Some((
+        sid.to_string(),
+        UsageLimits {
+            five_hour,
+            week,
+            updated_at: None,
+        },
+    ))
 }
 
 /// Notification destination (ZK_NOTIFY; defaults to web).
