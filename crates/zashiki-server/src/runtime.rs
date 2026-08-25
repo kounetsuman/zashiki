@@ -80,6 +80,14 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
             crate::now_ms(),
         );
     }
+    // Probe the signed-in account off the boot path so the first connect carries a real account.status.
+    {
+        let hub = hub.clone();
+        tokio::spawn(async move {
+            let claude = crate::session_launch::resolve_claude_program();
+            hub.publish_account_status(crate::account_status::read_account_status(&claude).await);
+        });
+    }
     let config_path = config.config_path;
     if let Some(path) = config_path.clone() {
         spawn_config_watch(path, hub.clone(), CONFIG_POLL);

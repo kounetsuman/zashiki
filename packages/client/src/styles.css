@@ -602,6 +602,7 @@ body {
 
 /* ---- メインエリア上部の統合タブ列（issue #149） ---- */
 
+.app-header,
 .update-banner {
   display: flex;
   justify-content: flex-end;
