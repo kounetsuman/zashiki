@@ -42,17 +42,13 @@ body {
   line-height: 1;
 }
 
-/* ---- セッション一覧ビュー（side-column 最上部・高さ 50% 固定） ---- */
+/* ---- セッション一覧ビュー（RIGHT カラムを占有） ---- */
 
-/* 最上部固定（issue #152）。下端ボーダーで下の選択ビューと区切る
- * （explorer/git は自前ボーダーを持たないため SESSION LIST 側で引く）。 */
 .session-list {
-  flex: none;
-  height: 50%;
-  min-height: 120px;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid #333;
   outline: none;
 }
 
@@ -64,11 +60,6 @@ body {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 4px 0;
-}
-
-/* 下段ビューを閉じた時は SESSION LIST が side-column を占有する（issue #188）。 */
-.session-list-full {
-  height: 100%;
 }
 
 .session-empty-guide {
@@ -445,81 +436,104 @@ body {
   min-height: 0;
 }
 
-.side-column {
+/* LEFT/RIGHT カラムの共通土台（固定幅の縦カラム）。境界線の向きだけ各自で足す。 */
+.left-area,
+.right-column {
   display: flex;
   flex-direction: column;
   width: 320px;
   flex: none;
   min-height: 0;
-  border-left: 1px solid #333;
   background: #181818;
 }
 
-/* ---- フッタのビュー切替アイコン群（issue #133。単一選択切替） ---- */
-
-/* status-bar 内で右端寄せ（margin-left:auto）。既存の notify/debug（左）に触れない。 */
-.footer-view-tabs {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
+/* RIGHT カラム: Cockpit Terminal List を常時占有（最右・固定幅）。 */
+.right-column {
+  border-left: 1px solid #333;
 }
 
-.footer-view-tab {
+/* LEFT エリア: ナビゲーションで選ばれたビューを表示（選択が無い時は非描画で閉じる）。 */
+.left-area {
+  border-right: 1px solid #333;
+}
+
+/* ---- ナビゲーションアクティビティバー（最左・縦アイコン列） ---- */
+
+/* ビュー切替アイコンを上に、設定ギアを下端（margin-top:auto）に固定する。 */
+.nav-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: none;
+  width: 48px;
+  padding: 6px 0;
+  background: #1c1c1c;
+  border-right: 1px solid #333;
+}
+
+.nav-items {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.nav-item-settings {
+  margin-top: auto;
+}
+
+.nav-item {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 20px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 3px;
+  border-left: 2px solid transparent;
   background: transparent;
-  color: #6f6f6f;
+  color: #8a8a8a;
   line-height: 1;
   cursor: pointer;
 }
 
-/* 通知の未読件数バッジ（アイコン右上に重畳）。 */
-.footer-view-badge {
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  min-width: 12px;
-  height: 12px;
-  padding: 0 3px;
-  border-radius: 6px;
-  background: #e06c75;
-  color: #fff;
-  font-size: 9px;
-  line-height: 12px;
-  text-align: center;
-  box-sizing: border-box;
-}
-
-.footer-view-tab:hover {
+.nav-item:hover {
   color: #ddd;
   background: #2a2a2a;
 }
 
-/* 選択中ビューのアイコンに色を付ける（下ボーダー + 文字色。issue #133） */
-.footer-view-tab.is-active {
-  color: #ddd;
-  border-bottom-color: #4a6da7;
+/* 選択中ビューのアイコンに色を付ける（左ボーダー + 文字色。VS Code のアクティビティバー流儀）。 */
+.nav-item.is-active {
+  color: #fff;
+  border-left-color: #4a6da7;
 }
 
-/* フッタ切替アイコンの Material Symbols（issue #90）。 */
-.footer-view-tab .material-symbols-outlined {
-  font-size: 16px;
+/* 通知の未読件数バッジ（アイコン右上に重畳）。 */
+.nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: #e06c75;
+  color: #fff;
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.nav-item .material-symbols-outlined {
+  font-size: 22px;
   line-height: 1;
   font-variation-settings:
     "FILL" 0,
     "wght" 400,
     "GRAD" 0,
-    "opsz" 20;
+    "opsz" 24;
 }
 
 /* ---- 非アクティブビューの薄いオーバーレイ（issue #92） ---- */

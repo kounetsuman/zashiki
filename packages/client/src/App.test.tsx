@@ -1293,7 +1293,7 @@ describe("App", () => {
   it("single selection: only one selected view is shown, and the session list stays permanently pinned", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
-    // Default is explorer. The footer toggle group (role=radiogroup) switches by single selection.
+    // Default is explorer. The navigation toggle group (role=radiogroup) switches by single selection.
     const { container } = render(
       <App
         control={control}
@@ -1306,10 +1306,10 @@ describe("App", () => {
         viewStorage={null}
       />,
     );
-    // The side-column holds the session list and always remains.
-    expect(container.querySelector(".side-column")).not.toBeNull();
+    // The RIGHT column holds the session list and always remains.
+    expect(container.querySelector(".right-column")).not.toBeNull();
     expect(listVisible()).toBe(true);
-    // The footer view toggle group exists.
+    // The navigation view toggle group exists.
     expect(screen.getByRole("radiogroup", { name: "ビュー切替" })).toBeTruthy();
     // The default explorer is shown and git is hidden (single selection).
     expect(screen.getByText("EXPLORER")).toBeTruthy();
@@ -1322,7 +1322,7 @@ describe("App", () => {
     expect(listVisible()).toBe(true);
   });
 
-  it("re-clicking the active icon closes the view and the SESSION LIST becomes full height", () => {
+  it("re-clicking the active icon closes the LEFT area while the session list stays pinned", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { container } = render(
@@ -1337,25 +1337,25 @@ describe("App", () => {
         viewStorage={null}
       />,
     );
-    const sessionList = () => container.querySelector(".session-list");
-    // The default explorer is open and SESSION LIST is not full height.
+    const leftArea = () => container.querySelector(".left-area");
+    // The default explorer is open in the LEFT area.
     expect(screen.getByText("EXPLORER")).toBeTruthy();
-    expect(sessionList()?.classList.contains("session-list-full")).toBe(false);
-    // Re-click the active explorer icon -> the view closes and all icons become inactive.
+    expect(leftArea()).not.toBeNull();
+    // Re-click the active explorer icon -> the LEFT area closes and all icons become inactive.
     fireEvent.click(screen.getByRole("radio", { name: "エクスプローラー" }));
     expect(screen.queryByText("EXPLORER")).toBeNull();
+    expect(leftArea()).toBeNull();
     expect(
       screen
         .getByRole("radio", { name: "エクスプローラー" })
         .getAttribute("aria-checked"),
     ).toBe("false");
-    // SESSION LIST becomes full height and stays permanently pinned.
-    expect(sessionList()?.classList.contains("session-list-full")).toBe(true);
+    // The session list stays permanently pinned in the RIGHT column.
     expect(listVisible()).toBe(true);
-    // Re-clicking reopens it and full height is cleared.
+    // Re-clicking reopens the LEFT area.
     fireEvent.click(screen.getByRole("radio", { name: "エクスプローラー" }));
     expect(screen.getByText("EXPLORER")).toBeTruthy();
-    expect(sessionList()?.classList.contains("session-list-full")).toBe(false);
+    expect(leftArea()).not.toBeNull();
   });
 
   it("pressing Ctrl+Alt+E again closes the view (the keyboard also toggles)", () => {
@@ -1388,7 +1388,7 @@ describe("App", () => {
     expect(screen.getByText("EXPLORER")).toBeTruthy();
   });
 
-  it("pressing a different icon from the closed state opens that view and clears full height", () => {
+  it("pressing a different icon from the closed state re-opens the LEFT area with that view", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { container } = render(
@@ -1403,18 +1403,18 @@ describe("App", () => {
         viewStorage={null}
       />,
     );
-    const sessionList = () => container.querySelector(".session-list");
-    // Close explorer (full height).
+    const leftArea = () => container.querySelector(".left-area");
+    // Close explorer -> the LEFT area is gone.
     fireEvent.click(screen.getByRole("radio", { name: "エクスプローラー" }));
-    expect(sessionList()?.classList.contains("session-list-full")).toBe(true);
-    // Open git from the closed state -> git is shown, full height is cleared, explorer does not appear.
+    expect(leftArea()).toBeNull();
+    // Open git from the closed state -> the LEFT area reopens with git; explorer does not appear.
     fireEvent.click(screen.getByRole("radio", { name: "ソース管理" }));
+    expect(leftArea()).not.toBeNull();
     expect(screen.getByText("SOURCE CONTROL")).toBeTruthy();
     expect(screen.queryByText("EXPLORER")).toBeNull();
-    expect(sessionList()?.classList.contains("session-list-full")).toBe(false);
   });
 
-  it("the SESSION LIST is rendered at the top of the side-column (before the selected view)", () => {
+  it("the session list lives in the RIGHT column, separate from the LEFT area's selected view", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { container } = render(
@@ -1429,12 +1429,15 @@ describe("App", () => {
         viewStorage={null}
       />,
     );
-    const sideColumn = container.querySelector(".side-column");
-    if (sideColumn === null) throw new Error("side-column が無い");
-    const sessionList = sideColumn.querySelector(".session-list");
-    if (sessionList === null) throw new Error("session-list が無い");
-    // SESSION LIST is the first element of the side-column (before the selected view).
-    expect(sideColumn.firstElementChild).toBe(sessionList);
+    const rightColumn = container.querySelector(".right-column");
+    if (rightColumn === null) throw new Error("right-column が無い");
+    // The session list is the RIGHT column's content.
+    expect(rightColumn.querySelector(".session-list")).not.toBeNull();
+    // The default explorer view lives in the LEFT area, not the RIGHT column.
+    expect(rightColumn.querySelector('[data-view="explorer"]')).toBeNull();
+    expect(
+      container.querySelector('.left-area [data-view="explorer"]'),
+    ).not.toBeNull();
   });
 
   it("Ctrl+Alt+G switches to git and Ctrl+Alt+E switches to explorer (keyboard happy path)", () => {

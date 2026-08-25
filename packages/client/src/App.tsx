@@ -60,11 +60,10 @@ import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ErrorDialog } from "./ui/ErrorDialog.js";
 import { ExplorerView } from "./ui/ExplorerView.js";
 import { FirstRunSetupWizard } from "./ui/FirstRunSetupWizard.js";
-import { FooterSettingsButton } from "./ui/FooterSettingsButton.js";
-import { FooterViewTabs } from "./ui/FooterViewTabs.js";
 import { HelpView } from "./ui/HelpView.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
 import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
+import { NavigationBar } from "./ui/NavigationBar.js";
 import { NotificationView } from "./ui/NotificationView.js";
 import { SearchView } from "./ui/SearchView.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
@@ -567,6 +566,64 @@ export function App({
         onUpdate={selfUpdate.perform}
       />
       <div className="main-row" onFocusCapture={handleViewFocus}>
+        <NavigationBar
+          selected={selectedView}
+          onSelect={handleSelectView}
+          onOpenSettings={() => setSettingsModalOpen(true)}
+          badges={{ notification: unread }}
+        />
+        {selectedView !== null && (
+          <aside className="left-area">
+            {selectedView === "explorer" && (
+              <ExplorerView
+                api={fsApi}
+                orgColors={orgColors}
+                orgAliases={orgAliases}
+                onOpenFile={openViewer}
+                inactive={activeView !== "explorer"}
+              />
+            )}
+            {selectedView === "search" && (
+              <SearchView
+                api={searchApi}
+                orgColors={orgColors}
+                orgAliases={orgAliases}
+                onOpen={(file, _line) =>
+                  openViewer(repoPathOfSearchFile(file), file.relPath)
+                }
+                inactive={activeView !== "search"}
+              />
+            )}
+            {selectedView === "sourceControl" && (
+              <SourceControlView
+                api={gitApi}
+                onGitDirty={onGitDirty}
+                orgColors={orgColors}
+                orgAliases={orgAliases}
+                onOpenDiff={openDiff}
+                inactive={activeView !== "sourceControl"}
+              />
+            )}
+            {selectedView === "notification" && (
+              <NotificationView
+                notifications={notifications}
+                seenIds={seenIds}
+                onMarkRead={markRead}
+                onDelete={(ids) => {
+                  for (const id of ids)
+                    control.send({ t: "notification.dismiss", id });
+                  flashCopyToast(
+                    t("toast.notificationsDeleted", { count: ids.length }),
+                  );
+                }}
+                inactive={activeView !== "notification"}
+              />
+            )}
+            {selectedView === "help" && (
+              <HelpView inactive={activeView !== "help"} />
+            )}
+          </aside>
+        )}
         <div
           className={`main-area${activeView === "main" ? "" : " view-inactive"}`}
           data-view="main"
@@ -663,7 +720,7 @@ export function App({
             />
           )}
         </div>
-        <aside className="side-column">
+        <aside className="right-column">
           <CockpitTerminalListView
             cockpitTerminals={cockpitTerminals}
             orgs={orgs}
@@ -680,59 +737,10 @@ export function App({
             }
             onAddOrg={() => setAddOrgOpen(true)}
             inactive={activeView !== "sessions"}
-            full={selectedView === null}
             onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}
           />
-          {selectedView === "explorer" && (
-            <ExplorerView
-              api={fsApi}
-              orgColors={orgColors}
-              orgAliases={orgAliases}
-              onOpenFile={openViewer}
-              inactive={activeView !== "explorer"}
-            />
-          )}
-          {selectedView === "search" && (
-            <SearchView
-              api={searchApi}
-              orgColors={orgColors}
-              orgAliases={orgAliases}
-              onOpen={(file, _line) =>
-                openViewer(repoPathOfSearchFile(file), file.relPath)
-              }
-              inactive={activeView !== "search"}
-            />
-          )}
-          {selectedView === "sourceControl" && (
-            <SourceControlView
-              api={gitApi}
-              onGitDirty={onGitDirty}
-              orgColors={orgColors}
-              orgAliases={orgAliases}
-              onOpenDiff={openDiff}
-              inactive={activeView !== "sourceControl"}
-            />
-          )}
-          {selectedView === "notification" && (
-            <NotificationView
-              notifications={notifications}
-              seenIds={seenIds}
-              onMarkRead={markRead}
-              onDelete={(ids) => {
-                for (const id of ids)
-                  control.send({ t: "notification.dismiss", id });
-                flashCopyToast(
-                  t("toast.notificationsDeleted", { count: ids.length }),
-                );
-              }}
-              inactive={activeView !== "notification"}
-            />
-          )}
-          {selectedView === "help" && (
-            <HelpView inactive={activeView !== "help"} />
-          )}
         </aside>
       </div>
       {settingsModalOpen && (
@@ -817,12 +825,6 @@ export function App({
         />
         {abnormal !== null && <span className="status-error">{abnormal}</span>}
         <LimitIndicator count={limitedCount} />
-        <FooterViewTabs
-          selected={selectedView}
-          onSelect={handleSelectView}
-          badges={{ notification: unread }}
-        />
-        <FooterSettingsButton onOpen={() => setSettingsModalOpen(true)} />
       </footer>
       {lastError !== null && (
         <ErrorDialog message={lastError} onDismiss={handleDismissError} />

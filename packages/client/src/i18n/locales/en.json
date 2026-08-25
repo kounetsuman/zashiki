@@ -185,6 +185,9 @@
     "opened": "Opened the releases page",
     "failed": "Update failed"
   },
+  "nav": {
+    "ariaLabel": "Navigation"
+  },
   "view": {
     "explorer": "Explorer",
     "search": "Search",
