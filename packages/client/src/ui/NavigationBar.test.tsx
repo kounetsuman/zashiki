@@ -14,6 +14,7 @@ describe("NavigationBar", () => {
       <NavigationBar
         selected="explorer"
         onSelect={noop}
+        onOpenHelp={noop}
         onOpenSettings={noop}
       />,
     );
@@ -28,6 +29,7 @@ describe("NavigationBar", () => {
       <NavigationBar
         selected="sourceControl"
         onSelect={noop}
+        onOpenHelp={noop}
         onOpenSettings={noop}
       />,
     );
@@ -45,7 +47,12 @@ describe("NavigationBar", () => {
 
   it("marks no view active when the LEFT area is closed (selected=null)", () => {
     render(
-      <NavigationBar selected={null} onSelect={noop} onOpenSettings={noop} />,
+      <NavigationBar
+        selected={null}
+        onSelect={noop}
+        onOpenHelp={noop}
+        onOpenSettings={noop}
+      />,
     );
     for (const r of screen.getAllByRole("radio")) {
       expect(r.getAttribute("aria-checked")).toBe("false");
@@ -55,7 +62,12 @@ describe("NavigationBar", () => {
 
   it("adds the is-active class to the selected view's icon (for coloring)", () => {
     render(
-      <NavigationBar selected="search" onSelect={noop} onOpenSettings={noop} />,
+      <NavigationBar
+        selected="search"
+        onSelect={noop}
+        onOpenHelp={noop}
+        onOpenSettings={noop}
+      />,
     );
     expect(
       screen
@@ -69,6 +81,7 @@ describe("NavigationBar", () => {
       <NavigationBar
         selected="explorer"
         onSelect={noop}
+        onOpenHelp={noop}
         onOpenSettings={noop}
       />,
     );
@@ -81,11 +94,14 @@ describe("NavigationBar", () => {
       <NavigationBar
         selected="explorer"
         onSelect={onSelect}
+        onOpenHelp={noop}
         onOpenSettings={noop}
       />,
     );
     fireEvent.click(screen.getByRole("radio", { name: "ソース管理" }));
     expect(onSelect).toHaveBeenCalledWith("sourceControl");
+    // The help/settings buttons are plain buttons, not part of the radiogroup.
+    expect(screen.queryByRole("radio", { name: "ヘルプ" })).toBeNull();
   });
 
   it("shows an unread badge and unread label on views with badges>0", () => {
@@ -93,6 +109,7 @@ describe("NavigationBar", () => {
       <NavigationBar
         selected="explorer"
         onSelect={noop}
+        onOpenHelp={noop}
         onOpenSettings={noop}
         badges={{ notification: 3 }}
       />,
@@ -106,6 +123,7 @@ describe("NavigationBar", () => {
       <NavigationBar
         selected="explorer"
         onSelect={noop}
+        onOpenHelp={noop}
         onOpenSettings={noop}
         badges={{ notification: 0 }}
       />,
@@ -121,6 +139,7 @@ describe("NavigationBar", () => {
       <NavigationBar
         selected="explorer"
         onSelect={noop}
+        onOpenHelp={noop}
         onOpenSettings={onOpenSettings}
       />,
     );
@@ -128,5 +147,21 @@ describe("NavigationBar", () => {
     expect(btn.getAttribute("role")).toBeNull();
     fireEvent.click(btn);
     expect(onOpenSettings).toHaveBeenCalledOnce();
+  });
+
+  it("renders the help entry as a plain button (not a radio) and calls onOpenHelp on click", () => {
+    const onOpenHelp = vi.fn();
+    render(
+      <NavigationBar
+        selected="explorer"
+        onSelect={noop}
+        onOpenHelp={onOpenHelp}
+        onOpenSettings={noop}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: "ヘルプ" });
+    expect(btn.getAttribute("role")).toBeNull();
+    fireEvent.click(btn);
+    expect(onOpenHelp).toHaveBeenCalledOnce();
   });
 });

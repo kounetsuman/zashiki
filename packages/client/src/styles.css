@@ -478,7 +478,7 @@ body {
   gap: 2px;
 }
 
-.nav-item-settings {
+.nav-item-help {
   margin-top: auto;
 }
 
@@ -2079,23 +2079,6 @@ body {
 
 /* ---- ヘルプビュー（issue #118） ---- */
 
-.help-view {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border-bottom: 1px solid #333;
-}
-
-.settings-body {
-  padding: 20px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  overflow-y: auto;
-  min-height: 0;
-}
-
 .settings-field {
   display: flex;
   flex-direction: column;
@@ -2110,7 +2093,7 @@ body {
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: var(--settings-text-dim);
+  color: var(--modal-text-dim);
 }
 
 .settings-toggle {
@@ -2127,16 +2110,16 @@ body {
 .settings-hint {
   font-size: 12px;
   line-height: 1.5;
-  color: var(--settings-text-muted);
+  color: var(--modal-text-muted);
 }
 
 .settings-select,
 .settings-input {
   max-width: 420px;
-  background: var(--settings-control-bg);
-  border: 1px solid var(--settings-border);
-  border-radius: var(--settings-radius);
-  color: var(--settings-text);
+  background: var(--modal-control-bg);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  color: var(--modal-text);
   font: inherit;
   padding: 6px 9px;
 }
@@ -2144,15 +2127,15 @@ body {
 .settings-select:focus,
 .settings-input:focus {
   outline: none;
-  border-color: var(--settings-accent);
+  border-color: var(--modal-accent);
 }
 
 .settings-save {
   align-self: flex-start;
-  background: var(--settings-control-bg);
-  border: 1px solid var(--settings-border-strong);
-  border-radius: var(--settings-radius);
-  color: var(--settings-text);
+  background: var(--modal-control-bg);
+  border: 1px solid var(--modal-border-strong);
+  border-radius: var(--modal-radius);
+  color: var(--modal-text);
   font: inherit;
   padding: 7px 16px;
   cursor: pointer;
@@ -2164,13 +2147,13 @@ body {
 }
 
 .settings-save:not(:disabled):hover {
-  background: var(--settings-control-bg-hover);
-  border-color: var(--settings-accent);
+  background: var(--modal-control-bg-hover);
+  border-color: var(--modal-accent);
 }
 
 .settings-update-status {
   font-size: 12px;
-  color: var(--settings-text-dim);
+  color: var(--modal-text-dim);
 }
 
 /* fieldset for the terminal font-size group: strip the default border/padding so it matches the
@@ -2189,10 +2172,10 @@ body {
 }
 
 .font-size-button {
-  background: var(--settings-control-bg);
-  border: 1px solid var(--settings-border-strong);
-  border-radius: var(--settings-radius);
-  color: var(--settings-text);
+  background: var(--modal-control-bg);
+  border: 1px solid var(--modal-border-strong);
+  border-radius: var(--modal-radius);
+  color: var(--modal-text);
   font: inherit;
   min-width: 34px;
   padding: 6px 10px;
@@ -2205,21 +2188,21 @@ body {
 }
 
 .font-size-button:not(:disabled):hover {
-  background: var(--settings-control-bg-hover);
-  border-color: var(--settings-accent);
+  background: var(--modal-control-bg-hover);
+  border-color: var(--modal-accent);
 }
 
 .font-size-value {
   min-width: 42px;
   text-align: center;
-  color: var(--settings-text);
+  color: var(--modal-text);
   font-variant-numeric: tabular-nums;
 }
 
 .font-size-reset {
   background: none;
   border: none;
-  color: var(--settings-text-dim);
+  color: var(--modal-text-dim);
   font: inherit;
   padding: 6px 8px;
   cursor: pointer;
@@ -2227,126 +2210,13 @@ body {
 }
 
 .font-size-reset:not(:disabled):hover {
-  color: var(--settings-text);
+  color: var(--modal-text);
 }
 
 .font-size-reset:disabled {
   opacity: 0.5;
   cursor: default;
   text-decoration: none;
-}
-
-.help-input-row {
-  display: flex;
-  padding: 6px 8px;
-  flex: none;
-}
-
-.help-input {
-  flex: 1;
-  min-width: 0;
-  background: #1e1e1e;
-  border: 1px solid #333;
-  color: #ddd;
-  font: inherit;
-  padding: 3px 6px;
-}
-
-.help-input:focus {
-  outline: none;
-  border-color: #4a7;
-}
-
-.help-categories {
-  overflow-y: auto;
-  min-height: 0;
-  flex: 1;
-}
-
-.help-category-title {
-  margin: 0;
-  padding: 6px 8px 2px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #888;
-  border-top: 1px solid #2a2a2a;
-}
-
-.help-category:first-child .help-category-title {
-  border-top: none;
-}
-
-.help-topics {
-  padding: 2px 0 4px;
-}
-
-.help-topic-header {
-  display: block;
-  width: 100%;
-  background: transparent;
-  border: none;
-  color: #ddd;
-  cursor: pointer;
-  font: inherit;
-  padding: 3px 8px;
-  text-align: left;
-}
-
-.help-topic-header:hover {
-  background: #222;
-}
-
-.help-arrow {
-  color: #888;
-}
-
-.help-topic-body {
-  padding: 2px 12px 8px;
-  color: #ccc;
-}
-
-.help-md-h1 {
-  font-size: 13px;
-  margin: 8px 0 4px;
-}
-
-.help-md-h2 {
-  font-size: 12px;
-  color: #bbb;
-  margin: 6px 0 3px;
-}
-
-.help-md-p {
-  margin: 4px 0;
-  line-height: 1.5;
-}
-
-.help-md-ul {
-  margin: 4px 0;
-  padding-left: 18px;
-  line-height: 1.5;
-}
-
-.help-md-pre {
-  background: #1e1e1e;
-  border: 1px solid #333;
-  padding: 6px 8px;
-  overflow-x: auto;
-  white-space: pre;
-}
-
-.help-md-code,
-.help-md-pre code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
-}
-
-.help-md-code {
-  background: #2a2a2a;
-  padding: 0 3px;
-  border-radius: 3px;
 }
 
 /* ---- NOTIFICATION ビュー（issue #177） ---- */
@@ -2636,7 +2506,6 @@ body {
 /* 記号グリフから移行した Material Symbols アイコンの寸法（issue #9）。
  * 折りたたみ矢印・ビューヘッダボタン・行アクション・タブ閉じ等で共通。 */
 .view-arrow.material-symbols-outlined,
-.help-arrow.material-symbols-outlined,
 .search-arrow.material-symbols-outlined,
 .view-header button .material-symbols-outlined {
   font-size: 18px;

@@ -1,0 +1,126 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.modal-box {
+  --modal-surface: #1e1e1e;
+  --modal-header-bg: #171717;
+  --modal-control-bg: #252525;
+  --modal-control-bg-hover: #2f2f2f;
+  --modal-border: #333;
+  --modal-border-strong: #444;
+  --modal-text: #ddd;
+  --modal-text-dim: #9a9a9a;
+  --modal-text-muted: #777;
+  --modal-accent: #4a7;
+  --modal-radius: 4px;
+
+  display: flex;
+  flex-direction: column;
+  width: min(90vw, 820px);
+  height: min(88vh, 680px);
+  overflow: hidden;
+  background: var(--modal-surface);
+  border: 1px solid var(--modal-border-strong);
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  color: var(--modal-text);
+  accent-color: var(--modal-accent);
+}
+
+/* Slim bar echoing the native title bar (App .title-bar): same dark fill and hairline. */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  min-height: 34px;
+  padding: 0 14px;
+  background: var(--modal-header-bg);
+  border-bottom: 1px solid var(--modal-border);
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  min-height: 26px;
+  background: none;
+  border: none;
+  border-radius: var(--modal-radius);
+  color: var(--modal-text-dim);
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: #fff;
+  background: var(--modal-control-bg-hover);
+}
+
+/* Header on top; below it the body (left) and the vertical tab menu (right) share the row. */
+.modal-main {
+  display: flex;
+  flex-direction: row-reverse;
+  flex: 1;
+  min-height: 0;
+}
+
+.modal-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 148px;
+  padding: 12px 10px;
+  border-left: 1px solid var(--modal-border);
+}
+
+.modal-nav-item {
+  background: none;
+  border: none;
+  border-radius: var(--modal-radius);
+  color: var(--modal-text-dim);
+  font: inherit;
+  text-align: left;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.modal-nav-item:hover {
+  color: var(--modal-text);
+  background: var(--modal-control-bg-hover);
+}
+
+.modal-nav-item.is-active {
+  color: var(--modal-text);
+  background: var(--modal-control-bg-hover);
+  border-left: 2px solid var(--modal-accent);
+  padding-left: 10px;
+}
+
+.modal-body {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.modal-body[hidden] {
+  display: none;
+}

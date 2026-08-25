@@ -152,6 +152,7 @@
   "help": {
     "search": "Search help",
     "noResults": "No matching help",
+    "close": "Close",
     "category": {
       "config": "Configuration",
       "general": "General",

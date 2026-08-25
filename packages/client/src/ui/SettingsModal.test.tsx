@@ -64,9 +64,7 @@ describe("SettingsModal shell", () => {
     );
     fireEvent.click(screen.getByRole("dialog", { name: "設定" }));
     expect(onClose).not.toHaveBeenCalled();
-    const backdrop = container.querySelector(
-      ".settings-backdrop",
-    ) as HTMLElement;
+    const backdrop = container.querySelector(".modal-backdrop") as HTMLElement;
     fireEvent.click(backdrop);
     expect(onClose).toHaveBeenCalledOnce();
   });

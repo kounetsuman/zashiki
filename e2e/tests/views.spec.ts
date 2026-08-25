@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expect, gotoApp, test } from "../harness/app.js";
 
-// Feature: footer view switching (explorer / search / source control / notification / help)
+// Feature: navigation activity-bar view switching (explorer / search / source control / notification)
 // Why guard this: single-select mutual exclusion and toggle-close are the paths users
 // touch most. The correctness of each view's contents is guarded by unit tests, so here
 // we only thinly check the "can switch / can close" path.
@@ -13,7 +13,6 @@ const SWITCHABLE_VIEWS = [
   { label: "Search", view: "search" },
   { label: "Source Control", view: "sourceControl" },
   { label: "Notifications", view: "notification" },
-  { label: "Help", view: "help" },
 ] as const;
 
 function viewTab(page: Page, label: string) {
@@ -58,5 +57,18 @@ test.describe("Footer view switching", () => {
       "false",
     );
     await expect(page.locator('[data-view="explorer"]')).toHaveCount(0);
+  });
+
+  // Story: Help is a pinned modal (not a switchable view); its button opens and closes the dialog
+  test("the Help button opens the help modal and Close dismisses it", async ({
+    page,
+  }) => {
+    await gotoApp(page);
+    const dialog = page.getByRole("dialog", { name: "Help" });
+    await expect(dialog).toHaveCount(0);
+    await page.getByRole("button", { name: "Help" }).click();
+    await expect(dialog).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toHaveCount(0);
   });
 });

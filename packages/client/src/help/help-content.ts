@@ -45,7 +45,7 @@ export function getHelpTopics(locale: string): HelpTopic[] {
 /**
  * The source of truth for help categories (display order, display name, member topic ids).
  * `topicIds` are the content/*.md filename slugs (the part without the numeric prefix and extension).
- * Topics not listed here fall into the trailing "Other" on the HelpView side (so nothing is dropped).
+ * Topics not listed here fall into the trailing "Other" on the HelpModal side (so nothing is dropped).
  */
 export const HELP_CATEGORIES: HelpCategoryDef[] = [
   {

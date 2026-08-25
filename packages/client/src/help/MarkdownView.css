@@ -1,0 +1,41 @@
+.help-md-h1 {
+  font-size: 13px;
+  margin: 8px 0 4px;
+}
+
+.help-md-h2 {
+  font-size: 12px;
+  color: #bbb;
+  margin: 6px 0 3px;
+}
+
+.help-md-p {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.help-md-ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  line-height: 1.5;
+}
+
+.help-md-pre {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  padding: 6px 8px;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.help-md-code,
+.help-md-pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.help-md-code {
+  background: #2a2a2a;
+  padding: 0 3px;
+  border-radius: 3px;
+}

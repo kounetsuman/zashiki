@@ -64,7 +64,7 @@ import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ErrorDialog } from "./ui/ErrorDialog.js";
 import { ExplorerView } from "./ui/ExplorerView.js";
 import { FirstRunSetupWizard } from "./ui/FirstRunSetupWizard.js";
-import { HelpView } from "./ui/HelpView.js";
+import { HelpModal } from "./ui/HelpModal.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
 import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
 import { NavigationBar } from "./ui/NavigationBar.js";
@@ -191,7 +191,16 @@ export function App({
   );
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
-  const toggleSettings = useCallback(() => setSettingsModalOpen((v) => !v), []);
+  const [helpModalOpen, setHelpModalOpen] = useState(false);
+  // Help and Settings are peer chrome modals; opening one closes the other so they never stack.
+  const toggleSettings = useCallback(() => {
+    setHelpModalOpen(false);
+    setSettingsModalOpen((v) => !v);
+  }, []);
+  const toggleHelp = useCallback(() => {
+    setSettingsModalOpen(false);
+    setHelpModalOpen((v) => !v);
+  }, []);
 
   const { selectedView, activeView, handleViewFocus, handleSelectView } =
     useViewSelection(viewStorage);
@@ -410,6 +419,7 @@ export function App({
     activeSess,
     activeKey: tabsState.activeKey,
     handleSelectView,
+    toggleHelp,
     toggleSettings,
     newSession,
     duplicateSession,
@@ -587,7 +597,14 @@ export function App({
         <NavigationBar
           selected={selectedView}
           onSelect={handleSelectView}
-          onOpenSettings={() => setSettingsModalOpen(true)}
+          onOpenHelp={() => {
+            setSettingsModalOpen(false);
+            setHelpModalOpen(true);
+          }}
+          onOpenSettings={() => {
+            setHelpModalOpen(false);
+            setSettingsModalOpen(true);
+          }}
           badges={{ notification: unread }}
         />
         {selectedView !== null && (
@@ -636,9 +653,6 @@ export function App({
                 }}
                 inactive={activeView !== "notification"}
               />
-            )}
-            {selectedView === "help" && (
-              <HelpView inactive={activeView !== "help"} />
             )}
           </aside>
         )}
@@ -761,6 +775,7 @@ export function App({
           />
         </aside>
       </div>
+      {helpModalOpen && <HelpModal onClose={() => setHelpModalOpen(false)} />}
       {settingsModalOpen && (
         <SettingsModal
           language={i18n.language}
