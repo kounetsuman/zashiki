@@ -1,4 +1,4 @@
-//! A registry that bundles multiple [`PtySession`]s by id (tmux removal / Phase B).
+//! A registry that bundles multiple [`PtySession`]s by id.
 //!
 //! In line with the B-1 decision (single viewer, 1 work = 1 terminal; multi-viewer sharing is split out
 //! separately), this is a straightforward ownership map without multiplexing of grouped sessions. The source
@@ -17,7 +17,7 @@ use crate::pty_host::{PtyConfig, PtySession};
 const TERMINATE_GRACE: Duration = Duration::from_millis(300);
 
 /// Display/decision metadata tied to a session (cwd / window name). The poller uses it as material for state decisions.
-/// The foundation for meta that will grow in PR-D (for now just cwd / wname). Defaults to empty strings (compatible with the tmux version).
+/// Per-session meta (for now just cwd / wname). Defaults to empty strings.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionMeta {
     pub cwd: String,
@@ -155,7 +155,7 @@ impl SessionRegistry {
 
     /// Kills every registered session via [`Self::remove`] (killpg + reap each session).
     /// Called during the server's graceful shutdown as a full teardown so that setsid-ed claude are not orphaned.
-    /// Does nothing if empty (the registry is often empty on the tmux path).
+    /// Does nothing if empty.
     ///
     /// It first sets `shutting_down` to block subsequent [`Self::create_with_meta`] calls, then drains until empty.
     /// Because the flag is checked under create's lock, a create that was in-flight when the drain started is still
@@ -231,7 +231,7 @@ mod tests {
         )
         .await
         .unwrap();
-        // A create without meta is registered with default (empty) meta (compatible with the tmux version).
+        // A create without meta is registered with default (empty) meta.
         reg.create("c", sleep_cfg()).await.unwrap();
 
         assert_eq!(reg.meta("a").await.unwrap().cwd, "/repos/org/a");
@@ -289,7 +289,7 @@ mod tests {
                 "process {pid} should be killed and reaped by shutdown_all"
             );
         }
-        // shutdown_all on an empty registry is a no-op (must not panic on the tmux path).
+        // shutdown_all on an empty registry is a no-op (must not panic).
         reg.shutdown_all().await;
     }
 

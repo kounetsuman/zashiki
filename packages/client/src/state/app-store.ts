@@ -71,7 +71,7 @@ export interface AppStore {
   focusTerminal(): void;
   /**
    * Deselects the currently displayed session. Called when all tabs are closed so
-   * that a conversation does not linger via the selectedCockpitTerminalId fallback (the tmux active window).
+   * that a conversation does not linger via the selectedCockpitTerminalId fallback (the active window).
    */
   deselect(): void;
   /**
@@ -87,7 +87,7 @@ export interface AppStore {
  * Returns the "newest" cockpitTerminalId among the windows that are in next but not in prev
  * (i.e. newly added). Returns null if there is no addition. Because the cockpitTerminalId
  * shape differs by backend, the rule for "newest" differs too:
- * - tmux (`@N`): monotonically increasing, so the largest number = newest.
+ * - legacy (`@N`): monotonically increasing, so the largest number = newest.
  * - owned (UUID): has no ordering, so for a single addition it is that one, and for
  *   multiple simultaneous additions the tail of next (the tail of the server ordering)
  *   is treated as newest. Because cockpitTerminalId became a UUID, number-based logic that assumes

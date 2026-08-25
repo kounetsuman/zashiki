@@ -3,8 +3,8 @@ import i18n from "../i18n/index.js";
 import type { TermAttachStatus } from "../session/terminal-session.js";
 import type { ControlStatus } from "../ws/control.js";
 
-/** The tmux session name (zk-<termId>) used by term.select and others. */
-export function tmuxSessionName(termId: string | null): string | null {
+/** The server session name (zk-<termId>) shown for diagnostics. */
+export function sessionName(termId: string | null): string | null {
   return termId === null ? null : `zk-${termId}`;
 }
 

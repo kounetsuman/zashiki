@@ -1,13 +1,10 @@
-//! Save/restore usecase for the session list (tmux removal; owned-only).
+//! Save/restore usecase for the session list (owned mode).
 //!
-//! Moves the tmux version's `POST /api/sessions/save` / `/restore`
-//! onto the owned-mode `SessionRegistry`. The tmux version walked the process tree to pick up claude sids,
-//! but in owned mode **the registry id itself is the sid (UUID)** and meta holds wname/cwd, so no walk is needed.
+//! Implements `POST /api/sessions/save` / `/restore` on the owned-mode `SessionRegistry`.
+//! **The registry id itself is the sid (UUID)** and meta holds wname/cwd, so no process-tree walk is needed.
 //! The destructive sequence (backup → remove all → rebuild) assumes it is serialized within the server (`persist_lock`).
 //! The save format (`saves/last.tsv` = `widx\twname\tcwd\tsid` TSV) reuses [`zashiki_core::save_file`].
 //! The source of truth for behavior is the `tests` at the end.
-//!
-//! owned-only tradeoff: for now, save/restore in tmux mode is handled by Node.
 
 use std::fs;
 use std::io;
@@ -26,7 +23,7 @@ use crate::session_restore::{plan_resume, plan_to_config as resume_plan_to_confi
 const LAST_FILE: &str = "last.tsv";
 
 /// Precondition errors for save/restore.
-/// The tmux version's `work_not_found` does not occur in owned mode because there is no "work session" concept
+/// In owned mode there is no "work session" concept, so a work-not-found error does not occur
 /// (the registry always exists, and if there is no registration holding claude it is [`PersistError::SaveEmpty`]).
 #[derive(Debug)]
 pub enum PersistError {
@@ -69,7 +66,7 @@ pub fn is_valid_save_filename(name: &str) -> bool {
     chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
-/// Splits the current registry into save entries and skipped window names (the owned version of the tmux `collectEntries`).
+/// Splits the current registry into save entries and skipped window names.
 /// Registrations with a UUID id become save targets; non-UUID registrations are considered to have no claude running, so their window names go to skip.
 /// widx is a 1-based ordinal over all registrations (including skipped ones; for display, unused on restore).
 async fn collect_entries(registry: &SessionRegistry) -> (Vec<SaveEntry>, Vec<String>) {
@@ -163,7 +160,7 @@ async fn backup_current_state(
 
 /// Rebuilds the registry from the save entries.
 /// For a UUID sid with `launch_claude`, it creates the session with `claude --resume`; otherwise with a plain
-/// login shell (as in the tmux version, **it does not drop the tab** and instead warns about claude not launching).
+/// login shell (**it does not drop the tab** and instead warns about claude not launching).
 /// A UUID entry uses the sid as its id; a non-UUID entry uses a non-colliding synthetic id (`shell:<i>:<wname>`)
 /// (a synthetic id is non-UUID, so it becomes a skip target on the next save).
 async fn rebuild(

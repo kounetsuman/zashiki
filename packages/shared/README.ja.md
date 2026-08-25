@@ -2,7 +2,7 @@
 
 # @zashiki/shared
 
-オニオンアーキテクチャの最内核。**副作用ゼロの純関数**（domain）と、**client / server 両端で共有するプロトコル型**（zod）だけを置く。tmux・fs・ネットワークを知らない。
+オニオンアーキテクチャの最内核。**副作用ゼロの純関数**（domain）と、**client / server 両端で共有するプロトコル型**（zod）だけを置く。PTY・fs・ネットワークを知らない。
 
 依存方向は `shared（domain）← server/usecase ← server/infra` / `client（presentation）`。この package は誰にも依存せず、単体テスト（Vitest）の主戦場になる。
 
@@ -36,4 +36,4 @@
 - トークン検証（`x-zashiki-token` / `?token=`）と Host/Origin 検証。
 - `state.sync` の `SessionInfo` 形状。
 
-tmux の有無や PTY 管理戦略は wire の外側の実装詳細で、client には不可視。
+PTY 管理戦略は wire の外側の実装詳細で、client には不可視。

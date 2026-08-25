@@ -1,4 +1,4 @@
-//! PTY-owning implementation of `PollerPorts` (part of removing tmux).
+//! PTY-owning implementation of `PollerPorts`.
 //!
 //! Supplies the headless vt100-reconstructed screen of the server-owned [`PtySession`]
 //! ([`PtySession::screen_contents`]) as the capture screen. The detection logic
@@ -6,9 +6,8 @@
 //! `PollerPorts`.
 //!
 //! One session = one window = one pane (matching the flat map in [`crate::session_registry`]; there
-//! is no multiplexing for grouped sessions). The ps / jsonl paths are delegated to the same adapters
-//! as the tmux version (process tree, title, and subagent counting do not depend on the supplier, so
-//! they are shared). Not yet wired into the runtime (WS routes / poller loop); non-breaking. The
+//! is no multiplexing). The ps / jsonl paths are delegated to shared adapters (process tree, title,
+//! and subagent counting do not depend on the supplier). Not yet wired into the runtime (WS routes / poller loop); non-breaking. The
 //! source of truth for behavior is the `tests` at the end of this file.
 
 use std::sync::Arc;
@@ -25,7 +24,7 @@ use crate::session_registry::SessionRegistry;
 use crate::status_poller::{PollerPorts, Slices, CockpitTerminal, CockpitTerminalPane};
 
 /// PTY-owning implementation of `PollerPorts`. The capture screen comes from each [`PtySession`] in
-/// the [`SessionRegistry`], and ps / lsof / jsonl are delegated to the same adapters as the tmux version.
+/// the [`SessionRegistry`], and ps / lsof / jsonl are delegated to shared adapters.
 pub struct PtyPollerPorts {
     registry: Arc<SessionRegistry>,
     ps: PsAdapter,
@@ -52,9 +51,9 @@ impl PtyPollerPorts {
 
 /// Maps each session in the registry to a [`CockpitTerminal`] of one window = one pane (the owned window
 /// listing). The pane's pid is the session's child PID, and current_path is the cwd metadata held by
-/// the registry. The tmux-specific active / left / in_mode fields are fixed because there is a single
-/// pane (the PTY version has no copy-mode concept). Shared by the poller and by the owned resolution
-/// of hooks (the replacement supplier for the tmux version's `list_work_windows`).
+/// the registry. The active / left / in_mode fields are fixed because there is a single
+/// pane (there is no copy-mode concept). Shared by the poller and by the owned resolution
+/// of hooks.
 pub async fn owned_work_windows(registry: &SessionRegistry) -> Vec<CockpitTerminal> {
     registry
         .entries()
@@ -82,7 +81,7 @@ impl PollerPorts for PtyPollerPorts {
     }
 
     /// The headless reconstructed screen for pane_id (= session id). Returns an empty string if not
-    /// registered (like the tmux version, failures collapse to empty so the poller is not stopped).
+    /// registered (failures collapse to empty so the poller is not stopped).
     async fn capture_pane(&self, target: &str) -> String {
         self.registry
             .get(target)
@@ -187,8 +186,7 @@ mod tests {
         }
     }
 
-    /// capture_pane (PTY screen supply) -> detect_state can determine running (the replacement for
-    /// tmux capture).
+    /// capture_pane (PTY screen supply) -> detect_state can determine running.
     #[cfg(unix)]
     #[tokio::test]
     async fn capture_pane_feeds_running_marker_to_state_detection() {

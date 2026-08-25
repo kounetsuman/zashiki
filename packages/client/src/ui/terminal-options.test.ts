@@ -7,7 +7,7 @@ import {
 } from "./terminal-options.js";
 
 describe("buildTerminalOptions", () => {
-  it("after removing tmux, xterm owns the scrollback (effectively unlimited so the first prompt stays reachable)", () => {
+  it("xterm owns the scrollback (effectively unlimited so the first prompt stays reachable)", () => {
     expect(buildTerminalOptions().scrollback).toBe(TERMINAL_SCROLLBACK_LINES);
     expect(TERMINAL_SCROLLBACK_LINES).toBeGreaterThanOrEqual(100_000);
   });
@@ -24,7 +24,7 @@ describe("buildTerminalOptions", () => {
     expect(buildTerminalOptions(20).fontSize).toBe(20);
   });
 
-  it("falls back to native selection on a plain drag without modifier keys even during tmux mouse mode", () => {
+  it("falls back to native selection on a plain drag without modifier keys even during application mouse mode", () => {
     expect(buildTerminalOptions().mouseEventsRequireAlt).toBe(true);
   });
 

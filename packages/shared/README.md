@@ -2,7 +2,7 @@
 
 # @zashiki/shared
 
-The innermost core of the onion architecture. It holds only **side-effect-free pure functions** (domain) and **protocol types shared by both the client and server ends** (zod). It knows nothing of tmux, fs, or the network.
+The innermost core of the onion architecture. It holds only **side-effect-free pure functions** (domain) and **protocol types shared by both the client and server ends** (zod). It knows nothing of the PTY, fs, or the network.
 
 The dependency direction is `shared (domain) ← server/usecase ← server/infra` / `client (presentation)`. This package depends on nothing, and is the main battleground for unit tests (Vitest).
 
@@ -36,4 +36,4 @@ The types in `protocol.ts` are **the contract for keeping the client unmodified 
 - Token validation (`x-zashiki-token` / `?token=`) and Host/Origin validation.
 - The `SessionInfo` shape of `state.sync`.
 
-The presence or absence of tmux and the PTY management strategy are implementation details outside the wire, invisible to the client.
+The PTY management strategy is an implementation detail outside the wire, invisible to the client.

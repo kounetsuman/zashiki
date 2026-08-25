@@ -11,11 +11,9 @@ An effort to remove the Node server and move the core logic into Rust. The view 
 
 ## Target architecture
 
-**A standalone Rust server (able to run as a daemon).** The Node server is replaced by a Rust server binary, and Tauri connects to it (we do not adopt an in-process link or FFI/napi = it does not coexist with running as a daemon after tmux removal, and it would leave Node bundled).
+**A standalone Rust server (able to run as a daemon).** The Node server is replaced by a Rust server binary, and Tauri connects to it (we do not adopt an in-process link or FFI/napi = it does not coexist with running as a daemon, and it would leave Node bundled).
 
-## Phased migration
+## Design notes
 
-- **Phase A**: Make the Rust server a drop-in replacement for Node. **The condition for keeping the client unchanged = keeping the wire invariant** (the wire contract in [`packages/shared/README.md`](../packages/shared/README.md)). tmux is embedded within the Rust server.
-- **Phase B**: Remove tmux. Replace `capture-pane` with direct `portable-pty` management + a headless vterm, and implement session persistence ourselves via a launchd daemon.
-
-Order: establish the Rust server (tmux embedded) → remove tmux only once, on the Rust side (avoiding the double investment of building out direct PTY management in TS).
+- **The client stays unchanged** by **keeping the wire invariant** (the wire contract in [`packages/shared/README.md`](../packages/shared/README.md)).
+- The server is the sole owner and reader of each session's PTY (`portable-pty`), reconstructing the visible screen with a headless vterm (`vt100`) instead of relying on an external multiplexer.

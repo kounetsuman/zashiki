@@ -21,9 +21,9 @@ regex = "1"
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 # git status のパース等、server ロジックを寄せる先。
 zashiki-core = { path = "../zashiki-core" }
-# tmux 撤去（#11 / Phase B）: サーバが各セッションの PTY を単一所有する。PoC #93 で採用・実測した版。
+# サーバが各セッションの PTY を単一所有するための PTY 管理。
 portable-pty = "0.9"
-# ヘッドレス端末エミュレータ。生 PTY 出力から可視画面を再構成し tmux `capture-pane` を置換する（#11 ③）。
+# ヘッドレス端末エミュレータ。生 PTY 出力から可視画面を再構成する。
 vt100 = "0.16"
 # セッション終了時のプロセスグループ kill（killpg）。portable-pty が子を setsid する＝pgid==pid なので
 # `kill(-pid)` で孫まで確実に落とす（居残り防止・#11）。

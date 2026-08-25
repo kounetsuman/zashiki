@@ -58,7 +58,7 @@ Server (Rust / zashiki-server)
 Claude Code (runs on a PTY owned by the server)
 ```
 
-- The server solely owns each session's PTY and reconstructs the screen with a headless vt100 (no tmux dependency)
+- The server solely owns each session's PTY and reconstructs the screen with a headless vt100
 - The session list is persisted and restored via `claude --resume` when the daemon (launchd) starts
 - State (running / idle / waiting) is shown in a list; waiting fires a desktop notification
 

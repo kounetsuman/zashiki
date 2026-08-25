@@ -156,16 +156,13 @@ describe("canCreatePty (absolute-slot fail-fast; does not block by ratio)", () =
 
 describe("isPtyExhaustionError (only ENXIO-family; does not match EAGAIN fork failed)", () => {
   it.each([
-    [
-      "tmux new-window failed: open terminal failed: Device not configured",
-      true,
-    ],
+    ["spawn failed: open terminal failed: Device not configured", true],
     ["fork failed: Device not configured", true],
     ["posix_openpt: ENXIO", true],
     ["openpty failed", true],
     ["no more ptys available", true],
     ["fork failed: Resource temporarily unavailable", false], // EAGAIN=process-count limit, a different cause
-    ["some unrelated tmux error", false],
+    ["some unrelated error", false],
     ["", false],
   ])("isPtyExhaustionError(%o) = %s", (msg, expected) => {
     expect(isPtyExhaustionError(msg)).toBe(expected);

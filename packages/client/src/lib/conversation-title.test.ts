@@ -41,7 +41,7 @@ describe("loadConversationTitles", () => {
         [WID_A]: { title: "作業A", name: "repoA" },
         [WID_B]: { title: "", name: "repoB" }, // empty title
         "22222222-3333-4444-8555-666677778888": { title: "x" }, // name missing
-        "@1": { title: "旧 tmux cockpitTerminalId キー", name: "repoC" }, // non-UUID key (retired format, discarded on migration)
+        "@1": { title: "旧 cockpitTerminalId キー", name: "repoC" }, // non-UUID key (retired format, discarded on migration)
         "shell:0:repoD": { title: "y", name: "z" }, // plain-shell id (non-UUID)
         "33333333-4444-4555-8666-777788889999": "旧 string 形式",
       }),
@@ -51,7 +51,7 @@ describe("loadConversationTitles", () => {
     });
   });
 
-  it("discards the entire retired tmux cockpitTerminalId-key (@N) table on migration (empty)", () => {
+  it("discards the entire retired cockpitTerminalId-key (@N) table on migration (empty)", () => {
     const s = memStorage({
       [CONVERSATION_TITLES_KEY]: JSON.stringify({
         "@1": { title: "作業A", name: "repoA" },

@@ -10,7 +10,7 @@ import {
 
 // Verify the UI in browser mode (the Tauri shell itself is smoke + manual). boot.mjs programmatically
 // starts the sidecar-equivalent server with a fixed token. Within the happy-path scope it never touches
-// real tmux / real Claude.
+// real sessions / real Claude.
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,

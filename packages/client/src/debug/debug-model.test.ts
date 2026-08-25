@@ -7,16 +7,16 @@ import {
   isControlAbnormal,
   isTermAbnormal,
   pushRing,
+  sessionName,
   summarizeSessions,
-  tmuxSessionName,
 } from "./debug-model.js";
 
-describe("tmuxSessionName", () => {
+describe("sessionName", () => {
   it("derives zk-<termId> from the termId", () => {
-    expect(tmuxSessionName("abc-123")).toBe("zk-abc-123");
+    expect(sessionName("abc-123")).toBe("zk-abc-123");
   });
   it("null when there is no termId", () => {
-    expect(tmuxSessionName(null)).toBeNull();
+    expect(sessionName(null)).toBeNull();
   });
 });
 

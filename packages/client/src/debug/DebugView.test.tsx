@@ -87,7 +87,7 @@ const cockpitTerminals: CockpitTerminalInfo[] = [
 ];
 
 describe("DebugView", () => {
-  it("displays the control / term diagnostic values and the tmux session name", () => {
+  it("displays the control / term diagnostic values and the session name", () => {
     const c = fakeControl(controlSnap);
     const { session } = fakeSession(termSnap);
     render(

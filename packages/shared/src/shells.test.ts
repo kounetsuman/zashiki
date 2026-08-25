@@ -45,7 +45,7 @@ describe("parseLsofFdOutputs", () => {
     ]);
   });
 
-  it("ignores fds that are not tasks/*.output (tmux pty or other files)", () => {
+  it("ignores fds that are not tasks/*.output (a pty or other files)", () => {
     const out = `p100
 f1
 n/dev/ttys003

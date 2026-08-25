@@ -22,8 +22,8 @@ The category's biggest unsolved pain point is **overwhelm / observability**—"I
 ## Differentiation (What Only zashiki Has)
 
 1. **Detecting waits → notifying**: Not just lining up states, but a desktop notification the moment a session becomes waiting. Kills "babysitting / neglect."
-2. **AI cockpit UI/UX**: Integrates the list, unified terminal, viewer, and notifications into a single screen, orchestrating Claude Code with the best possible ergonomics. An overview-focused experience that a hand-rolled tmux multiplexing setup can't reach.
-3. **No tmux dependency**: The server solely owns the PTY and reconstructs it via vt100. No hand-rolled multiplexing setup required.
+2. **AI cockpit UI/UX**: Integrates the list, unified terminal, viewer, and notifications into a single screen, orchestrating Claude Code with the best possible ergonomics. An overview-focused experience that a hand-rolled multiplexing setup can't reach.
+3. **Single-process PTY ownership**: The server solely owns the PTY and reconstructs it via vt100. No hand-rolled multiplexing setup required.
 
 ## Messaging
 

@@ -26,7 +26,7 @@ pub(crate) async fn handle_session_new(
 }
 
 /// Spawns an owned PTY and registers it in `SessionRegistry` (owned mode). Since the PTY's command
-/// itself is set to launch claude, send-keys is unnecessary (symmetric with the tmux version; the
+/// itself is set to launch claude, no key injection is needed (the
 /// canonical spec is `session_launch`'s tests).
 async fn new_owned_session(
     socket: &mut WebSocket,

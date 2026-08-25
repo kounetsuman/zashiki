@@ -1,6 +1,6 @@
 //! The evaluation logic of the server-side state poller.
 //! It captures every work window, decides using core's pure functions, and notifies the caller only when something
-//! changed. The infra (tmux capture / ps / jsonl reads) is injected via `PollerPorts`, and this module holds only
+//! changed. The infra (screen capture / ps / jsonl reads) is injected via `PollerPorts`, and this module holds only
 //! the logic (timer driving and WS broadcast wiring come later).
 
 use std::collections::HashMap;

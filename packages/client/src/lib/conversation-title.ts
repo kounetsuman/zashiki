@@ -8,7 +8,7 @@
  * cockpitTerminalId is unique per session, so there is no cross-session "possession" risk.
  * We reject non-UUID cockpitTerminalIds (unbound/plain-shell windows that are never
  * persisted); this also self-enforces the owned-mode assumption, since a legacy
- * tmux cockpitTerminalId (`@N`) is non-UUID and is simply treated as non-renamable. The
+ * cockpitTerminalId (`@N`) is non-UUID and is simply treated as non-renamable. The
  * name (repository) is stored alongside the title to keep the storage format
  * stable and as a display-time consistency check (it normally always matches,
  * as cockpitTerminalId is unique). Follows the localStorage "zk.*" naming convention. When
@@ -40,7 +40,7 @@ function isKeyableCockpitTerminalId(
 /**
  * Reads the persisted title map. Malformed values, empty titles, and non-UUID
  * keys (unbound/plain-shell windows, or the retired cockpitTerminalId=@N format) are
- * dropped. A map keyed by old tmux cockpitTerminalIds cannot be mapped onto the current
+ * dropped. A map keyed by old legacy cockpitTerminalIds cannot be mapped onto the current
  * UUID cockpitTerminalIds, so it is discarded wholesale during migration.
  */
 export function loadConversationTitles(storage: StoragePart | null): TitleMap {

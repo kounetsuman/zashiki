@@ -32,10 +32,10 @@ pub(crate) async fn handle_term_open(
     socket.send(to_text(&reply)).await.is_ok()
 }
 
-/// The owned term.open. Without creating a tmux view session, it puts the cockpitTerminalId (UUID)
+/// The owned term.open. It puts the cockpitTerminalId (UUID)
 /// directly into the term registry's session_id. The PTY was already spawned into SessionRegistry
 /// by session.new, and `/ws/term`'s `attach_owned_term` looks it up directly by session_id=cockpitTerminalId
-/// (1 PTY = 1 window; there is no select-window). When cockpitTerminalId is unspecified (unselected right
+/// (1 PTY = 1 window). When cockpitTerminalId is unspecified (unselected right
 /// after startup), it is registered unbound with an empty session_id and bound later by term.select
 /// (the client always sends term.select after attaching). The reservation is already done. Always `Some(())`.
 async fn open_owned_term(

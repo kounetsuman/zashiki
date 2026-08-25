@@ -131,7 +131,7 @@ impl TermRegistry {
     }
 
     /// owned term.select: bind / swap an existing term's attach target to the switch-target cockpitTerminalId
-    /// (UUID sid) (since one PTY = one window, this swaps the PTY rather than tmux's select-window). Wakes
+    /// (UUID sid) (since one PTY = one window, this swaps the PTY). Wakes
     /// the attach waiting while unbound and the run_bridge that re-subscribes for live. false if
     /// unregistered. No notification if session_id is unchanged.
     pub fn rebind_session(&mut self, term_id: &str, session_id: &str) -> bool {

@@ -3,8 +3,8 @@
 //!
 //! Because of the zero-dependency policy, the detection regexes (e.g. `❯\s*[0-9]+\.`) are
 //! implemented by hand-written scanning. Since the detection input is "screen text",
-//! it can be fed to this same pure function from either tmux `capture-pane` or the headless vterm
-//! reconstruction (the detection side is unchanged even after removing tmux).
+//! it can be fed to this same pure function from any screen source (e.g. the headless vterm
+//! reconstruction).
 
 /// The state of a conversation session (corresponds to the wire `CockpitTerminalState`).
 /// `detect_state` never returns `Unknown` (if there is no hint on screen, it returns `Idle`).

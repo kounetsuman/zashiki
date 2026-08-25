@@ -32,7 +32,7 @@ describe("termIdSchema", () => {
       termIdSchema.safeParse("c0a8012e-1111-4222-8333-444455556666").success,
     ).toBe(true);
   });
-  it("allows only alphanumerics and hyphens (because it is embedded in a tmux session name)", () => {
+  it("allows only alphanumerics and hyphens (because it is embedded in a server session name)", () => {
     expect(termIdSchema.safeParse("abc_def").success).toBe(false);
     expect(termIdSchema.safeParse("a b").success).toBe(false);
     expect(termIdSchema.safeParse("a:b").success).toBe(false);
@@ -43,7 +43,7 @@ describe("termIdSchema", () => {
 });
 
 describe("cockpitTerminalIdSchema", () => {
-  it("accepts tmux's @N", () => {
+  it("accepts the legacy @N form", () => {
     expect(cockpitTerminalIdSchema.safeParse("@0").success).toBe(true);
     expect(cockpitTerminalIdSchema.safeParse("@42").success).toBe(true);
   });

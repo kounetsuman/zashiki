@@ -277,7 +277,7 @@ export class TerminalSession {
         // initial fit ran with cells undetermined and term.open was sent with an
         // undersized value, a subsequent onRender re-fit that runs before attach
         // has its term.resize swallowed, so re-send it on attach (to match the
-        // pty=tmux window to the actual render width). Skip the send if it equals
+        // owned PTY to the actual render width). Skip the send if it equals
         // what term.open already carried.
         if (this.cols !== this.openedCols || this.rows !== this.openedRows) {
           this.options.control.send({
@@ -311,10 +311,10 @@ export class TerminalSession {
         // (with a limit).
         const reattach =
           code === 4404 && this.attempt < MAX_SAME_TERM_REATTACHES;
-        // When tmux leaves the alternate screen, the old display (initial screen,
-        // etc.) lingers. Clear the visible screen so it isn't shown while waiting
-        // to reconnect. For an immediate 4404 re-attach, tmux is still alive, so
-        // keep the display valid.
+        // When the session leaves the alternate screen, the old display (initial
+        // screen, etc.) lingers. Clear the visible screen so it isn't shown while
+        // waiting to reconnect. For an immediate 4404 re-attach, the PTY is still
+        // alive, so keep the display valid.
         if (!reattach) {
           for (const fn of this.dataListeners) fn("\x1b[H\x1b[2J");
         }

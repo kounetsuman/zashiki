@@ -5,8 +5,8 @@ The main area shows the terminal (Claude's output) and conversation header for t
 ## Working in the terminal
 
 - Dragging to select text without a modifier key copies it automatically. Right-click selects a word and copies it.
-- `Alt+drag` is passed to tmux's mouse operations (pane selection, copy-mode, etc.).
-- Scrolling with the wheel enters tmux's copy-mode (tmux owns the scrollback; see also "SESSION LIST").
+- `Alt+drag` is passed through to the application's mouse operations (e.g. selection inside a TUI).
+- Scrolling with the wheel moves through the terminal's own scrollback (kept large enough to reach the first prompt).
 - `Shift+Enter` sends a newline (a plain Enter is sent to Claude).
 
 ## Conversation header

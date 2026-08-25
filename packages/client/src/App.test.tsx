@@ -447,7 +447,7 @@ describe("App", () => {
       }),
     );
     fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
-    // On startup the tmux active window (@1) is auto-opened as one tab, so @1 comes
+    // On startup the active window (@1) is auto-opened as one tab, so @1 comes
     // first (bootstrap). The double click then selects @2.
     expect(f.selected).toEqual(["@1", "@2"]);
     expect(
@@ -633,7 +633,7 @@ describe("App", () => {
     expect(control.sent.some((m) => m.t === "cockpitTerminal.new")).toBe(false);
   });
 
-  it("Cmd+W closes the active tab (the tmux session is not killed, only the tab is removed)", () => {
+  it("Cmd+W closes the active tab (the session is not killed, only the tab is removed)", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();
     render(
@@ -665,7 +665,7 @@ describe("App", () => {
     // The active tango tab closes; the zashiki tab remains.
     expect(screen.queryByLabelText("tango のタブを閉じる")).toBeNull();
     expect(screen.getByLabelText("zashiki のタブを閉じる")).toBeTruthy();
-    // The tmux session is not killed (no session.close is sent).
+    // The session is not killed (no session.close is sent).
     expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
       false,
     );
