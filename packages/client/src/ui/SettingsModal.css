@@ -1,3 +1,9 @@
+/* Widened over the shared modal so the org-notes editor and its live preview sit side by side. */
+.settings-modal {
+  width: min(94vw, 1120px);
+  height: min(90vh, 720px);
+}
+
 .settings-org-notes {
   display: flex;
   flex-direction: column;
@@ -9,12 +15,73 @@
   min-width: 180px;
 }
 
-.settings-org-notes .settings-org-notes-text {
-  min-height: 96px;
-  max-width: 520px;
-  resize: vertical;
-  line-height: 1.5;
+.org-notes-workbench {
+  --org-notes-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --org-notes-line-height: 1.6;
+
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  height: 320px;
+}
+
+.org-notes-editor-pane {
+  display: flex;
+  min-width: 0;
+  background: var(--modal-control-bg);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  overflow: hidden;
+}
+
+.org-notes-editor-pane:focus-within {
+  border-color: var(--modal-accent);
+}
+
+.org-notes-gutter {
+  flex: none;
+  overflow: hidden;
+  padding: 8px 8px 8px 10px;
+  border-right: 1px solid var(--modal-border);
+  color: var(--modal-text-muted);
+  font-family: var(--org-notes-mono);
+  font-size: 12px;
+  line-height: var(--org-notes-line-height);
+  text-align: right;
+  user-select: none;
+}
+
+/* No soft-wrap (paired with wrap="off"): the gutter emits one number per newline, so a logical line
+ * must stay one visual row for the numbers to line up. Long lines scroll horizontally instead. */
+.settings-org-notes .org-notes-textarea {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  resize: none;
   padding: 8px 10px;
+  font-family: var(--org-notes-mono);
+  font-size: 12px;
+  line-height: var(--org-notes-line-height);
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.settings-org-notes .org-notes-textarea:focus {
+  outline: none;
+  border: none;
+}
+
+.org-notes-preview {
+  min-width: 0;
+  overflow-y: auto;
+  padding: 8px 12px;
+  background: var(--modal-surface);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
 }
 
 .footer-thresholds-group {
@@ -65,4 +132,68 @@
 .footer-thresholds-unit {
   font-size: 12px;
   color: var(--modal-text-muted);
+}
+
+/* Docks below the scrollable body (a flex-none row of the modal box) and appears only while some
+ * field is dirty, so unsaved edits are noticed and can be saved or discarded together. */
+.unsaved-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--modal-header-bg);
+  border-top: 1px solid var(--modal-border-strong);
+  box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.35);
+}
+
+.unsaved-bar-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--modal-text);
+}
+
+.unsaved-bar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--modal-accent);
+}
+
+.unsaved-bar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.unsaved-bar-discard,
+.unsaved-bar-save {
+  border: 1px solid var(--modal-border-strong);
+  border-radius: var(--modal-radius);
+  font: inherit;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.unsaved-bar-discard {
+  background: none;
+  color: var(--modal-text-dim);
+}
+
+.unsaved-bar-discard:hover {
+  color: var(--modal-text);
+  background: var(--modal-control-bg-hover);
+}
+
+.unsaved-bar-save {
+  background: var(--modal-accent);
+  border-color: var(--modal-accent);
+  color: #08140d;
+  font-weight: 600;
+}
+
+.unsaved-bar-save:hover {
+  filter: brightness(1.08);
 }

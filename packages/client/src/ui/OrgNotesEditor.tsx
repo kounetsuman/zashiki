@@ -1,6 +1,9 @@
 import { ORG_NOTE_MAX_CHARS, resolveOrgName } from "@zashiki/shared";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+
+import { MarkdownView } from "../help/MarkdownView.js";
+import { useUnsavedField } from "./unsaved-changes.js";
 
 export interface OrgNotesEditorProps {
   /** Orgs to choose from (display order from state.sync). */
@@ -13,10 +16,17 @@ export interface OrgNotesEditorProps {
   onSave(org: string, text: string): void;
 }
 
+function lineCount(text: string): number {
+  let lines = 1;
+  for (const ch of text) if (ch === "\n") lines++;
+  return lines;
+}
+
 /**
  * A per-org Markdown memo editor for the SETTINGS → Organizations section: pick an org, edit its
- * note, and Save. The draft reloads only when you switch orgs; a notes.sync (an external edit, or
- * the echo of your own save) never overwrites what you are currently typing.
+ * note in a line-numbered textarea with a side-by-side live preview, and Save. The draft reloads
+ * only when you switch orgs; a notes.sync (an external edit, or the echo of your own save) never
+ * overwrites what you are currently typing.
  */
 export function OrgNotesEditor({
   orgs,
@@ -27,6 +37,7 @@ export function OrgNotesEditor({
   const { t } = useTranslation();
   const [selected, setSelected] = useState(() => orgs[0] ?? "");
   const [draft, setDraft] = useState(() => notes[orgs[0] ?? ""] ?? "");
+  const gutterRef = useRef<HTMLDivElement>(null);
 
   // Keep the selection pointing at a still-present org as the org list changes.
   if (orgs.length > 0 && !orgs.includes(selected)) {
@@ -41,6 +52,12 @@ export function OrgNotesEditor({
     setLoadedOrg(selected);
     setDraft(notes[selected] ?? "");
   }
+
+  const stored = notes[selected] ?? "";
+  useUnsavedField("org-notes", draft !== stored, {
+    save: () => onSave(selected, draft),
+    discard: () => setDraft(stored),
+  });
 
   if (orgs.length === 0) {
     return <span className="settings-hint">{t("settings.orgNotesEmpty")}</span>;
@@ -59,13 +76,41 @@ export function OrgNotesEditor({
           </option>
         ))}
       </select>
-      <textarea
-        className="settings-input settings-org-notes-text"
-        value={draft}
-        maxLength={ORG_NOTE_MAX_CHARS}
-        placeholder={t("settings.orgNotesPlaceholder")}
-        onChange={(e) => setDraft(e.target.value)}
-      />
+      <div className="org-notes-workbench">
+        <div className="org-notes-editor-pane">
+          <div className="org-notes-gutter" ref={gutterRef} aria-hidden="true">
+            {Array.from({ length: lineCount(draft) }, (_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: line numbers are positional by nature
+              <div key={i}>{i + 1}</div>
+            ))}
+          </div>
+          <textarea
+            className="settings-input org-notes-textarea scrollbar-persistent"
+            value={draft}
+            maxLength={ORG_NOTE_MAX_CHARS}
+            placeholder={t("settings.orgNotesPlaceholder")}
+            spellCheck={false}
+            wrap="off"
+            onChange={(e) => setDraft(e.target.value)}
+            onScroll={(e) => {
+              if (gutterRef.current)
+                gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+            }}
+          />
+        </div>
+        <section
+          className="org-notes-preview scrollbar-persistent"
+          aria-label={t("settings.orgNotesPreview")}
+        >
+          {draft.trim() === "" ? (
+            <span className="settings-hint">
+              {t("settings.orgNotesPreviewEmpty")}
+            </span>
+          ) : (
+            <MarkdownView source={draft} />
+          )}
+        </section>
+      </div>
       <button
         type="button"
         className="settings-save"
