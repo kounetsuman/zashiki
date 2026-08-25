@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   countRunningSubagents,
+  DEFAULT_MENU_MARKERS,
   detectState,
   fallbackState,
   hasBgAgent,
   isLimitReached,
+  isMenuOpen,
   isRunning,
   isWizard,
   subagentFreshWithinSec,
@@ -493,6 +495,52 @@ describe("isLimitReached (detecting the usage-limit banner)", () => {
     const cap = "◈ RATE_CAP_HIT ◈\n───\n❯\n───";
     expect(isLimitReached(cap)).toBe(false);
     expect(isLimitReached(cap, "RATE_CAP_HIT")).toBe(true);
+  });
+});
+
+describe("isMenuOpen (Claude Code menu/overlay detection)", () => {
+  it("true when a default marker heads an indented line", () => {
+    const cap =
+      "\n   Select login method\n   1. Claude account\n   2. Console\n";
+    expect(isMenuOpen(cap, DEFAULT_MENU_MARKERS)).toBe(true);
+  });
+
+  it("true when a marker sits behind a box border", () => {
+    expect(
+      isMenuOpen("│ Claude Code Status         │", DEFAULT_MENU_MARKERS),
+    ).toBe(true);
+  });
+
+  it("is case-insensitive", () => {
+    expect(isMenuOpen("  claude code status", DEFAULT_MENU_MARKERS)).toBe(true);
+  });
+
+  it("false when a marker is quoted mid-sentence in the body", () => {
+    const cap = "⏺ Run /model to open the Select Model menu\n───\n❯\n───";
+    expect(isMenuOpen(cap, DEFAULT_MENU_MARKERS)).toBe(false);
+  });
+
+  it("false for an ordinary conversation screen", () => {
+    const cap = "⏺ 完了しました。\n╭───╮\n│ ❯ │\n╰───╯\n  ? for shortcuts";
+    expect(isMenuOpen(cap, DEFAULT_MENU_MARKERS)).toBe(false);
+  });
+
+  it("an empty marker list never matches", () => {
+    expect(isMenuOpen("Select login method", [])).toBe(false);
+  });
+
+  it("ignores empty markers in the list", () => {
+    expect(isMenuOpen("Select login method", [""])).toBe(false);
+  });
+
+  it("markers are overridable", () => {
+    const cap = "│ CUSTOM MENU OPEN │";
+    expect(isMenuOpen(cap, DEFAULT_MENU_MARKERS)).toBe(false);
+    expect(isMenuOpen(cap, ["CUSTOM MENU OPEN"])).toBe(true);
+  });
+
+  it("defaults to DEFAULT_MENU_MARKERS when markers are omitted", () => {
+    expect(isMenuOpen("Manage MCP servers")).toBe(true);
   });
 });
 

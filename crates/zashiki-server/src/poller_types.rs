@@ -86,6 +86,9 @@ pub struct PollConfig {
     pub bg_agent_marker: Option<String>,
     /// Text marker for the usage-limit banner (ZK_LIMIT_MARKER; empty/unset falls back to the default).
     pub limit_marker: Option<String>,
+    /// Comma-separated marker phrases for Claude Code menu/overlay screens (ZK_MENU_MARKERS;
+    /// empty/unset falls back to DEFAULT_MENU_MARKERS).
+    pub menu_markers: Option<String>,
 }
 
 /// The result of one evaluation (the shape distributed via state.sync; same shape as protocol's StateSync).

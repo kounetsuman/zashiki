@@ -34,6 +34,8 @@ pub struct ControlRuntimeConfig {
     pub bg_agent_marker: Option<String>,
     /// Text marker for the usage-limit banner (ZK_LIMIT_MARKER).
     pub limit_marker: Option<String>,
+    /// Comma-separated marker phrases for Claude Code menu/overlay screens (ZK_MENU_MARKERS).
+    pub menu_markers: Option<String>,
     /// Whether session.new launches claude (defaults to true).
     pub launch_claude: bool,
     /// Initial value of the live-reload settings (the result of reading config.json at startup).
@@ -118,6 +120,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         run_marker: config.run_marker,
         bg_agent_marker: config.bg_agent_marker,
         limit_marker: config.limit_marker,
+        menu_markers: config.menu_markers,
     };
     // refresh path: control handler → poller. The buffer can be small (each request is processed immediately).
     let (refresh_tx, refresh_rx) = tokio::sync::mpsc::channel(16);
@@ -183,6 +186,7 @@ mod tests {
             run_marker: None,
             bg_agent_marker: None,
             limit_marker: None,
+            menu_markers: None,
             launch_claude: false,
             config: ConfigView::default(),
             config_path: None,
@@ -229,6 +233,7 @@ mod tests {
             run_marker: None,
             bg_agent_marker: None,
             limit_marker: None,
+            menu_markers: None,
             launch_claude: false,
             config: ConfigView::default(),
             config_path: None,

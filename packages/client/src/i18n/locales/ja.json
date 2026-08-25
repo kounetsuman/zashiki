@@ -63,6 +63,7 @@
   "sessionList": {
     "ariaLabel": "セッション一覧",
     "limitReached": "使用量上限に達しています",
+    "menuOpen": "Claude Code のメニュー表示中",
     "addOrg": "組織を追加",
     "orgToggleTitle": "{{org}}（クリックで折畳・+ で新規セッション・Ctrl-N）",
     "newSessionInOrg": "{{org}} に新規セッション",

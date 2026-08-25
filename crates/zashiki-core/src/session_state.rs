@@ -30,6 +30,19 @@ pub const DEFAULT_BG_AGENT_MARKER: &str = "◯";
 /// The text marker for the usage-limit-reached banner (Claude Code's phrasing).
 pub const DEFAULT_LIMIT_MARKER: &str = "usage limit reached";
 
+/// Distinctive header phrases of Claude Code's built-in menu/overlay screens (`/login`, `/status`,
+/// `/usage`, `/model`, `/mcp`, and the wider settings family). A session showing one of these is
+/// sitting in a menu rather than mid-task, so the session list swaps its state glyph for a settings
+/// icon. Best-effort defaults matched case-insensitively; extend or replace via `ZK_MENU_MARKERS`
+/// when Claude Code's wording changes (the same escape-hatch idea as the run/limit markers).
+pub const DEFAULT_MENU_MARKERS: &[&str] = &[
+    "Select login method",
+    "Claude Code Status",
+    "Current week (all models)",
+    "Select Model",
+    "Manage MCP servers",
+];
+
 /// The last 8 non-empty lines = the absorption width for the real layout where 3 input-box lines + a status line sit below the spinner.
 const BOTTOM_WINDOW_LINES: usize = 8;
 
@@ -163,6 +176,38 @@ pub fn is_limit_reached(capture: &str, marker: &str) -> bool {
     bottom_non_empty_lines(capture)
         .iter()
         .any(|line| line.to_lowercase().contains(&needle))
+}
+
+/// Leading line decoration (whitespace or a box-border/bullet glyph) stripped before a menu marker
+/// is tested at the start of a line, so a centered or box-framed overlay title still matches.
+fn is_menu_line_decoration(c: char) -> bool {
+    is_js_whitespace(c)
+        || matches!(
+            c,
+            '│' | '┃' | '|' | '╎' | '┆' | '>' | '*' | '•' | '·' | '-' | '─'
+        )
+}
+
+/// Whether one of Claude Code's built-in menu/overlay screens is open, i.e. a marker heads any line
+/// of the captured screen (case-insensitive, after stripping leading whitespace/border glyphs).
+/// Requiring the marker to head a line — not merely appear anywhere — keeps a phrase quoted
+/// mid-sentence in the conversation body from tripping the flag, while still scanning the whole
+/// capture (overlays render centered, not pinned to the bottom like the running/limit banners).
+/// Orthogonal to the main state — it only overrides the rendered glyph, so it is not folded into
+/// `detect_state`. An empty marker list (or all-empty markers) yields false.
+pub fn is_menu_open(capture: &str, markers: &[&str]) -> bool {
+    let needles: Vec<String> = markers
+        .iter()
+        .filter(|m| !m.is_empty())
+        .map(|m| m.to_lowercase())
+        .collect();
+    if needles.is_empty() {
+        return false;
+    }
+    capture.split('\n').any(|line| {
+        let head = line.trim_start_matches(is_menu_line_decoration).to_lowercase();
+        needles.iter().any(|n| head.starts_with(n.as_str()))
+    })
 }
 
 /// Whether the live background-agent panel (`⏺ main` heading directly above line-start `◯ ` agent
@@ -975,6 +1020,53 @@ mod tests {
         let cap = "◈ RATE_CAP_HIT ◈\n───\n❯\n───";
         assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
         assert!(is_limit_reached(cap, "RATE_CAP_HIT"));
+    }
+
+    // ---- is_menu_open (Claude Code menu/overlay detection) ----
+
+    #[test]
+    fn menu_open_detects_marker_at_indented_line_head() {
+        let cap = "\n   Select login method\n   1. Claude account\n   2. Anthropic Console\n";
+        assert!(is_menu_open(cap, DEFAULT_MENU_MARKERS));
+    }
+
+    #[test]
+    fn menu_open_detects_marker_behind_box_border() {
+        assert!(is_menu_open("│ Claude Code Status         │", DEFAULT_MENU_MARKERS));
+    }
+
+    #[test]
+    fn menu_open_is_case_insensitive() {
+        assert!(is_menu_open("  claude code status", DEFAULT_MENU_MARKERS));
+    }
+
+    #[test]
+    fn menu_open_false_for_marker_quoted_mid_sentence_in_body() {
+        let cap = "⏺ Run /model to open the Select Model menu\n───\n❯\n───";
+        assert!(!is_menu_open(cap, DEFAULT_MENU_MARKERS));
+    }
+
+    #[test]
+    fn menu_open_false_for_ordinary_conversation() {
+        let cap = "⏺ 完了しました。\n╭───╮\n│ ❯ │\n╰───╯\n  ? for shortcuts";
+        assert!(!is_menu_open(cap, DEFAULT_MENU_MARKERS));
+    }
+
+    #[test]
+    fn menu_open_empty_marker_list_never_matches() {
+        assert!(!is_menu_open("Select login method", &[]));
+    }
+
+    #[test]
+    fn menu_open_ignores_empty_markers_in_the_list() {
+        assert!(!is_menu_open("Select login method", &[""]));
+    }
+
+    #[test]
+    fn menu_open_markers_are_overridable() {
+        let cap = "│ CUSTOM MENU OPEN │";
+        assert!(!is_menu_open(cap, DEFAULT_MENU_MARKERS));
+        assert!(is_menu_open(cap, &["CUSTOM MENU OPEN"]));
     }
 
     #[test]

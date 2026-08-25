@@ -367,6 +367,10 @@ body {
   color: #777;
 }
 
+.state-menu {
+  color: #9aa5ce;
+}
+
 .state-running_bg_agent {
   color: #ddd;
 }

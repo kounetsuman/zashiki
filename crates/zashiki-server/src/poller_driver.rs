@@ -150,6 +150,7 @@ mod tests {
             run_marker: None,
             bg_agent_marker: None,
             limit_marker: None,
+            menu_markers: None,
         }
     }
 
