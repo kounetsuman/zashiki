@@ -22,7 +22,7 @@ function memStorage(initial: Record<string, string> = {}) {
 }
 
 describe("views pure logic", () => {
-  it("VIEW_DEFS has explorer/search/git/notification/help with unique ids and shortcuts (settings is a modal, not a switchable view; cockpitTerminals are always fixed and not included)", () => {
+  it("VIEW_DEFS has explorer/search/git/notification with unique ids and shortcuts (help and settings are modals, not switchable views; cockpitTerminals are always fixed and not included)", () => {
     const ids = VIEW_DEFS.map((d: ViewDef) => d.id);
     const keys = VIEW_DEFS.map((d: ViewDef) => d.shortcutKey);
     expect(ids).toEqual([
@@ -30,7 +30,6 @@ describe("views pure logic", () => {
       "search",
       "sourceControl",
       "notification",
-      "help",
     ]);
     expect(new Set(ids).size).toBe(ids.length);
     expect(new Set(keys).size).toBe(keys.length);
@@ -43,7 +42,8 @@ describe("views pure logic", () => {
 
   it("isViewId is true only for VIEW_DEFS ids and false otherwise", () => {
     expect(isViewId("explorer")).toBe(true);
-    expect(isViewId("help")).toBe(true);
+    expect(isViewId("notification")).toBe(true);
+    expect(isViewId("help")).toBe(false);
     expect(isViewId("sessions")).toBe(false);
     expect(isViewId("settings")).toBe(false);
     expect(isViewId("bogus")).toBe(false);
@@ -66,13 +66,16 @@ describe("views pure logic", () => {
     expect(loadSelectedView(s)).toBe("sourceControl");
   });
 
-  it("loadSelectedView: values outside VIEW_DEFS fall back to explorer (legacy cockpitTerminals, retired settings view, invalid values)", () => {
+  it("loadSelectedView: values outside VIEW_DEFS fall back to explorer (legacy cockpitTerminals, retired settings/help views, invalid values)", () => {
     expect(
       loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "sessions" })),
     ).toBe("explorer");
     expect(
       loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "settings" })),
     ).toBe("explorer");
+    expect(loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "help" }))).toBe(
+      "explorer",
+    );
     expect(
       loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "bogus" })),
     ).toBe("explorer");

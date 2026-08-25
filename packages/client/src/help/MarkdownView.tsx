@@ -3,6 +3,7 @@ import {
   type MarkdownBlock,
   parseMarkdownBlocks,
 } from "./help-model.js";
+import "./MarkdownView.css";
 
 // What is rendered is immutable, static content that is just content/*.md parsed, with no
 // reordering or insertion. So using the index as a key does not mix up element state.

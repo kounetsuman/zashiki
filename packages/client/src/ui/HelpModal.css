@@ -1,0 +1,36 @@
+.help-modal-body {
+  gap: 14px;
+}
+
+.help-search {
+  align-self: stretch;
+  background: var(--modal-control-bg);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  color: var(--modal-text);
+  font: inherit;
+  padding: 6px 9px;
+}
+
+.help-search:focus {
+  outline: none;
+  border-color: var(--modal-accent);
+}
+
+.help-empty {
+  margin: 0;
+  color: var(--modal-text-muted);
+}
+
+.help-topics {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.help-topic-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--modal-text);
+}

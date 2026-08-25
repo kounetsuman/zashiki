@@ -1,7 +1,7 @@
 /**
  * One help item = one markdown file. The pure logic needed for display
  * (extracting title/order, search filtering, block decomposition of lightweight markdown)
- * is gathered here and guarded by Vitest. Rendering (React) is a thin layer on the HelpView side.
+ * is gathered here and guarded by Vitest. Rendering (React) is a thin layer on the HelpModal side.
  */
 
 export interface HelpTopic {

@@ -1,125 +1,3 @@
-.settings-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
-}
-
-.settings-modal {
-  --settings-surface: #1e1e1e;
-  --settings-header-bg: #171717;
-  --settings-control-bg: #252525;
-  --settings-control-bg-hover: #2f2f2f;
-  --settings-border: #333;
-  --settings-border-strong: #444;
-  --settings-text: #ddd;
-  --settings-text-dim: #9a9a9a;
-  --settings-text-muted: #777;
-  --settings-accent: #4a7;
-  --settings-radius: 4px;
-
-  display: flex;
-  flex-direction: column;
-  width: min(90vw, 820px);
-  height: min(88vh, 680px);
-  overflow: hidden;
-  background: var(--settings-surface);
-  border: 1px solid var(--settings-border-strong);
-  border-radius: 6px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  color: var(--settings-text);
-  accent-color: var(--settings-accent);
-}
-
-/* Slim bar echoing the native title bar (App .title-bar): same dark fill and hairline. */
-.settings-modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: none;
-  min-height: 34px;
-  padding: 0 14px;
-  background: var(--settings-header-bg);
-  border-bottom: 1px solid var(--settings-border);
-}
-
-.settings-modal-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.settings-modal-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 26px;
-  min-height: 26px;
-  background: none;
-  border: none;
-  border-radius: var(--settings-radius);
-  color: var(--settings-text-dim);
-  cursor: pointer;
-}
-
-.settings-modal-close:hover {
-  color: #fff;
-  background: var(--settings-control-bg-hover);
-}
-
-/* Header on top; below it the body (left) and the vertical menu (right) share the row. */
-.settings-main {
-  display: flex;
-  flex-direction: row-reverse;
-  flex: 1;
-  min-height: 0;
-}
-
-.settings-nav {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex-shrink: 0;
-  min-width: 148px;
-  padding: 12px 10px;
-  border-left: 1px solid var(--settings-border);
-}
-
-.settings-nav-item {
-  background: none;
-  border: none;
-  border-radius: var(--settings-radius);
-  color: var(--settings-text-dim);
-  font: inherit;
-  text-align: left;
-  padding: 8px 12px;
-  cursor: pointer;
-}
-
-.settings-nav-item:hover {
-  color: var(--settings-text);
-  background: var(--settings-control-bg-hover);
-}
-
-.settings-nav-item.is-active {
-  color: var(--settings-text);
-  background: var(--settings-control-bg-hover);
-  border-left: 2px solid var(--settings-accent);
-  padding-left: 10px;
-}
-
-.settings-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.settings-body[hidden] {
-  display: none;
-}
-
 .settings-org-notes {
   display: flex;
   flex-direction: column;
@@ -140,8 +18,8 @@
 }
 
 .footer-thresholds-group {
-  border: 1px solid var(--settings-border);
-  border-radius: var(--settings-radius);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
   padding: 8px 12px 10px;
   display: flex;
   flex-direction: column;
@@ -151,7 +29,7 @@
 .footer-thresholds-group legend {
   font-size: 12px;
   font-weight: 600;
-  color: var(--settings-text-dim);
+  color: var(--modal-text-dim);
   padding: 0 4px;
 }
 
@@ -171,20 +49,20 @@
 
 .footer-thresholds-value {
   width: 96px;
-  background: var(--settings-control-bg);
-  border: 1px solid var(--settings-border);
-  border-radius: var(--settings-radius);
-  color: var(--settings-text);
+  background: var(--modal-control-bg);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  color: var(--modal-text);
   font: inherit;
   padding: 5px 8px;
 }
 
 .footer-thresholds-value:focus {
   outline: none;
-  border-color: var(--settings-accent);
+  border-color: var(--modal-accent);
 }
 
 .footer-thresholds-unit {
   font-size: 12px;
-  color: var(--settings-text-muted);
+  color: var(--modal-text-muted);
 }

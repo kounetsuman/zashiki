@@ -1500,7 +1500,7 @@ describe("App", () => {
     expect(sourceControlView?.classList.contains("view-inactive")).toBe(false);
   });
 
-  it("selecting help with Ctrl+Alt+H displays the HelpView", () => {
+  it("opens the help modal with Ctrl+Alt+H", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     render(
@@ -1515,13 +1515,43 @@ describe("App", () => {
         viewStorage={null}
       />,
     );
-    expect(screen.queryByText("HELP")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "ヘルプ" })).toBeNull();
     act(() =>
       window.dispatchEvent(
         new KeyboardEvent("keydown", { key: "h", ctrlKey: true, altKey: true }),
       ),
     );
-    expect(screen.getByText("HELP")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "ヘルプ" })).toBeTruthy();
+  });
+
+  it("opening help closes an open settings modal (peer chrome modals never stack)", () => {
+    const control = createFakeAppControl();
+    const { session } = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        reposApi={fakeReposApi}
+        viewStorage={null}
+      />,
+    );
+    act(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "s", ctrlKey: true, altKey: true }),
+      ),
+    );
+    expect(screen.getByRole("dialog", { name: "設定" })).toBeTruthy();
+    act(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "h", ctrlKey: true, altKey: true }),
+      ),
+    );
+    expect(screen.queryByRole("dialog", { name: "設定" })).toBeNull();
+    expect(screen.getByRole("dialog", { name: "ヘルプ" })).toBeTruthy();
   });
 
   it("does not surface the raw control:/term: enums in the normal footer", () => {

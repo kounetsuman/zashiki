@@ -16,7 +16,13 @@ Use `Ctrl+Alt+<key>` to toggle each view's visibility.
 - `Ctrl+Alt+F`: Search
 - `Ctrl+Alt+G`: Source Control
 - `Ctrl+Alt+N`: Notifications
+
+## Help and Settings
+
+Both open as a modal dialog (Escape or the close button dismisses it).
+
 - `Ctrl+Alt+H`: Help
+- `Ctrl+Alt+S`: Settings
 
 ## Source Control
 
