@@ -89,11 +89,29 @@ export function TabBar({
 
   if (tabs.length === 0) return null;
 
+  // Draw the active tab's org color as a full-width line under the whole tab bar
+  // (the boundary with the CockpitTerminal), so its org membership reads across the
+  // entire width — not just under that one tab.
+  const activeTab = tabs.find((tab) => tabKey(tab) === activeKey);
+  const activeSession =
+    activeTab?.kind === "session"
+      ? cockpitTerminals.find((x) => x.cockpitTerminalId === activeTab.id)
+      : undefined;
+  const activeOrgColor =
+    activeSession !== undefined
+      ? resolveOrgColor(activeSession.org, orgColors)
+      : undefined;
+
   return (
     <div
       className={viewClass("tab-bar", inactive)}
       role="tablist"
       aria-label={t("tabBar.ariaLabel")}
+      style={
+        activeOrgColor !== undefined
+          ? { borderBottomColor: activeOrgColor }
+          : undefined
+      }
     >
       {tabs.map((tab) => {
         const key = tabKey(tab);

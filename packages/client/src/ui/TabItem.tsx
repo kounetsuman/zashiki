@@ -67,7 +67,7 @@ export function TabItem({
       }${dropTarget ? " tab-drag-over" : ""}`}
       style={
         active && orgColor !== undefined
-          ? { borderTopColor: orgColor, borderBottomColor: orgColor }
+          ? { borderTopColor: orgColor }
           : undefined
       }
       draggable={draggable}
