@@ -187,7 +187,7 @@ describe("TabBar", () => {
     expect((dot as HTMLElement).style.backgroundColor).toBe("rgb(18, 52, 86)");
   });
 
-  it("colors the top and bottom borders of an active session tab with the org color", () => {
+  it("colors the active tab's top border and the full-width tab-bar bottom line with the org color", () => {
     render(
       <TabBar
         tabs={[s(SID)]}
@@ -199,9 +199,12 @@ describe("TabBar", () => {
         onClose={() => undefined}
       />,
     );
+    // Top border: the active tab only. Bottom line: the whole tab bar, not the tab.
     const tab = screen.getByTitle("whiskey").closest(".tab") as HTMLElement;
     expect(tab.style.borderTopColor).toBe("rgb(18, 52, 86)");
-    expect(tab.style.borderBottomColor).toBe("rgb(18, 52, 86)");
+    expect(tab.style.borderBottomColor).toBe("");
+    const tabBar = screen.getByRole("tablist");
+    expect(tabBar.style.borderBottomColor).toBe("rgb(18, 52, 86)");
   });
 
   it("does not apply an org border color to an inactive session tab", () => {
@@ -219,6 +222,7 @@ describe("TabBar", () => {
     const tab = screen.getByTitle("whiskey").closest(".tab") as HTMLElement;
     expect(tab.style.borderTopColor).toBe("");
     expect(tab.style.borderBottomColor).toBe("");
+    expect(screen.getByRole("tablist").style.borderBottomColor).toBe("");
   });
 
   it("enters rename editing on double-click and calls onRename(cockpitTerminalId, name, value) on Enter", () => {

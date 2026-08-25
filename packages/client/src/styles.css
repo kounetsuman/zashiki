@@ -694,7 +694,7 @@ body {
   min-width: 0;
   overflow-x: auto;
   background: #171717;
-  border-bottom: 1px solid #333;
+  border-bottom: 2px solid #333;
   scrollbar-width: none;
 }
 
@@ -730,12 +730,13 @@ body {
   box-shadow: inset 2px 0 0 0 #4a6da7;
 }
 
-/* 選択中タブ（VSCode 風。上下ボーダー + 明るい背景/文字）。org 色が解決できるタブは上下とも inline style で上書きされる。 */
+/* 選択中タブ（VSCode 風。上ボーダー + 明るい背景/文字）。org 色が解決できるタブは
+ * 上ボーダーが inline style で上書きされる。下端の org 色ラインはタブ単位でなく
+ * タブバー全幅（.tab-bar の border-bottom）に出す。 */
 .tab.tab-active {
   background: #1e1e1e;
   color: #fff;
   border-top-color: #4a6da7;
-  border-bottom-color: #4a6da7;
 }
 
 .tab-main {
