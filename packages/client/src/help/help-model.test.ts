@@ -9,6 +9,7 @@ import {
   parseInline,
   parseMarkdownBlocks,
   sortTopics,
+  splitHighlight,
 } from "./help-model.js";
 
 describe("parseHelpTopic", () => {
@@ -177,6 +178,52 @@ describe("filterTopics", () => {
 
   it("no match returns empty", () => {
     expect(filterTopics(topics, "存在しない")).toEqual([]);
+  });
+});
+
+describe("splitHighlight", () => {
+  it("a blank query yields the whole text as one unmarked segment", () => {
+    expect(splitHighlight("キーバインド", "  ")).toEqual([
+      { text: "キーバインド", match: false },
+    ]);
+  });
+
+  it("flags each case-insensitive occurrence and keeps the between text unmarked", () => {
+    expect(splitHighlight("Ctrl-N と Cmd-N", "-n")).toEqual([
+      { text: "Ctrl", match: false },
+      { text: "-N", match: true },
+      { text: " と Cmd", match: false },
+      { text: "-N", match: true },
+    ]);
+  });
+
+  it("marks a leading occurrence and preserves the source casing", () => {
+    expect(splitHighlight("キーバインド", "キー")).toEqual([
+      { text: "キー", match: true },
+      { text: "バインド", match: false },
+    ]);
+  });
+
+  it("no occurrence yields a single unmarked segment", () => {
+    expect(splitHighlight("abc", "z")).toEqual([{ text: "abc", match: false }]);
+  });
+
+  it("adjacent occurrences produce back-to-back marked segments (no empty gap)", () => {
+    expect(splitHighlight("aa", "a")).toEqual([
+      { text: "a", match: true },
+      { text: "a", match: true },
+    ]);
+  });
+
+  it("a trailing occurrence leaves no empty tail segment", () => {
+    expect(splitHighlight("abc", "bc")).toEqual([
+      { text: "a", match: false },
+      { text: "bc", match: true },
+    ]);
+  });
+
+  it("empty text yields no segments", () => {
+    expect(splitHighlight("", "x")).toEqual([]);
   });
 });
 
