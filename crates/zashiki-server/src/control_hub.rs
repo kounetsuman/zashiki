@@ -38,15 +38,19 @@ struct RateLimitEntry {
 /// Drop bridge readings older than this so a long-idle sid's stale percentages don't linger.
 const RATE_LIMIT_TTL_MS: u64 = 30 * 60 * 1000;
 
-/// Attaches each session's bridge-reported limits (matched by sid) onto its footer usage. Sessions
-/// without transcript usage yet, or without a stored reading, are left untouched.
+/// Attaches each session's bridge-reported limits (matched by sid) onto its footer usage, stamping the
+/// reading's arrival time so the client can pick the freshest across sessions. Sessions without
+/// transcript usage yet, or without a stored reading, are left untouched.
 fn merge_rate_limits(sessions: &mut [CockpitTerminalInfo], store: &HashMap<String, RateLimitEntry>) {
     for session in sessions.iter_mut() {
         let Some(sid) = session.sid.as_deref() else {
             continue;
         };
         if let (Some(entry), Some(usage)) = (store.get(sid), session.usage.as_mut()) {
-            usage.limits = Some(entry.limits);
+            usage.limits = Some(UsageLimits {
+                updated_at: Some(entry.updated_at_ms),
+                ..entry.limits
+            });
         }
     }
 }
@@ -619,6 +623,7 @@ mod tests {
                 resets_at: None,
             }),
             week: None,
+            updated_at: None,
         }
     }
 
@@ -648,6 +653,20 @@ mod tests {
         // A subsequent poll (fresh transcript usage, no limits) keeps the bridge reading merged in.
         hub.publish_snapshot(snapshot_with_usage("sid-1"));
         assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(80));
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_stamps_reading_arrival_time_for_freshest_selection() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with_usage("sid-1"));
+        let mut rx = hub.subscribe();
+        hub.publish_rate_limits("sid-1", five_hour(80), 4_200);
+        let updated_at = match rx.recv().await.unwrap() {
+            ServerMessage::StateSync { cockpit_terminals, .. } => {
+                cockpit_terminals[0].usage.as_ref().unwrap().limits.unwrap().updated_at
+            }
+            _ => None,
+        };
+        assert_eq!(updated_at, Some(4_200));
     }
 
     #[tokio::test]

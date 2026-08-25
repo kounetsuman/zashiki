@@ -72,10 +72,14 @@ export const usageLimitSchema = z.object({
 
 export type UsageLimit = z.infer<typeof usageLimitSchema>;
 
-/** Account usage limits Claude Code exposes to its statusLine (5-hour window and weekly). */
+/**
+ * Account usage limits Claude Code exposes to its statusLine (5-hour window and weekly). `updatedAt`
+ * (epoch ms this reading arrived) lets the footer pick the freshest reading across sessions.
+ */
 export const usageLimitsSchema = z.object({
   fiveHour: usageLimitSchema.optional(),
   week: usageLimitSchema.optional(),
+  updatedAt: z.number().int().optional(),
 });
 
 export type UsageLimits = z.infer<typeof usageLimitsSchema>;

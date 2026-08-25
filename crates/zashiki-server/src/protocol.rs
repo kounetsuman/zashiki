@@ -17,7 +17,8 @@ pub struct UsageLimit {
 }
 
 /// Account usage limits Claude Code exposes to its statusLine (5-hour session window and weekly).
-/// Each is absent until the bridge has reported it.
+/// Each is absent until the bridge has reported it. `updated_at` (epoch ms this reading arrived) lets
+/// the client pick the freshest reading across sessions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageLimits {
@@ -25,6 +26,8 @@ pub struct UsageLimits {
     pub five_hour: Option<UsageLimit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub week: Option<UsageLimit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<u64>,
 }
 
 /// A colored band of a status-footer indicator: whether it paints and the value at or above which it
@@ -775,10 +778,11 @@ mod tests {
                         used_percent: 61,
                         resets_at: None,
                     }),
+                    updated_at: Some(1_700_009_000_000),
                 }),
             }),
         };
-        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"usage":{"turnTokens":1200,"sessionTokens":3400000,"turnStartedAt":1700000000000,"sessionStartedAt":1699999000000,"limits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61}}}}"#;
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"usage":{"turnTokens":1200,"sessionTokens":3400000,"turnStartedAt":1700000000000,"sessionStartedAt":1699999000000,"limits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61},"updatedAt":1700009000000}}}"#;
         assert_eq!(to_json(&info), json);
         assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
     }

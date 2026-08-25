@@ -153,21 +153,56 @@ describe("pickAccountLimits", () => {
     expect(pickAccountLimits([{ usage: null }, { usage: {} }])).toBeNull();
   });
 
-  it("collapses to the highest usedPercent per limit, carrying its reset time", () => {
+  it("collapses to the freshest reading per limit, not the highest usedPercent", () => {
     const picked = pickAccountLimits([
-      { usage: { limits: { fiveHour: { usedPercent: 20, resetsAt: 100 } } } },
       {
         usage: {
           limits: {
             fiveHour: { usedPercent: 55, resetsAt: 200 },
-            week: { usedPercent: 40, resetsAt: 900 },
+            week: { usedPercent: 99, resetsAt: 900 },
+            updatedAt: 1_000,
+          },
+        },
+      },
+      {
+        usage: {
+          limits: {
+            fiveHour: { usedPercent: 3, resetsAt: 300 },
+            week: { usedPercent: 1, resetsAt: 950 },
+            updatedAt: 2_000,
           },
         },
       },
     ]);
     expect(picked).toEqual({
-      fiveHour: { usedPercent: 55, resetsAt: 200 },
-      week: { usedPercent: 40, resetsAt: 900 },
+      fiveHour: { usedPercent: 3, resetsAt: 300 },
+      week: { usedPercent: 1, resetsAt: 950 },
+    });
+  });
+
+  it("falls back per limit to the freshest reading that carries it", () => {
+    const picked = pickAccountLimits([
+      {
+        usage: {
+          limits: {
+            fiveHour: { usedPercent: 40, resetsAt: 200 },
+            week: { usedPercent: 70, resetsAt: 900 },
+            updatedAt: 1_000,
+          },
+        },
+      },
+      {
+        usage: {
+          limits: {
+            fiveHour: { usedPercent: 5, resetsAt: 300 },
+            updatedAt: 2_000,
+          },
+        },
+      },
+    ]);
+    expect(picked).toEqual({
+      fiveHour: { usedPercent: 5, resetsAt: 300 },
+      week: { usedPercent: 70, resetsAt: 900 },
     });
   });
 });
