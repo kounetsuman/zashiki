@@ -204,8 +204,7 @@ export function App({
     setHelpModalOpen((v) => !v);
   }, []);
 
-  const { selectedView, activeView, handleViewFocus, handleSelectView } =
-    useViewSelection(viewStorage);
+  const { selectedView, handleSelectView } = useViewSelection(viewStorage);
 
   // Interpreting control messages and their side effects (notifications, pty reconnect)
   // is separated into a store outside React; App only subscribes (useSyncExternalStore)
@@ -621,7 +620,7 @@ export function App({
         updating={selfUpdate.updating}
         onUpdate={selfUpdate.perform}
       />
-      <div className="main-row" onFocusCapture={handleViewFocus}>
+      <div className="main-row">
         <NavigationBar
           selected={selectedView}
           onSelect={handleSelectView}
@@ -643,7 +642,6 @@ export function App({
                 orgColors={orgColors}
                 orgAliases={orgAliases}
                 onOpenFile={openViewer}
-                inactive={activeView !== "explorer"}
               />
             )}
             {selectedView === "search" && (
@@ -654,7 +652,6 @@ export function App({
                 onOpen={(file, _line) =>
                   openViewer(repoPathOfSearchFile(file), file.relPath)
                 }
-                inactive={activeView !== "search"}
               />
             )}
             {selectedView === "sourceControl" && (
@@ -664,7 +661,6 @@ export function App({
                 orgColors={orgColors}
                 orgAliases={orgAliases}
                 onOpenDiff={openDiff}
-                inactive={activeView !== "sourceControl"}
               />
             )}
             {selectedView === "notification" && (
@@ -679,15 +675,11 @@ export function App({
                     t("toast.notificationsDeleted", { count: ids.length }),
                   );
                 }}
-                inactive={activeView !== "notification"}
               />
             )}
           </aside>
         )}
-        <div
-          className={`main-area${activeView === "main" ? "" : " view-inactive"}`}
-          data-view="main"
-        >
+        <div className="main-area">
           <TabBar
             tabs={tabsState.tabs}
             activeKey={tabsState.activeKey}
@@ -700,7 +692,6 @@ export function App({
             onCloseAll={closeAllTabs}
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
-            inactive={activeView !== "main"}
             onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
           />
@@ -747,7 +738,6 @@ export function App({
                 buffer={activeBuffer}
                 onTogglePreview={() => toggleViewerPreview(activeViewerKey)}
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
-                inactive={activeView !== "main"}
                 focusNonce={viewerFocusNonce}
               />
             )}
@@ -767,7 +757,6 @@ export function App({
                     .open(activeDiffBuffer.repoPath, activeDiffBuffer.relPath)
                     .catch(() => undefined)
                 }
-                inactive={activeView !== "main"}
                 focusNonce={diffFocusNonce}
               />
             )}
@@ -796,7 +785,6 @@ export function App({
               control.send({ t: "cockpitTerminal.close", cockpitTerminalId })
             }
             onAddOrg={() => setAddOrgOpen(true)}
-            inactive={activeView !== "sessions"}
             onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}

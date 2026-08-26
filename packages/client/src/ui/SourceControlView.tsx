@@ -15,7 +15,6 @@ import { useGitCopyFeedback } from "./useGitCopyFeedback.js";
 import type { GitStatus } from "./useGitStatus.js";
 import { ViewEmpty } from "./ViewEmpty.js";
 import { ViewHeader } from "./ViewHeader.js";
-import { viewClass } from "./views.js";
 
 export interface SourceControlViewProps {
   api: GitApi;
@@ -34,8 +33,6 @@ export interface SourceControlViewProps {
     staged: boolean,
     untracked: boolean,
   ): void;
-  /** Apply a faint overlay when inactive. */
-  inactive?: boolean;
 }
 
 export function SourceControlView({
@@ -45,7 +42,6 @@ export function SourceControlView({
   orgAliases = {},
   copyText,
   onOpenDiff,
-  inactive,
 }: SourceControlViewProps) {
   const { t } = useTranslation();
   const { repos, skipped, error, loading, refetch, setError } = gitStatus;
@@ -138,10 +134,7 @@ export function SourceControlView({
   };
 
   return (
-    <section
-      className={viewClass("git-view", inactive)}
-      data-view="sourceControl"
-    >
+    <section className="git-view">
       <ViewHeader title="SOURCE CONTROL" />
       {error !== null && <div className="git-error">{error}</div>}
       {error === null && loading && <Loading />}

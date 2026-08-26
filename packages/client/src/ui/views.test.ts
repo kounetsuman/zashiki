@@ -9,7 +9,6 @@ import {
   VIEW_DEFS,
   VIEWS_SELECTED_KEY,
   type ViewDef,
-  viewClass,
 } from "./views.js";
 
 function memStorage(initial: Record<string, string> = {}) {
@@ -111,12 +110,6 @@ describe("views pure logic", () => {
       loadSelectedView(memStorage({ [VIEWS_SELECTED_KEY]: "none" })),
     ).toBeNull();
     expect(loadSelectedView(memStorage())).toBe("explorer");
-  });
-
-  it("viewClass: adds view-inactive when inactive", () => {
-    expect(viewClass("git-view")).toBe("git-view");
-    expect(viewClass("git-view", false)).toBe("git-view");
-    expect(viewClass("git-view", true)).toBe("git-view view-inactive");
   });
 });
 

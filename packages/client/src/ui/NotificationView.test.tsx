@@ -36,7 +36,6 @@ function renderView(
       seenIds={props.seenIds ?? []}
       onMarkRead={props.onMarkRead ?? (() => undefined)}
       onDelete={props.onDelete ?? (() => undefined)}
-      inactive={props.inactive}
     />,
   );
 }
