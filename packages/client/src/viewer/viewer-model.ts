@@ -17,6 +17,8 @@ export interface ViewerBuffer {
   readonly error?: string;
   /** Whether the Markdown preview is showing (meaningful only for .md; toggle). */
   readonly preview: boolean;
+  /** Content was supplied directly (e.g. a file dropped from Finder), not read from a repo. */
+  readonly external?: boolean;
 }
 
 export type ViewerBuffers = Readonly<Record<string, ViewerBuffer>>;
@@ -29,6 +31,19 @@ export function viewerKey(repoPath: string, relPath: string): string {
 /** Markdown-family extensions (preview targets). */
 export function isMarkdown(relPath: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(relPath);
+}
+
+/** Sentinel repoPath for a buffer that belongs to no repo (dropped file). */
+export const EXTERNAL_VIEWER_REPO = "";
+
+/** Key for an external (dropped) file, keyed by its name so re-dropping the same name refreshes in place. */
+export function externalViewerKey(name: string): string {
+  return viewerKey(EXTERNAL_VIEWER_REPO, name);
+}
+
+/** Whether the buffer is re-read on the poll interval. External buffers hold no repo path to read from. */
+export function shouldPollBuffer(buf: ViewerBuffer): boolean {
+  return buf.external !== true;
 }
 
 function patch(
@@ -59,6 +74,28 @@ export function openBuffer(
       status: "loading",
       content: null,
       preview: false,
+    },
+  };
+}
+
+/** Inserts (or refreshes) a ready buffer whose content is supplied directly, bypassing the repo read path. */
+export function openExternalBuffer(
+  bufs: ViewerBuffers,
+  name: string,
+  content: string,
+): ViewerBuffers {
+  const key = externalViewerKey(name);
+  const existing = bufs[key];
+  if (existing?.status === "ready" && existing.content === content) return bufs;
+  return {
+    ...bufs,
+    [key]: {
+      repoPath: EXTERNAL_VIEWER_REPO,
+      relPath: name,
+      status: "ready",
+      content,
+      preview: existing?.preview ?? false,
+      external: true,
     },
   };
 }

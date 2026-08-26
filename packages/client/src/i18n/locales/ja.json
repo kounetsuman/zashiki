@@ -144,7 +144,9 @@
     "code": "コード",
     "preview": "プレビュー",
     "openFailed": "開けませんでした: {{error}}",
-    "readTimeout": "読み込みがタイムアウトしました"
+    "readTimeout": "読み込みがタイムアウトしました",
+    "dropTooLarge": "{{name}} はプレビューするには大きすぎます（最大 2 MB）",
+    "dropReadFailed": "{{name}} を読み込めませんでした"
   },
   "explorer": {
     "truncated": "一部のみ表示（多数のエントリ）",

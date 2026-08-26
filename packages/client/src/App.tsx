@@ -85,6 +85,7 @@ import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
 import { useCrashReport } from "./ui/useCrashReport.js";
 import { useDiff } from "./ui/useDiff.js";
+import { useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
@@ -286,6 +287,7 @@ export function App({
   const {
     buffers: viewerBuffers,
     ensureBuffer,
+    openExternal: openExternalViewer,
     closeBuffer: closeViewerBuffer,
     togglePreview: toggleViewerPreview,
     pathOf: viewerPathOf,
@@ -359,6 +361,23 @@ export function App({
     },
     [viewerPathOf, flashCopyToast, t],
   );
+
+  // Open a file dropped from Finder in the viewer (content read in the WebView; no repo read).
+  const openExternalFile = useCallback(
+    (name: string, content: string): void => {
+      openViewerTab(openExternalViewer(name, content));
+      setViewerFocusNonce((n) => n + 1);
+    },
+    [openViewerTab, openExternalViewer],
+  );
+  const fileDrop = useFileDrop(openExternalFile, (name, error) => {
+    flashCopyToast(
+      t(
+        error === "tooLarge" ? "viewer.dropTooLarge" : "viewer.dropReadFailed",
+        { name },
+      ),
+    );
+  });
 
   // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
   const copyDiffPath = useCallback(
@@ -584,7 +603,12 @@ export function App({
   );
 
   return (
-    <div className="app">
+    // biome-ignore lint/a11y/noStaticElementInteractions: window-wide receiver for OS file drops, not an interactive widget
+    <div
+      className="app"
+      onDragOver={fileDrop.onDragOver}
+      onDrop={fileDrop.onDrop}
+    >
       <div className="title-bar" data-tauri-drag-region="">
         <AccountIndicator
           email={account.email}

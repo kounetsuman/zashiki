@@ -5,8 +5,11 @@ import {
   bufferLoaded,
   bufferTogglePreview,
   closeBuffer,
+  externalViewerKey,
   isMarkdown,
   openBuffer,
+  openExternalBuffer,
+  shouldPollBuffer,
   viewerKey,
 } from "./viewer-model.js";
 
@@ -84,6 +87,40 @@ describe("loading/failure", () => {
   it("a nonexistent key is a no-op (same reference)", () => {
     const bufs = openBuffer({}, REPO, REL);
     expect(bufferLoaded(bufs, "nope", "x")).toBe(bufs);
+  });
+});
+
+describe("external (dropped) buffers", () => {
+  const NAME = "notes.md";
+  const EKEY = externalViewerKey(NAME);
+
+  it("openExternalBuffer inserts a ready buffer with content and the external flag", () => {
+    const bufs = openExternalBuffer({}, NAME, "hello");
+    expect(bufs[EKEY]).toMatchObject({
+      relPath: NAME,
+      status: "ready",
+      content: "hello",
+      external: true,
+    });
+  });
+
+  it("re-dropping the same name refreshes content while keeping the preview toggle", () => {
+    let bufs = openExternalBuffer({}, NAME, "old");
+    bufs = bufferTogglePreview(bufs, EKEY);
+    const next = openExternalBuffer(bufs, NAME, "new");
+    expect(next[EKEY]).toMatchObject({ content: "new", preview: true });
+  });
+
+  it("re-dropping identical content returns the same reference", () => {
+    const bufs = openExternalBuffer({}, NAME, "same");
+    expect(openExternalBuffer(bufs, NAME, "same")).toBe(bufs);
+  });
+
+  it("shouldPollBuffer excludes external buffers but includes repo buffers", () => {
+    const repo = openBuffer({}, REPO, REL)[KEY];
+    const ext = openExternalBuffer({}, NAME, "x")[EKEY];
+    expect(repo && shouldPollBuffer(repo)).toBe(true);
+    expect(ext && shouldPollBuffer(ext)).toBe(false);
   });
 });
 
