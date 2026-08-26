@@ -6,21 +6,23 @@
 //! Characteristics of an owned PTY (because it has multiple subscribers and shares the PTY with the
 //! state-detection poller):
 //! - **Restore on attach / tab switch is self-contained: a screen+scrollback clear, then the raw
-//!   scrollback replay (full history), then the redraw sequence from `contents_formatted()`**. Because
-//!   one xterm instance is shared across sessions, the leading clear wipes the previous session's
-//!   leftover scrollback deterministically (replacing a client-side `term.clear()` that used to race
-//!   with this stream). The redraw sequence only carries the current screen (the vt100 parser keeps 0
-//!   scrollback rows), so scrollback would be empty after a restart or tab reopen; the raw replay
-//!   rebuilds the full history (retained without eviction), and the redraw then overwrites the current
-//!   screen precisely, including colors and cursor position. The raw replay may be corrupted at the
-//!   very start if it begins mid-escape-sequence.
+//!   scrollback replay (full history), then the redraw sequence from `screen_formatted()`**. Because
+//!   one xterm instance is shared across Cockpit Terminals, the leading clear wipes the previous
+//!   terminal's leftover scrollback deterministically (replacing a client-side `term.clear()` that used
+//!   to race with this stream), and the redraw re-asserts the selected terminal's input modes (mouse
+//!   tracking, bracketed paste, application cursor/keypad) so another terminal's mouse tracking cannot
+//!   linger on the shared xterm and swallow the wheel (#259). The redraw only carries the current
+//!   screen (the vt100 parser keeps 0 scrollback rows), so scrollback would be empty after a restart or
+//!   tab reopen; the raw replay rebuilds the full history (retained without eviction), and the redraw
+//!   then overwrites the current screen precisely, including colors and cursor position. The raw replay
+//!   may be corrupted at the very start if it begins mid-escape-sequence.
 //! - A broadcast `Lagged` recovers automatically by re-subscribing and resending the current screen
 //!   (redraw sequence only). We do not resend the raw replay here, to avoid duplicating scrollback
 //!   the client already holds.
 //! - **Backpressure: never propagate one subscriber's lag to the PTY itself**. A "stop draining out_rx
 //!   and let the PTY stall" strategy is not used for an owned PTY (it would drag down
 //!   the other subscribers and the poller). While paused we **drain and discard** the broadcast, and
-//!   on resume we resend the current screen (`contents_formatted`) to reconcile.
+//!   on resume we resend the current screen (`screen_formatted`) to reconcile.
 //!
 //! The source of truth for behavior is the `tests` at the end of this file (a real axum WS + an echo
 //! PTY via `sh -c cat`).
@@ -540,7 +542,7 @@ mod tests {
     #[tokio::test]
     async fn initial_replay_sends_screen_restore_sequence() {
         // Draw characters on the screen beforehand -> on first attach they are restored via the redraw
-        // sequence (derived from contents_formatted).
+        // sequence (screen_formatted).
         let services = services_with_pty("t1", "sess-1", cat_cfg()).await;
         let session = services.sessions.get("sess-1").await.unwrap();
         session.write_input(b"HELLO-REPLAY\n").unwrap();
