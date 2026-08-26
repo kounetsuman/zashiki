@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-26
+
+### Added
+
+- Right-click context menu for file operations on Explorer entries and preview tabs (#249)
+- Preview a file dropped from Finder in the Viewer (#250)
+- Render GFM tables, task lists, and links in the Markdown preview (#247)
+- Highlight the matched query in Help search results (#245)
+
+### Changed
+
+- The header account email is now an account menu button for switching accounts and signing out (#253)
+
+### Removed
+
+- The inactive-view dimming overlay, so background views stay fully legible (#251)
+
+### Fixed
+
+- Input modes are restored on attach so mouse tracking can no longer leak across terminals (#259)
+
+### Security
+
+- Replaced ReDoS-prone regexes with linear parsers, bounded the live-timer tail, bumped nanoid to 3.3.18 (GHSA-2v37-7h3g-55p8), and restricted the CI token to read-only (#240)
+
 ## [0.13.0] - 2026-08-25
 
 ### Added
@@ -225,7 +250,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/kounetsuman/zashiki/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/kounetsuman/zashiki/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kounetsuman/zashiki/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/kounetsuman/zashiki/compare/v0.10.0...v0.11.0
