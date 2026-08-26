@@ -61,6 +61,22 @@ fn fetch_latest_release() -> Option<String> {
         .ok()
 }
 
+/// The raw `tag_name` from a `releases/latest` body (e.g. `v0.14.0`) — the exact release the self-updater
+/// pins the download to, so it installs the same version detection resolved rather than re-resolving with
+/// different endpoint semantics. Pure, for testability.
+pub fn latest_release_tag(body: &str) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_str(body).ok()?;
+    json.get("tag_name")?.as_str().map(str::to_string)
+}
+
+/// Resolve the latest stable release tag over the network (blocking fetch on a blocking thread). None on
+/// offline / non-2xx / unparseable, so the self-updater can report the failure while the app is still alive
+/// rather than tearing it down for an update that cannot proceed.
+pub async fn resolve_latest_tag() -> Option<String> {
+    let body = tokio::task::spawn_blocking(fetch_latest_release).await.ok().flatten()?;
+    latest_release_tag(&body)
+}
+
 /// Outcome of a single check, distinguishing "up to date" from "the fetch failed" so a manual
 /// check can tell the user which happened (the background poll ignores both — it only acts on `Newer`).
 #[derive(Debug, PartialEq, Eq)]
@@ -182,6 +198,13 @@ mod tests {
         let (version, url) = evaluate_release(&current, r#"{"tag_name":"v0.2.0"}"#).unwrap();
         assert_eq!(version, "0.2.0");
         assert_eq!(url, RELEASES_URL);
+    }
+
+    #[test]
+    fn latest_release_tag_keeps_the_v_prefixed_tag_verbatim() {
+        assert_eq!(latest_release_tag(r#"{"tag_name":"v0.14.0"}"#), Some("v0.14.0".to_string()));
+        assert_eq!(latest_release_tag(r#"{"foo":1}"#), None);
+        assert_eq!(latest_release_tag("not json"), None);
     }
 
     #[test]

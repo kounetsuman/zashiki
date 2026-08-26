@@ -102,9 +102,26 @@ Enabled by default. To stop the server's outbound egress to github.com, set
 
 - Applied live: the flag is read on each poll, so toggling it takes effect without a
   restart (it is also distributed to clients via `config.sync`).
-- This is a notice only — there is no auto-update / in-app download.
+- Detection is a notice; the actual install happens only when you press **Update** (see
+  below). No download runs until then.
 - The canonical spec is the `update_checker` / `notifications` tests in
   `crates/zashiki-server` and `parse_config` in `src/config.rs` (cargo test).
+
+## In-app update (direct dmg swap)
+
+Pressing **Update** swaps the running `.app` in place with the newest signed release,
+independent of Homebrew. A detached helper (`setsid`) SIGTERMs the app, waits for it and
+its port to free, then runs the bundled [`install.sh`](../../scripts/install.sh) in
+self-update mode (`ZASHIKI_SELF_UPDATE=1`): it downloads the latest release `.dmg`,
+verifies its Developer ID signature and notarization (`codesign` / `spctl`), swaps the
+bundle atomically (staged copy + rename, so a failed install never leaves you without an
+app), and the helper reopens it. Steps append to `~/Library/Logs/zashiki/update.log`.
+
+Because installation resolves the release straight from GitHub (like detection), it never
+depends on the Homebrew tap being bumped. When the bundle is not writable (e.g. an
+admin-only `/Applications` without rights) or the binary is not a bundled `.app` (dev /
+standalone), Update falls back to opening the releases page. The canonical spec is the
+`self_update` tests in `crates/zashiki-server` (cargo test).
 
 ## Build
 
@@ -188,6 +205,11 @@ the tap. It needs one repository secret:
 | Secret | Value |
 | --- | --- |
 | `HOMEBREW_TAP_TOKEN` | a PAT with `contents:write` on `kounetsuman/homebrew-tap` (the job's `GITHUB_TOKEN` can't push cross-repo) |
+
+The cask is marked `auto_updates true`: the app updates itself via the in-app dmg swap, so
+`brew upgrade` leaves it alone and never reverts a self-updated bundle. The bump therefore
+only feeds a fresh `brew install`, not existing users' updates — a lagging bump no longer
+blocks anyone from updating.
 
 ### Shell build that depends on the development tree
 

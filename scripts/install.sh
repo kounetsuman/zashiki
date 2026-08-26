@@ -13,12 +13,16 @@
 # Env:
 #   ZASHIKI_VERSION       Pin a release tag (e.g. v0.1.1-rc.1). Default: newest published release.
 #   ZASHIKI_INSTALL_DIR   Install destination. Default: /Applications
+#   ZASHIKI_SELF_UPDATE   Set to 1 when driven by the in-app updater: the app is already being torn
+#                         down by the update helper, so skip the interactive quit (relaunch is the
+#                         helper's job). The bundle is still swapped atomically and verified either way.
 #
 set -euo pipefail
 
 REPO="kounetsuman/zashiki"
 APP_NAME="Zashiki.app"
 INSTALL_DIR="${ZASHIKI_INSTALL_DIR:-/Applications}"
+SELF_UPDATE="${ZASHIKI_SELF_UPDATE:-}"
 
 err()  { printf 'error: %s\n' "$*" >&2; exit 1; }
 info() { printf '%s\n' "$*"; }
@@ -32,6 +36,8 @@ command -v hdiutil >/dev/null 2>&1 || err "hdiutil is required (macOS only)."
 command -v ditto >/dev/null 2>&1   || err "ditto is required (macOS only)."
 command -v pgrep >/dev/null 2>&1     || err "pgrep is required (macOS only)."
 command -v osascript >/dev/null 2>&1 || err "osascript is required (macOS only)."
+command -v codesign >/dev/null 2>&1  || err "codesign is required (macOS only)."
+command -v spctl >/dev/null 2>&1     || err "spctl is required (macOS only)."
 
 # --- resolve the .dmg download URL -----------------------------------------
 if [[ -n "${ZASHIKI_VERSION:-}" ]]; then
@@ -80,6 +86,15 @@ hdiutil attach "$dmg" -mountpoint "$mnt" -nobrowse -readonly -quiet || err "fail
 src="${mnt}/${APP_NAME}"
 [[ -d "$src" ]] || err "the dmg does not contain ${APP_NAME}."
 
+# --- verify the signature before we touch the installed bundle --------------
+# Release dmgs are Developer ID-signed and notarized (#25). Verify the mounted app
+# before swapping so a truncated download or a tampered dmg can never replace a good
+# install — critical on the self-update path, where the swap is unattended.
+codesign --verify --deep --strict --verbose=2 "$src" >/dev/null 2>&1 \
+  || err "signature verification failed for the downloaded app (codesign). Aborting without touching the installed app."
+spctl -a -t exec "$src" >/dev/null 2>&1 \
+  || err "notarization/Gatekeeper assessment failed for the downloaded app (spctl). Aborting without touching the installed app."
+
 dest="${INSTALL_DIR%/}/${APP_NAME}"
 [[ -w "$INSTALL_DIR" ]] || err "no write permission to ${INSTALL_DIR}. Re-run with a writable ZASHIKI_INSTALL_DIR (e.g. ZASHIKI_INSTALL_DIR=\"\$HOME/Applications\") or via sudo."
 
@@ -90,8 +105,10 @@ dest="${INSTALL_DIR%/}/${APP_NAME}"
 # Never hard-kill — if it outlives the grace window, abort rather than clobber a
 # bundle the user chose to keep open. Detect by real process (pgrep), not AppleScript
 # `is running`, which reports a stale "running" app after the process is long gone.
+# Skipped under self-update: the update helper has already terminated the app and owns
+# the relaunch, so re-quitting here would only race a dead process (or re-prompt).
 app_bin="${APP_NAME%.app}"
-if pgrep -x "$app_bin" >/dev/null 2>&1; then
+if [[ -z "$SELF_UPDATE" ]] && pgrep -x "$app_bin" >/dev/null 2>&1; then
   info "Quitting the running Zashiki ..."
   osascript -e "tell application \"$app_bin\" to quit" >/dev/null 2>&1 || true
   for _ in $(seq 1 60); do
@@ -101,13 +118,28 @@ if pgrep -x "$app_bin" >/dev/null 2>&1; then
   pgrep -x "$app_bin" >/dev/null 2>&1 && err "Zashiki is still running (finishing its quit, or the quit was cancelled while work was in progress). Re-run the installer once it has quit."
 fi
 
+# --- swap the bundle via staged renames -------------------------------------
+# Copy the new app to a staging path first, then move it into place by rename, keeping
+# the previous bundle as a backup until the rename succeeds (and restoring it if the
+# rename fails). A failed copy or move therefore never leaves a half-written app: the
+# destination is either the new bundle or the untouched previous one.
 info "Installing to ${dest} ..."
-rm -rf "$dest"
-ditto "$src" "$dest" || err "copy failed."
-
-# Belt-and-suspenders: strip quarantine in case the destination inherited it.
-xattr -dr com.apple.quarantine "$dest" 2>/dev/null || true
+staging="${dest}.zashiki-new"
+backup="${dest}.zashiki-old"
+rm -rf "$staging" "$backup"
+ditto "$src" "$staging" || { rm -rf "$staging"; err "copy failed."; }
+# Belt-and-suspenders: strip quarantine in case the staged copy inherited it.
+xattr -dr com.apple.quarantine "$staging" 2>/dev/null || true
+if [[ -e "$dest" ]]; then
+  mv "$dest" "$backup" || { rm -rf "$staging"; err "could not move the existing app aside."; }
+fi
+if mv "$staging" "$dest"; then
+  rm -rf "$backup"
+else
+  [[ -e "$backup" ]] && mv "$backup" "$dest"
+  err "could not move the new app into place; kept the existing install."
+fi
 
 info ""
 info "Installed: ${dest}"
-info "Launch it from Launchpad / Finder, or run:  open \"$dest\""
+[[ -n "$SELF_UPDATE" ]] || info "Launch it from Launchpad / Finder, or run:  open \"$dest\""

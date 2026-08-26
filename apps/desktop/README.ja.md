@@ -94,9 +94,24 @@ private API を使うため App Store 配布時は非対応。本アプリは Ap
 
 - ライブ適用: フラグはポーリングごとに読むため、再起動なしで切り替わる（`config.sync` で
   クライアントにも配信される）。
-- これは通知のみ。自動更新・アプリ内ダウンロードは行わない。
+- 検出は通知のみ。実際のインストールは **Update** を押したときだけ走る（下記参照）。押すまで
+  ダウンロードは行わない。
 - 仕様の正本は `crates/zashiki-server` の `update_checker` / `notifications` テストと
   `src/config.rs` の `parse_config`（cargo test）。
+
+## アプリ内アップデート（dmg 直接入れ替え）
+
+**Update** を押すと、起動中の `.app` を最新の署名済みリリースにその場で入れ替える（Homebrew
+非依存）。detached ヘルパー（`setsid`）がアプリを SIGTERM し、プロセスとポートの解放を待ってから、
+同梱の [`install.sh`](../../scripts/install.sh) を self-update モード（`ZASHIKI_SELF_UPDATE=1`）で
+実行する: 最新リリースの `.dmg` をダウンロードし、Developer ID 署名と notarization を検証
+（`codesign` / `spctl`）、バンドルをアトミックに入れ替え（staging コピー＋rename。失敗しても
+アプリが消えない）、ヘルパーが再起動する。手順は `~/Library/Logs/zashiki/update.log` に追記される。
+
+インストールも検出と同じく GitHub から直接リリースを解決するため、Homebrew tap の bump に依存しない。
+バンドルが書き込み不可（権限のない admin 専有の `/Applications` 等）、またはバイナリが同梱 `.app`
+でない（dev / standalone）場合は、Update はリリースページを開くフォールバックになる。仕様の正本は
+`crates/zashiki-server` の `self_update` テスト（cargo test）。
 
 ## ビルド
 
@@ -170,6 +185,11 @@ Gatekeeper の右クリック回避なしで起動する。secret が無いと�
 | Secret | 値 |
 | --- | --- |
 | `HOMEBREW_TAP_TOKEN` | `kounetsuman/homebrew-tap` に `contents:write` を持つ PAT（ジョブの `GITHUB_TOKEN` はクロスリポジトリに push できない） |
+
+cask には `auto_updates true` を付けている: アプリはアプリ内の dmg 入れ替えで自己更新するため、
+`brew upgrade` は zashiki に手を出さず、自己更新済みバンドルを巻き戻さない。したがって bump は
+新規 `brew install` 向けだけに効き、既存ユーザーの更新には関与しない——bump が遅れても誰の更新も
+止まらない。
 
 ### 開発ツリー依存のシェルビルド
 
