@@ -2144,6 +2144,24 @@ textarea {
   color: #8a9099;
 }
 
+/* Inline rename row: the name span swapped for an editable input (same convention as .tab-title-input). */
+.explorer-rename-row {
+  display: flex;
+  align-items: center;
+}
+
+.explorer-rename-input {
+  flex: 1;
+  min-width: 0;
+  margin: 0 8px 0 0;
+  padding: 0 4px;
+  border: 1px solid #4a6da7;
+  border-radius: 3px;
+  background: #1e1e1e;
+  color: #eee;
+  font: inherit;
+}
+
 /* File-type icon colors, keyed on the `data-icon` (fileIconKind) of the file row. */
 .explorer-file[data-icon="ts"] .explorer-file-icon {
   color: #4a9df0;

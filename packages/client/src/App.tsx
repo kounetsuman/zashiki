@@ -4,6 +4,7 @@ import {
   DEFAULT_FOOTER_THRESHOLDS,
   type FooterThresholds,
   type HooksStatusMessage,
+  isSinglePathSegment,
   resolveOrgColor,
   type ServerMessage,
   type UpdateCheckResultMessage,
@@ -95,6 +96,10 @@ import { useViewer } from "./ui/useViewer.js";
 import { useViewSelection } from "./ui/useViewSelection.js";
 import { useXtermRenderer } from "./ui/useXtermRenderer.js";
 import { Viewer } from "./ui/Viewer.js";
+import {
+  viewerKeysUnderPath,
+  viewersAffectedByRename,
+} from "./viewer/viewer-model.js";
 import type { ControlStatus } from "./ws/control.js";
 
 type ViewStorage = Pick<Storage, "getItem" | "setItem">;
@@ -389,6 +394,84 @@ export function App({
     [flashCopyToast, t],
   );
 
+  // Copy arbitrary text (context-menu path copies) with the shared "path copied" toast.
+  const copyExplorerText = useCallback(
+    (text: string): void => {
+      void navigator.clipboard?.writeText(text).then(
+        () => flashCopyToast(t("toast.pathCopied")),
+        () => undefined,
+      );
+    },
+    [flashCopyToast, t],
+  );
+
+  const closeViewerTabByBufferKey = useCallback(
+    (bufferKey: string): void => {
+      closeTabByKey(tabKey({ kind: "viewer", id: bufferKey }));
+      closeViewerBuffer(bufferKey);
+    },
+    [closeTabByKey, closeViewerBuffer],
+  );
+
+  const handlePathRenamed = useCallback(
+    (repoPath: string, oldRel: string, newRel: string): void => {
+      const affected = viewersAffectedByRename(
+        viewerBuffers,
+        repoPath,
+        oldRel,
+        newRel,
+      );
+      if (affected.length === 0) return;
+      const previousActiveKey = tabsState.activeKey;
+      const activeAffected = affected.find((a) => a.key === activeViewerKey);
+      for (const a of affected) closeViewerTabByBufferKey(a.key);
+      for (const a of affected) {
+        if (a !== activeAffected) openViewer(repoPath, a.newRelPath);
+      }
+      if (activeAffected !== undefined) {
+        openViewer(repoPath, activeAffected.newRelPath);
+      } else if (previousActiveKey !== null) {
+        activateTabByKey(previousActiveKey);
+      }
+    },
+    [
+      viewerBuffers,
+      tabsState.activeKey,
+      activeViewerKey,
+      closeViewerTabByBufferKey,
+      openViewer,
+      activateTabByKey,
+    ],
+  );
+
+  const handlePathDeleted = useCallback(
+    (repoPath: string, rel: string): void => {
+      for (const key of viewerKeysUnderPath(viewerBuffers, repoPath, rel)) {
+        closeViewerTabByBufferKey(key);
+      }
+    },
+    [viewerBuffers, closeViewerTabByBufferKey],
+  );
+
+  // Rename a file from a viewer tab's context menu, then follow it in the open tabs.
+  const renameFileFromTab = useCallback(
+    (repoPath: string, relPath: string, newName: string): void => {
+      const current = relPath.slice(relPath.lastIndexOf("/") + 1);
+      if (
+        newName === "" ||
+        newName === current ||
+        !isSinglePathSegment(newName)
+      ) {
+        return;
+      }
+      void fsApi.rename(repoPath, relPath, newName).then(
+        (newRel) => handlePathRenamed(repoPath, relPath, newRel),
+        (err: unknown) => flashCopyToast(String(err)),
+      );
+    },
+    [fsApi, handlePathRenamed, flashCopyToast],
+  );
+
   // Commit the conversation header / tab title edit and persist it keyed by cockpitTerminalId (the owned-mode
   // session UUID, preserved across resume/restore). name (repository) is stored alongside for the
   // display-time match. For non-UUID windows (unbound/plain-shell), commitTitle is a no-op.
@@ -652,6 +735,10 @@ export function App({
                 orgColors={orgColors}
                 orgAliases={orgAliases}
                 onOpenFile={openViewer}
+                onCopyText={copyExplorerText}
+                onFsError={flashCopyToast}
+                onPathRenamed={handlePathRenamed}
+                onPathDeleted={handlePathDeleted}
               />
             )}
             {selectedView === "search" && (
@@ -704,6 +791,18 @@ export function App({
             onReorder={reorderTabByKey}
             onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
+            onRevealFile={(repoPath, relPath) =>
+              void fsApi
+                .reveal(repoPath, relPath)
+                .catch((err: unknown) => flashCopyToast(String(err)))
+            }
+            onCopyFilePath={(repoPath, relPath) =>
+              copyExplorerText(`${repoPath}/${relPath}`)
+            }
+            onCopyFileRelativePath={(_repoPath, relPath) =>
+              copyExplorerText(relPath)
+            }
+            onRenameFile={renameFileFromTab}
           />
           <div className="tab-view">
             <ErrorBoundary

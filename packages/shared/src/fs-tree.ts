@@ -57,6 +57,62 @@ export const fsReposResponseSchema = z.object({
 export type FsReposResponse = z.infer<typeof fsReposResponseSchema>;
 
 /**
+ * Whether `name` is a single path segment safe to use as a rename target: non-empty,
+ * not `.`/`..`, and free of path separators and control characters. The same rule is
+ * enforced server-side; keeping the check pure lets the UI reject before the round trip.
+ */
+export function isSinglePathSegment(name: string): boolean {
+  if (name === "" || name === "." || name === "..") return false;
+  for (const ch of name) {
+    if (ch === "/" || ch === "\\") return false;
+    if ((ch.codePointAt(0) ?? 0) < 0x20) return false;
+  }
+  return true;
+}
+
+/**
+ * Repo-relative parent directory of `rel` ("" = repo root). "a/b/c" -> "a/b",
+ * "a" -> "". Not meaningful for the root itself.
+ */
+export function parentRelDir(rel: string): string {
+  const trimmed = stripTrailingSlashes(rel);
+  const slash = trimmed.lastIndexOf("/");
+  return slash >= 0 ? trimmed.slice(0, slash) : "";
+}
+
+/** POST /api/fs/reveal — show a repo entry in the OS file manager. */
+export const fsRevealRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  /** Repo-relative path of the file or directory (never the repo root). */
+  path: z.string().min(1),
+});
+export type FsRevealRequest = z.infer<typeof fsRevealRequestSchema>;
+
+/** POST /api/fs/rename — rename an entry within its parent directory. */
+export const fsRenameRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  path: z.string().min(1),
+  newName: z.string().refine(isSinglePathSegment, {
+    message: "newName must be a single path segment",
+  }),
+});
+export type FsRenameRequest = z.infer<typeof fsRenameRequestSchema>;
+
+export const fsRenameResponseSchema = z.object({
+  ok: z.literal(true),
+  /** Repo-relative path after the rename (parent dir unchanged, name replaced). */
+  newPath: z.string().min(1),
+});
+export type FsRenameResponse = z.infer<typeof fsRenameResponseSchema>;
+
+/** POST /api/fs/delete — move an entry to the OS trash. */
+export const fsDeleteRequestSchema = z.object({
+  repoPath: z.string().min(1),
+  path: z.string().min(1),
+});
+export type FsDeleteRequest = z.infer<typeof fsDeleteRequestSchema>;
+
+/**
  * VSCode explorer ordering: directories first, then files, each group stably
  * sorted by name via localeCompare (case-insensitive, numeric). No side effects
  * (returns a new array).

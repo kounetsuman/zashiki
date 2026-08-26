@@ -10,7 +10,10 @@ import {
   openBuffer,
   openExternalBuffer,
   shouldPollBuffer,
+  splitViewerKey,
   viewerKey,
+  viewerKeysUnderPath,
+  viewersAffectedByRename,
 } from "./viewer-model.js";
 
 const REPO = "/ws/repo";
@@ -138,5 +141,76 @@ describe("preview toggle / close", () => {
   it("closing a nonexistent key returns the same reference", () => {
     const bufs = openBuffer({}, REPO, REL);
     expect(closeBuffer(bufs, "nope")).toBe(bufs);
+  });
+});
+
+describe("splitViewerKey", () => {
+  it("is the inverse of viewerKey", () => {
+    expect(splitViewerKey(viewerKey(REPO, REL))).toEqual({
+      repoPath: REPO,
+      relPath: REL,
+    });
+  });
+  it("keeps a repo-root path (empty relPath) roundtrippable", () => {
+    expect(splitViewerKey(viewerKey(REPO, ""))).toEqual({
+      repoPath: REPO,
+      relPath: "",
+    });
+  });
+});
+
+describe("viewerKeysUnderPath", () => {
+  const open = (rel: string, bufs = {}) => openBuffer(bufs, REPO, rel);
+
+  it("matches an exact file path", () => {
+    let bufs = open("src/app.ts");
+    bufs = open("src/util.ts", bufs);
+    expect(viewerKeysUnderPath(bufs, REPO, "src/app.ts")).toEqual([
+      viewerKey(REPO, "src/app.ts"),
+    ]);
+  });
+
+  it("matches every buffer under a directory but not a sibling prefix", () => {
+    let bufs = open("src/app.ts");
+    bufs = open("src/ui/tab.ts", bufs);
+    bufs = open("src2/other.ts", bufs);
+    const keys = viewerKeysUnderPath(bufs, REPO, "src");
+    expect(keys).toContain(viewerKey(REPO, "src/app.ts"));
+    expect(keys).toContain(viewerKey(REPO, "src/ui/tab.ts"));
+    expect(keys).not.toContain(viewerKey(REPO, "src2/other.ts"));
+  });
+
+  it("ignores buffers in a different repo", () => {
+    const bufs = openBuffer(open("src/app.ts"), "/other", "src/app.ts");
+    expect(viewerKeysUnderPath(bufs, "/other", "src")).toEqual([
+      viewerKey("/other", "src/app.ts"),
+    ]);
+  });
+});
+
+describe("viewersAffectedByRename", () => {
+  it("remaps an exact file rename", () => {
+    const bufs = openBuffer({}, REPO, "src/app.ts");
+    expect(
+      viewersAffectedByRename(bufs, REPO, "src/app.ts", "src/main.ts"),
+    ).toEqual([
+      { key: viewerKey(REPO, "src/app.ts"), newRelPath: "src/main.ts" },
+    ]);
+  });
+
+  it("remaps a directory rename across its subtree", () => {
+    let bufs = openBuffer({}, REPO, "src/ui/tab.ts");
+    bufs = openBuffer(bufs, REPO, "src/app.ts");
+    const affected = viewersAffectedByRename(bufs, REPO, "src", "app");
+    const map = new Map(affected.map((a) => [a.key, a.newRelPath]));
+    expect(map.get(viewerKey(REPO, "src/ui/tab.ts"))).toBe("app/ui/tab.ts");
+    expect(map.get(viewerKey(REPO, "src/app.ts"))).toBe("app/app.ts");
+  });
+
+  it("leaves unrelated buffers untouched", () => {
+    const bufs = openBuffer({}, REPO, "docs/readme.md");
+    expect(
+      viewersAffectedByRename(bufs, REPO, "src/app.ts", "src/main.ts"),
+    ).toEqual([]);
   });
 });

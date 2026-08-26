@@ -6,8 +6,11 @@ import {
   fileIconKind,
   fsListRequestSchema,
   fsListResponseSchema,
+  fsRenameRequestSchema,
   groupReposByRepository,
+  isSinglePathSegment,
   joinRepoRelative,
+  parentRelDir,
   sortFsEntries,
 } from "./fs-tree.js";
 
@@ -192,5 +195,60 @@ describe("fs-tree zod schema", () => {
       truncated: false,
     });
     expect(bad.success).toBe(false);
+  });
+});
+
+describe("isSinglePathSegment", () => {
+  it("accepts a plain name", () => {
+    expect(isSinglePathSegment("readme.md")).toBe(true);
+    expect(isSinglePathSegment("a file with spaces.txt")).toBe(true);
+    expect(isSinglePathSegment(".gitignore")).toBe(true);
+  });
+
+  it("rejects empty, dot, and dot-dot", () => {
+    expect(isSinglePathSegment("")).toBe(false);
+    expect(isSinglePathSegment(".")).toBe(false);
+    expect(isSinglePathSegment("..")).toBe(false);
+  });
+
+  it("rejects path separators and control characters", () => {
+    expect(isSinglePathSegment("a/b")).toBe(false);
+    expect(isSinglePathSegment("a\\b")).toBe(false);
+    expect(isSinglePathSegment("../escape")).toBe(false);
+    expect(isSinglePathSegment("with\nnewline")).toBe(false);
+  });
+});
+
+describe("parentRelDir", () => {
+  it("drops the last segment", () => {
+    expect(parentRelDir("a/b/c")).toBe("a/b");
+    expect(parentRelDir("a/b")).toBe("a");
+  });
+  it("returns root for a top-level entry", () => {
+    expect(parentRelDir("a")).toBe("");
+  });
+  it("ignores a trailing slash", () => {
+    expect(parentRelDir("a/b/")).toBe("a");
+  });
+});
+
+describe("fsRenameRequestSchema", () => {
+  it("rejects a newName that is not a single segment", () => {
+    expect(
+      fsRenameRequestSchema.safeParse({
+        repoPath: "/repo",
+        path: "a/b.txt",
+        newName: "../c.txt",
+      }).success,
+    ).toBe(false);
+  });
+  it("accepts a valid rename request", () => {
+    expect(
+      fsRenameRequestSchema.safeParse({
+        repoPath: "/repo",
+        path: "a/b.txt",
+        newName: "c.txt",
+      }).success,
+    ).toBe(true);
   });
 });

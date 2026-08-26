@@ -43,6 +43,8 @@ tracing-appender = "0.2"
 file-rotate = "0.7"
 # トークンを平文のまま持ち回らず、Debug/ログへの誤露出を型で禁じる。
 secrecy = "0.8"
+# エクスプローラの Delete をゴミ箱移動で実装する（OS ごとの trash API を吸収。実削除でなく復元可能に）。
+trash = "5"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

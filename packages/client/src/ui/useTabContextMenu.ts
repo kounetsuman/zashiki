@@ -1,6 +1,7 @@
 import type React from "react";
 import { useEffect, useState } from "react";
 import { type Tab, tabKey } from "../tabs/tab-model.js";
+import { splitViewerKey } from "../viewer/viewer-model.js";
 import { clampMenuPos } from "./views.js";
 
 export interface TabContextMenuState {
@@ -8,6 +9,8 @@ export interface TabContextMenuState {
     key: string;
     /** Owning cockpit terminal id for a session tab; null for a viewer tab. */
     cockpitTerminalId: string | null;
+    /** File the tab is showing, for a viewer tab; null for a session tab. */
+    viewer: { repoPath: string; relPath: string } | null;
     x: number;
     y: number;
   } | null;
@@ -37,6 +40,7 @@ export function useTabContextMenu(itemCount: number): TabContextMenuState {
     setMenu({
       key: tabKey(tab),
       cockpitTerminalId: tab.kind === "session" ? tab.id : null,
+      viewer: tab.kind === "viewer" ? splitViewerKey(tab.id) : null,
       x,
       y,
     });
