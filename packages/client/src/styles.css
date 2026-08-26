@@ -953,6 +953,54 @@ textarea {
   padding: 0 3px;
 }
 
+.viewer-preview a {
+  color: #6cb6ff;
+  text-decoration: none;
+}
+
+.viewer-preview a:hover {
+  text-decoration: underline;
+}
+
+.viewer-preview table {
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+.viewer-preview th,
+.viewer-preview td {
+  border: 1px solid #333;
+  padding: 4px 10px;
+  text-align: left;
+}
+
+.viewer-preview th {
+  background: #171717;
+  font-weight: 600;
+}
+
+.viewer-preview blockquote {
+  margin: 8px 0;
+  padding: 0 12px;
+  border-left: 3px solid #333;
+  color: #aaa;
+}
+
+.viewer-preview hr {
+  border: none;
+  border-top: 1px solid #333;
+  margin: 12px 0;
+}
+
+.viewer-preview li.task-list-item {
+  list-style: none;
+}
+
+.viewer-preview .task-list-item-checkbox {
+  margin: 0 6px 0 -18px;
+  vertical-align: middle;
+}
+
 .viewer-message {
   padding: 12px 16px;
   color: #999;

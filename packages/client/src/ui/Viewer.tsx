@@ -4,15 +4,13 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { basicSetup } from "codemirror";
-import MarkdownIt from "markdown-it";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { renderMarkdown } from "../viewer/markdown.js";
 import { isMarkdown, type ViewerBuffer } from "../viewer/viewer-model.js";
 import { Loading } from "./Loading.js";
 import { viewClass } from "./views.js";
-
-const md = new MarkdownIt({ html: false, linkify: true, breaks: false });
 
 export interface ViewerProps {
   buffer: ViewerBuffer;
@@ -118,7 +116,7 @@ export function Viewer({
   const md5 = isMarkdown(buffer.relPath);
   const showPreview = md5 && buffer.preview;
   const previewHtml = useMemo(
-    () => (showPreview ? md.render(buffer.content ?? "") : ""),
+    () => (showPreview ? renderMarkdown(buffer.content ?? "") : ""),
     [showPreview, buffer.content],
   );
 
