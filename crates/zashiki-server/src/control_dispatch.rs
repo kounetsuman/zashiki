@@ -173,6 +173,18 @@ pub(crate) async fn handle_client_message(
             services.hub.publish_account_status(status);
             true
         }
+        // Sign in / out run off the WS loop: the browser OAuth can take a while. Each broadcasts a fresh
+        // account.status once the claude command exits.
+        ClientMessage::AccountLogin => {
+            let hub = services.hub.clone();
+            tokio::spawn(async move { crate::control_account::run_account_login(hub).await });
+            true
+        }
+        ClientMessage::AccountLogout => {
+            let hub = services.hub.clone();
+            tokio::spawn(async move { crate::control_account::run_account_logout(hub).await });
+            true
+        }
         ClientMessage::CockpitTerminalNew { org, resume_sid } => {
             handle_session_new(socket, services, &org, resume_sid.as_deref()).await
         }

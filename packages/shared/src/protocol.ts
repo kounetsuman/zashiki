@@ -313,6 +313,19 @@ export const accountRefreshSchema = z.object({
   restartSessions: z.boolean(),
 });
 
+/**
+ * Start the interactive `claude auth login` (browser OAuth) to sign in or switch accounts; the server
+ * broadcasts a fresh `account.status` once login finishes.
+ */
+export const accountLoginSchema = z.object({
+  t: z.literal("account.login"),
+});
+
+/** Sign out via `claude auth logout`; the server broadcasts a fresh `account.status` afterwards. */
+export const accountLogoutSchema = z.object({
+  t: z.literal("account.logout"),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   termOpenSchema,
   termResizeSchema,
@@ -332,6 +345,8 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   updateCheckSchema,
   updatePerformSchema,
   accountRefreshSchema,
+  accountLoginSchema,
+  accountLogoutSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;

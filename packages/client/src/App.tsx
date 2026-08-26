@@ -468,6 +468,14 @@ export function App({
     [control],
   );
 
+  const loginAccount = useCallback((): void => {
+    control.send({ t: "account.login" });
+  }, [control]);
+
+  const logoutAccount = useCallback((): void => {
+    control.send({ t: "account.logout" });
+  }, [control]);
+
   const saveEditor = useCallback(
     (command: string): void => {
       control.send({ t: "config.setEditor", editor: command });
@@ -590,6 +598,8 @@ export function App({
           email={account.email}
           runningCount={cockpitTerminals.length}
           onRefresh={refreshAccount}
+          onLogin={loginAccount}
+          onLogout={logoutAccount}
         />
       </div>
       <UpdateBanner
