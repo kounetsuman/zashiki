@@ -13,7 +13,6 @@ import { tabLabel } from "./tab-bar-model.js";
 import { useTabContextMenu } from "./useTabContextMenu.js";
 import { useTabDrag } from "./useTabDrag.js";
 import { useTabRename } from "./useTabRename.js";
-import { viewClass } from "./views.js";
 
 export interface TabBarProps {
   tabs: readonly Tab[];
@@ -35,8 +34,6 @@ export interface TabBarProps {
   onRename?(cockpitTerminalId: string, name: string, title: string): void;
   /** Reordering via drag & drop. Moves fromKey to the position of toKey. Reordering is disabled when unspecified. */
   onReorder?(fromKey: string, toKey: string): void;
-  /** Apply a faint overlay when inactive. */
-  inactive?: boolean;
   /**
    * Right-clicking a session tab duplicates it into a new independent cockpit terminal (forks the
    * Claude session). The duplicate menu item is hidden when unspecified.
@@ -76,7 +73,6 @@ export function TabBar({
   onCloseAll,
   onRename,
   onReorder,
-  inactive,
   onDuplicate,
   onCopySessionId,
   onRevealFile,
@@ -123,7 +119,7 @@ export function TabBar({
 
   return (
     <div
-      className={viewClass("tab-bar", inactive)}
+      className="tab-bar"
       role="tablist"
       aria-label={t("tabBar.ariaLabel")}
       style={

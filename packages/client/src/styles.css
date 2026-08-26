@@ -551,23 +551,6 @@ textarea {
     "opsz" 24;
 }
 
-/* ---- 非アクティブビューの薄いオーバーレイ（issue #92） ---- */
-
-/* pointer-events:none でクリック等を阻害しない。クリックでフォーカスが入れば
- * アクティブになりオーバーレイは消える。position:relative は ::after の基準。 */
-.view-inactive {
-  position: relative;
-}
-
-.view-inactive::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.38);
-  pointer-events: none;
-  z-index: 6;
-}
-
 .main-area {
   flex: 1;
   min-width: 0;

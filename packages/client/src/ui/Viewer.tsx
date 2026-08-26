@@ -10,18 +10,16 @@ import { useTranslation } from "react-i18next";
 import { renderMarkdown } from "../viewer/markdown.js";
 import { isMarkdown, type ViewerBuffer } from "../viewer/viewer-model.js";
 import { Loading } from "./Loading.js";
-import { viewClass } from "./views.js";
 
 export interface ViewerProps {
   buffer: ViewerBuffer;
   onTogglePreview(): void;
   /** The copy button at the header's left edge copies the file's absolute path. */
   onCopyPath(): void;
-  inactive?: boolean;
   /**
-   * Request counter for focusing the viewer. Each time it changes, focuses the section
-   * (which drives activeView to `main` via the app's onFocusCapture). App bumps it when a
-   * file is opened so opening a file activates the viewer even on re-open of the same file.
+   * Request counter for focusing the viewer. Each time it changes, focuses the section.
+   * App bumps it when a file is opened so opening a file focuses the viewer even on re-open
+   * of the same file.
    */
   focusNonce?: number;
 }
@@ -108,7 +106,6 @@ export function Viewer({
   buffer,
   onTogglePreview,
   onCopyPath,
-  inactive,
   focusNonce = 0,
 }: ViewerProps) {
   const { t } = useTranslation();
@@ -129,8 +126,7 @@ export function Viewer({
     <section
       ref={sectionRef}
       tabIndex={-1}
-      className={viewClass("viewer-view", inactive)}
-      data-view="main"
+      className="viewer-view"
       aria-label={t("viewer.viewerLabel", { path: buffer.relPath })}
     >
       <div className="viewer-toolbar">

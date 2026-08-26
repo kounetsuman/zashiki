@@ -86,6 +86,7 @@ import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
 import { useCrashReport } from "./ui/useCrashReport.js";
 import { useDiff } from "./ui/useDiff.js";
+import { useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
@@ -208,8 +209,7 @@ export function App({
     setHelpModalOpen((v) => !v);
   }, []);
 
-  const { selectedView, activeView, handleViewFocus, handleSelectView } =
-    useViewSelection(viewStorage);
+  const { selectedView, handleSelectView } = useViewSelection(viewStorage);
 
   // Interpreting control messages and their side effects (notifications, pty reconnect)
   // is separated into a store outside React; App only subscribes (useSyncExternalStore)
@@ -291,6 +291,7 @@ export function App({
   const {
     buffers: viewerBuffers,
     ensureBuffer,
+    openExternal: openExternalViewer,
     closeBuffer: closeViewerBuffer,
     togglePreview: toggleViewerPreview,
     pathOf: viewerPathOf,
@@ -364,6 +365,23 @@ export function App({
     },
     [viewerPathOf, flashCopyToast, t],
   );
+
+  // Open a file dropped from Finder in the viewer (content read in the WebView; no repo read).
+  const openExternalFile = useCallback(
+    (name: string, content: string): void => {
+      openViewerTab(openExternalViewer(name, content));
+      setViewerFocusNonce((n) => n + 1);
+    },
+    [openViewerTab, openExternalViewer],
+  );
+  const fileDrop = useFileDrop(openExternalFile, (name, error) => {
+    flashCopyToast(
+      t(
+        error === "tooLarge" ? "viewer.dropTooLarge" : "viewer.dropReadFailed",
+        { name },
+      ),
+    );
+  });
 
   // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
   const copyDiffPath = useCallback(
@@ -551,6 +569,14 @@ export function App({
     [control],
   );
 
+  const loginAccount = useCallback((): void => {
+    control.send({ t: "account.login" });
+  }, [control]);
+
+  const logoutAccount = useCallback((): void => {
+    control.send({ t: "account.logout" });
+  }, [control]);
+
   const saveEditor = useCallback(
     (command: string): void => {
       control.send({ t: "config.setEditor", editor: command });
@@ -667,12 +693,19 @@ export function App({
   );
 
   return (
-    <div className="app">
+    // biome-ignore lint/a11y/noStaticElementInteractions: window-wide receiver for OS file drops, not an interactive widget
+    <div
+      className="app"
+      onDragOver={fileDrop.onDragOver}
+      onDrop={fileDrop.onDrop}
+    >
       <div className="title-bar" data-tauri-drag-region="">
         <AccountIndicator
           email={account.email}
           runningCount={cockpitTerminals.length}
           onRefresh={refreshAccount}
+          onLogin={loginAccount}
+          onLogout={logoutAccount}
         />
       </div>
       <UpdateBanner
@@ -680,7 +713,7 @@ export function App({
         updating={selfUpdate.updating}
         onUpdate={selfUpdate.perform}
       />
-      <div className="main-row" onFocusCapture={handleViewFocus}>
+      <div className="main-row">
         <NavigationBar
           selected={selectedView}
           onSelect={handleSelectView}
@@ -706,7 +739,6 @@ export function App({
                 onFsError={flashCopyToast}
                 onPathRenamed={handlePathRenamed}
                 onPathDeleted={handlePathDeleted}
-                inactive={activeView !== "explorer"}
               />
             )}
             {selectedView === "search" && (
@@ -717,7 +749,6 @@ export function App({
                 onOpen={(file, _line) =>
                   openViewer(repoPathOfSearchFile(file), file.relPath)
                 }
-                inactive={activeView !== "search"}
               />
             )}
             {selectedView === "sourceControl" && (
@@ -727,7 +758,6 @@ export function App({
                 orgColors={orgColors}
                 orgAliases={orgAliases}
                 onOpenDiff={openDiff}
-                inactive={activeView !== "sourceControl"}
               />
             )}
             {selectedView === "notification" && (
@@ -742,15 +772,11 @@ export function App({
                     t("toast.notificationsDeleted", { count: ids.length }),
                   );
                 }}
-                inactive={activeView !== "notification"}
               />
             )}
           </aside>
         )}
-        <div
-          className={`main-area${activeView === "main" ? "" : " view-inactive"}`}
-          data-view="main"
-        >
+        <div className="main-area">
           <TabBar
             tabs={tabsState.tabs}
             activeKey={tabsState.activeKey}
@@ -763,7 +789,6 @@ export function App({
             onCloseAll={closeAllTabs}
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
-            inactive={activeView !== "main"}
             onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRevealFile={(repoPath, relPath) =>
@@ -822,7 +847,6 @@ export function App({
                 buffer={activeBuffer}
                 onTogglePreview={() => toggleViewerPreview(activeViewerKey)}
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
-                inactive={activeView !== "main"}
                 focusNonce={viewerFocusNonce}
               />
             )}
@@ -842,7 +866,6 @@ export function App({
                     .open(activeDiffBuffer.repoPath, activeDiffBuffer.relPath)
                     .catch(() => undefined)
                 }
-                inactive={activeView !== "main"}
                 focusNonce={diffFocusNonce}
               />
             )}
@@ -871,7 +894,6 @@ export function App({
               control.send({ t: "cockpitTerminal.close", cockpitTerminalId })
             }
             onAddOrg={() => setAddOrgOpen(true)}
-            inactive={activeView !== "sessions"}
             onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}

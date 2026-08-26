@@ -7,7 +7,6 @@ import type { SearchApi } from "../api/search.js";
 import { Loading } from "./Loading.js";
 import { ViewEmpty } from "./ViewEmpty.js";
 import { ViewHeader } from "./ViewHeader.js";
-import { viewClass } from "./views.js";
 
 export interface SearchViewProps {
   api: SearchApi;
@@ -21,8 +20,6 @@ export interface SearchViewProps {
    * matching file and line are passed to it.
    */
   onOpen?(file: SearchFile, line: number): void;
-  /** Apply a faint overlay when inactive. */
-  inactive?: boolean;
 }
 
 interface Options {
@@ -46,7 +43,6 @@ export function SearchView({
   orgColors = {},
   orgAliases = {},
   onOpen,
-  inactive,
 }: SearchViewProps) {
   const { t } = useTranslation();
   const [query, setQuery] = useState("");
@@ -164,7 +160,7 @@ export function SearchView({
   };
 
   return (
-    <section className={viewClass("search-view", inactive)} data-view="search">
+    <section className="search-view">
       <ViewHeader title="SEARCH" />
       <div className="search-input-row">
         <input

@@ -145,7 +145,9 @@
     "code": "コード",
     "preview": "プレビュー",
     "openFailed": "開けませんでした: {{error}}",
-    "readTimeout": "読み込みがタイムアウトしました"
+    "readTimeout": "読み込みがタイムアウトしました",
+    "dropTooLarge": "{{name}} はプレビューするには大きすぎます（最大 2 MB）",
+    "dropReadFailed": "{{name}} を読み込めませんでした"
   },
   "explorer": {
     "truncated": "一部のみ表示（多数のエントリ）",
@@ -278,7 +280,11 @@
   },
   "account": {
     "notSignedIn": "未ログイン",
-    "refreshTooltip": "アカウントを切り替えた場合、更新すると全てのセッションに反映されます",
+    "menuTooltip": "アカウントメニュー",
+    "reload": "アカウントを再読込",
+    "signInOther": "別のアカウントでログイン",
+    "signOut": "ログアウト",
+    "refreshTooltip": "アカウントを切り替えた場合、再読込すると全てのセッションに反映されます",
     "confirmTitle": "全てのセッションにアカウントを反映しますか？",
     "confirmBody": "起動中の {{count}} 件のセッションを再起動して、切り替え後のアカウントを反映します。会話は保持されます。",
     "confirmApply": "再起動して反映"

@@ -1216,86 +1216,6 @@ describe("App", () => {
     expect(listVisible()).toBe(true);
   });
 
-  it("the focused view becomes active and dims the other views", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    const { container } = render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-        viewStorage={null}
-      />,
-    );
-    act(() =>
-      control.emit({
-        t: "state.sync",
-        cockpitTerminals,
-        orgs: ["kilo"],
-        orgColors: {},
-        orgAliases: {},
-      }),
-    );
-    const mainArea = container.querySelector('[data-view="main"]');
-    const sessionList = container.querySelector('[data-view="sessions"]');
-    // Initially the main area is active (the session list is dimmed).
-    expect(mainArea?.classList.contains("view-inactive")).toBe(false);
-    expect(sessionList?.classList.contains("view-inactive")).toBe(true);
-    // When the session list gains focus, active moves to it and the main area dims.
-    act(() => (sessionList as HTMLElement).focus());
-    expect(sessionList?.classList.contains("view-inactive")).toBe(false);
-    expect(mainArea?.classList.contains("view-inactive")).toBe(true);
-  });
-
-  it("opening a file from the explorer activates the viewer and dims the explorer", async () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    const fsApi: FsApi = {
-      repos: () =>
-        Promise.resolve({
-          repos: [{ org: "org1", repo: "repo-a", path: "/ws/org1/repo-a" }],
-        }),
-      list: () =>
-        Promise.resolve({
-          entries: [{ name: "app.ts", kind: "file" }],
-          truncated: false,
-        }),
-      reveal: () => Promise.resolve(),
-      rename: (_repoPath, _path, newName) => Promise.resolve(newName),
-      delete: () => Promise.resolve(),
-    };
-    const { container } = render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-        viewStorage={null}
-      />,
-    );
-    const repoRow = await screen.findByText("repo-a");
-    await act(async () => void fireEvent.click(repoRow));
-    const fileRow = await screen.findByText("app.ts");
-
-    // The explorer holds focus before the open (the bug's precondition).
-    act(() => (fileRow.closest("button") as HTMLElement).focus());
-    const explorer = container.querySelector('[data-view="explorer"]');
-    const mainArea = container.querySelector('[data-view="main"]');
-    expect(explorer?.classList.contains("view-inactive")).toBe(false);
-
-    // Opening the file moves focus (and the active view) to the viewer.
-    await act(async () => void fireEvent.click(fileRow));
-    expect(mainArea?.classList.contains("view-inactive")).toBe(false);
-    expect(explorer?.classList.contains("view-inactive")).toBe(true);
-  });
-
   it("single selection: only one selected view is shown, and the session list stays permanently pinned", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
@@ -1440,10 +1360,8 @@ describe("App", () => {
     // The session list is the RIGHT column's content.
     expect(rightColumn.querySelector(".session-list")).not.toBeNull();
     // The default explorer view lives in the LEFT area, not the RIGHT column.
-    expect(rightColumn.querySelector('[data-view="explorer"]')).toBeNull();
-    expect(
-      container.querySelector('.left-area [data-view="explorer"]'),
-    ).not.toBeNull();
+    expect(rightColumn.querySelector(".explorer-view")).toBeNull();
+    expect(container.querySelector(".left-area .explorer-view")).not.toBeNull();
   });
 
   it("Ctrl+Alt+G switches to git and Ctrl+Alt+E switches to explorer (keyboard happy path)", () => {
@@ -1477,33 +1395,6 @@ describe("App", () => {
     );
     expect(screen.getByText("EXPLORER")).toBeTruthy();
     expect(screen.queryByText("SOURCE CONTROL")).toBeNull();
-  });
-
-  it("after a footer switch, the sole visible view does not dim", () => {
-    const control = createFakeAppControl();
-    const { session } = fakeAppSession();
-    const { container } = render(
-      <App
-        control={control}
-        session={session}
-        gitApi={fakeGitApi}
-        fsApi={fakeFsApi}
-        searchApi={fakeSearchApi}
-        filesApi={fakeFilesApi}
-        reposApi={fakeReposApi}
-        viewStorage={null}
-      />,
-    );
-    // Move focus to the session list so activeView is something other than explorer.
-    const sessionList = container.querySelector('[data-view="sessions"]');
-    act(() => (sessionList as HTMLElement).focus());
-    // Switching to git makes activeView follow to git at the same time, so it does not dim.
-    fireEvent.click(screen.getByRole("radio", { name: "ソース管理" }));
-    const sourceControlView = container.querySelector(
-      '[data-view="sourceControl"]',
-    );
-    expect(sourceControlView).not.toBeNull();
-    expect(sourceControlView?.classList.contains("view-inactive")).toBe(false);
   });
 
   it("opens the help modal with Ctrl+Alt+H", () => {

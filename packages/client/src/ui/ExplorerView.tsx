@@ -21,7 +21,6 @@ import {
   useExplorerContextMenu,
 } from "./useExplorerContextMenu.js";
 import { ViewHeader } from "./ViewHeader.js";
-import { viewClass } from "./views.js";
 
 /** Material Symbol glyph per `fileIconKind` result; color is applied in CSS via `data-icon`. */
 const FILE_ICON_GLYPH: Record<string, string> = {
@@ -81,8 +80,6 @@ export interface ExplorerViewProps {
   ): void;
   /** An entry was moved to the trash; lets the app close any open viewer tab/buffer. */
   onPathDeleted?(repoPath: string, rel: string, kind: FsEntryKind): void;
-  /** Apply a faint overlay when inactive. */
-  inactive?: boolean;
 }
 
 export function ExplorerView({
@@ -94,7 +91,6 @@ export function ExplorerView({
   onFsError,
   onPathRenamed,
   onPathDeleted,
-  inactive,
 }: ExplorerViewProps) {
   const { t } = useTranslation();
   const contextMenu = useExplorerContextMenu();
@@ -428,10 +424,7 @@ export function ExplorerView({
   };
 
   return (
-    <section
-      className={viewClass("explorer-view", inactive)}
-      data-view="explorer"
-    >
+    <section className="explorer-view">
       <ViewHeader title="EXPLORER">
         <button
           type="button"

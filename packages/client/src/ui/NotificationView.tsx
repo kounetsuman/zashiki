@@ -4,7 +4,6 @@ import { useTranslation } from "react-i18next";
 
 import { ViewEmpty } from "./ViewEmpty.js";
 import { ViewHeader } from "./ViewHeader.js";
-import { viewClass } from "./views.js";
 
 export interface NotificationViewProps {
   notifications: readonly Notification[];
@@ -14,8 +13,6 @@ export interface NotificationViewProps {
   onMarkRead(id: string): void;
   /** Deletes the given notifications (confirmed read-tab delete, single or bulk). */
   onDelete(ids: readonly string[]): void;
-  /** Apply a faint overlay when inactive. */
-  inactive?: boolean;
 }
 
 type Tab = "unread" | "read";
@@ -57,7 +54,6 @@ export function NotificationView({
   seenIds,
   onMarkRead,
   onDelete,
-  inactive,
 }: NotificationViewProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("unread");
@@ -90,10 +86,7 @@ export function NotificationView({
   };
 
   return (
-    <section
-      className={viewClass("notification-view", inactive)}
-      data-view="notification"
-    >
+    <section className="notification-view">
       <ViewHeader title="NOTIFICATION" />
       <div className="notification-tabs" role="tablist">
         <button
