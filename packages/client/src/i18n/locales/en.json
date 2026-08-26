@@ -11,7 +11,8 @@
     "cannotDuplicate": "claude is not running, so there is no session to duplicate",
     "duplicateSession": "Duplicate session",
     "cannotCopySessionId": "claude is not running, so there is no session ID to copy",
-    "copySessionId": "Copy Claude Code session ID"
+    "copySessionId": "Copy Claude Code session ID",
+    "moveToTrash": "Move to Trash"
   },
   "boot": {
     "tokenMissing": "No token found. Reopen from the URL with <code>?token=…</code> shown when the server started.",
@@ -148,7 +149,14 @@
   },
   "explorer": {
     "truncated": "Showing partial results (too many entries)",
-    "mainTree": "main"
+    "mainTree": "main",
+    "revealInFinder": "Reveal in Finder",
+    "copyPath": "Copy Path",
+    "copyRelativePath": "Copy Relative Path",
+    "rename": "Rename",
+    "delete": "Delete",
+    "deleteConfirmTitle": "Move to Trash",
+    "deleteConfirmBody": "Move \"{{name}}\" to the trash?"
   },
   "help": {
     "search": "Search help",

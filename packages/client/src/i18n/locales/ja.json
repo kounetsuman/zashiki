@@ -11,7 +11,8 @@
     "cannotDuplicate": "claude 未起動のため複製できるセッションがありません",
     "duplicateSession": "セッションを複製",
     "cannotCopySessionId": "claude 未起動のためコピーするセッションIDがありません",
-    "copySessionId": "Claude Code セッションIDをコピー"
+    "copySessionId": "Claude Code セッションIDをコピー",
+    "moveToTrash": "ゴミ箱に移動"
   },
   "boot": {
     "tokenMissing": "トークンがありません。サーバ起動時に表示される<code>?token=…</code> 付き URL から開き直してください。",
@@ -148,7 +149,14 @@
   },
   "explorer": {
     "truncated": "一部のみ表示（多数のエントリ）",
-    "mainTree": "main"
+    "mainTree": "main",
+    "revealInFinder": "Finderで表示",
+    "copyPath": "パスをコピー",
+    "copyRelativePath": "相対パスをコピー",
+    "rename": "名前を変更",
+    "delete": "削除",
+    "deleteConfirmTitle": "ゴミ箱に移動",
+    "deleteConfirmBody": "「{{name}}」をゴミ箱に移動しますか？"
   },
   "help": {
     "search": "ヘルプを検索",

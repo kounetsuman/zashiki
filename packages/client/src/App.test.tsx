@@ -97,6 +97,9 @@ const fakeGitApi: GitApi = {
 const fakeFsApi: FsApi = {
   repos: () => Promise.resolve({ repos: [] }),
   list: () => Promise.resolve({ entries: [], truncated: false }),
+  reveal: () => Promise.resolve(),
+  rename: (_repoPath, _path, newName) => Promise.resolve(newName),
+  delete: () => Promise.resolve(),
 };
 
 const fakeSearchApi: SearchApi = {
@@ -1261,6 +1264,9 @@ describe("App", () => {
           entries: [{ name: "app.ts", kind: "file" }],
           truncated: false,
         }),
+      reveal: () => Promise.resolve(),
+      rename: (_repoPath, _path, newName) => Promise.resolve(newName),
+      delete: () => Promise.resolve(),
     };
     const { container } = render(
       <App

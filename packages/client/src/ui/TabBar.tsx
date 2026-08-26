@@ -47,6 +47,14 @@ export interface TabBarProps {
    * The copy menu item is hidden when unspecified.
    */
   onCopySessionId?(cockpitTerminalId: string): void;
+  /** Reveal a viewer tab's file in the OS file manager. Menu item hidden when unspecified. */
+  onRevealFile?(repoPath: string, relPath: string): void;
+  /** Copy a viewer tab's absolute path. Menu item hidden when unspecified. */
+  onCopyFilePath?(repoPath: string, relPath: string): void;
+  /** Copy a viewer tab's repo-relative path. Menu item hidden when unspecified. */
+  onCopyFileRelativePath?(repoPath: string, relPath: string): void;
+  /** Commits an inline rename of a viewer tab's file. Rename is disabled when unspecified. */
+  onRenameFile?(repoPath: string, relPath: string, newName: string): void;
 }
 
 /**
@@ -71,15 +79,26 @@ export function TabBar({
   inactive,
   onDuplicate,
   onCopySessionId,
+  onRevealFile,
+  onCopyFilePath,
+  onCopyFileRelativePath,
+  onRenameFile,
 }: TabBarProps) {
   const { t } = useTranslation();
-  const rename = useTabRename(tabs, cockpitTerminals, onRename);
+  const rename = useTabRename(tabs, cockpitTerminals, onRename, onRenameFile);
   const drag = useTabDrag(onReorder);
+  const sessionMenuItems =
+    (onDuplicate !== undefined ? 1 : 0) +
+    (onCopySessionId !== undefined ? 1 : 0);
+  const viewerMenuItems =
+    (onRevealFile !== undefined ? 1 : 0) +
+    (onCopyFilePath !== undefined ? 1 : 0) +
+    (onCopyFileRelativePath !== undefined ? 1 : 0) +
+    (onRenameFile !== undefined ? 1 : 0);
   const contextMenu = useTabContextMenu(
     1 +
       (onCloseAll !== undefined ? 1 : 0) +
-      (onDuplicate !== undefined ? 1 : 0) +
-      (onCopySessionId !== undefined ? 1 : 0),
+      Math.max(sessionMenuItems, viewerMenuItems),
   );
 
   // Scroll the tab into view the moment it becomes active (ref fires on attach).
@@ -161,6 +180,32 @@ export function TabBar({
           onCloseAll={onCloseAll}
           onDuplicate={onDuplicate}
           onCopySessionId={onCopySessionId}
+          onReveal={
+            onRevealFile === undefined
+              ? undefined
+              : (f) => onRevealFile(f.repoPath, f.relPath)
+          }
+          onCopyPath={
+            onCopyFilePath === undefined
+              ? undefined
+              : (f) => onCopyFilePath(f.repoPath, f.relPath)
+          }
+          onCopyRelativePath={
+            onCopyFileRelativePath === undefined
+              ? undefined
+              : (f) => onCopyFileRelativePath(f.repoPath, f.relPath)
+          }
+          onRename={
+            onRenameFile === undefined
+              ? undefined
+              : (key, f) =>
+                  rename.startFileEdit(
+                    key,
+                    f.repoPath,
+                    f.relPath,
+                    f.relPath.split("/").pop() ?? f.relPath,
+                  )
+          }
         />
       )}
     </div>

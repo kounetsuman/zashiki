@@ -26,6 +26,17 @@ export function viewerKey(repoPath: string, relPath: string): string {
   return `${repoPath}\n${relPath}`;
 }
 
+/** Inverse of viewerKey: splits a viewer tab id back into its repoPath and repo-relative path. */
+export function splitViewerKey(key: string): {
+  repoPath: string;
+  relPath: string;
+} {
+  const nl = key.indexOf("\n");
+  return nl < 0
+    ? { repoPath: key, relPath: "" }
+    : { repoPath: key.slice(0, nl), relPath: key.slice(nl + 1) };
+}
+
 /** Markdown-family extensions (preview targets). */
 export function isMarkdown(relPath: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(relPath);
@@ -98,4 +109,45 @@ export function closeBuffer(bufs: ViewerBuffers, key: string): ViewerBuffers {
   if (bufs[key] === undefined) return bufs;
   const { [key]: _removed, ...rest } = bufs;
   return rest;
+}
+
+/** Whether a buffer's `relPath` is the entry `rel` itself or lives under it (a directory subtree). */
+function isRelUnder(relPath: string, rel: string): boolean {
+  return relPath === rel || relPath.startsWith(`${rel}/`);
+}
+
+/** Keys of the buffers in `repoPath` at `rel` or under it (a file, or a directory and its subtree). */
+export function viewerKeysUnderPath(
+  bufs: ViewerBuffers,
+  repoPath: string,
+  rel: string,
+): string[] {
+  return Object.entries(bufs)
+    .filter(([, b]) => b.repoPath === repoPath && isRelUnder(b.relPath, rel))
+    .map(([key]) => key);
+}
+
+export interface RenamedViewer {
+  /** Current key (before the rename). */
+  key: string;
+  /** repo-relative path after applying the rename. */
+  newRelPath: string;
+}
+
+/**
+ * For a rename of `oldRel` -> `newRel` in `repoPath`, the affected buffers and each one's new
+ * repo-relative path (a file matches the exact buffer; a directory remaps its whole subtree).
+ */
+export function viewersAffectedByRename(
+  bufs: ViewerBuffers,
+  repoPath: string,
+  oldRel: string,
+  newRel: string,
+): RenamedViewer[] {
+  return Object.entries(bufs)
+    .filter(([, b]) => b.repoPath === repoPath && isRelUnder(b.relPath, oldRel))
+    .map(([key, b]) => ({
+      key,
+      newRelPath: newRel + b.relPath.slice(oldRel.length),
+    }));
 }

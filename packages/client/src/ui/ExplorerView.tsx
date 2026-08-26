@@ -1,9 +1,12 @@
 import {
   type FsEntry,
+  type FsEntryKind,
   type FsRepo,
   fileIconKind,
   groupReposByRepository,
+  isSinglePathSegment,
   joinRepoRelative,
+  parentRelDir,
   resolveOrgColor,
   resolveOrgName,
 } from "@zashiki/shared";
@@ -11,6 +14,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { FsApi } from "../api/fs.js";
+import { ConfirmDialog } from "./ConfirmDialog.js";
+import { ExplorerContextMenu } from "./ExplorerContextMenu.js";
+import {
+  type ExplorerMenuTarget,
+  useExplorerContextMenu,
+} from "./useExplorerContextMenu.js";
 import { ViewHeader } from "./ViewHeader.js";
 import { viewClass } from "./views.js";
 
@@ -59,6 +68,19 @@ export interface ExplorerViewProps {
    * While this is unfinished, selection only is supported and a no-op is passed.
    */
   onOpenFile?(repoPath: string, file: string): void;
+  /** Copy text to the clipboard and flash a toast (path copies from the context menu). */
+  onCopyText?(text: string): void;
+  /** Surface a filesystem-operation failure (reveal/rename/delete) to the user. */
+  onFsError?(message: string): void;
+  /** An entry was renamed; lets the app retarget any open viewer tab/buffer. */
+  onPathRenamed?(
+    repoPath: string,
+    oldRel: string,
+    newRel: string,
+    kind: FsEntryKind,
+  ): void;
+  /** An entry was moved to the trash; lets the app close any open viewer tab/buffer. */
+  onPathDeleted?(repoPath: string, rel: string, kind: FsEntryKind): void;
   /** Apply a faint overlay when inactive. */
   inactive?: boolean;
 }
@@ -68,9 +90,21 @@ export function ExplorerView({
   orgColors = {},
   orgAliases = {},
   onOpenFile,
+  onCopyText,
+  onFsError,
+  onPathRenamed,
+  onPathDeleted,
   inactive,
 }: ExplorerViewProps) {
   const { t } = useTranslation();
+  const contextMenu = useExplorerContextMenu();
+  const [renaming, setRenaming] = useState<ExplorerMenuTarget | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  // Guards the unmount blur from re-committing (or double-firing) after Enter/Escape.
+  const renameDoneRef = useRef(false);
+  const [deleteTarget, setDeleteTarget] = useState<ExplorerMenuTarget | null>(
+    null,
+  );
   const [repos, setRepos] = useState<FsRepo[]>([]);
   const [rootError, setRootError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -160,6 +194,100 @@ export function ExplorerView({
     onOpenFile?.(repoPath, file);
   };
 
+  const reveal = (target: ExplorerMenuTarget): void => {
+    void api
+      .reveal(target.repoPath, target.relPath)
+      .catch((err: unknown) => onFsError?.(String(err)));
+  };
+
+  const copyPath = (target: ExplorerMenuTarget): void => {
+    onCopyText?.(`${target.repoPath}/${target.relPath}`);
+  };
+
+  const copyRelativePath = (target: ExplorerMenuTarget): void => {
+    onCopyText?.(target.relPath);
+  };
+
+  const startRename = (target: ExplorerMenuTarget): void => {
+    renameDoneRef.current = false;
+    setRenaming(target);
+    setRenameDraft(target.name);
+  };
+
+  const cancelRename = (): void => {
+    renameDoneRef.current = true;
+    setRenaming(null);
+  };
+
+  const commitRename = useCallback(async (): Promise<void> => {
+    const target = renaming;
+    if (renameDoneRef.current || target === null) return;
+    renameDoneRef.current = true;
+    setRenaming(null);
+    const next = renameDraft.trim();
+    if (next === "" || next === target.name || !isSinglePathSegment(next)) {
+      return;
+    }
+    try {
+      const newRel = await api.rename(target.repoPath, target.relPath, next);
+      await loadDir(target.repoPath, parentRelDir(target.relPath));
+      setSelected((cur) =>
+        cur === dirKey(target.repoPath, target.relPath)
+          ? dirKey(target.repoPath, newRel)
+          : cur,
+      );
+      onPathRenamed?.(target.repoPath, target.relPath, newRel, target.kind);
+    } catch (err) {
+      onFsError?.(String(err));
+    }
+  }, [renaming, renameDraft, api, loadDir, onPathRenamed, onFsError]);
+
+  const confirmDelete = useCallback(async (): Promise<void> => {
+    const target = deleteTarget;
+    if (target === null) return;
+    setDeleteTarget(null);
+    try {
+      await api.delete(target.repoPath, target.relPath);
+      await loadDir(target.repoPath, parentRelDir(target.relPath));
+      onPathDeleted?.(target.repoPath, target.relPath, target.kind);
+    } catch (err) {
+      onFsError?.(String(err));
+    }
+  }, [deleteTarget, api, loadDir, onPathDeleted, onFsError]);
+
+  const renameInputFor = (depth: number) => (
+    <div
+      className="view-row explorer-row explorer-rename-row"
+      style={{ paddingLeft: `${depth * 12 + 8}px` }}
+    >
+      <span className="explorer-arrow-spacer" aria-hidden="true" />
+      <input
+        // biome-ignore lint/a11y/noAutofocus: the rename input opens on an explicit menu action and should take focus
+        autoFocus
+        className="explorer-rename-input"
+        aria-label={t("explorer.rename")}
+        maxLength={255}
+        value={renameDraft}
+        onChange={(e) => setRenameDraft(e.target.value)}
+        onBlur={() => void commitRename()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            void commitRename();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancelRename();
+          }
+        }}
+      />
+    </div>
+  );
+
+  const isRenaming = (repoPath: string, rel: string): boolean =>
+    renaming !== null &&
+    renaming.repoPath === repoPath &&
+    renaming.relPath === rel;
+
   const renderEntries = (repoPath: string, dir: string, depth: number) => {
     const key = dirKey(repoPath, dir);
     const data = dirs.get(key);
@@ -173,33 +301,47 @@ export function ExplorerView({
         {data.entries.map((e) => {
           const childDir = joinRepoRelative(dir, e.name);
           const childKey = dirKey(repoPath, childDir);
+          const openEntryMenu = contextMenu.openMenu({
+            repoPath,
+            relPath: childDir,
+            kind: e.kind,
+            name: e.name,
+          });
           if (e.kind === "dir") {
             const exp = expanded.has(childKey);
             return (
               <div key={childKey}>
-                <button
-                  type="button"
-                  className="view-row view-row-hover explorer-row explorer-dir"
-                  style={{ paddingLeft: `${depth * 12 + 8}px` }}
-                  onClick={() => toggleDir(repoPath, childDir)}
-                >
-                  <span
-                    className="view-arrow material-symbols-outlined"
-                    aria-hidden="true"
+                {isRenaming(repoPath, childDir) ? (
+                  renameInputFor(depth)
+                ) : (
+                  <button
+                    type="button"
+                    className="view-row view-row-hover explorer-row explorer-dir"
+                    style={{ paddingLeft: `${depth * 12 + 8}px` }}
+                    onClick={() => toggleDir(repoPath, childDir)}
+                    onContextMenu={openEntryMenu}
                   >
-                    {exp ? "expand_more" : "chevron_right"}
-                  </span>{" "}
-                  <span
-                    className="explorer-icon material-symbols-outlined"
-                    aria-hidden="true"
-                  >
-                    {exp ? "folder_open" : "folder"}
-                  </span>{" "}
-                  <span className="explorer-name">{e.name}</span>
-                </button>
+                    <span
+                      className="view-arrow material-symbols-outlined"
+                      aria-hidden="true"
+                    >
+                      {exp ? "expand_more" : "chevron_right"}
+                    </span>{" "}
+                    <span
+                      className="explorer-icon material-symbols-outlined"
+                      aria-hidden="true"
+                    >
+                      {exp ? "folder_open" : "folder"}
+                    </span>{" "}
+                    <span className="explorer-name">{e.name}</span>
+                  </button>
+                )}
                 {exp && renderEntries(repoPath, childDir, depth + 1)}
               </div>
             );
+          }
+          if (isRenaming(repoPath, childDir)) {
+            return <div key={childKey}>{renameInputFor(depth)}</div>;
           }
           return (
             <button
@@ -214,6 +356,7 @@ export function ExplorerView({
               title={childDir}
               data-icon={fileIconKind(e.name)}
               onClick={() => clickFile(repoPath, childDir)}
+              onContextMenu={openEntryMenu}
             >
               <span className="explorer-arrow-spacer" aria-hidden="true" />{" "}
               <span
@@ -342,6 +485,26 @@ export function ExplorerView({
           );
         })}
       </div>
+      {contextMenu.menu !== null && (
+        <ExplorerContextMenu
+          menu={contextMenu.menu}
+          closeMenu={contextMenu.closeMenu}
+          onReveal={reveal}
+          onCopyPath={copyPath}
+          onCopyRelativePath={copyRelativePath}
+          onRename={startRename}
+          onDelete={setDeleteTarget}
+        />
+      )}
+      {deleteTarget !== null && (
+        <ConfirmDialog
+          title={t("explorer.deleteConfirmTitle")}
+          message={t("explorer.deleteConfirmBody", { name: deleteTarget.name })}
+          confirmLabel={t("common.moveToTrash")}
+          onConfirm={() => void confirmDelete()}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </section>
   );
 }

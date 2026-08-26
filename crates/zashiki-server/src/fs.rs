@@ -112,6 +112,77 @@ pub fn list_within_repo(
     list_dir(&abs, limit).map_err(|e| status_for_fs_error(&e))
 }
 
+/// Whether `name` is a single path segment usable as a rename target (mirrors the shared
+/// `isSinglePathSegment`): non-empty, not `.`/`..`, and free of path separators / control characters.
+pub fn is_single_path_segment(name: &str) -> bool {
+    if name.is_empty() || name == "." || name == ".." {
+        return false;
+    }
+    !name
+        .chars()
+        .any(|c| c == '/' || c == '\\' || (c as u32) < 0x20)
+}
+
+/// Repo-relative parent directory of `rel` ("" = repo root). Mirrors the shared `parentRelDir`.
+fn parent_rel_dir(rel: &str) -> &str {
+    let trimmed = rel.trim_end_matches('/');
+    match trimmed.rfind('/') {
+        Some(i) => &trimmed[..i],
+        None => "",
+    }
+}
+
+/// Resolves a repo entry to its real absolute path (realpath containment), for revealing it in the OS
+/// file manager. Blocking; callers run it via spawn_blocking.
+pub fn reveal_target(repo_path: &str, rel_path: &str) -> Result<PathBuf, (StatusCode, String)> {
+    resolve_within_repo(repo_path, rel_path)
+}
+
+/// Renames an entry within its parent directory. Validates the new name is a single segment, confirms the
+/// source resolves inside the repo, and refuses to clobber an existing entry. Returns the new repo-relative
+/// path. Blocking; callers run it via spawn_blocking.
+pub fn rename_within_repo(
+    repo_path: &str,
+    rel_path: &str,
+    new_name: &str,
+) -> Result<String, (StatusCode, String)> {
+    if !is_single_path_segment(new_name) {
+        return Err((StatusCode::BAD_REQUEST, "invalid new name".to_string()));
+    }
+    let real = resolve_within_repo(repo_path, rel_path)?;
+    let parent = real.parent().ok_or((
+        StatusCode::BAD_REQUEST,
+        "cannot rename the repo root".to_string(),
+    ))?;
+    let dest = parent.join(new_name);
+    if dest.exists() {
+        return Err((
+            StatusCode::CONFLICT,
+            "an entry with that name already exists".to_string(),
+        ));
+    }
+    std::fs::rename(&real, &dest).map_err(|e| status_for_fs_error(&e))?;
+    let parent_rel = parent_rel_dir(rel_path);
+    let new_rel = if parent_rel.is_empty() {
+        new_name.to_string()
+    } else {
+        format!("{parent_rel}/{new_name}")
+    };
+    Ok(new_rel)
+}
+
+/// Moves an entry to the OS trash after confirming it resolves inside the repo. Blocking; callers run it
+/// via spawn_blocking.
+pub fn delete_to_trash(repo_path: &str, rel_path: &str) -> Result<(), (StatusCode, String)> {
+    let real = resolve_within_repo(repo_path, rel_path)?;
+    trash::delete(&real).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("failed to move to trash: {e}"),
+        )
+    })
+}
+
 /// Splits an in-progress path input into (parent, prefix) for the org-add browse endpoint. A trailing
 /// `/` lists that directory (empty prefix); otherwise the segment after the last `/` is the prefix to
 /// match. An input with no `/` yields an empty parent (the caller treats that as "nothing to browse yet").
@@ -222,6 +293,92 @@ mod tests {
         let (entries, truncated) = list_dir(root.path(), 3).unwrap();
         assert_eq!(entries.len(), 3);
         assert!(truncated);
+    }
+
+    #[test]
+    fn single_path_segment_matches_shared_rule() {
+        assert!(is_single_path_segment("readme.md"));
+        assert!(is_single_path_segment(".gitignore"));
+        assert!(!is_single_path_segment(""));
+        assert!(!is_single_path_segment("."));
+        assert!(!is_single_path_segment(".."));
+        assert!(!is_single_path_segment("a/b"));
+        assert!(!is_single_path_segment("a\\b"));
+    }
+
+    #[test]
+    fn rename_moves_within_parent_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::create_dir(root.path().join("sub")).unwrap();
+        std::fs::write(root.path().join("sub/old.txt"), "x").unwrap();
+        let new_rel = rename_within_repo(repo, "sub/old.txt", "new.txt").unwrap();
+        assert_eq!(new_rel, "sub/new.txt");
+        assert!(!root.path().join("sub/old.txt").exists());
+        assert!(root.path().join("sub/new.txt").exists());
+    }
+
+    #[test]
+    fn rename_rejects_non_segment_name() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::write(root.path().join("a.txt"), "x").unwrap();
+        for bad in ["../escape", "a/b", "..", "."] {
+            let (code, _) = rename_within_repo(repo, "a.txt", bad).unwrap_err();
+            assert_eq!(code, StatusCode::BAD_REQUEST);
+        }
+    }
+
+    #[test]
+    fn rename_refuses_to_clobber_existing() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::write(root.path().join("a.txt"), "a").unwrap();
+        std::fs::write(root.path().join("b.txt"), "b").unwrap();
+        let (code, _) = rename_within_repo(repo, "a.txt", "b.txt").unwrap_err();
+        assert_eq!(code, StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn rename_missing_source_is_not_found() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        let (code, _) = rename_within_repo(repo, "nope.txt", "new.txt").unwrap_err();
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_rejects_symlink_escape() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "s").unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("secret.txt"),
+            root.path().join("link.txt"),
+        )
+        .unwrap();
+        let repo = root.path().to_str().unwrap();
+        let (code, _) = rename_within_repo(repo, "link.txt", "x.txt").unwrap_err();
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn delete_missing_entry_is_not_found() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        let (code, _) = delete_to_trash(repo, "nope.txt").unwrap_err();
+        assert_eq!(code, StatusCode::NOT_FOUND);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn delete_moves_entry_to_trash() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::write(root.path().join("trash-me.txt"), "x").unwrap();
+        delete_to_trash(repo, "trash-me.txt").unwrap();
+        assert!(!root.path().join("trash-me.txt").exists());
     }
 
     #[test]

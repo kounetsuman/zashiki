@@ -81,6 +81,33 @@ pub(crate) fn spawn_editor(editor: &str, repo_path: &str, file: &str) -> std::io
         .map(|_| ())
 }
 
+/// Reveals `abs` in the OS file manager, selecting the entry where the platform supports it (macOS
+/// `open -R`, Windows `explorer /select,`; other Unix opens the parent directory via `xdg-open` since
+/// no portable "select" exists). Does not wait for exit. `Err` means the launcher could not be spawned.
+pub(crate) fn spawn_reveal(abs: &std::path::Path) -> std::io::Result<()> {
+    use std::process::{Command, Stdio};
+    let mut command = if cfg!(target_os = "macos") {
+        let mut c = Command::new("open");
+        c.arg("-R").arg(abs);
+        c
+    } else if cfg!(target_os = "windows") {
+        let mut c = Command::new("explorer");
+        c.arg(format!("/select,{}", abs.display()));
+        c
+    } else {
+        let target = abs.parent().unwrap_or(abs);
+        let mut c = Command::new("xdg-open");
+        c.arg(target);
+        c
+    };
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map(|_| ())
+}
+
 /// Scans repos.conf (run under spawn_blocking since it is blocking I/O). The result is reused only for the
 /// duration of SCAN_CACHE_TTL (shared by file read/poll, explorer, git, and search to avoid an FS walk each time).
 pub(crate) async fn scan(state: &AppState) -> Vec<repos::ScannedRepo> {
