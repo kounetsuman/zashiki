@@ -86,7 +86,7 @@ export function NotificationView({
   };
 
   return (
-    <section className="notification-view">
+    <section className="notification-view" data-view="notification">
       <ViewHeader title="NOTIFICATION" />
       <div className="notification-tabs" role="tablist">
         <button

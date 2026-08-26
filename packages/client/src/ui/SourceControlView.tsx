@@ -134,7 +134,7 @@ export function SourceControlView({
   };
 
   return (
-    <section className="git-view">
+    <section className="git-view" data-view="sourceControl">
       <ViewHeader title="SOURCE CONTROL" />
       {error !== null && <div className="git-error">{error}</div>}
       {error === null && loading && <Loading />}

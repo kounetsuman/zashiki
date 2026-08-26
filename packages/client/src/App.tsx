@@ -776,7 +776,7 @@ export function App({
             )}
           </aside>
         )}
-        <div className="main-area">
+        <div className="main-area" data-view="main">
           <TabBar
             tabs={tabsState.tabs}
             activeKey={tabsState.activeKey}

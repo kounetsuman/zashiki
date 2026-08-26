@@ -424,7 +424,7 @@ export function ExplorerView({
   };
 
   return (
-    <section className="explorer-view">
+    <section className="explorer-view" data-view="explorer">
       <ViewHeader title="EXPLORER">
         <button
           type="button"

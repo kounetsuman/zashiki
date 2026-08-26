@@ -160,7 +160,7 @@ export function SearchView({
   };
 
   return (
-    <section className="search-view">
+    <section className="search-view" data-view="search">
       <ViewHeader title="SEARCH" />
       <div className="search-input-row">
         <input
