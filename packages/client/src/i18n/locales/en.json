@@ -272,7 +272,11 @@
   },
   "account": {
     "notSignedIn": "Not signed in",
-    "refreshTooltip": "Switching accounts? Refresh to apply it to all sessions.",
+    "menuTooltip": "Account menu",
+    "reload": "Reload account",
+    "signInOther": "Sign in with a different account",
+    "signOut": "Sign out",
+    "refreshTooltip": "Switching accounts? Reload to apply it to all sessions.",
     "confirmTitle": "Apply account to all sessions?",
     "confirmBody": "{{count}} running session(s) will be restarted to apply the switched account. Their conversations are kept.",
     "confirmApply": "Restart & apply"

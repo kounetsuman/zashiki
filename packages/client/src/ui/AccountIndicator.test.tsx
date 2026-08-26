@@ -6,6 +6,32 @@ import { AccountIndicator } from "./AccountIndicator.js";
 
 afterEach(cleanup);
 
+function renderIndicator(
+  overrides: Partial<{
+    email: string | null;
+    runningCount: number;
+    onRefresh: (restartSessions: boolean) => void;
+    onLogin: () => void;
+    onLogout: () => void;
+  }> = {},
+) {
+  const props = {
+    email: "user@example.com",
+    runningCount: 0,
+    onRefresh: vi.fn(),
+    onLogin: vi.fn(),
+    onLogout: vi.fn(),
+    ...overrides,
+  };
+  render(<AccountIndicator {...props} />);
+  return props;
+}
+
+/** Opens the account menu by clicking the email button. */
+function openMenu(email = "user@example.com"): void {
+  fireEvent.click(screen.getByText(email));
+}
+
 describe("AccountIndicator", () => {
   it("shows the email, or a not-signed-in label when absent", () => {
     const { rerender } = render(
@@ -13,6 +39,8 @@ describe("AccountIndicator", () => {
         email="user@example.com"
         runningCount={0}
         onRefresh={() => undefined}
+        onLogin={() => undefined}
+        onLogout={() => undefined}
       />,
     );
     expect(screen.getByText("user@example.com")).toBeTruthy();
@@ -22,48 +50,48 @@ describe("AccountIndicator", () => {
         email={null}
         runningCount={0}
         onRefresh={() => undefined}
+        onLogin={() => undefined}
+        onLogout={() => undefined}
       />,
     );
     expect(screen.getByText("未ログイン")).toBeTruthy();
   });
 
-  it("carries the switch-account tooltip on the refresh button", () => {
-    render(
-      <AccountIndicator
-        email="user@example.com"
-        runningCount={0}
-        onRefresh={() => undefined}
-      />,
-    );
-    expect(screen.getByRole("button", { name: "更新" }).title).toBe(
-      "アカウントを切り替えた場合、更新すると全てのセッションに反映されます",
-    );
+  it("opens the menu only after clicking the email", () => {
+    renderIndicator();
+    expect(screen.queryByRole("menu")).toBeNull();
+    openMenu();
+    expect(screen.getByRole("menu")).toBeTruthy();
+    expect(screen.getByText("別のアカウントでログイン")).toBeTruthy();
   });
 
-  it("refreshes without a dialog when no sessions are running", () => {
-    const onRefresh = vi.fn();
-    render(
-      <AccountIndicator
-        email="user@example.com"
-        runningCount={0}
-        onRefresh={onRefresh}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "更新" }));
+  it("starts login and closes the menu", () => {
+    const { onLogin } = renderIndicator();
+    openMenu();
+    fireEvent.click(screen.getByText("別のアカウントでログイン"));
+    expect(onLogin).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("signs out", () => {
+    const { onLogout } = renderIndicator();
+    openMenu();
+    fireEvent.click(screen.getByText("ログアウト"));
+    expect(onLogout).toHaveBeenCalledOnce();
+  });
+
+  it("reloads without a dialog when no sessions are running", () => {
+    const { onRefresh } = renderIndicator({ runningCount: 0 });
+    openMenu();
+    fireEvent.click(screen.getByText("アカウントを再読込"));
     expect(onRefresh).toHaveBeenCalledExactlyOnceWith(false);
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("confirms before restarting when sessions are running", () => {
-    const onRefresh = vi.fn();
-    render(
-      <AccountIndicator
-        email="user@example.com"
-        runningCount={2}
-        onRefresh={onRefresh}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "更新" }));
+    const { onRefresh } = renderIndicator({ runningCount: 2 });
+    openMenu();
+    fireEvent.click(screen.getByText("アカウントを再読込"));
     expect(onRefresh).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeTruthy();
 

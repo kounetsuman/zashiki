@@ -164,6 +164,8 @@ describe("clientMessageSchema", () => {
     [{ t: "update.perform" }],
     [{ t: "account.refresh", restartSessions: true }],
     [{ t: "account.refresh", restartSessions: false }],
+    [{ t: "account.login" }],
+    [{ t: "account.logout" }],
   ])("accepts: %j", (msg) => {
     expect(clientMessageSchema.parse(msg)).toEqual(msg);
   });

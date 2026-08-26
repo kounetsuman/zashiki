@@ -234,6 +234,13 @@ pub enum ClientMessage {
     /// Cockpit Terminals exist).
     #[serde(rename = "account.refresh", rename_all = "camelCase")]
     AccountRefresh { restart_sessions: bool },
+    /// Start the interactive `claude auth login` (browser OAuth) to sign in or switch accounts; on
+    /// completion the server re-reads and broadcasts `account.status`.
+    #[serde(rename = "account.login")]
+    AccountLogin,
+    /// Sign out via `claude auth logout`, then re-read and broadcast `account.status`.
+    #[serde(rename = "account.logout")]
+    AccountLogout,
 }
 
 /// Result of an on-demand update check, sent only to the requester so SETTINGS can show feedback.
@@ -906,6 +913,18 @@ mod tests {
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg, ClientMessage::AccountRefresh { restart_sessions: true });
         assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn account_login_and_logout_roundtrip_and_match_wire() {
+        for (json, want) in [
+            (r#"{"t":"account.login"}"#, ClientMessage::AccountLogin),
+            (r#"{"t":"account.logout"}"#, ClientMessage::AccountLogout),
+        ] {
+            let msg: ClientMessage = serde_json::from_str(json).unwrap();
+            assert_eq!(msg, want);
+            assert_eq!(to_json(&msg), json);
+        }
     }
 
     #[test]
