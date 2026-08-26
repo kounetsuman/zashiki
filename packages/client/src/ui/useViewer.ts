@@ -6,7 +6,10 @@ import {
   bufferLoaded,
   bufferTogglePreview,
   closeBuffer as dropBuffer,
+  externalViewerKey,
   openBuffer,
+  openExternalBuffer,
+  shouldPollBuffer,
   type ViewerBuffers,
   viewerKey,
 } from "../viewer/viewer-model.js";
@@ -28,6 +31,8 @@ export interface Viewer {
   buffers: ViewerBuffers;
   /** Ensures a buffer for the file (firing a read only when new) and returns its key. */
   ensureBuffer(repoPath: string, relPath: string): string;
+  /** Opens a dropped file from content already in hand (no repo read) and returns its key. */
+  openExternal(name: string, content: string): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
   /** Absolute path of the buffer at key, or null when it is gone. */
@@ -91,6 +96,11 @@ export function useViewer(
     [loadFile],
   );
 
+  const openExternal = useCallback((name: string, content: string): string => {
+    setBuffers((prev) => openExternalBuffer(prev, name, content));
+    return externalViewerKey(name);
+  }, []);
+
   const closeBuffer = useCallback((key: string): void => {
     setBuffers((prev) => dropBuffer(prev, key));
   }, []);
@@ -101,7 +111,8 @@ export function useViewer(
 
   const pathOf = useCallback((key: string): string | null => {
     const buf = buffersRef.current[key];
-    return buf === undefined ? null : `${buf.repoPath}/${buf.relPath}`;
+    if (buf === undefined) return null;
+    return buf.external ? buf.relPath : `${buf.repoPath}/${buf.relPath}`;
   }, []);
 
   useEffect(() => {
@@ -111,7 +122,7 @@ export function useViewer(
     const tick = (): void => {
       if (inflight) return;
       const buf = buffersRef.current[key];
-      if (buf === undefined) return;
+      if (buf === undefined || !shouldPollBuffer(buf)) return;
       inflight = true;
       void loadFile(key, buf.repoPath, buf.relPath, true).finally(() => {
         inflight = false;
@@ -121,5 +132,12 @@ export function useViewer(
     return () => window.clearInterval(id);
   }, [activeViewerKey, loadFile]);
 
-  return { buffers, ensureBuffer, closeBuffer, togglePreview, pathOf };
+  return {
+    buffers,
+    ensureBuffer,
+    openExternal,
+    closeBuffer,
+    togglePreview,
+    pathOf,
+  };
 }

@@ -144,7 +144,9 @@
     "code": "Code",
     "preview": "Preview",
     "openFailed": "Could not open: {{error}}",
-    "readTimeout": "Reading timed out"
+    "readTimeout": "Reading timed out",
+    "dropTooLarge": "{{name}} is too large to preview (max 2 MB)",
+    "dropReadFailed": "Could not read {{name}}"
   },
   "explorer": {
     "truncated": "Showing partial results (too many entries)",
