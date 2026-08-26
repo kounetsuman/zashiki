@@ -15,7 +15,6 @@ import { useRowRename } from "./useRowRename.js";
 import { useSessionContextMenu } from "./useSessionContextMenu.js";
 import { useSessionListFocus } from "./useSessionListFocus.js";
 import { ViewHeader } from "./ViewHeader.js";
-import { viewClass } from "./views.js";
 
 export interface CockpitTerminalListViewProps {
   cockpitTerminals: CockpitTerminalInfo[];
@@ -46,8 +45,6 @@ export interface CockpitTerminalListViewProps {
    * guidance is not shown (it would be misleading if the 0-org state is actually caused by the disconnect).
    */
   connected?: boolean;
-  /** Apply a faint overlay when inactive. */
-  inactive?: boolean;
   /**
    * Duplicate the target session into a new independent cockpit terminal (forks the Claude session).
    * If omitted, the item is not shown in the row menu.
@@ -87,7 +84,6 @@ export function CockpitTerminalListView({
   onFocusTerminal,
   conversationTitles = {},
   connected = true,
-  inactive,
   onDuplicate,
   onCopySessionId,
   onRename,
@@ -194,8 +190,7 @@ export function CockpitTerminalListView({
 
   return (
     <aside
-      className={viewClass("session-list", inactive)}
-      data-view="sessions"
+      className="session-list"
       aria-label={t("sessionList.ariaLabel")}
       // biome-ignore lint/a11y/noNoninteractiveTabindex: receiver for the keybindings (Ctrl-N/X) when the view is focused
       tabIndex={0}

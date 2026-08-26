@@ -52,14 +52,6 @@ export const VIEW_DEFS: readonly ViewDef[] = [
 export const DEFAULT_PANEL: ViewId = VIEW_DEFS[0]?.id ?? "explorer";
 
 /**
- * Builds the view root's className. When inactive, adds view-inactive for the faint overlay.
- * Shared across all view components.
- */
-export function viewClass(base: string, inactive?: boolean): string {
-  return inactive === true ? `${base} view-inactive` : base;
-}
-
-/**
  * Clamps the context menu's position within the viewport (prevents overflow at the right/bottom edges).
  * Estimates height from the item count (roughly 28px per item + padding). Shared by the SESSION LIST
  * row/org menu and TabBar's tab menu (aligns clamp behavior across all three paths).

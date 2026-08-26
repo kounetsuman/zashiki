@@ -12,7 +12,6 @@ import { useTranslation } from "react-i18next";
 
 import type { FsApi } from "../api/fs.js";
 import { ViewHeader } from "./ViewHeader.js";
-import { viewClass } from "./views.js";
 
 /** Material Symbol glyph per `fileIconKind` result; color is applied in CSS via `data-icon`. */
 const FILE_ICON_GLYPH: Record<string, string> = {
@@ -59,8 +58,6 @@ export interface ExplorerViewProps {
    * While this is unfinished, selection only is supported and a no-op is passed.
    */
   onOpenFile?(repoPath: string, file: string): void;
-  /** Apply a faint overlay when inactive. */
-  inactive?: boolean;
 }
 
 export function ExplorerView({
@@ -68,7 +65,6 @@ export function ExplorerView({
   orgColors = {},
   orgAliases = {},
   onOpenFile,
-  inactive,
 }: ExplorerViewProps) {
   const { t } = useTranslation();
   const [repos, setRepos] = useState<FsRepo[]>([]);
@@ -285,10 +281,7 @@ export function ExplorerView({
   };
 
   return (
-    <section
-      className={viewClass("explorer-view", inactive)}
-      data-view="explorer"
-    >
+    <section className="explorer-view">
       <ViewHeader title="EXPLORER">
         <button
           type="button"

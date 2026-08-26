@@ -7,7 +7,6 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { DiffBuffer } from "../diff/diff-model.js";
 import { Loading } from "./Loading.js";
-import { viewClass } from "./views.js";
 
 const COLLAPSE_UNCHANGED = { margin: 3, minSize: 4 } as const;
 
@@ -76,7 +75,6 @@ export interface DiffViewProps {
   onCopyPath(): void;
   /** Falls back to the external editor (for binary/too-large diffs that are not rendered). */
   onOpenInEditor(): void;
-  inactive?: boolean;
   /** Request counter for focusing the view (mirrors the Viewer). */
   focusNonce?: number;
 }
@@ -91,7 +89,6 @@ export function DiffView({
   onToggleLayout,
   onCopyPath,
   onOpenInEditor,
-  inactive,
   focusNonce = 0,
 }: DiffViewProps) {
   const { t } = useTranslation();
@@ -109,8 +106,7 @@ export function DiffView({
     <section
       ref={sectionRef}
       tabIndex={-1}
-      className={viewClass("diff-view", inactive)}
-      data-view="main"
+      className="diff-view"
       aria-label={t("diff.viewLabel", { path: buffer.relPath })}
     >
       <div className="diff-toolbar">

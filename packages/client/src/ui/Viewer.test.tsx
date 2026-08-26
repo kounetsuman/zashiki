@@ -84,7 +84,7 @@ describe("Viewer", () => {
     );
   });
 
-  it("focuses its main-area section when the focus nonce changes (drives activeView to main)", () => {
+  it("focuses its main-area section when the focus nonce changes", () => {
     const { container, rerender } = render(
       <Viewer
         buffer={base}
@@ -93,7 +93,7 @@ describe("Viewer", () => {
         focusNonce={0}
       />,
     );
-    const section = container.querySelector('[data-view="main"]');
+    const section = container.querySelector(".viewer-view");
     expect(section?.getAttribute("tabindex")).toBe("-1");
 
     rerender(
