@@ -105,6 +105,22 @@ pub struct Subscription {
     pub receiver: broadcast::Receiver<Arc<[u8]>>,
 }
 
+/// DECRST for the mouse-tracking modes and encodings vt100 tracks, prepended to the restore redraw so
+/// the shared xterm reaches the pristine baseline `state_formatted` re-asserts modes against (`None`
+/// emits nothing, so a mouse-off terminal must actively clear another terminal's leaked tracking).
+/// Confined to vt100-tracked modes: it cannot re-assert others, so resetting them would strip a
+/// terminal that legitimately set one. Canonical spec: the `screen_restore_sequence` tests.
+const MOUSE_TRACKING_RESET: &[u8] = b"\x1b[?9l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l";
+
+/// Restore redraw for `screen`: reset mouse tracking, then `state_formatted` (visible cells plus the
+/// screen's input modes). The result leaves the terminal's modes exactly matching `screen`. Canonical
+/// spec: the `screen_restore_sequence` tests below.
+fn screen_restore_sequence(screen: &vt100::Screen) -> Vec<u8> {
+    let mut out = MOUSE_TRACKING_RESET.to_vec();
+    out.extend_from_slice(&screen.state_formatted());
+    out
+}
+
 impl PtySession {
     /// Opens the PTY, launches `command`, and starts a single reader thread.
     pub fn spawn(config: PtyConfig) -> std::io::Result<Self> {
@@ -208,15 +224,13 @@ impl PtySession {
         lock_recover(&self.inner).parser.screen().contents()
     }
 
-    /// A redraw escape sequence that restores the current visible screen (including colors and cursor
-    /// position). On attach/tab switch it precisely overwrites the current screen following the raw
-    /// ring replay (scrollback restoration); for recovery after a broadcast `Lagged`/resume it is used
-    /// alone to re-send the current screen (so as not to duplicate scrollback).
+    /// A redraw escape sequence that restores the current visible screen and its input modes (colors,
+    /// cursor position, and mouse tracking / bracketed paste / application cursor+keypad). On attach/tab
+    /// switch it precisely overwrites the current screen following the raw ring replay (scrollback
+    /// restoration); for recovery after a broadcast `Lagged`/resume it is used alone to re-send the
+    /// current screen (so as not to duplicate scrollback). See `screen_restore_sequence`.
     pub fn screen_formatted(&self) -> Vec<u8> {
-        lock_recover(&self.inner)
-            .parser
-            .screen()
-            .contents_formatted()
+        screen_restore_sequence(lock_recover(&self.inner).parser.screen())
     }
 
     /// The reconstructed screen's size `(rows, cols)`.
@@ -533,5 +547,40 @@ mod tests {
         sb.push(b"0123456789");
         assert_eq!(sb.snapshot(), b"0123456789");
         assert_eq!(sb.len(), 10);
+    }
+
+    fn restore_seq(feed: &[u8]) -> Vec<u8> {
+        let mut parser = vt100::Parser::new(24, 80, 0);
+        parser.process(feed);
+        screen_restore_sequence(parser.screen())
+    }
+
+    #[test]
+    fn restore_sequence_reasserts_active_mouse_tracking() {
+        // A Cockpit Terminal whose Claude Session enabled mouse tracking: switching to it must re-enable
+        // it on the shared xterm.
+        let seq = restore_seq(b"\x1b[?1002h\x1b[?1006h");
+        assert!(contains(&seq, b"\x1b[?1002h"), "missing mouse DECSET: {seq:?}");
+    }
+
+    #[test]
+    fn restore_sequence_clears_mouse_tracking_when_inactive() {
+        // A terminal with mouse tracking off: its redraw must actively DECRST so it clears another
+        // terminal's leaked tracking from the shared xterm, and must not spuriously enable it.
+        let seq = restore_seq(b"idle");
+        assert!(contains(&seq, b"\x1b[?1002l"), "missing mouse DECRST: {seq:?}");
+        assert!(!contains(&seq, b"\x1b[?1002h"), "unexpected mouse DECSET: {seq:?}");
+    }
+
+    #[test]
+    fn restore_sequence_does_not_reenable_mouse_toggled_off() {
+        // Enabled then disabled within the terminal -> ends off; the redraw must not re-enable it.
+        let seq = restore_seq(b"\x1b[?1002h\x1b[?1002l");
+        assert!(!contains(&seq, b"\x1b[?1002h"), "unexpected mouse DECSET: {seq:?}");
+        assert!(contains(&seq, b"\x1b[?1002l"), "missing mouse DECRST: {seq:?}");
+    }
+
+    fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+        haystack.windows(needle.len()).any(|w| w == needle)
     }
 }
