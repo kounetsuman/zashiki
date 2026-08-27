@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import "./FirstRunSetupWizard.css";
+import "./onboarding-card.css";
 
 export interface FirstRunSetupWizardProps {
   /** Whether a non-zashiki statusLine is present (registering will wrap it to preserve it). */
@@ -34,32 +34,36 @@ export function FirstRunSetupWizard({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: overlay only captures outside clicks (Escape is handled by the window keydown above)
     // biome-ignore lint/a11y/noStaticElementInteractions: receiver for outside clicks, not an interactive widget
-    <div className="first-run-backdrop" onClick={onDismiss}>
+    <div className="onboarding-backdrop" onClick={onDismiss}>
       <div
-        className="first-run-modal"
+        className="onboarding-card"
         role="dialog"
         aria-modal="true"
         aria-label={t("firstRun.title")}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
       >
-        <h2 className="first-run-title">{t("firstRun.title")}</h2>
-        <p className="first-run-body">{t("firstRun.body")}</p>
-        <p className="first-run-note">{t("firstRun.preserveNote")}</p>
+        <h2 className="onboarding-title">{t("firstRun.title")}</h2>
+        <p className="onboarding-body">{t("firstRun.body")}</p>
+        <p className="onboarding-note">{t("firstRun.preserveNote")}</p>
         {statusLineConflict && (
-          <p className="first-run-conflict" role="status">
+          <p className="onboarding-conflict" role="status">
             {t("firstRun.statusLineConflict")}
           </p>
         )}
-        <div className="first-run-actions">
+        <div className="onboarding-actions">
           <button
             type="button"
-            className="first-run-dismiss"
+            className="onboarding-button"
             onClick={onDismiss}
           >
             {t("firstRun.notNow")}
           </button>
-          <button type="button" className="first-run-enable" onClick={onEnable}>
+          <button
+            type="button"
+            className="onboarding-button onboarding-button-primary"
+            onClick={onEnable}
+          >
             {t("firstRun.enable")}
           </button>
         </div>

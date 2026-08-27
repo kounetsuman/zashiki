@@ -1,4 +1,4 @@
-.first-run-backdrop {
+.onboarding-backdrop {
   position: fixed;
   inset: 0;
   z-index: 1100;
@@ -8,7 +8,7 @@
   background: rgba(0, 0, 0, 0.5);
 }
 
-.first-run-modal {
+.onboarding-card {
   width: min(440px, 92vw);
   padding: 16px 18px;
   background: #1e1e1e;
@@ -18,42 +18,41 @@
   color: #ddd;
 }
 
-.first-run-title {
+.onboarding-title {
   margin: 0 0 10px;
   font-size: 14px;
   font-weight: 600;
 }
 
-.first-run-body {
+.onboarding-body {
   margin: 0 0 8px;
   font-size: 12px;
   line-height: 1.5;
   color: #ccc;
 }
 
-.first-run-note {
+.onboarding-note {
   margin: 0;
   font-size: 11px;
   line-height: 1.5;
   color: #888;
 }
 
-.first-run-conflict {
+.onboarding-conflict {
   margin: 10px 0 0;
   font-size: 12px;
   line-height: 1.5;
   color: #e0af68;
 }
 
-.first-run-actions {
+.onboarding-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 16px;
 }
 
-.first-run-dismiss,
-.first-run-enable {
+.onboarding-button {
   background: #2a2a2a;
   border: 1px solid #444;
   border-radius: 3px;
@@ -63,11 +62,10 @@
   cursor: pointer;
 }
 
-.first-run-enable {
+.onboarding-button-primary {
   border-color: #4a7;
 }
 
-.first-run-dismiss:hover,
-.first-run-enable:hover {
+.onboarding-button:hover {
   border-color: #6c9;
 }

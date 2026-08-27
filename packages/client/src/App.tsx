@@ -45,6 +45,7 @@ import {
   shouldShowFirstRunWizard,
 } from "./lib/first-run-wizard.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
+import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
 import {
@@ -98,6 +99,7 @@ import { useViewer } from "./ui/useViewer.js";
 import { useViewSelection } from "./ui/useViewSelection.js";
 import { useXtermRenderer } from "./ui/useXtermRenderer.js";
 import { Viewer } from "./ui/Viewer.js";
+import { WelcomeOnboardingModal } from "./ui/WelcomeOnboardingModal.js";
 import {
   viewerKeysUnderPath,
   viewersAffectedByRename,
@@ -198,6 +200,15 @@ export function App({
   );
   const [wizardSeen, setWizardSeen] = useState(() =>
     loadFirstRunWizardSeen(viewStorage),
+  );
+  // Gate the first-run flow on persistable storage: a returning/updated user (seen flag present) or
+  // a storage-less session starts at "done", so the welcome only ever greets a fresh install.
+  const [onboardingStep, setOnboardingStep] = useState<
+    "welcome" | "integration" | "done"
+  >(() =>
+    viewStorage !== null && !loadOnboardingSeen(viewStorage)
+      ? "welcome"
+      : "done",
   );
   const [debugPanelOpen, setDebugPanelOpen] = useState(false);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
@@ -668,6 +679,33 @@ export function App({
     dismissWizard();
   }, [setHooksRegistered, dismissWizard]);
 
+  // Any exit from onboarding (skip, enable, or decline) also settles the integration prompt, so the
+  // standalone setup wizard never pops up right after the user leaves the flow.
+  const finishOnboarding = useCallback((): void => {
+    setOnboardingStep("done");
+    saveOnboardingSeen(viewStorage);
+    dismissWizard();
+  }, [viewStorage, dismissWizard]);
+
+  const integrationRegistered =
+    hooksStatus?.hooksRegistered === true &&
+    hooksStatus?.statusLineRegistered === true;
+
+  const startFromWelcome = useCallback((): void => {
+    if (integrationRegistered) finishOnboarding();
+    else setOnboardingStep("integration");
+  }, [integrationRegistered, finishOnboarding]);
+
+  const enableFromOnboarding = useCallback((): void => {
+    setHooksRegistered(true);
+    finishOnboarding();
+  }, [setHooksRegistered, finishOnboarding]);
+
+  const reopenOnboarding = useCallback((): void => {
+    setSettingsModalOpen(false);
+    setOnboardingStep("welcome");
+  }, []);
+
   // Apply a SETTINGS language change immediately and persist it to config.json. After
   // persisting, watch -> config.sync distributes it to all connections, reflecting it in other clients too.
   const saveLanguage = useCallback(
@@ -986,6 +1024,7 @@ export function App({
           onSetRenderer={terminalRenderer.setRenderer}
           onOpenDevtools={canOpenDevtools() ? openDevtools : undefined}
           onOpenDebugPanel={() => setDebugPanelOpen(true)}
+          onShowOnboarding={reopenOnboarding}
           onClose={() => setSettingsModalOpen(false)}
         />
       )}
@@ -1015,13 +1054,27 @@ export function App({
           onClose={usageWarning.dismiss}
         />
       )}
-      {shouldShowFirstRunWizard(wizardSeen, hooksStatus) && (
-        <FirstRunSetupWizard
-          statusLineConflict={hooksStatus?.statusLineConflict ?? false}
-          onEnable={enableFromWizard}
-          onDismiss={dismissWizard}
+      {onboardingStep === "welcome" && (
+        <WelcomeOnboardingModal
+          onStart={startFromWelcome}
+          onSkip={finishOnboarding}
         />
       )}
+      {onboardingStep === "integration" && (
+        <FirstRunSetupWizard
+          statusLineConflict={hooksStatus?.statusLineConflict ?? false}
+          onEnable={enableFromOnboarding}
+          onDismiss={finishOnboarding}
+        />
+      )}
+      {onboardingStep === "done" &&
+        shouldShowFirstRunWizard(wizardSeen, hooksStatus) && (
+          <FirstRunSetupWizard
+            statusLineConflict={hooksStatus?.statusLineConflict ?? false}
+            onEnable={enableFromWizard}
+            onDismiss={dismissWizard}
+          />
+        )}
       {crashLog !== null && (
         <CrashReportModal log={crashLog} onClose={dismissCrash} />
       )}

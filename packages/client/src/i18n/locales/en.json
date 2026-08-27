@@ -278,6 +278,8 @@
     "hooksIntegration": "Claude Code integration (notifications & usage footer)",
     "hooksIntegrationHint": "Registers zashiki's hooks and statusLine in ~/.claude/settings.json so notifications, instant refresh, and the usage footer work.",
     "hooksConflictHint": "You already have a statusLine — enabling wraps it so it keeps rendering alongside zashiki.",
+    "onboardingSection": "Welcome guide",
+    "showOnboarding": "Show welcome guide",
     "renderer": "Terminal renderer",
     "rendererWebgl": "WebGL",
     "rendererDom": "DOM",
@@ -317,6 +319,13 @@
     "statusLineConflict": "Your existing statusLine will be preserved (wrapped so it still renders).",
     "enable": "Enable",
     "notNow": "Not now"
+  },
+  "onboarding": {
+    "title": "Welcome to zashiki",
+    "intro": "zashiki is your one-screen AI cockpit for Claude Code — it shows which of your sessions is waiting and makes orchestrating them effortless.",
+    "note": "Next, set up the Claude Code integration for notifications and the usage footer. You can reopen this from Settings anytime.",
+    "skip": "Skip",
+    "getStarted": "Get started"
   },
   "addOrg": {
     "title": "Add org",
