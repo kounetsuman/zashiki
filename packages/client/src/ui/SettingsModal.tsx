@@ -73,6 +73,9 @@ export interface SettingsModalProps {
   /** Whether the account-usage footer bridge is opted in. Omit to hide the toggle. */
   accountUsage?: boolean;
   onSetAccountUsage?(enabled: boolean): void;
+  /** Whether the pinned Memo tab is enabled. Omit to hide the toggle. */
+  memoEnabled?: boolean;
+  onSetMemoEnabled?(enabled: boolean): void;
   /** Current external editor command (config.json `editor`; empty when unset). Omit to hide the field. */
   editor?: string;
   /** Persist the editor command (Save). A blank value clears it back to the ZK_EDITOR / cursor -g fallback. */
@@ -126,6 +129,8 @@ export function SettingsModal({
   onSetClipboardEditModal,
   accountUsage,
   onSetAccountUsage,
+  memoEnabled,
+  onSetMemoEnabled,
   editor,
   onSaveEditor,
   footerThresholds,
@@ -354,6 +359,18 @@ export function SettingsModal({
                 />
                 <span className="settings-label">
                   {t("settings.accountUsage")}
+                </span>
+              </label>
+            )}
+            {onSetMemoEnabled !== undefined && (
+              <label className="settings-field settings-toggle">
+                <input
+                  type="checkbox"
+                  checked={memoEnabled ?? false}
+                  onChange={(e) => onSetMemoEnabled(e.target.checked)}
+                />
+                <span className="settings-label">
+                  {t("settings.memoEnabled")}
                 </span>
               </label>
             )}

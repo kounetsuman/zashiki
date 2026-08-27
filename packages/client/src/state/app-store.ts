@@ -6,6 +6,12 @@ import type {
 
 import i18n from "../i18n/index.js";
 import type { Notifier } from "../lib/notify.js";
+import {
+  EMPTY_MEMO,
+  editMemo,
+  type MemoBuffer,
+  syncMemo,
+} from "../memo/memo-model.js";
 
 /** State the App uses for rendering (the useSyncExternalStore snapshot). */
 export interface AppState {
@@ -17,6 +23,8 @@ export interface AppState {
   orgAliases: Record<string, string>;
   /** org name -> free-form Markdown note. Absent orgs have no note. Delivered via notes.sync. */
   orgNotes: Record<string, string>;
+  /** The app-wide Memo buffer. Server text arrives via memo.sync; local edits set it dirty. */
+  memo: MemoBuffer;
   /** In-app notifications. The server holds them and broadcasts the full set via notifications.sync. */
   notifications: Notification[];
   /** The signed-in Claude account (auth is global per OS user). Delivered via account.status. */
@@ -81,6 +89,8 @@ export interface AppStore {
   markNewRequested(): void;
   /** Dismisses the error dialog (clears lastError originating from a server error). */
   clearError(): void;
+  /** Records a local Memo edit (marks the buffer dirty until saved / synced). */
+  setMemoText(text: string): void;
 }
 
 /**
@@ -121,6 +131,7 @@ const INITIAL_STATE: AppState = {
   orgColors: {},
   orgAliases: {},
   orgNotes: {},
+  memo: EMPTY_MEMO,
   notifications: [],
   account: { loggedIn: false, email: null },
   lastError: null,
@@ -166,6 +177,11 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     setState({ lastError: null });
   }
 
+  function setMemoText(text: string): void {
+    const memo = editMemo(state.memo, text);
+    if (memo !== state.memo) setState({ memo });
+  }
+
   function handleMessage(m: ServerMessage): void {
     if (m.t === "state.sync") {
       const added = pendingNew
@@ -202,6 +218,8 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     } else if (m.t === "notes.sync") {
       // The full per-org notes map held by the server. Replace it wholesale.
       setState({ orgNotes: m.notes });
+    } else if (m.t === "memo.sync") {
+      setState({ memo: syncMemo(state.memo, m.text) });
     } else if (m.t === "account.status") {
       setState({ account: { loggedIn: m.loggedIn, email: m.email } });
     } else if (m.t === "term.reconnect") {
@@ -282,5 +300,6 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
       pendingNew = true;
     },
     clearError,
+    setMemoText,
   };
 }

@@ -152,6 +152,8 @@ describe("clientMessageSchema", () => {
     [{ t: "config.update", language: "en" }],
     [{ t: "config.setAccountUsage", enabled: true }],
     [{ t: "config.setAccountUsage", enabled: false }],
+    [{ t: "config.setMemoEnabled", enabled: true }],
+    [{ t: "config.setMemoEnabled", enabled: false }],
     [{ t: "config.setEditor", editor: "code -w" }],
     [{ t: "config.setEditor", editor: "" }],
     [
@@ -180,6 +182,8 @@ describe("clientMessageSchema", () => {
     [{ t: "config.update" }], // language missing
     [{ t: "config.setAccountUsage" }], // enabled missing
     [{ t: "config.setAccountUsage", enabled: "yes" }], // enabled not a boolean
+    [{ t: "config.setMemoEnabled" }], // enabled missing
+    [{ t: "config.setMemoEnabled", enabled: "yes" }], // enabled not a boolean
     [{ t: "config.setEditor" }], // editor missing
     [{ t: "config.setEditor", editor: 1 }], // editor not a string
     [{ t: "account.refresh" }], // restartSessions missing
@@ -259,6 +263,7 @@ describe("serverMessageSchema", () => {
         updateCheck: true,
         language: "ja",
         accountUsage: true,
+        memoEnabled: true,
         editor: "cursor -g",
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       },
@@ -270,6 +275,7 @@ describe("serverMessageSchema", () => {
         updateCheck: false,
         language: null,
         accountUsage: false,
+        memoEnabled: false,
         editor: null,
         footerThresholds: {
           usagePercent: {
@@ -291,6 +297,7 @@ describe("serverMessageSchema", () => {
     [{ t: "update.status", state: "opened", detail: null }],
     [{ t: "update.status", state: "failed", detail: "boom" }],
     [{ t: "notes.sync", notes: { acme: "# Acme\n- customer\n" } }],
+    [{ t: "memo.sync", text: "# Memo\n- todo\n" }],
     [{ t: "account.status", loggedIn: true, email: "user@example.com" }],
     [{ t: "account.status", loggedIn: false, email: null }],
   ])("accepts: %j", (msg) => {
@@ -305,7 +312,7 @@ describe("serverMessageSchema", () => {
     });
   });
 
-  it("defaults omitted config.sync updateCheck/language/accountUsage/editor/footerThresholds (compatible with old servers)", () => {
+  it("defaults omitted config.sync updateCheck/language/accountUsage/memoEnabled/editor/footerThresholds (compatible with old servers)", () => {
     expect(
       serverMessageSchema.parse({
         t: "config.sync",
@@ -317,8 +324,16 @@ describe("serverMessageSchema", () => {
       updateCheck: true,
       language: null,
       accountUsage: false,
+      memoEnabled: false,
       editor: null,
       footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+    });
+  });
+
+  it("defaults omitted memo.sync text to empty (compatible with old servers)", () => {
+    expect(serverMessageSchema.parse({ t: "memo.sync" })).toEqual({
+      t: "memo.sync",
+      text: "",
     });
   });
 

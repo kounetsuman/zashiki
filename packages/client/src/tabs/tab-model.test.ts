@@ -8,9 +8,12 @@ import {
   EMPTY_TABS,
   hasTab,
   keyFor,
+  MEMO_TAB,
+  MEMO_TAB_KEY,
   moveTab,
   openTab,
   pruneSessions,
+  setMemoVisible,
   type Tab,
   type TabsState,
   tabKey,
@@ -186,6 +189,63 @@ describe("activeTab / activeSessionId / hasTab", () => {
     expect(hasTab(base, "session", "@1")).toBe(true);
     expect(hasTab(base, "viewer", "@1")).toBe(true);
     expect(hasTab(base, "session", "@2")).toBe(false);
+  });
+});
+
+describe("setMemoVisible (pinned, non-closeable Memo tab)", () => {
+  it("enabling from empty adds the Memo tab and makes it active", () => {
+    const r = setMemoVisible(EMPTY_TABS, true);
+    expect(r.tabs).toEqual([MEMO_TAB]);
+    expect(r.activeKey).toBe(MEMO_TAB_KEY);
+  });
+
+  it("enabling pins the Memo tab to the front without stealing focus", () => {
+    const base = state([s("@1"), s("@2")], "session:@2");
+    const r = setMemoVisible(base, true);
+    expect(r.tabs).toEqual([MEMO_TAB, s("@1"), s("@2")]);
+    expect(r.activeKey).toBe("session:@2");
+  });
+
+  it("enabling when already present is a no-op (same reference)", () => {
+    const base = state([MEMO_TAB, s("@1")], "session:@1");
+    expect(setMemoVisible(base, true)).toBe(base);
+  });
+
+  it("disabling removes the Memo tab and moves focus to a neighbor when it was active", () => {
+    const base = state([MEMO_TAB, s("@1")], MEMO_TAB_KEY);
+    const r = setMemoVisible(base, false);
+    expect(r.tabs).toEqual([s("@1")]);
+    expect(r.activeKey).toBe("session:@1");
+  });
+
+  it("disabling leaves an unrelated active tab untouched", () => {
+    const base = state([MEMO_TAB, s("@1")], "session:@1");
+    const r = setMemoVisible(base, false);
+    expect(r.tabs).toEqual([s("@1")]);
+    expect(r.activeKey).toBe("session:@1");
+  });
+
+  it("disabling when absent is a no-op (same reference)", () => {
+    const base = state([s("@1")], "session:@1");
+    expect(setMemoVisible(base, false)).toBe(base);
+  });
+
+  it("the Memo tab is non-closeable (closeTab is a no-op)", () => {
+    const base = state([MEMO_TAB, s("@1")], MEMO_TAB_KEY);
+    expect(closeTab(base, MEMO_TAB_KEY)).toBe(base);
+  });
+
+  it("survives session pruning (it is not a session)", () => {
+    const base = state([MEMO_TAB, s("@1")], MEMO_TAB_KEY);
+    const r = pruneSessions(base, []);
+    expect(r.tabs).toEqual([MEMO_TAB]);
+    expect(r.activeKey).toBe(MEMO_TAB_KEY);
+  });
+
+  it("stays pinned at the front: it cannot be dragged, nor can a tab drop before it", () => {
+    const base = state([MEMO_TAB, s("@1"), s("@2")], "session:@1");
+    expect(moveTab(base, MEMO_TAB_KEY, "session:@2")).toBe(base);
+    expect(moveTab(base, "session:@2", MEMO_TAB_KEY)).toBe(base);
   });
 });
 

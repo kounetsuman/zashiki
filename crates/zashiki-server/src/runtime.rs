@@ -140,6 +140,13 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
             hub.clone(),
             crate::notes_watch::NOTES_POLL,
         );
+        let memo_path = crate::memo::memo_path_for_conf(&path);
+        hub.publish_memo(crate::memo::read_memo(&memo_path));
+        crate::memo_watch::spawn_memo_watch(
+            memo_path,
+            hub.clone(),
+            crate::memo_watch::MEMO_POLL,
+        );
         crate::repos_watch::spawn_repos_watch(
             path,
             repos.clone(),

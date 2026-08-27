@@ -13,6 +13,7 @@ Canonical UI terms. Some code still uses legacy names (`windowId`, `SessionState
 
 ```
 Main Area
+├ Cockpit Tabs — Memo (opt-in, pinned first) | Cockpit Terminal | Viewer | Diff
 └ Cockpit View — shows a Cockpit Terminal | a Viewer (one per Cockpit Tab)
      └ Cockpit Terminal — the durable unit; a Claude Session (sid) runs inside it
           ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / no_claude / starting / unknown
@@ -33,6 +34,7 @@ Overlays — Notification Toast, Modal
 - **Cockpit Terminal** (was window/session) — not called "session": Ctrl+C ends the Claude run, but the terminal itself survives.
 - **Claude Session** (`sid`) — the transient Claude Code run inside a Cockpit Terminal.
 - **Viewer** — read-only file viewer; zashiki is a vibe-coding-only cockpit, so there is no plan to grow it into an editor.
+- **Memo** — the single opt-in scratchpad editor, pinned to the front of the Cockpit Tabs when enabled in Settings. It is the one deliberate exception to the read-only rule (Viewer/Diff stay read-only); Cmd-S saves it to `<repos.conf dir>/memo.md`, which the server broadcasts (`memo.sync`) so every client stays in sync. An unsaved edit shows a dirty dot on the tab.
 - **Organization** (`org`) — a Cockpit Terminal belongs to one; the list is grouped by it.
 
 ## Running (development)
@@ -83,3 +85,9 @@ a human verifies the following before release.
 
 - [ ] Restarting the server turns the status bar to reconnecting, and the terminal is re-displayed after recovery
 - [ ] The window selected in the window switcher bar keeps being displayed even after reconnection
+
+### Memo (editable, so not fully reproducible in Playwright)
+
+- [ ] Typing in the Memo editor shows a dirty dot on the tab; Cmd-S saves and clears the dot
+- [ ] The saved text survives a reload (and is written to `<repos.conf dir>/memo.md`)
+- [ ] Editing `memo.md` externally (or from a second client) updates the editor without clobbering an in-progress unsaved edit

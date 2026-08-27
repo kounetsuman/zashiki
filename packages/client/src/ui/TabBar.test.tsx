@@ -764,6 +764,40 @@ describe("TabBar", () => {
     expect(onClose).toHaveBeenCalledWith(`viewer:${viewerId}`);
   });
 
+  it("renders the Memo tab without a close button and hides its dirty dot when clean", () => {
+    const m = (): Tab => ({ kind: "memo", id: "memo" });
+    const { container } = render(
+      <TabBar
+        tabs={[m()]}
+        activeKey="memo:memo"
+        cockpitTerminals={[]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+    expect(screen.getByText("Memo")).toBeTruthy();
+    expect(container.querySelector(".tab-close")).toBeNull();
+    expect(container.querySelector(".tab-dirty")).toBeNull();
+  });
+
+  it("shows the dirty dot on the Memo tab when memoDirty is true", () => {
+    const m = (): Tab => ({ kind: "memo", id: "memo" });
+    const { container } = render(
+      <TabBar
+        tabs={[m()]}
+        activeKey="memo:memo"
+        cockpitTerminals={[]}
+        conversationTitles={{}}
+        memoDirty
+        onActivate={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+    expect(container.querySelector(".tab-dirty")).not.toBeNull();
+    expect(container.querySelector(".tab-close")).toBeNull();
+  });
+
   it("passes the cockpitTerminalId of the right-clicked window when there are multiple tabs (no mix-up)", () => {
     const onDuplicate = vi.fn();
     render(

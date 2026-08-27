@@ -149,6 +149,11 @@
     "dropTooLarge": "{{name}} is too large to preview (max 2 MB)",
     "dropReadFailed": "Could not read {{name}}"
   },
+  "memo": {
+    "editorLabel": "Memo editor",
+    "title": "Memo",
+    "save": "Save"
+  },
   "explorer": {
     "truncated": "Showing partial results (too many entries)",
     "mainTree": "main",
@@ -250,6 +255,7 @@
     "editor": "External editor command",
     "editorHint": "Command used to open a file clicked in Source Control. Arguments are split on spaces and the file path is appended. Leave blank to use ZK_EDITOR, or cursor -g by default.",
     "accountUsage": "Show account usage in the footer",
+    "memoEnabled": "Show the Memo tab",
     "footerThresholds": {
       "section": "Footer color thresholds",
       "hint": "Value at or above which a footer cell takes each color. Uncheck a color to hide it — the reading then falls through to the next lower enabled color.",

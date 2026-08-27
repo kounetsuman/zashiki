@@ -117,6 +117,7 @@ const fakeReposApi: ReposApi = {
   browse: () => Promise.resolve({ entries: [], truncated: false }),
   list: () => Promise.resolve({ orgs: [] }),
   setNote: () => Promise.resolve(),
+  setMemo: () => Promise.resolve(),
 };
 
 function fakeAppSession() {
@@ -311,6 +312,7 @@ describe("App", () => {
         accountUsage: false,
         editor: null,
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+        memoEnabled: false,
       }),
     );
     expect(i18n.language).toBe("en");
@@ -983,6 +985,7 @@ describe("App", () => {
         accountUsage: false,
         editor: null,
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+        memoEnabled: false,
       });
     });
     expect(notifier.isEnabled()).toBe(false);
@@ -995,6 +998,7 @@ describe("App", () => {
         accountUsage: false,
         editor: null,
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+        memoEnabled: false,
       });
     });
     expect(notifier.isEnabled()).toBe(true);

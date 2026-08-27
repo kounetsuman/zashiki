@@ -24,6 +24,7 @@ function api(overrides: Partial<ReposApi> = {}): ReposApi {
     browse: vi.fn(async () => ({ entries: [], truncated: false })),
     list: vi.fn(async () => ({ orgs: [] })),
     setNote: vi.fn(async () => undefined),
+    setMemo: vi.fn(async () => undefined),
     ...overrides,
   };
 }
