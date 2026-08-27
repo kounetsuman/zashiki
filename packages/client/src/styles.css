@@ -2123,7 +2123,7 @@ textarea {
 .explorer-row {
   display: block;
   width: 100%;
-  padding: 2px 8px;
+  padding: 3px 8px;
 }
 
 /* Row glyphs: fixed-width arrow/spacer so file names (no chevron) align under dir names. */
@@ -2142,6 +2142,13 @@ textarea {
 
 .explorer-icon {
   color: #8a9099;
+}
+
+/* Icon-to-label gap and label tracking, matched to VSCode's file explorer. */
+.explorer-name,
+.explorer-repo-name {
+  margin-left: 4px;
+  letter-spacing: 0.02em;
 }
 
 /* Inline rename row: the name span swapped for an editable input (same convention as .tab-title-input). */
