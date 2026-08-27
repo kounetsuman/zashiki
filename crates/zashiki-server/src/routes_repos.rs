@@ -243,6 +243,47 @@ pub(crate) async fn orgs_note(State(state): State<AppState>, body: axum::body::B
 }
 
 #[derive(Deserialize)]
+struct MemoBody {
+    text: String,
+}
+
+/// `POST /api/memo`. Persists the single app-wide memo as `<repos.conf dir>/memo.md` (a blank/
+/// whitespace-only `text` deletes it), then re-reads it and broadcasts memo.sync so every client
+/// reflects the change without a restart. Returns `{"ok": true}`.
+pub(crate) async fn memo_set(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let Some(conf_path) = (*state.repos_conf).clone() else {
+        return json_error_with_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "repos.conf path is not configured",
+            "no_conf",
+        );
+    };
+    let Ok(req) = serde_json::from_slice::<MemoBody>(&body) else {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "invalid request body",
+            "invalid_body",
+        );
+    };
+    // Counts by string length to match the client's `MEMO_MAX_CHARS` (keep the two values equal).
+    if req.text.chars().count() > crate::memo::MEMO_MAX_CHARS {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "memo is too long",
+            "text_too_long",
+        );
+    }
+    let memo_path = crate::memo::memo_path_for_conf(&conf_path);
+    if let Err(e) = crate::memo::write_memo(&memo_path, &req.text) {
+        return json_error_with_code(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string(), "io");
+    }
+    if let Some(control) = &state.control {
+        control.hub.publish_memo(crate::memo::read_memo(&memo_path));
+    }
+    Json(serde_json::json!({ "ok": true })).into_response()
+}
+
+#[derive(Deserialize)]
 pub(crate) struct ValidateParams {
     path: Option<String>,
 }
@@ -474,6 +515,47 @@ mod repos_add_rest_tests {
         let (s, _b) = send_note(app(conf), &format!(r#"{{"org":"acme","text":"{big}"}}"#)).await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
         assert!(!dir.path().join("notes/acme.md").exists());
+    }
+
+    async fn send_memo(app: axum::Router, body: &str) -> (StatusCode, String) {
+        let req = HttpRequest::builder()
+            .method("POST")
+            .uri("/api/memo?token=t")
+            .header("host", OK_HOST)
+            .header("x-zashiki-token", "t")
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    #[tokio::test]
+    async fn memo_write_creates_file_then_blank_removes_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        std::fs::write(&conf, "").unwrap();
+        let memo_path = dir.path().join("memo.md");
+
+        let (s, b) = send_memo(app(conf.clone()), r##"{"text":"# Memo\n"}"##).await;
+        assert_eq!(s, StatusCode::OK, "body: {b}");
+        assert_eq!(std::fs::read_to_string(&memo_path).unwrap(), "# Memo\n");
+
+        let (s2, _) = send_memo(app(conf), r#"{"text":"   "}"#).await;
+        assert_eq!(s2, StatusCode::OK);
+        assert!(!memo_path.exists());
+    }
+
+    #[tokio::test]
+    async fn memo_over_length_cap_returns_400_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        let big = "x".repeat(100_001);
+        let (s, _b) = send_memo(app(conf), &format!(r#"{{"text":"{big}"}}"#)).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert!(!dir.path().join("memo.md").exists());
     }
 
     /// End-to-end: with a live control runtime, adding an org updates the shared live set and the

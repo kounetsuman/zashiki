@@ -15,6 +15,8 @@ struct HubState {
     snapshot: StateSnapshot,
     /// Per-org notes (org → Markdown), delivered on connect and re-broadcast on any note change.
     notes: BTreeMap<String, String>,
+    /// The single app-wide memo (Markdown), delivered on connect and re-broadcast on any change.
+    memo: String,
     /// Presence of zashiki's integration in ~/.claude/settings.json, delivered on connect and after
     /// register/unregister. Defaults to "not registered" until the startup probe (runtime) sets it.
     hooks_status: RegistrationStatus,
@@ -121,6 +123,7 @@ impl ControlHub {
                 notifications,
                 snapshot,
                 notes: BTreeMap::new(),
+                memo: String::new(),
                 last_notification_at: 0,
                 rate_limits: HashMap::new(),
                 hooks_status: RegistrationStatus::default(),
@@ -134,8 +137,8 @@ impl ControlHub {
         self.tx.subscribe()
     }
 
-    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status -> notes.sync -> account.status).
-    pub(crate) fn connect_messages(&self) -> [ServerMessage; 6] {
+    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status -> notes.sync -> memo.sync -> account.status).
+    pub(crate) fn connect_messages(&self) -> [ServerMessage; 7] {
         let state = self.inner.read().unwrap();
         [
             ServerMessage::ConfigSync {
@@ -143,6 +146,7 @@ impl ControlHub {
                 update_check: state.config.update_check,
                 language: state.config.language.clone(),
                 account_usage: state.config.account_usage,
+                memo_enabled: state.config.memo_enabled,
                 editor: state.config.editor.clone(),
                 footer_thresholds: state.config.footer_thresholds,
             },
@@ -153,6 +157,9 @@ impl ControlHub {
             hooks_status_message(state.hooks_status),
             ServerMessage::NotesSync {
                 notes: state.notes.clone(),
+            },
+            ServerMessage::MemoSync {
+                text: state.memo.clone(),
             },
             state.account_status.to_message(),
         ]
@@ -231,6 +238,7 @@ impl ControlHub {
             update_check: config.update_check,
             language: config.language.clone(),
             account_usage: config.account_usage,
+            memo_enabled: config.memo_enabled,
             editor: config.editor.clone(),
             footer_thresholds: config.footer_thresholds,
         };
@@ -248,6 +256,11 @@ impl ControlHub {
     /// so toggling the opt-in applies to the next launched claude without a restart.
     pub fn account_usage_enabled(&self) -> bool {
         self.inner.read().unwrap().config.account_usage
+    }
+
+    /// Whether the global memo is opted in (the live `memoEnabled` config flag).
+    pub fn memo_enabled(&self) -> bool {
+        self.inner.read().unwrap().config.memo_enabled
     }
 
     /// The live `editor` config value (None when unset). Read per `POST /api/git/open`.
@@ -292,6 +305,19 @@ impl ControlHub {
     /// The currently held per-org notes (for a REST handler to diff/return without a disk re-read).
     pub fn notes(&self) -> BTreeMap<String, String> {
         self.inner.read().unwrap().notes.clone()
+    }
+
+    /// Stores the memo and broadcasts memo.sync. Called with the freshly read text on the startup
+    /// scan, a REST write, and an external-edit watch tick.
+    pub fn publish_memo(&self, text: String) {
+        let msg = ServerMessage::MemoSync { text: text.clone() };
+        self.inner.write().unwrap().memo = text;
+        let _ = self.tx.send(msg);
+    }
+
+    /// The currently held memo (for the watch to diff against without a redundant re-broadcast).
+    pub fn memo(&self) -> String {
+        self.inner.read().unwrap().memo.clone()
     }
 
     /// The number of connected control WS clients (subscribers = WS connections only; used for the macOS fallback decision).
@@ -548,6 +574,7 @@ mod tests {
                 update_check: true,
                 language: None,
                 account_usage: false,
+                memo_enabled: false,
                 editor: None,
                 footer_thresholds: Default::default(),
             },
@@ -560,6 +587,7 @@ mod tests {
         assert!(matches!(msgs[2], ServerMessage::StateSync { .. }));
         assert!(matches!(msgs[3], ServerMessage::HooksStatus { .. }));
         assert!(matches!(msgs[4], ServerMessage::NotesSync { .. }));
+        assert!(matches!(msgs[5], ServerMessage::MemoSync { .. }));
     }
 
     #[tokio::test]
@@ -700,6 +728,7 @@ mod tests {
             update_check: true,
             language: Some("en".into()),
             account_usage: false,
+            memo_enabled: false,
             editor: None,
             footer_thresholds: Default::default(),
         });

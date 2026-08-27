@@ -1,0 +1,72 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  EMPTY_MEMO,
+  editMemo,
+  type MemoBuffer,
+  memoDirty,
+  syncMemo,
+} from "./memo-model.js";
+
+const buf = (text: string, savedText: string): MemoBuffer => ({
+  text,
+  savedText,
+});
+
+describe("memoDirty", () => {
+  it("is clean when text matches the saved baseline", () => {
+    expect(memoDirty(EMPTY_MEMO)).toBe(false);
+    expect(memoDirty(buf("hi", "hi"))).toBe(false);
+  });
+
+  it("is dirty when the editor text diverges from the saved baseline", () => {
+    expect(memoDirty(buf("hi there", "hi"))).toBe(true);
+  });
+
+  it("treats whitespace-only text as clean against an empty baseline (the server stores blank as empty)", () => {
+    expect(memoDirty(buf("   \n", ""))).toBe(false);
+  });
+});
+
+describe("editMemo", () => {
+  it("moves the editor text and marks the buffer dirty", () => {
+    const r = editMemo(buf("hi", "hi"), "hi there");
+    expect(r).toEqual(buf("hi there", "hi"));
+    expect(memoDirty(r)).toBe(true);
+  });
+
+  it("is a no-op (same reference) when the text is unchanged", () => {
+    const base = buf("hi", "hi");
+    expect(editMemo(base, "hi")).toBe(base);
+  });
+});
+
+describe("syncMemo", () => {
+  it("adopts the server text wholesale when there are no local edits", () => {
+    const r = syncMemo(buf("old", "old"), "fresh");
+    expect(r).toEqual(buf("fresh", "fresh"));
+    expect(memoDirty(r)).toBe(false);
+  });
+
+  it("keeps in-progress local edits and only re-bases the saved baseline", () => {
+    const r = syncMemo(buf("my draft", "old"), "remote");
+    expect(r).toEqual(buf("my draft", "remote"));
+    expect(memoDirty(r)).toBe(true);
+  });
+
+  it("becomes clean when a remote change happens to equal the local draft", () => {
+    const r = syncMemo(buf("same", "old"), "same");
+    expect(memoDirty(r)).toBe(false);
+  });
+
+  it("is a no-op (same reference) when nothing changes", () => {
+    const base = buf("hi", "hi");
+    expect(syncMemo(base, "hi")).toBe(base);
+  });
+
+  it("settles a whitespace-only save to clean once the server echoes empty", () => {
+    // Dirty whitespace-only buffer; the server stored it as empty and echoes "".
+    const r = syncMemo(buf("   ", "old"), "");
+    expect(memoDirty(r)).toBe(false);
+  });
+});

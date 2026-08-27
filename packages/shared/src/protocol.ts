@@ -251,6 +251,15 @@ export const configSetAccountUsageSchema = z.object({
 });
 
 /**
+ * Toggle for the pinned Memo tab (SETTINGS). The server persists it to config.json and distributes
+ * config.sync; the client shows or hides the Memo tab accordingly.
+ */
+export const configSetMemoEnabledSchema = z.object({
+  t: z.literal("config.setMemoEnabled"),
+  enabled: z.boolean(),
+});
+
+/**
  * External editor command change from SETTINGS. The server persists it to config.json and
  * distributes config.sync, like the language change. A blank value clears it.
  */
@@ -338,6 +347,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   notificationDismissSchema,
   configUpdateSchema,
   configSetAccountUsageSchema,
+  configSetMemoEnabledSchema,
   configSetEditorSchema,
   configSetFooterThresholdsSchema,
   hooksRegisterSchema,
@@ -423,6 +433,8 @@ export const configSyncSchema = z.object({
   language: z.enum(["ja", "en"]).nullable().default(null),
   /** Whether the account-usage bridge is opted in (defaults off; omitted by old servers). */
   accountUsage: z.boolean().catch(false).default(false),
+  /** Whether the pinned Memo tab is enabled (defaults off; omitted by old servers). */
+  memoEnabled: z.boolean().catch(false).default(false),
   /** External editor command for opening files (null when unset; omitted by old servers). */
   editor: z.string().nullable().catch(null).default(null),
   /** Status-footer severity thresholds (defaults to the current bands; omitted by old servers). */
@@ -449,6 +461,15 @@ export const notificationsSyncSchema = z.object({
 export const notesSyncSchema = z.object({
   t: z.literal("notes.sync"),
   notes: z.record(z.string(), z.string()).default({}),
+});
+
+/**
+ * Distribution of the single app-wide memo (Markdown text). Sent once right after connecting (same
+ * manner as config.sync) and re-sent whenever the memo is written or externally edited.
+ */
+export const memoSyncSchema = z.object({
+  t: z.literal("memo.sync"),
+  text: z.string().default(""),
 });
 
 /**
@@ -509,6 +530,7 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   configSyncSchema,
   notificationsSyncSchema,
   notesSyncSchema,
+  memoSyncSchema,
   hooksStatusSchema,
   updateCheckResultSchema,
   updateStatusSchema,
@@ -525,6 +547,7 @@ export type NotifyMessage = z.infer<typeof notifySchema>;
 export type ConfigSyncMessage = z.infer<typeof configSyncSchema>;
 export type NotificationsSyncMessage = z.infer<typeof notificationsSyncSchema>;
 export type NotesSyncMessage = z.infer<typeof notesSyncSchema>;
+export type MemoSyncMessage = z.infer<typeof memoSyncSchema>;
 export type UpdateCheckResultMessage = z.infer<typeof updateCheckResultSchema>;
 export type UpdateStatusMessage = z.infer<typeof updateStatusSchema>;
 export type UpdateStatusState = UpdateStatusMessage["state"];

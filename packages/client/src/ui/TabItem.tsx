@@ -17,6 +17,10 @@ export interface TabItemProps {
   orgName: string | undefined;
   /** Whether reordering is enabled (onReorder provided by the caller). */
   reorderable: boolean;
+  /** Whether the tab shows a close button. false pins the tab (the Memo tab). */
+  closeable?: boolean;
+  /** Shows the unsaved-changes dot (in place of the close button for a non-closeable tab). */
+  dirty?: boolean;
   rename: TabRename;
   drag: TabDrag;
   onActivate(key: string): void;
@@ -37,6 +41,8 @@ export function TabItem({
   orgColor,
   orgName,
   reorderable,
+  closeable = true,
+  dirty = false,
   rename,
   drag,
   onActivate,
@@ -48,7 +54,7 @@ export function TabItem({
   const key = tabKey(tab);
   const isEditing = rename.editingKey === key;
   const renamable = session !== undefined && rename.isRenamable(session);
-  const draggable = reorderable && !isEditing;
+  const draggable = reorderable && !isEditing && closeable;
   const dragging = drag.dragKey === key;
   const dropTarget =
     drag.dragKey !== null && drag.dragKey !== key && drag.dragOverKey === key;
@@ -123,20 +129,24 @@ export function TabItem({
           <span className="tab-label">{label}</span>
         </button>
       )}
-      <button
-        type="button"
-        className="tab-close"
-        aria-label={t("tabBar.closeTab", { label })}
-        title={t("tabBar.closeTabTitle")}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose(key);
-        }}
-      >
-        <span className="material-symbols-outlined" aria-hidden="true">
-          close
-        </span>
-      </button>
+      {closeable ? (
+        <button
+          type="button"
+          className="tab-close"
+          aria-label={t("tabBar.closeTab", { label })}
+          title={t("tabBar.closeTabTitle")}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose(key);
+          }}
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">
+            close
+          </span>
+        </button>
+      ) : (
+        dirty && <span className="tab-dirty" aria-hidden="true" />
+      )}
     </div>
   );
 }

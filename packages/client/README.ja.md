@@ -13,6 +13,7 @@ UI の正規用語。コードには旧名（`windowId` / `SessionState` / `Pane
 
 ```
 Main Area
+├ Cockpit Tabs — Memo（任意・先頭固定）| Cockpit Terminal | Viewer | Diff
 └ Cockpit View — Cockpit Terminal | Viewer を表示（Cockpit Tab で1つ）
      └ Cockpit Terminal — 耐久ユニット。中で Claude Session (sid) が走る
           ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / no_claude / starting / unknown
@@ -33,6 +34,7 @@ Overlay — Notification Toast, Modal
 - **Cockpit Terminal**（旧 window/session）— 「session」と呼ばないのは、Ctrl+C で Claude の実行が終わっても端末自体は生き残るため。
 - **Claude Session**（`sid`）— Cockpit Terminal の中で走る一過性の Claude Code 実行。
 - **Viewer** — read-only のファイルビューワー。zashiki は vibe coding 専用コックピットなので、エディタに育てる予定はない。
+- **Memo** — 唯一の任意スクラッチパッドエディタ。Settings で有効にすると Cockpit Tabs の先頭に固定表示される。read-only 原則に対する唯一の意図的な例外（Viewer/Diff は read-only のまま）。Cmd-S で `<repos.conf のあるディレクトリ>/memo.md` に保存し、サーバが `memo.sync` で全クライアントへ配信して同期する。未保存の編集があるとタブに dirty dot が出る。
 - **Organization**（`org`）— Cockpit Terminal はいずれか1つに所属し、一覧はこれで束ねる。
 
 ## 起動（開発）
@@ -83,3 +85,9 @@ IME 合成・スクロール/コピーの体感は Playwright で再現できな
 
 - [ ] server を再起動するとステータスバーが reconnecting になり、復帰後にターミナルが再表示される
 - [ ] ウィンドウ切替バーで選んだ窓が、再接続後も表示され続ける
+
+### Memo（編集操作は Playwright で完全再現できないため手動）
+
+- [ ] Memo エディタに入力するとタブに dirty dot が出る。Cmd-S で保存され dot が消える
+- [ ] 保存した内容がリロード後も残る（`<repos.conf のあるディレクトリ>/memo.md` に書かれる）
+- [ ] `memo.md` を外部（または別クライアント）で編集するとエディタに反映され、編集中の未保存内容を上書きしない

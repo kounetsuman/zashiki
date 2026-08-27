@@ -90,4 +90,14 @@ describe("tabLabel", () => {
     );
     expect(title).toBe("we\nird.ts");
   });
+
+  it("labels the Memo tab", () => {
+    const { label, title } = tabLabel(
+      { kind: "memo", id: "memo" } as Tab,
+      [],
+      {} as TitleMap,
+    );
+    expect(label).toBe("Memo");
+    expect(title).toBe("Memo");
+  });
 });

@@ -203,6 +203,10 @@ pub enum ClientMessage {
     /// config.json and distributed via config.sync, like the language change.
     #[serde(rename = "config.setAccountUsage", rename_all = "camelCase")]
     ConfigSetAccountUsage { enabled: bool },
+    /// Opt-in toggle for the global memo from SETTINGS. Persisted to config.json and distributed via
+    /// config.sync, like the account-usage change.
+    #[serde(rename = "config.setMemoEnabled", rename_all = "camelCase")]
+    ConfigSetMemoEnabled { enabled: bool },
     /// External editor command change from SETTINGS. Persisted to config.json and distributed via
     /// config.sync, like the language change. A blank value clears it.
     #[serde(rename = "config.setEditor", rename_all = "camelCase")]
@@ -395,6 +399,7 @@ pub enum ServerMessage {
         update_check: bool,
         language: Option<String>,
         account_usage: bool,
+        memo_enabled: bool,
         editor: Option<String>,
         footer_thresholds: FooterThresholds,
     },
@@ -406,6 +411,10 @@ pub enum ServerMessage {
     /// connecting and whenever a note is written or externally edited). A full replacement, not a diff.
     #[serde(rename = "notes.sync", rename_all = "camelCase")]
     NotesSync { notes: BTreeMap<String, String> },
+    /// Distribution of the single app-wide memo (Markdown text; to all control connections right after
+    /// connecting and whenever the memo is written or externally edited). A full replacement.
+    #[serde(rename = "memo.sync", rename_all = "camelCase")]
+    MemoSync { text: String },
     /// Whether zashiki's Claude Code integration is present in ~/.claude/settings.json (sent right
     /// after connecting and after each register/unregister). Drives the first-run wizard and the
     /// SETTINGS toggle. `status_line_conflict` means a non-zashiki statusLine is present (registering
@@ -842,11 +851,12 @@ mod tests {
             update_check: true,
             language: Some("ja".into()),
             account_usage: false,
+            memo_enabled: false,
             editor: Some("cursor -g".into()),
             footer_thresholds: FooterThresholds::default(),
         };
         let json = concat!(
-            r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false,"editor":"cursor -g","footerThresholds":"#,
+            r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false,"memoEnabled":false,"editor":"cursor -g","footerThresholds":"#,
             r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
             r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}}}"#
@@ -862,11 +872,12 @@ mod tests {
             update_check: false,
             language: None,
             account_usage: true,
+            memo_enabled: true,
             editor: None,
             footer_thresholds: FooterThresholds::default(),
         };
         let json = concat!(
-            r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true,"editor":null,"footerThresholds":"#,
+            r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true,"memoEnabled":true,"editor":null,"footerThresholds":"#,
             r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
             r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}}}"#
@@ -888,6 +899,14 @@ mod tests {
         let json = r#"{"t":"config.setAccountUsage","enabled":true}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg, ClientMessage::ConfigSetAccountUsage { enabled: true });
+        assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn config_set_memo_enabled_roundtrips_and_matches_wire() {
+        let json = r#"{"t":"config.setMemoEnabled","enabled":true}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(msg, ClientMessage::ConfigSetMemoEnabled { enabled: true });
         assert_eq!(to_json(&msg), json);
     }
 
@@ -1043,6 +1062,16 @@ mod tests {
             notes: BTreeMap::from([("acme".to_string(), "# Acme\n".to_string())]),
         };
         let json = r##"{"t":"notes.sync","notes":{"acme":"# Acme\n"}}"##;
+        assert_eq!(to_json(&msg), json);
+        assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
+    }
+
+    #[test]
+    fn memo_sync_matches_wire() {
+        let msg = ServerMessage::MemoSync {
+            text: "# Memo\n".to_string(),
+        };
+        let json = r##"{"t":"memo.sync","text":"# Memo\n"}"##;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

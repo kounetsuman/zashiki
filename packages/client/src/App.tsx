@@ -46,6 +46,7 @@ import {
 } from "./lib/first-run-wizard.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
+import { memoDirty } from "./memo/memo-model.js";
 import {
   fmtResetClock,
   pickAccountLimits,
@@ -68,6 +69,7 @@ import { FirstRunSetupWizard } from "./ui/FirstRunSetupWizard.js";
 import { HelpModal } from "./ui/HelpModal.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
 import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
+import { MemoEditor } from "./ui/MemoEditor.js";
 import { NavigationBar } from "./ui/NavigationBar.js";
 import { NotificationView } from "./ui/NotificationView.js";
 import { SearchView } from "./ui/SearchView.js";
@@ -177,6 +179,7 @@ export function App({
   const clipboardEdit = useClipboardEditEnabled();
   const [addOrgOpen, setAddOrgOpen] = useState(false);
   const [accountUsage, setAccountUsage] = useState(false);
+  const [memoEnabled, setMemoEnabled] = useState(false);
   const [editor, setEditor] = useState<string | null>(null);
   const [footerThresholds, setFooterThresholds] = useState<FooterThresholds>(
     DEFAULT_FOOTER_THRESHOLDS,
@@ -223,6 +226,7 @@ export function App({
     orgColors,
     orgAliases,
     orgNotes,
+    memo,
     notifications,
     account,
     lastError,
@@ -270,12 +274,18 @@ export function App({
     activeSess,
     activeViewerKey,
     activeDiffKey,
+    activeMemoKey,
     activateTabByKey,
     closeTab,
     reorderTabByKey,
     openViewerTab,
     openDiffTab,
-  } = useAppTabs(store, cockpitTerminals, selectedCockpitTerminalId);
+  } = useAppTabs(
+    store,
+    cockpitTerminals,
+    selectedCockpitTerminalId,
+    memoEnabled,
+  );
 
   // Footer inputs for the active session tab (undefined for viewer/empty; usage null before a transcript).
   const activeSession =
@@ -333,6 +343,13 @@ export function App({
     },
     [openDiffTab, ensureDiff],
   );
+
+  // Focus the Memo editor when its tab becomes active (its own nonce, not the terminal's), mirroring
+  // the viewer/diff focus-on-open so clicking onto the Memo tab moves the caret into the editor.
+  const [memoFocusNonce, setMemoFocusNonce] = useState(0);
+  useEffect(() => {
+    if (activeMemoKey !== null) setMemoFocusNonce((n) => n + 1);
+  }, [activeMemoKey]);
   // Tab close removes both the tab and its viewer/diff buffer immediately (read-only, no prompt).
   const closeTabByKey = useCallback(
     (key: string): void => {
@@ -515,6 +532,21 @@ export function App({
     [cockpitTerminals, store, control],
   );
 
+  // Persist the Memo over REST; the server broadcasts memo.sync so the buffer's saved baseline moves.
+  const saveMemo = useCallback(
+    (text: string): void => {
+      void reposApi.setMemo(text);
+    },
+    [reposApi],
+  );
+
+  const onChangeMemo = useCallback(
+    (text: string): void => {
+      store.setMemoText(text);
+    },
+    [store],
+  );
+
   useAppKeyboardShortcuts({
     cockpitTerminals,
     orgs,
@@ -547,6 +579,7 @@ export function App({
       if (m.t !== "config.sync") return;
       notifier.applyServerConfig(m.notifySound);
       setAccountUsage(m.accountUsage);
+      setMemoEnabled(m.memoEnabled);
       setEditor(m.editor);
       setFooterThresholds(m.footerThresholds);
       // Apply the display language if the config file has one (unset = null keeps browser detection).
@@ -558,6 +591,14 @@ export function App({
     (enabled: boolean): void => {
       setAccountUsage(enabled);
       control.send({ t: "config.setAccountUsage", enabled });
+    },
+    [control],
+  );
+
+  const setMemoEnabledPref = useCallback(
+    (enabled: boolean): void => {
+      setMemoEnabled(enabled);
+      control.send({ t: "config.setMemoEnabled", enabled });
     },
     [control],
   );
@@ -782,6 +823,7 @@ export function App({
             activeKey={tabsState.activeKey}
             cockpitTerminals={cockpitTerminals}
             conversationTitles={conversationTitles}
+            memoDirty={memoDirty(memo)}
             orgColors={orgColors}
             orgAliases={orgAliases}
             onActivate={activateTabByKey}
@@ -835,12 +877,14 @@ export function App({
             {controlStatus === "open" &&
               cockpitTerminals.length === 0 &&
               activeViewerKey === null &&
-              activeDiffKey === null && <EmptyMainArea />}
+              activeDiffKey === null &&
+              activeMemoKey === null && <EmptyMainArea />}
             {controlStatus === "open" &&
               cockpitTerminals.length > 0 &&
               activeSess === null &&
               activeViewerKey === null &&
-              activeDiffKey === null && <NoTabOpen />}
+              activeDiffKey === null &&
+              activeMemoKey === null && <NoTabOpen />}
             {activeBuffer !== null && activeViewerKey !== null && (
               <Viewer
                 key={activeViewerKey}
@@ -867,6 +911,14 @@ export function App({
                     .catch(() => undefined)
                 }
                 focusNonce={diffFocusNonce}
+              />
+            )}
+            {activeMemoKey !== null && (
+              <MemoEditor
+                buffer={memo}
+                onChange={onChangeMemo}
+                onSave={saveMemo}
+                focusNonce={memoFocusNonce}
               />
             )}
           </div>
@@ -922,6 +974,8 @@ export function App({
           onSetClipboardEditModal={clipboardEdit.setEnabled}
           accountUsage={accountUsage}
           onSetAccountUsage={saveAccountUsage}
+          memoEnabled={memoEnabled}
+          onSetMemoEnabled={setMemoEnabledPref}
           editor={editor ?? ""}
           onSaveEditor={saveEditor}
           footerThresholds={footerThresholds}

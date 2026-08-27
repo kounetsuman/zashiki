@@ -26,6 +26,8 @@ export interface TabBarProps {
   orgColors?: Record<string, string>;
   /** org -> display alias (from repos.conf). Unspecified orgs are shown by their identity. */
   orgAliases?: Record<string, string>;
+  /** Whether the pinned Memo tab has unsaved edits (drives its dirty dot). */
+  memoDirty?: boolean;
   onActivate(key: string): void;
   onClose(key: string): void;
   /** Closes every open tab. The "close all" menu item is hidden when unspecified. */
@@ -68,6 +70,7 @@ export function TabBar({
   conversationTitles,
   orgColors = {},
   orgAliases = {},
+  memoDirty = false,
   onActivate,
   onClose,
   onCloseAll,
@@ -147,6 +150,7 @@ export function TabBar({
           session !== undefined
             ? resolveOrgName(session.org, orgAliases)
             : undefined;
+        const isMemo = tab.kind === "memo";
         return (
           <TabItem
             key={key}
@@ -159,6 +163,8 @@ export function TabBar({
             orgColor={orgColor}
             orgName={orgName}
             reorderable={onReorder !== undefined}
+            closeable={!isMemo}
+            dirty={isMemo && memoDirty}
             rename={rename}
             drag={drag}
             onActivate={onActivate}

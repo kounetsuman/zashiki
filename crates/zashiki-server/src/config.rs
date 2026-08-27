@@ -54,6 +54,7 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
         update_check: field("updateCheck", true),
         language,
         account_usage: field("accountUsage", false),
+        memo_enabled: field("memoEnabled", false),
         editor,
         footer_thresholds: parse_footer_thresholds(obj),
     }
@@ -127,6 +128,10 @@ pub fn write_config_language(path: &Path, language: &str) -> std::io::Result<()>
 
 pub fn write_config_account_usage(path: &Path, enabled: bool) -> std::io::Result<()> {
     write_config_field(path, "accountUsage", serde_json::Value::Bool(enabled))
+}
+
+pub fn write_config_memo_enabled(path: &Path, enabled: bool) -> std::io::Result<()> {
+    write_config_field(path, "memoEnabled", serde_json::Value::Bool(enabled))
 }
 
 pub fn write_config_editor(path: &Path, editor: &str) -> std::io::Result<()> {
@@ -289,6 +294,28 @@ mod tests {
 
         write_config_account_usage(&path, false).unwrap();
         assert!(!read_config(&path).account_usage);
+    }
+
+    #[test]
+    fn parse_config_memo_enabled_defaults_off_and_reads_bool() {
+        assert!(!parse(json!({})).memo_enabled);
+        assert!(parse(json!({"memoEnabled": true})).memo_enabled);
+        assert!(!parse(json!({"memoEnabled": "yes"})).memo_enabled);
+    }
+
+    #[test]
+    fn write_config_memo_enabled_sets_and_preserves_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"language": "en"}"#).unwrap();
+
+        write_config_memo_enabled(&path, true).unwrap();
+        let c = read_config(&path);
+        assert!(c.memo_enabled);
+        assert_eq!(c.language, Some("en".into())); // existing fields are preserved
+
+        write_config_memo_enabled(&path, false).unwrap();
+        assert!(!read_config(&path).memo_enabled);
     }
 
     #[test]

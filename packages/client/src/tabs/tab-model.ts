@@ -7,13 +7,17 @@
  * the original order is chosen deterministically (even when several vanish at once).
  */
 
-export type TabKind = "session" | "viewer" | "diff";
+export type TabKind = "session" | "viewer" | "diff" | "memo";
 
 export interface Tab {
   readonly kind: TabKind;
-  /** Identifier unique within a kind (session=cockpitTerminalId, viewer=fileKey, diff=diffKey). */
+  /** Identifier unique within a kind (session=cockpitTerminalId, viewer=fileKey, diff=diffKey, memo=fixed). */
   readonly id: string;
 }
+
+/** The single app-wide Memo tab (there is only ever one), pinned to the front when enabled. */
+export const MEMO_TAB: Tab = { kind: "memo", id: "memo" };
+export const MEMO_TAB_KEY = keyFor(MEMO_TAB.kind, MEMO_TAB.id);
 
 export interface TabsState {
   readonly tabs: readonly Tab[];
@@ -91,10 +95,12 @@ export function activateTab(state: TabsState, key: string): TabsState {
 
 /**
  * Closes a tab (removal only; does not kill the session). A nonexistent key is a
- * no-op. If the closed tab was active, the nearest surviving tab in the original
- * order becomes the new active; if it was not active, the active tab is left as is.
+ * no-op. The pinned Memo tab is non-closeable (toggled via setMemoVisible instead), so
+ * closing it is a no-op. If the closed tab was active, the nearest surviving tab in the
+ * original order becomes the new active; if it was not active, the active tab is left as is.
  */
 export function closeTab(state: TabsState, key: string): TabsState {
+  if (key === MEMO_TAB_KEY) return state;
   const idx = indexOfKey(state.tabs, key);
   if (idx === -1) return state;
   const tabs = state.tabs.filter((_, i) => i !== idx);
@@ -115,6 +121,8 @@ export function moveTab(
   fromKey: string,
   toKey: string,
 ): TabsState {
+  // The Memo tab stays pinned at the front: it can't be dragged, nor can another tab drop before it.
+  if (fromKey === MEMO_TAB_KEY || toKey === MEMO_TAB_KEY) return state;
   const from = indexOfKey(state.tabs, fromKey);
   const to = indexOfKey(state.tabs, toKey);
   if (from === -1 || to === -1 || from === to) return state;
@@ -144,5 +152,29 @@ export function pruneSessions(
   const activeKey = activeSurvives
     ? state.activeKey
     : neighborKey(state.tabs, activeIdx, (i) => survives(state.tabs[i] as Tab));
+  return { tabs, activeKey };
+}
+
+/**
+ * Reflects the Memo setting into the tab list. When enabled, the Memo tab is pinned at the front
+ * (added if absent, without stealing focus from the active tab — but it becomes active if nothing
+ * else is open). When disabled, it is removed; if it was active, focus moves to the nearest
+ * surviving tab. No change returns the same reference.
+ */
+export function setMemoVisible(state: TabsState, visible: boolean): TabsState {
+  const idx = indexOfKey(state.tabs, MEMO_TAB_KEY);
+  if (visible) {
+    if (idx !== -1) return state;
+    return {
+      tabs: [MEMO_TAB, ...state.tabs],
+      activeKey: state.activeKey ?? MEMO_TAB_KEY,
+    };
+  }
+  if (idx === -1) return state;
+  const tabs = state.tabs.filter((_, i) => i !== idx);
+  const activeKey =
+    state.activeKey === MEMO_TAB_KEY
+      ? neighborKey(state.tabs, idx, (i) => i !== idx)
+      : state.activeKey;
   return { tabs, activeKey };
 }

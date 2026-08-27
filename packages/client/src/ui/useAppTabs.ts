@@ -7,9 +7,11 @@ import {
   activeTab,
   closeTab as closeTabModel,
   EMPTY_TABS,
+  MEMO_TAB_KEY,
   moveTab,
   openTab,
   pruneSessions,
+  setMemoVisible,
   type TabsState,
   tabKey,
 } from "../tabs/tab-model.js";
@@ -22,6 +24,8 @@ export interface AppTabs {
   activeViewerKey: string | null;
   /** Buffer key of the active diff tab (null when the active tab is not a diff). */
   activeDiffKey: string | null;
+  /** MEMO_TAB_KEY when the Memo tab is active, else null. */
+  activeMemoKey: string | null;
   activateTabByKey(key: string): void;
   /** Removes the tab only; the session (or viewer/diff buffer) is closed by the caller. */
   closeTab(key: string): void;
@@ -39,12 +43,18 @@ export function useAppTabs(
   store: AppStore,
   cockpitTerminals: readonly CockpitTerminalInfo[],
   selectedCockpitTerminalId: string | null,
+  memoEnabled: boolean,
 ): AppTabs {
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
   const activeSess = activeSessionId(tabsState);
   const active = activeTab(tabsState);
   const activeViewerKey = active?.kind === "viewer" ? active.id : null;
   const activeDiffKey = active?.kind === "diff" ? active.id : null;
+  const activeMemoKey = active?.kind === "memo" ? MEMO_TAB_KEY : null;
+
+  useEffect(() => {
+    setTabsState((prev) => setMemoVisible(prev, memoEnabled));
+  }, [memoEnabled]);
 
   useEffect(() => {
     if (selectedCockpitTerminalId === null) return;
@@ -121,6 +131,7 @@ export function useAppTabs(
     activeSess,
     activeViewerKey,
     activeDiffKey,
+    activeMemoKey,
     activateTabByKey,
     closeTab,
     reorderTabByKey,

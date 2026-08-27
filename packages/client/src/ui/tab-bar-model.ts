@@ -11,6 +11,7 @@ export const TAB_ICON: Record<TabKind, string> = {
   session: "terminal",
   viewer: "description",
   diff: "difference",
+  memo: "edit_note",
 };
 
 function basenameLabel(rel: string): { label: string; title: string } {
@@ -35,6 +36,9 @@ export function tabLabel(
         ? tab.id
         : resolveTitle(effectiveCustomTitle(titles, s), s);
     return { label, title: label };
+  }
+  if (tab.kind === "memo") {
+    return { label: "Memo", title: "Memo" };
   }
   if (tab.kind === "diff") {
     return basenameLabel(tab.id.split("\n").slice(2).join("\n") || tab.id);

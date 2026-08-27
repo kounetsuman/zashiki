@@ -92,6 +92,11 @@ export {
   lastUserOrAssistantEvent,
 } from "./jsonl.js";
 export {
+  MEMO_MAX_CHARS,
+  type MemoRequest,
+  memoRequestSchema,
+} from "./memo.js";
+export {
   appendNotification,
   dismissNotification,
   errorNotification,

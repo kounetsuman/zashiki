@@ -36,6 +36,8 @@ pub struct ConfigView {
     /// Opt-in for the self-contained account-usage bridge. Default off; when on, launches inject
     /// `--settings` so claude's statusLine relays rate_limits to the server without touching user settings.
     pub account_usage: bool,
+    /// Opt-in for the global memo scratchpad (SETTINGS). Default off; drives the client's memo tab visibility.
+    pub memo_enabled: bool,
     /// External editor command for `POST /api/git/open` (SETTINGS). None when unset, falling back to
     /// `ZK_EDITOR` then `cursor -g`. Read live per open, so a change applies without a restart.
     pub editor: Option<String>,
@@ -227,8 +229,8 @@ mod tests {
         async fn connect(port: u16) -> Ws {
             let url = format!("ws://127.0.0.1:{port}/ws/control");
             let mut ws = tokio_tungstenite::connect_async(&url).await.unwrap().0;
-            // Skip the config.sync / notifications.sync / state.sync / hooks.status / notes.sync / account.status sent right after connecting.
-            for _ in 0..6 {
+            // Skip the config.sync / notifications.sync / state.sync / hooks.status / notes.sync / memo.sync / account.status sent right after connecting.
+            for _ in 0..7 {
                 let _ = next_json(&mut ws).await;
             }
             ws

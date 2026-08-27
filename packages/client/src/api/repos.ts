@@ -5,6 +5,7 @@ import {
   type FsValidateResponse,
   fsListResponseSchema,
   fsValidateResponseSchema,
+  type MemoRequest,
   type OrgNoteRequest,
   type ReposListResponse,
   reposListResponseSchema,
@@ -24,6 +25,8 @@ export interface ReposApi {
   list(signal?: AbortSignal): Promise<ReposListResponse>;
   /** Save an org's note (a blank `text` removes it). The updated set arrives via notes.sync. */
   setNote(org: string, text: string): Promise<void>;
+  /** Save the app-wide Memo. The updated text arrives via memo.sync. */
+  setMemo(text: string): Promise<void>;
 }
 
 /** Error thrown by {@link ReposApi.add}. `code` is the server's stable reason (localized by the UI). */
@@ -104,6 +107,18 @@ export function createReposApi(
     async setNote(org, text) {
       const body: OrgNoteRequest = { org, text };
       const res = await fetchFn(`${base}/api/orgs/note`, {
+        method: "POST",
+        headers: { ...authHeaders(token), "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const { message, code } = await errorOf(res);
+        throw new ReposAddError(message, code);
+      }
+    },
+    async setMemo(text) {
+      const body: MemoRequest = { text };
+      const res = await fetchFn(`${base}/api/memo`, {
         method: "POST",
         headers: { ...authHeaders(token), "content-type": "application/json" },
         body: JSON.stringify(body),
