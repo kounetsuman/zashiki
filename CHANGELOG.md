@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-08-27
+
+### Added
+
+- First-run welcome onboarding that hands off into the Claude Code integration setup, reopenable from Settings (#270)
+- An opt-in Memo editor tab (#268)
+
+### Changed
+
+- Explorer row spacing is loosened to match VSCode (#266)
+- Self-update is unified on a signed-dmg swap via install.sh (#262)
+
 ## [0.14.0] - 2026-08-26
 
 ### Added
@@ -250,7 +262,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/kounetsuman/zashiki/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/kounetsuman/zashiki/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/kounetsuman/zashiki/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/kounetsuman/zashiki/compare/v0.11.0...v0.12.0
