@@ -54,6 +54,12 @@ cp -R "hooks" "$tauri_dir/hooks"
 # 登録先の絶対パスを Claude Code が直接起動するため、同梱コピーに実行ビットを保証する。
 chmod +x "$tauri_dir/hooks/"*.sh
 
+# install.sh も resources 経由で Contents/Resources/install.sh へ入る（self_update.rs の resolve_installer と一致）。
+# アプリ内の自己更新は、この同梱コピーを temp に写して署名済み dmg 入れ替えを実行する。
+rm -f "$tauri_dir/install.sh"
+cp "scripts/install.sh" "$tauri_dir/install.sh"
+chmod +x "$tauri_dir/install.sh"
+
 if [ "$prepare_only" = true ]; then
   echo "==> --prepare-only: 同梱物の配置まで完了（tauri build はスキップ）"
   exit 0

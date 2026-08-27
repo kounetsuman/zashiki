@@ -4,7 +4,8 @@
     "externalBin": ["binaries/zashiki-server"],
     "resources": {
       "client-dist": "client-dist",
-      "hooks": "hooks"
+      "hooks": "hooks",
+      "install.sh": "install.sh"
     }
   }
 }

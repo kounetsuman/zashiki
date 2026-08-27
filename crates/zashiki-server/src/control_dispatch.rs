@@ -153,8 +153,8 @@ pub(crate) async fn handle_client_message(
             };
             socket.send(to_text(&result)).await.is_ok()
         }
-        // Long-running: run brew + relaunch off the WS loop, reporting progress via update.status
-        // broadcasts. app_version being set marks the desktop-shell context (gates brew vs open-page).
+        // Long-running: swap the bundle + relaunch off the WS loop, reporting progress via update.status
+        // broadcasts. app_version being set marks the desktop-shell context (gates swap vs open-page).
         ClientMessage::UpdatePerform => {
             let hub = services.hub.clone();
             let present = services.app_version.is_some();
