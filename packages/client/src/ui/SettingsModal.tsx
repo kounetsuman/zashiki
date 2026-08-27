@@ -95,6 +95,8 @@ export interface SettingsModalProps {
   onOpenDevtools?(): void;
   /** Open the in-app debug panel. Omit to hide the entry. */
   onOpenDebugPanel?(): void;
+  /** Reopen the first-run welcome onboarding. Omit to hide the entry. */
+  onShowOnboarding?(): void;
   /** Dismiss the modal (Escape, backdrop click, or the close button). */
   onClose(): void;
 }
@@ -141,6 +143,7 @@ export function SettingsModal({
   onSetRenderer,
   onOpenDevtools,
   onOpenDebugPanel,
+  onShowOnboarding,
   onClose,
 }: SettingsModalProps) {
   const { t } = useTranslation();
@@ -438,6 +441,20 @@ export function SettingsModal({
                   </span>
                 </div>
               )}
+            {onShowOnboarding !== undefined && (
+              <div className="settings-field">
+                <span className="settings-label">
+                  {t("settings.onboardingSection")}
+                </span>
+                <button
+                  type="button"
+                  className="settings-save"
+                  onClick={onShowOnboarding}
+                >
+                  {t("settings.showOnboarding")}
+                </button>
+              </div>
+            )}
           </div>
           <div
             className="modal-body scrollbar-persistent"

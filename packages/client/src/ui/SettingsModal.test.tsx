@@ -327,6 +327,26 @@ describe("SettingsModal General tab", () => {
     expect(onSaveEditor).toHaveBeenCalledWith("code -w");
   });
 
+  it("shows the welcome-guide entry only when onShowOnboarding is provided and calls it on click", () => {
+    const onShowOnboarding = vi.fn();
+    const { rerender } = render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "案内をもう一度見る" }),
+    ).toBeNull();
+    rerender(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        onShowOnboarding={onShowOnboarding}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "案内をもう一度見る" }));
+    expect(onShowOnboarding).toHaveBeenCalledOnce();
+  });
+
   it("hides the update-check entry when onCheckForUpdates is omitted", () => {
     render(
       <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,

@@ -278,6 +278,8 @@
     "hooksIntegration": "Claude Code 連携（通知・使用率フッタ）",
     "hooksIntegrationHint": "zashiki の hooks と statusLine を ~/.claude/settings.json に登録し、通知・即時更新・使用率フッタを有効にします。",
     "hooksConflictHint": "既存の statusLine があります。有効化すると、それをラップして zashiki と併存させます。",
+    "onboardingSection": "はじめての案内",
+    "showOnboarding": "案内をもう一度見る",
     "renderer": "ターミナルレンダラ",
     "rendererWebgl": "WebGL",
     "rendererDom": "DOM",
@@ -317,6 +319,13 @@
     "statusLineConflict": "既存の statusLine は保持されます（ラップして表示を維持します）。",
     "enable": "有効化",
     "notNow": "後で"
+  },
+  "onboarding": {
+    "title": "zashiki へようこそ",
+    "intro": "zashiki は Claude Code のための1画面の AI コックピットです。どのセッションが対応待ちかを示し、複数の操作をまとめて楽にします。",
+    "note": "次に、通知と使用率フッタのための Claude Code 連携を設定します。この案内は設定からいつでも開けます。",
+    "skip": "スキップ",
+    "getStarted": "はじめる"
   },
   "addOrg": {
     "title": "組織を追加",

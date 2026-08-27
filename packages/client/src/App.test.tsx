@@ -13,7 +13,7 @@ import {
   DEFAULT_FOOTER_THRESHOLDS,
   type ServerMessage,
 } from "@zashiki/shared";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { FilesApi } from "./api/files.js";
 import type { FsApi } from "./api/fs.js";
@@ -27,6 +27,7 @@ import type {
   NotifyOptions,
   NotifyPermission,
 } from "./lib/notify.js";
+import { ONBOARDING_SEEN_KEY } from "./lib/onboarding.js";
 import type { ControlStatus } from "./ws/control.js";
 
 // To guard the focusNonce wiring (store -> App -> TerminalView.props) at the App level,
@@ -219,8 +220,15 @@ const twoOrgSessions: CockpitTerminalInfo[] = [
   },
 ];
 
+// The welcome onboarding auto-opens on a first run (no seen key). It has its own tests below;
+// keep it inert for the rest of the suite by marking it seen before each render.
+beforeEach(() => {
+  localStorage.setItem(ONBOARDING_SEEN_KEY, "1");
+});
+
 afterEach(() => {
   cleanup();
+  localStorage.clear();
   // Reset the global side effect from the language-switch tests back to ja between tests.
   void i18n.changeLanguage("ja");
 });
@@ -1590,5 +1598,114 @@ describe("App", () => {
       }),
     );
     expect(f.resume).toHaveBeenCalled();
+  });
+});
+
+describe("App welcome onboarding", () => {
+  function memoryStorage(): Pick<Storage, "getItem" | "setItem"> {
+    const map = new Map<string, string>();
+    return {
+      getItem: (k) => map.get(k) ?? null,
+      setItem: (k, v) => void map.set(k, v),
+    };
+  }
+
+  function renderApp(viewStorage: Pick<Storage, "getItem" | "setItem"> | null) {
+    const control = createFakeAppControl();
+    const { session } = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        reposApi={fakeReposApi}
+        viewStorage={viewStorage}
+      />,
+    );
+    return { control };
+  }
+
+  it("greets a first run and flows from welcome into the Claude Code setup step", () => {
+    renderApp(memoryStorage());
+    expect(
+      screen.getByRole("dialog", { name: "zashiki へようこそ" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "はじめる" }));
+    expect(
+      screen.getByRole("dialog", { name: "Claude Code 連携をセットアップ" }),
+    ).toBeTruthy();
+  });
+
+  it("remembers dismissal so it does not reappear on a later launch", () => {
+    const storage = memoryStorage();
+    renderApp(storage);
+    fireEvent.click(screen.getByRole("button", { name: "スキップ" }));
+    expect(
+      screen.queryByRole("dialog", { name: "zashiki へようこそ" }),
+    ).toBeNull();
+    expect(storage.getItem(ONBOARDING_SEEN_KEY)).toBe("1");
+
+    cleanup();
+    renderApp(storage);
+    expect(
+      screen.queryByRole("dialog", { name: "zashiki へようこそ" }),
+    ).toBeNull();
+  });
+
+  it("does not reopen the setup wizard after the welcome is skipped", () => {
+    const { control } = renderApp(memoryStorage());
+    fireEvent.click(screen.getByRole("button", { name: "スキップ" }));
+    // The server pushes hooks.status on connect; an unregistered status must not resurrect the
+    // standalone setup wizard the user just skipped.
+    act(() =>
+      control.emit({
+        t: "hooks.status",
+        hooksRegistered: false,
+        statusLineRegistered: false,
+        statusLineConflict: false,
+      }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Claude Code 連携をセットアップ" }),
+    ).toBeNull();
+  });
+
+  it("registers the integration when enabled from the setup step, then finishes", () => {
+    const storage = memoryStorage();
+    const { control } = renderApp(storage);
+    fireEvent.click(screen.getByRole("button", { name: "はじめる" }));
+    fireEvent.click(screen.getByRole("button", { name: "有効化" }));
+    expect(control.sent.some((m) => m.t === "hooks.register")).toBe(true);
+    expect(
+      screen.queryByRole("dialog", { name: "Claude Code 連携をセットアップ" }),
+    ).toBeNull();
+    expect(storage.getItem(ONBOARDING_SEEN_KEY)).toBe("1");
+  });
+
+  it("does not greet a returning user whose storage marks it seen", () => {
+    const storage = memoryStorage();
+    storage.setItem(ONBOARDING_SEEN_KEY, "1");
+    renderApp(storage);
+    expect(
+      screen.queryByRole("dialog", { name: "zashiki へようこそ" }),
+    ).toBeNull();
+  });
+
+  it("reopens the welcome from Settings on demand", () => {
+    const storage = memoryStorage();
+    storage.setItem(ONBOARDING_SEEN_KEY, "1");
+    renderApp(storage);
+    act(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "s", ctrlKey: true, altKey: true }),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "案内をもう一度見る" }));
+    expect(
+      screen.getByRole("dialog", { name: "zashiki へようこそ" }),
+    ).toBeTruthy();
   });
 });
