@@ -34,6 +34,12 @@
   "clipboardEdit": {
     "title": "Edit clipboard",
     "description": "Copying a one-liner that was hard-wrapped at the terminal width pulls in line breaks. Remove them here and re-copy the text before closing.",
+    "indent": {
+      "label": "Indent with",
+      "spaces": "Spaces",
+      "tab": "Tab",
+      "width": "Width"
+    },
     "close": "Close",
     "neverShow": "Don't show this again"
   },
