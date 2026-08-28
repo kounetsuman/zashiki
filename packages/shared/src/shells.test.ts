@@ -104,6 +104,21 @@ describe("countRunningShellsBySid", () => {
     );
   });
 
+  it("treats multiple processes on the same task as one shell", () => {
+    // A wrapper shell and its child (e.g. `sleep` in a polling loop) both hold the
+    // inherited fd1 to the same output file, so lsof yields one entry per process.
+    const outputs = [
+      { sid: SID_A, taskId: "bush20ok3" },
+      { sid: SID_A, taskId: "bush20ok3" },
+    ];
+    const bgIdsBySid = new Map<string, Set<string>>([
+      [SID_A, new Set(["bush20ok3"])],
+    ]);
+    expect(countRunningShellsBySid(outputs, bgIdsBySid)).toEqual(
+      new Map([[SID_A, 1]]),
+    );
+  });
+
   it("a sid with no backgroundTaskId set is 0 (does not create the key at all)", () => {
     const outputs = [{ sid: SID_A, taskId: "fgonly123" }];
     expect(countRunningShellsBySid(outputs, new Map())).toEqual(new Map());
