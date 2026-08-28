@@ -834,6 +834,11 @@ textarea {
   background: #c5c5c5;
 }
 
+/* Clean state: keep the dot's slot so the tab width is identical to the unsaved state. */
+.tab-dirty-hidden {
+  visibility: hidden;
+}
+
 /* ---- ファイルビューア（issue #62 / #320。閲覧専用） ---- */
 
 /* viewer タブ active の間、main area 本体にオーバーレイ表示（TerminalView を隠さずに

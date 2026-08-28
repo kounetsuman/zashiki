@@ -778,7 +778,11 @@ describe("TabBar", () => {
     );
     expect(screen.getByText("Memo")).toBeTruthy();
     expect(container.querySelector(".tab-close")).toBeNull();
-    expect(container.querySelector(".tab-dirty")).toBeNull();
+    // The dot's slot stays in the layout (keeping the tab width constant); only its
+    // visibility is toggled off via tab-dirty-hidden when clean.
+    expect(
+      container.querySelector(".tab-dirty.tab-dirty-hidden"),
+    ).not.toBeNull();
   });
 
   it("shows the dirty dot on the Memo tab when memoDirty is true", () => {
@@ -795,6 +799,7 @@ describe("TabBar", () => {
       />,
     );
     expect(container.querySelector(".tab-dirty")).not.toBeNull();
+    expect(container.querySelector(".tab-dirty.tab-dirty-hidden")).toBeNull();
     expect(container.querySelector(".tab-close")).toBeNull();
   });
 
