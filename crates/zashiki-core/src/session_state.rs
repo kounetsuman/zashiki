@@ -33,8 +33,9 @@ pub enum CockpitTerminalState {
 pub const DEFAULT_RUN_MARKER: &str = "(esc to interrupt";
 /// The line-start marker for a bg-agent line.
 pub const DEFAULT_BG_AGENT_MARKER: &str = "◯";
-/// Line-head markers for the limit-reached banners. Claude Code renders two wordings: the lockout
-/// banner (`✗ Claude usage limit reached · /upgrade …`) and the auto-retry banner
+/// Line-head markers for the limit-reached renders. Claude Code has three wordings: the lockout
+/// banner (`✗ Claude usage limit reached · /upgrade …`), the result line
+/// (`⎿ Claude usage limit reached. …`), and the auto-retry banner
 /// (`✻ Session limit reached · Retrying in …`).
 pub const DEFAULT_LIMIT_MARKERS: &[&str] =
     &["claude usage limit reached", "session limit reached"];
@@ -54,6 +55,10 @@ pub const DEFAULT_MENU_MARKERS: &[&str] = &[
 
 /// The last 8 non-empty lines = the absorption width for the real layout where 3 input-box lines + a status line sit below the spinner.
 const BOTTOM_WINDOW_LINES: usize = 8;
+
+/// The first 8 non-empty lines = the width that covers FleetView's fixed banner area (logo rows plus
+/// the version/model lines) above the counts header.
+const TOP_WINDOW_LINES: usize = 8;
 
 /// A whitespace test that exactly matches ECMAScript's `\s` (WhiteSpace ∪ LineTerminator).
 /// It differs from Rust's `char::is_whitespace` (Unicode White_Space) in just two points:
@@ -101,6 +106,14 @@ fn bottom_non_empty_lines(capture: &str) -> Vec<&str> {
     lines[start..].to_vec()
 }
 
+/// The first 8 non-empty lines (the top counterpart of `bottom_non_empty_lines`).
+fn top_non_empty_lines(capture: &str) -> impl Iterator<Item = &str> {
+    capture
+        .split('\n')
+        .filter(|l| has_non_whitespace(l))
+        .take(TOP_WINDOW_LINES)
+}
+
 /// If `\d+<letter>` matches, returns the position after letter (zero digits does not match; no side effects).
 fn match_digits_letter(chars: &[char], start: usize, letter: char) -> Option<usize> {
     let mut i = start;
@@ -125,14 +138,8 @@ fn has_live_spinner_timer(line: &str) -> bool {
 }
 
 fn matches_timer_after(chars: &[char], start: usize) -> bool {
-    let skip_ws = |mut i: usize| {
-        while i < chars.len() && is_js_whitespace(chars[i]) {
-            i += 1;
-        }
-        i
-    };
     // \s* \(
-    let mut i = skip_ws(start);
+    let mut i = skip_ws(chars, start);
     if chars.get(i) != Some(&'(') {
         return false;
     }
@@ -140,7 +147,7 @@ fn matches_timer_after(chars: &[char], start: usize) -> bool {
     // (?:\d+h\s*)?  (?:\d+m\s*)?
     for unit in ['h', 'm'] {
         if let Some(j) = match_digits_letter(chars, i, unit) {
-            i = skip_ws(j);
+            i = skip_ws(chars, j);
         }
     }
     // \d+s
@@ -171,14 +178,24 @@ pub fn is_running(capture: &str, marker: &str) -> bool {
         .any(|line| line.contains(marker) || has_live_spinner_timer(line))
 }
 
-/// Detects Claude Code's limit-reached banner from the bottom of the screen (the last 8 non-empty
-/// lines). A marker must head a line — after stripping leading decoration — case-insensitively, so
-/// a quoted occurrence mid-line (i18n resources, docs, chat text) does not trip it while the real
-/// banner (glyph + marker at the line head) still does. It is an attribute orthogonal to the main
-/// state and is not built into `detect_state` (so as not to make the case of a limit banner
-/// appearing during running mutually exclusive). An empty marker list (or all-empty markers) falls
-/// to false to avoid a false positive (matching every window) (callers are expected to resolve to
-/// the default).
+/// Leading glyphs Claude Code renders before the limit text (`✗` banner, `⎿` result lines, and
+/// the `· ✢ ✳ ✶ ✻ ✽` spinner frames of the auto-retry banner), plus whitespace and box borders.
+/// Deliberately excludes bullet/quote glyphs and the `⏺` response bullet so prose citing the
+/// phrase does not match.
+fn is_limit_line_decoration(c: char) -> bool {
+    is_js_whitespace(c)
+        || matches!(
+            c,
+            '│' | '┃' | '|' | '╎' | '┆' | '✗' | '⎿' | '·' | '✢' | '✳' | '✶' | '✻' | '✽'
+        )
+}
+
+/// Detects Claude Code's limit-reached renders (`✗ Claude usage limit reached · /upgrade …`,
+/// `⎿ Claude usage limit reached. …`, `✻ Session limit reached · Retrying …`) in the last 8
+/// non-empty lines. A marker (case-insensitive) must head a line after leading limit decoration is
+/// stripped, so the phrase quoted in command output or source code shown on screen does not trip
+/// the flag. Orthogonal to the main state (a banner can appear while running). An empty marker
+/// list yields false (callers resolve the default).
 pub fn is_limit_reached(capture: &str, markers: &[&str]) -> bool {
     let needles = lowercase_needles(markers);
     if needles.is_empty() {
@@ -186,7 +203,7 @@ pub fn is_limit_reached(capture: &str, markers: &[&str]) -> bool {
     }
     bottom_non_empty_lines(capture)
         .iter()
-        .any(|line| head_starts_with(line, &needles))
+        .any(|line| head_starts_with(line, &needles, is_limit_line_decoration))
 }
 
 /// Lowercased non-empty marker needles for case-insensitive matching (empty result = match nothing).
@@ -198,21 +215,19 @@ fn lowercase_needles(markers: &[&str]) -> Vec<String> {
         .collect()
 }
 
-/// Whether a needle heads the line after stripping leading decoration, case-insensitively.
-fn head_starts_with(line: &str, needles: &[String]) -> bool {
-    let head = line.trim_start_matches(is_line_decoration).to_lowercase();
+/// Whether a needle heads the line after stripping the given leading decoration, case-insensitively.
+fn head_starts_with(line: &str, needles: &[String], is_decoration: fn(char) -> bool) -> bool {
+    let head = line.trim_start_matches(is_decoration).to_lowercase();
     needles.iter().any(|n| head.starts_with(n.as_str()))
 }
 
-/// Leading line decoration (whitespace, a box-border/bullet glyph, or a banner status/spinner
-/// glyph) stripped before a menu or limit marker is tested at the start of a line, so a centered,
-/// box-framed, or glyph-prefixed banner line still matches.
-fn is_line_decoration(c: char) -> bool {
+/// Leading line decoration (whitespace or a box-border/bullet glyph) stripped before a menu marker
+/// is tested at the start of a line, so a centered or box-framed overlay title still matches.
+fn is_menu_line_decoration(c: char) -> bool {
     is_js_whitespace(c)
         || matches!(
             c,
-            '│' | '┃' | '|' | '╎' | '┆' | '>' | '*' | '•' | '·' | '-' | '─' | '✗' | '✻'
-                | '✳' | '✶' | '✽' | '✢'
+            '│' | '┃' | '|' | '╎' | '┆' | '>' | '*' | '•' | '·' | '-' | '─'
         )
 }
 
@@ -230,7 +245,7 @@ pub fn is_menu_open(capture: &str, markers: &[&str]) -> bool {
     }
     capture
         .split('\n')
-        .any(|line| head_starts_with(line, &needles))
+        .any(|line| head_starts_with(line, &needles, is_menu_line_decoration))
 }
 
 /// Whether the live background-agent panel (`⏺ main` heading directly above line-start `◯ ` agent
@@ -300,11 +315,17 @@ fn take_number(chars: &[char], start: usize) -> Option<(usize, usize)> {
     (i > start).then_some((val, i))
 }
 
-fn skip_ws_required(chars: &[char], start: usize) -> Option<usize> {
+/// The index after the run of whitespace at `start` (`\s*`; `start` itself when there is none).
+fn skip_ws(chars: &[char], start: usize) -> usize {
     let mut i = start;
     while i < chars.len() && is_js_whitespace(chars[i]) {
         i += 1;
     }
+    i
+}
+
+fn skip_ws_required(chars: &[char], start: usize) -> Option<usize> {
+    let i = skip_ws(chars, start);
     (i > start).then_some(i)
 }
 
@@ -318,6 +339,56 @@ fn take_ascii(chars: &[char], start: usize, word: &str) -> Option<usize> {
         i += 1;
     }
     Some(i)
+}
+
+/// The session counts parsed from the FleetView dashboard header.
+pub struct FleetViewCounts {
+    pub awaiting_input: usize,
+    pub working: usize,
+}
+
+/// Parses the FleetView dashboard header (`N awaiting input · N working · N completed`) from the
+/// top window of the capture — the dashboard pins it under the banner, and restricting the scan
+/// (like the bottom window does for the run/limit markers) keeps a header quoted lower in a
+/// conversation body from matching. The canonical spec is the tests.
+pub fn fleet_view_counts(capture: &str) -> Option<FleetViewCounts> {
+    top_non_empty_lines(capture).find_map(|line| parse_fleet_view_header(js_trim_start(line)))
+}
+
+fn parse_fleet_view_header(line: &str) -> Option<FleetViewCounts> {
+    let chars: Vec<char> = line.chars().collect();
+    let (awaiting_input, i) = take_number(&chars, 0)?;
+    let i = take_worded_segment(&chars, i, "awaiting input")?;
+    let i = take_separator_dot(&chars, i)?;
+    let (working, i) = take_number(&chars, i)?;
+    let i = take_worded_segment(&chars, i, "working")?;
+    let i = take_separator_dot(&chars, i)?;
+    let (_, i) = take_number(&chars, i)?;
+    take_worded_segment(&chars, i, "completed")?;
+    Some(FleetViewCounts {
+        awaiting_input,
+        working,
+    })
+}
+
+/// Matches `\s+<word>` with a clean word boundary after it (`working` must not match `workingly`,
+/// `completed5`, or `completedと`).
+fn take_worded_segment(chars: &[char], start: usize, word: &str) -> Option<usize> {
+    let i = skip_ws_required(chars, start)?;
+    let i = take_ascii(chars, i, word)?;
+    if chars.get(i).is_some_and(|c| c.is_alphanumeric()) {
+        return None;
+    }
+    Some(i)
+}
+
+/// Matches `\s*·\s*` (the header's segment separator).
+fn take_separator_dot(chars: &[char], start: usize) -> Option<usize> {
+    let i = skip_ws(chars, start);
+    if chars.get(i) != Some(&'·') {
+        return None;
+    }
+    Some(skip_ws(chars, i + 1))
 }
 
 /// The remaining task count parsed from the task-list footer
@@ -465,8 +536,10 @@ fn resolve<'a>(marker: Option<&'a str>, default: &'a str) -> &'a str {
 }
 
 /// Capture-primary detection that treats the conversation pane's actual screen as authoritative
-/// (priority: wizard > running > bg (panel or skill agent-tray) > no_claude > watching > idle). `Idle` means "no hint on screen", and the
-/// caller chains it into the jsonl fallback via `fallback_state`.
+/// (priority: wizard > running > bg (panel or skill agent-tray) > no_claude > fleet-view header > watching > idle).
+/// Ordering the fleet-view check after the no_claude return keeps a header left in shell scrollback
+/// after claude exits from reading as busy. `Idle` means "no hint on screen", and the caller chains
+/// it into the jsonl fallback via `fallback_state`.
 pub fn detect_state(capture: &str, opts: &DetectStateOptions) -> CockpitTerminalState {
     if is_wizard(capture) {
         return CockpitTerminalState::WaitingInput;
@@ -483,6 +556,14 @@ pub fn detect_state(capture: &str, opts: &DetectStateOptions) -> CockpitTerminal
     }
     if !opts.has_claude {
         return CockpitTerminalState::NoClaude;
+    }
+    if let Some(fleet) = fleet_view_counts(capture) {
+        if fleet.awaiting_input > 0 {
+            return CockpitTerminalState::WaitingInput;
+        }
+        if fleet.working > 0 {
+            return CockpitTerminalState::RunningBgAgent;
+        }
     }
     if open_tasks_remaining(capture).is_some() {
         return CockpitTerminalState::Watching;
@@ -671,6 +752,11 @@ mod tests {
     const CAP_SKILL_TRAY: &str = "▶▶ auto mode on (shift+tab to cycle) · ← for agents\n\n○ deep-research  Deep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.  22/28 agents done · 2m 31s · ↓ 885.0k tokens";
     const CAP_SKILL_TRAY_ALL_DONE: &str = "▶▶ auto mode on (shift+tab to cycle) · ← for agents\n\n○ deep-research  Deep research harness — synthesize a cited report.  28/28 agents done · 3m 4s · ↓ 1.1M tokens";
     const CAP_SKILL_TRAY_QUOTED_IN_HISTORY: &str = "⏺ 過去ログに \"22/28 agents done\" と出ていた話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
+    const CAP_FLEET_WORKING: &str = "Claude Code v2.1.191\nOpus 4.8 · ~/workspace/charlie/app\n0 awaiting input · 1 working · 0 completed\n\nWorking\n✳ notification-toggles  マージして撤収して · →\n\nType a task to start another session. Each appears as a row — open any to see its work.\n\n› describe a task for a new session\n  enter to open · space to reply · ctrl+x to delete · ? for shortcuts";
+    const CAP_FLEET_AWAITING: &str = "Claude Code v2.1.191\nOpus 4.8 · ~/workspace/charlie/app\n1 awaiting input · 1 working · 2 completed\n\n› describe a task for a new session";
+    const CAP_FLEET_ALL_DONE: &str = "Claude Code v2.1.191\nOpus 4.8 · ~/workspace/charlie/app\n0 awaiting input · 0 working · 3 completed\n\n› describe a task for a new session";
+    const CAP_FLEET_QUOTED_IN_HISTORY: &str = "⏺ ログに \"0 awaiting input · 1 working · 0 completed\" と出ていた話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
+    const CAP_FLEET_QUOTED_BELOW_TOP_WINDOW: &str = "⏺ 会話の本文\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n  1 awaiting input · 2 working · 3 completed\n───\n❯\n───";
     const CAP_TASKS_OPEN: &str = "⏺ 別セッションの完了を待ちます。\n\n  1 tasks (0 done, 1 open)\n  □ Stand by, then review/test/PR #279 after other session finishes\n\n╭───╮\n│ ❯ │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
     const CAP_TASKS_ALL_DONE: &str = "⏺ 完了しました。\n\n  3 tasks (3 done, 0 open)\n  ✔ 済みタスク\n╭───╮\n│ ❯ │\n╰───╯\n  ? for shortcuts";
     const CAP_TASKS_IN_PROGRESS: &str = "⏺ 一段落。\n\n  3 tasks (1 done, 1 in progress, 1 open)\n╭───╮\n│ ❯ │\n╰───╯";
@@ -848,6 +934,30 @@ mod tests {
     }
 
     #[test]
+    fn fleet_view_working_is_running_bg_agent() {
+        assert_eq!(
+            detect_state(CAP_FLEET_WORKING, &claude()),
+            CockpitTerminalState::RunningBgAgent
+        );
+    }
+
+    #[test]
+    fn fleet_view_awaiting_input_is_waiting_input() {
+        assert_eq!(
+            detect_state(CAP_FLEET_AWAITING, &claude()),
+            CockpitTerminalState::WaitingInput
+        );
+    }
+
+    #[test]
+    fn fleet_view_all_completed_is_idle() {
+        assert_eq!(
+            detect_state(CAP_FLEET_ALL_DONE, &claude()),
+            CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
     fn open_tasks_footer_at_idle_is_watching() {
         assert_eq!(
             detect_state(CAP_TASKS_OPEN, &claude()),
@@ -906,10 +1016,26 @@ mod tests {
     }
 
     #[test]
+    fn fleet_view_header_without_claude_is_no_claude() {
+        assert_eq!(
+            detect_state(CAP_FLEET_WORKING, &no_claude()),
+            CockpitTerminalState::NoClaude
+        );
+    }
+
+    #[test]
     fn open_tasks_footer_without_claude_is_no_claude() {
         assert_eq!(
             detect_state(CAP_TASKS_OPEN, &no_claude()),
             CockpitTerminalState::NoClaude
+        );
+    }
+
+    #[test]
+    fn fleet_view_header_quoted_in_history_is_idle() {
+        assert_eq!(
+            detect_state(CAP_FLEET_QUOTED_IN_HISTORY, &claude()),
+            CockpitTerminalState::Idle
         );
     }
 
@@ -948,6 +1074,37 @@ mod tests {
             open_tasks_remaining("3 tasks (3 done)\n5 tasks (2 done, 3 open)"),
             Some(3)
         );
+    }
+
+    #[test]
+    fn fleet_view_header_below_top_window_is_idle() {
+        assert_eq!(
+            detect_state(CAP_FLEET_QUOTED_BELOW_TOP_WINDOW, &claude()),
+            CockpitTerminalState::Idle
+        );
+        assert!(fleet_view_counts(CAP_FLEET_QUOTED_BELOW_TOP_WINDOW).is_none());
+    }
+
+    #[test]
+    fn fleet_view_counts_parses_header_line() {
+        let counts = fleet_view_counts(CAP_FLEET_WORKING).expect("header should parse");
+        assert_eq!(counts.awaiting_input, 0);
+        assert_eq!(counts.working, 1);
+        let counts = fleet_view_counts("12 awaiting input · 34 working · 56 completed").unwrap();
+        assert_eq!(counts.awaiting_input, 12);
+        assert_eq!(counts.working, 34);
+        // Only a whitespace-indented header line matches; quotes and bullets do not.
+        assert!(fleet_view_counts("  1 awaiting input · 2 working · 3 completed").is_some());
+        assert!(fleet_view_counts("- 1 awaiting input · 2 working · 3 completed").is_none());
+        assert!(fleet_view_counts("⏺ 1 awaiting input · 2 working · 3 completed").is_none());
+        // All three segments are required, with clean boundaries after each word.
+        assert!(fleet_view_counts("1 working · 2 completed").is_none());
+        assert!(fleet_view_counts("1 awaiting input · 2 working").is_none());
+        assert!(fleet_view_counts("1 awaiting inputs · 2 working · 3 completed").is_none());
+        assert!(fleet_view_counts("1 awaiting input · 2 workingly · 3 completed").is_none());
+        assert!(fleet_view_counts("1 awaiting input · 2 working · 3 completedX").is_none());
+        assert!(fleet_view_counts("1 awaiting input · 2 working · 3 completed5").is_none());
+        assert!(fleet_view_counts("1 awaiting input · 2 working · 3 completedと表示").is_none());
     }
 
     #[test]
@@ -1244,13 +1401,49 @@ mod tests {
 
     #[test]
     fn limit_reached_marker_is_overridable_with_line_head_semantics() {
-        let cap = "✗ RATE_CAP_HIT\n───\n❯\n───";
+        let cap = "RATE_CAP_HIT · resets 3am\n───\n❯\n───";
         assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
         assert!(is_limit_reached(cap, &["rate_cap_hit"]));
         assert!(!is_limit_reached(
             "quoted \"RATE_CAP_HIT\" mid line",
             &["rate_cap_hit"]
         ));
+    }
+
+    #[test]
+    fn limit_reached_ignores_quoted_marker_in_bottom_window() {
+        let cap = "⏺ Bash(cat en.json)\n  \"limitReached\": \"Usage limit reached\",\n… +96 lines (ctrl+o to expand)\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
+    }
+
+    #[test]
+    fn limit_reached_ignores_source_code_shown_on_screen() {
+        let cap = "⏺ Bash(rg DEFAULT_LIMIT_MARKER)\n33:pub const DEFAULT_LIMIT_MARKER: &str = \"claude usage limit reached\";\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
+    }
+
+    #[test]
+    fn limit_reached_ignores_bullet_prose_citing_the_phrase() {
+        let cap = "⏺ 説明\n- Claude usage limit reached means the 5-hour window is exhausted\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
+    }
+
+    #[test]
+    fn limit_reached_ignores_response_bullet_prose_starting_with_the_phrase() {
+        let cap = "⏺ Claude usage limit reached is the message shown when the window is exhausted\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
+    }
+
+    #[test]
+    fn limit_reached_detects_box_framed_banner() {
+        let cap = "⏺ 直前の応答\n│ ✗ Claude usage limit reached · /upgrade │\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
+    }
+
+    #[test]
+    fn limit_reached_detects_result_line_render() {
+        let cap = "⏺ 応答\n⎿  Claude usage limit reached. Your limit will reset at 7pm (Asia/Tokyo).\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     // ---- is_menu_open (Claude Code menu/overlay detection) ----
@@ -1264,6 +1457,14 @@ mod tests {
     #[test]
     fn menu_open_detects_marker_behind_box_border() {
         assert!(is_menu_open("│ Claude Code Status         │", DEFAULT_MENU_MARKERS));
+    }
+
+    #[test]
+    fn menu_open_ignores_failure_glyph_prefixed_line() {
+        assert!(!is_menu_open(
+            "✗ Claude Code Status check failed",
+            DEFAULT_MENU_MARKERS
+        ));
     }
 
     #[test]

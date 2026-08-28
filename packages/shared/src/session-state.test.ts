@@ -582,12 +582,48 @@ describe("isLimitReached (detecting the limit banners)", () => {
   });
 
   it("the markers can be overridden with line-head semantics (ZK_LIMIT_MARKER escape hatch)", () => {
-    const cap = "✗ RATE_CAP_HIT\n───\n❯\n───";
+    const cap = "RATE_CAP_HIT · resets 3am\n───\n❯\n───";
     expect(isLimitReached(cap)).toBe(false);
     expect(isLimitReached(cap, ["rate_cap_hit"])).toBe(true);
     expect(
       isLimitReached('quoted "RATE_CAP_HIT" mid line', ["rate_cap_hit"]),
     ).toBe(false);
+  });
+
+  it("false for the banner phrase quoted inside command output in the bottom window", () => {
+    const cap =
+      '⏺ Bash(cat en.json)\n  "limitReached": "Usage limit reached",\n… +96 lines (ctrl+o to expand)\n╭───╮\n│ ❯ │\n╰───╯';
+    expect(isLimitReached(cap)).toBe(false);
+  });
+
+  it("false for source code shown on screen containing the marker", () => {
+    const cap =
+      '⏺ Bash(rg DEFAULT_LIMIT_MARKER)\n33:pub const DEFAULT_LIMIT_MARKER: &str = "claude usage limit reached";\n╭───╮\n│ ❯ │\n╰───╯';
+    expect(isLimitReached(cap)).toBe(false);
+  });
+
+  it("false for bullet prose citing the phrase", () => {
+    const cap =
+      "⏺ 説明\n- Claude usage limit reached means the 5-hour window is exhausted\n╭───╮\n│ ❯ │\n╰───╯";
+    expect(isLimitReached(cap)).toBe(false);
+  });
+
+  it("false for a response bullet (⏺) starting with the phrase", () => {
+    const cap =
+      "⏺ Claude usage limit reached is the message shown when the window is exhausted\n╭───╮\n│ ❯ │\n╰───╯";
+    expect(isLimitReached(cap)).toBe(false);
+  });
+
+  it("true for a box-framed banner (leading decoration is stripped)", () => {
+    const cap =
+      "⏺ 直前の応答\n│ ✗ Claude usage limit reached · /upgrade │\n╭───╮\n│ ❯ │\n╰───╯";
+    expect(isLimitReached(cap)).toBe(true);
+  });
+
+  it("true for the result-line render (⎿ prefix)", () => {
+    const cap =
+      "⏺ 応答\n⎿  Claude usage limit reached. Your limit will reset at 7pm (Asia/Tokyo).\n╭───╮\n│ ❯ │\n╰───╯";
+    expect(isLimitReached(cap)).toBe(true);
   });
 });
 
@@ -602,6 +638,12 @@ describe("isMenuOpen (Claude Code menu/overlay detection)", () => {
     expect(
       isMenuOpen("│ Claude Code Status         │", DEFAULT_MENU_MARKERS),
     ).toBe(true);
+  });
+
+  it("false when a failure glyph precedes a marker phrase", () => {
+    expect(
+      isMenuOpen("✗ Claude Code Status check failed", DEFAULT_MENU_MARKERS),
+    ).toBe(false);
   });
 
   it("is case-insensitive", () => {

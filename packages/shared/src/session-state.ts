@@ -5,8 +5,9 @@ import type { CockpitTerminalState } from "./protocol.js";
 export const DEFAULT_RUN_MARKER = "(esc to interrupt";
 export const DEFAULT_BG_AGENT_MARKER = "◯";
 /**
- * Line-head markers for the limit-reached banners. Claude Code renders two wordings: the lockout
- * banner (`✗ Claude usage limit reached · /upgrade …`) and the auto-retry banner
+ * Line-head markers for the limit-reached renders. Claude Code has three wordings: the lockout
+ * banner (`✗ Claude usage limit reached · /upgrade …`), the result line
+ * (`⎿ Claude usage limit reached. …`), and the auto-retry banner
  * (`✻ Session limit reached · Retrying in …`).
  */
 export const DEFAULT_LIMIT_MARKERS: readonly string[] = [
@@ -69,32 +70,34 @@ export function isRunning(
   );
 }
 
-// Leading line decoration (whitespace, a box-border/bullet glyph, or a banner status/spinner glyph)
-// stripped before a menu or limit marker is tested at the start of a line, so a centered,
-// box-framed, or glyph-prefixed banner line still matches.
-const LINE_DECORATION = /^[\s│┃|╎┆>*•·\-─✗✻✳✶✽✢]+/;
+// Leading glyphs Claude Code renders before the limit text (`✗` banner, `⎿` result lines, and the
+// `· ✢ ✳ ✶ ✻ ✽` spinner frames of the auto-retry banner), plus whitespace and box borders.
+// Deliberately excludes bullet/quote glyphs and the `⏺` response bullet so prose citing the phrase
+// does not match.
+const LIMIT_LINE_DECORATION = /^[\s│┃|╎┆✗⎿·✢✳✶✻✽]+/;
 
 /** Lowercased non-empty marker needles for case-insensitive matching (empty result = match nothing). */
 function lowercaseNeedles(markers: readonly string[]): string[] {
   return markers.filter((m) => m !== "").map((m) => m.toLowerCase());
 }
 
-/** Whether a needle heads the line after stripping leading decoration, case-insensitively. */
-function headStartsWith(line: string, needles: readonly string[]): boolean {
-  const head = line.replace(LINE_DECORATION, "").toLowerCase();
+/** Whether a needle heads the line after stripping the given leading decoration, case-insensitively. */
+function headStartsWith(
+  line: string,
+  needles: readonly string[],
+  decoration: RegExp,
+): boolean {
+  const head = line.replace(decoration, "").toLowerCase();
   return needles.some((n) => head.startsWith(n));
 }
 
 /**
- * Detect Claude Code's limit-reached banner from the bottom of the screen (last
- * 8 non-empty lines). A marker must head a line — after stripping leading
- * decoration — case-insensitively, so a quoted occurrence mid-line (i18n
- * resources, docs, chat text) does not trip it while the real banner (glyph +
- * marker at the line head) still does. This is an attribute orthogonal to the
- * main state, so it is not folded into detectState (to avoid making the case
- * where a limit banner appears during running mutually exclusive). An empty
- * marker list (or all-empty markers) falls back to false to avoid false
- * positives (matching every window).
+ * Detects Claude Code's limit-reached renders (`✗ Claude usage limit reached · /upgrade …`,
+ * `⎿ Claude usage limit reached. …`, `✻ Session limit reached · Retrying …`) in the last 8
+ * non-empty lines. A marker (case-insensitive) must head a line after leading limit decoration is
+ * stripped, so the phrase quoted in command output or source code shown on screen does not trip
+ * the flag. Orthogonal to the main state (a banner can appear while running). An empty marker
+ * list yields false.
  */
 export function isLimitReached(
   capture: string,
@@ -103,9 +106,13 @@ export function isLimitReached(
   const needles = lowercaseNeedles(markers);
   if (needles.length === 0) return false;
   return bottomNonEmptyLines(capture).some((line) =>
-    headStartsWith(line, needles),
+    headStartsWith(line, needles, LIMIT_LINE_DECORATION),
   );
 }
+
+// Leading line decoration (whitespace or a box-border/bullet glyph) stripped before a menu marker
+// is tested at the start of a line, so a centered or box-framed overlay title still matches.
+const MENU_LINE_DECORATION = /^[\s│┃|╎┆>*•·\-─]+/;
 
 /**
  * Whether one of Claude Code's built-in menu/overlay screens is open, i.e. a marker heads any line of
@@ -122,7 +129,9 @@ export function isMenuOpen(
 ): boolean {
   const needles = lowercaseNeedles(markers);
   if (needles.length === 0) return false;
-  return capture.split("\n").some((line) => headStartsWith(line, needles));
+  return capture
+    .split("\n")
+    .some((line) => headStartsWith(line, needles, MENU_LINE_DECORATION));
 }
 
 /**
