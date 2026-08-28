@@ -19,7 +19,10 @@ export interface TabItemProps {
   reorderable: boolean;
   /** Whether the tab shows a close button. false pins the tab (the Memo tab). */
   closeable?: boolean;
-  /** Shows the unsaved-changes dot (in place of the close button for a non-closeable tab). */
+  /**
+   * Shows the unsaved-changes dot (in place of the close button for a non-closeable tab). The dot's
+   * slot is always laid out so the tab keeps a constant width; only its visibility follows this flag.
+   */
   dirty?: boolean;
   rename: TabRename;
   drag: TabDrag;
@@ -145,7 +148,10 @@ export function TabItem({
           </span>
         </button>
       ) : (
-        dirty && <span className="tab-dirty" aria-hidden="true" />
+        <span
+          className={`tab-dirty${dirty ? "" : " tab-dirty-hidden"}`}
+          aria-hidden="true"
+        />
       )}
     </div>
   );
