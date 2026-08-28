@@ -54,6 +54,16 @@ pub fn error_html(message: &str) -> String {
     ))
 }
 
+/// JS that sends the WebView to `url` with `location.replace` so the splash is dropped from history
+/// and can't be reached again by a back gesture. JSON-encoded so a quote-bearing `ZK_SHELL_URL`
+/// override stays inside the string literal.
+pub fn redirect_script(url: &str) -> String {
+    format!(
+        "location.replace({})",
+        serde_json::to_string(url).expect("&str の JSON エンコードは失敗しない")
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +102,19 @@ mod tests {
     #[test]
     fn loading_html_は起動中表示を含む() {
         assert!(loading_html().contains("起動しています"));
+    }
+
+    #[test]
+    fn redirect_script_はlocation_replaceで飛ばす() {
+        assert_eq!(
+            redirect_script("http://127.0.0.1:8790/?token=abc123"),
+            r#"location.replace("http://127.0.0.1:8790/?token=abc123")"#
+        );
+    }
+
+    #[test]
+    fn redirect_script_はjsメタ文字を含むurlをリテラル内に閉じ込める() {
+        let js = redirect_script(r#"http://x/'");alert(1)//"#);
+        assert_eq!(js, r#"location.replace("http://x/'\");alert(1)//")"#);
     }
 }
