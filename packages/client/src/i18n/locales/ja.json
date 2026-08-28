@@ -109,6 +109,10 @@
     "confirmDelete": "{{count}} 件の通知を削除しますか？",
     "waiting": "⏳ 応答待ち",
     "done": "✅ 完了",
+    "subagentStart": "🤖 サブエージェント開始",
+    "subagentEnd": "🤖 サブエージェント終了",
+    "shellStart": "🐚 バックグラウンドシェル開始",
+    "shellEnd": "🐚 バックグラウンドシェル終了",
     "activate": "このセッションを開く"
   },
   "search": {
@@ -260,6 +264,18 @@
     "editorHint": "ソース管理でファイル名をクリックしたときに開くコマンド。引数は空白で分割し、末尾にファイルパスを追加します。空欄にすると ZK_EDITOR、未設定なら cursor -g を使います。",
     "accountUsage": "フッタにアカウント使用率を表示",
     "memoEnabled": "メモタブを表示",
+    "notifications": "通知",
+    "notificationsMaster": "通知を有効にする",
+    "notificationsShow": "通知",
+    "notificationsSound": "音",
+    "notifyCategory": {
+      "waiting": "応答待ち",
+      "done": "完了",
+      "subagentStart": "サブエージェント開始",
+      "subagentEnd": "サブエージェント終了",
+      "shellStart": "バックグラウンドシェル開始",
+      "shellEnd": "バックグラウンドシェル終了"
+    },
     "footerThresholds": {
       "section": "フッタの色分け閾値",
       "hint": "フッタの各セルがその色になる下限値です。色のチェックを外すと非表示になり、1つ下の有効な色に落ちて表示されます。",

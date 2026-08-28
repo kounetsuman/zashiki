@@ -67,6 +67,7 @@ fn empty_snapshot() -> StateSnapshot {
 /// immediate re-evaluation via state.refresh.
 pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     let hub = ControlHub::new(config.config, Vec::new(), empty_snapshot());
+    hub.set_notifier(config.notify_mode, config.mac_notify.clone());
     let claude_settings = crate::claude_settings_io::ClaudeSettingsPaths::resolve();
     let (hooks_status, settings_unreadable) =
         crate::claude_settings_io::current_status_with_readability(&claude_settings);

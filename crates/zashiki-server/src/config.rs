@@ -15,7 +15,10 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use crate::control::{ConfigView, ControlHub};
-use crate::protocol::{ElapsedBands, FooterBand, FooterThresholds, TokenBands, UsageBands};
+use crate::protocol::{
+    ElapsedBands, FooterBand, FooterThresholds, NotificationSettings, NotifyCategories,
+    NotifyCategoryPref, TokenBands, UsageBands,
+};
 
 /// Polling interval for config watching.
 pub const CONFIG_POLL: Duration = Duration::from_millis(250);
@@ -57,6 +60,56 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
         memo_enabled: field("memoEnabled", false),
         editor,
         footer_thresholds: parse_footer_thresholds(obj),
+        notifications: parse_notifications(obj),
+    }
+}
+
+/// One category preference, defaulting each sub-field independently from `default`.
+fn read_pref(
+    cats: Option<&serde_json::Map<String, serde_json::Value>>,
+    key: &str,
+    default: NotifyCategoryPref,
+) -> NotifyCategoryPref {
+    let node = cats.and_then(|o| o.get(key));
+    let notify = node
+        .and_then(|n| n.get("notify"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(default.notify);
+    let sound = node
+        .and_then(|n| n.get("sound"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(default.sound);
+    NotifyCategoryPref { notify, sound }
+}
+
+/// Parse `notifications`, filling absent fields from the defaults. A legacy `notifySound: false` with
+/// no `notifications` block maps to the master being off.
+fn parse_notifications(
+    obj: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> NotificationSettings {
+    let node = obj
+        .and_then(|o| o.get("notifications"))
+        .and_then(|v| v.as_object());
+    let d = NotificationSettings::default();
+    let legacy_off = !obj.map(|o| o.contains_key("notifications")).unwrap_or(false)
+        && obj.and_then(|o| o.get("notifySound")).and_then(serde_json::Value::as_bool)
+            == Some(false);
+    let enabled = node
+        .and_then(|o| o.get("enabled"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(d.enabled)
+        && !legacy_off;
+    let cats = node.and_then(|o| o.get("categories")).and_then(|v| v.as_object());
+    NotificationSettings {
+        enabled,
+        categories: NotifyCategories {
+            waiting: read_pref(cats, "waiting", d.categories.waiting),
+            done: read_pref(cats, "done", d.categories.done),
+            subagent_start: read_pref(cats, "subagentStart", d.categories.subagent_start),
+            subagent_end: read_pref(cats, "subagentEnd", d.categories.subagent_end),
+            shell_start: read_pref(cats, "shellStart", d.categories.shell_start),
+            shell_end: read_pref(cats, "shellEnd", d.categories.shell_end),
+        },
     }
 }
 
@@ -146,6 +199,14 @@ pub fn write_config_footer_thresholds(
     write_config_field(path, "footerThresholds", value)
 }
 
+pub fn write_config_notifications(
+    path: &Path,
+    notifications: &NotificationSettings,
+) -> std::io::Result<()> {
+    let value = serde_json::to_value(notifications).unwrap_or(serde_json::Value::Null);
+    write_config_field(path, "notifications", value)
+}
+
 /// Read the live-applied settings along with whether they were read successfully.
 /// ok=false means missing, corrupt, or empty (config is the
 /// default-filled value). The watcher keeps the previous value and does not publish when ok=false.
@@ -218,6 +279,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_notifications_defaults_when_absent() {
+        assert_eq!(parse(json!({})).notifications, NotificationSettings::default());
+    }
+
+    #[test]
+    fn parse_notifications_fills_absent_categories_from_defaults() {
+        let n = parse(json!({
+            "notifications": { "categories": { "subagentStart": { "notify": true, "sound": false } } }
+        }))
+        .notifications;
+        assert!(n.enabled);
+        assert_eq!(n.categories.subagent_start, NotifyCategoryPref { notify: true, sound: false });
+        assert_eq!(n.categories.waiting, NotifyCategoryPref { notify: true, sound: true });
+    }
+
+    #[test]
+    fn parse_notifications_defaults_a_partial_pref_field_per_category() {
+        let n = parse(json!({
+            "notifications": { "categories": { "waiting": { "notify": false } } }
+        }))
+        .notifications;
+        assert_eq!(n.categories.waiting, NotifyCategoryPref { notify: false, sound: true });
+    }
+
+    #[test]
+    fn parse_notifications_legacy_notify_sound_off_disables_master() {
+        let n = parse(json!({"notifySound": false})).notifications;
+        assert!(!n.enabled);
+        assert_eq!(n.categories, NotificationSettings::default().categories);
+    }
+
+    #[test]
+    fn parse_notifications_explicit_block_wins_over_legacy() {
+        let n = parse(json!({"notifySound": false, "notifications": {"enabled": true}})).notifications;
+        assert!(n.enabled);
+    }
+
+    #[test]
     fn parse_config_update_check_defaults_on_and_reads_bool() {
         // Missing key defaults to on (opt-out flag); an explicit false disables the egress; a wrong type falls back to on.
         assert!(parse(json!({})).update_check);
@@ -272,6 +371,24 @@ mod tests {
         let path = dir.path().join("nested/config.json");
         write_config_language(&path, "ja").unwrap();
         assert_eq!(read_config(&path).language, Some("ja".into()));
+    }
+
+    #[test]
+    fn write_config_notifications_round_trips_and_preserves_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"language": "en"}"#).unwrap();
+
+        let categories = NotifyCategories {
+            subagent_start: NotifyCategoryPref { notify: true, sound: false },
+            ..Default::default()
+        };
+        let settings = NotificationSettings { enabled: false, categories };
+        write_config_notifications(&path, &settings).unwrap();
+
+        let c = read_config(&path);
+        assert_eq!(c.notifications, settings);
+        assert_eq!(c.language, Some("en".into())); // existing fields are preserved
     }
 
     #[test]

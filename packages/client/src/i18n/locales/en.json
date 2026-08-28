@@ -109,6 +109,10 @@
     "confirmDelete": "Delete {{count}} notification(s)?",
     "waiting": "⏳ Awaiting response",
     "done": "✅ Done",
+    "subagentStart": "🤖 Subagent started",
+    "subagentEnd": "🤖 Subagent finished",
+    "shellStart": "🐚 Background shell started",
+    "shellEnd": "🐚 Background shell finished",
     "activate": "Open this session"
   },
   "search": {
@@ -260,6 +264,18 @@
     "editorHint": "Command used to open a file clicked in Source Control. Arguments are split on spaces and the file path is appended. Leave blank to use ZK_EDITOR, or cursor -g by default.",
     "accountUsage": "Show account usage in the footer",
     "memoEnabled": "Show the Memo tab",
+    "notifications": "Notifications",
+    "notificationsMaster": "Enable notifications",
+    "notificationsShow": "Show",
+    "notificationsSound": "Sound",
+    "notifyCategory": {
+      "waiting": "Awaiting response",
+      "done": "Done",
+      "subagentStart": "Subagent started",
+      "subagentEnd": "Subagent finished",
+      "shellStart": "Background shell started",
+      "shellEnd": "Background shell finished"
+    },
     "footerThresholds": {
       "section": "Footer color thresholds",
       "hint": "Value at or above which a footer cell takes each color. Uncheck a color to hide it — the reading then falls through to the next lower enabled color.",

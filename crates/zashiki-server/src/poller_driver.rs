@@ -11,7 +11,9 @@ use tokio::task::JoinHandle;
 
 use crate::control::{ControlHub, RefreshRequest};
 use crate::repos::SharedRepos;
-use crate::status_poller::{PollConfig, PollerPorts, StateSnapshot, StatusPoller};
+use crate::status_poller::{
+    detect_activity_transitions, PollConfig, PollerPorts, StateSnapshot, StatusPoller,
+};
 
 /// Refresh the reloadable fields (repos roots + org colors) from the shared handle before each
 /// evaluation, so a live repos.conf change (add / external edit) reflects without a restart.
@@ -31,9 +33,15 @@ async fn evaluate_and_publish<P: PollerPorts>(
     config: &PollConfig,
     hub: &ControlHub,
 ) -> StateSnapshot {
+    let prev = poller.snapshot().cloned();
     let (snapshot, changed) = poller.evaluate(ports, config).await;
     if changed {
         hub.publish_snapshot(snapshot.clone());
+    }
+    if let Some(prev) = prev {
+        for event in detect_activity_transitions(&prev, &snapshot) {
+            hub.notify(event);
+        }
     }
     snapshot
 }

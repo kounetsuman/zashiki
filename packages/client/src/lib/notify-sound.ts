@@ -1,6 +1,11 @@
-export type NotifyKind = "waiting" | "done";
+import type { NotifyKind } from "@zashiki/shared";
 
-/** Two tones per kind (Hz and start second). waiting descends (a question); done ascends (completion). */
+export type { NotifyKind } from "@zashiki/shared";
+
+/**
+ * Two tones per kind (Hz and start second). Starts ascend and ends descend; waiting descends (a
+ * question) and done ascends (completion).
+ */
 const TONES: Record<NotifyKind, ReadonlyArray<readonly [number, number]>> = {
   waiting: [
     [740, 0],
@@ -9,6 +14,22 @@ const TONES: Record<NotifyKind, ReadonlyArray<readonly [number, number]>> = {
   done: [
     [523.25, 0],
     [783.99, 0.16],
+  ],
+  subagent_start: [
+    [659.25, 0],
+    [880, 0.12],
+  ],
+  subagent_end: [
+    [880, 0],
+    [659.25, 0.12],
+  ],
+  shell_start: [
+    [523.25, 0],
+    [659.25, 0.12],
+  ],
+  shell_end: [
+    [659.25, 0],
+    [523.25, 0.12],
   ],
 };
 

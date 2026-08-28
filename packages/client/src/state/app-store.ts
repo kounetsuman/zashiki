@@ -283,9 +283,11 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           : `${m.code}: ${m.message}`;
       setState({ lastError });
     } else if (m.t === "notify") {
-      // Sound + a persistent, click-to-focus session toast. The terminal being viewed needs no toast.
+      // Sound + a persistent, click-to-focus session toast, each gated by the category's switch. The
+      // terminal being viewed needs no toast.
       deps.notifier.playSound(m.kind);
       if (m.cockpitTerminalId === state.selectedCockpitTerminalId) return;
+      if (!deps.notifier.shouldShow(m.kind)) return;
       const info = state.cockpitTerminals.find(
         (s) => s.cockpitTerminalId === m.cockpitTerminalId,
       );

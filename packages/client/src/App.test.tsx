@@ -11,6 +11,7 @@ import {
   type ClientMessage,
   type CockpitTerminalInfo,
   DEFAULT_FOOTER_THRESHOLDS,
+  DEFAULT_NOTIFICATION_SETTINGS,
   type ServerMessage,
 } from "@zashiki/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -169,13 +170,14 @@ function fakeNotifier(permission: NotifyPermission = "granted") {
     setEnabled: (v: boolean) => {
       enabled = v;
     },
-    applyServerConfig: (v: boolean) => {
-      enabled = v;
+    applyServerConfig: (settings) => {
+      enabled = settings.enabled;
     },
     permission: () => permission,
     requestPermission,
     notify: (opts: NotifyOptions) => void notified.push(opts),
     playSound: (kind) => void sounds.push(kind),
+    shouldShow: () => enabled,
   };
   return { notifier, notified, sounds, requestPermission };
 }
@@ -322,6 +324,7 @@ describe("App", () => {
         accountUsage: false,
         editor: null,
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+        notifications: DEFAULT_NOTIFICATION_SETTINGS,
         memoEnabled: false,
       }),
     );
@@ -972,7 +975,7 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: /debug:/ })).toBeNull();
   });
 
-  it("config.sync reflects the notification-sound enabled/disabled state into the notifier", () => {
+  it("config.sync reflects the notifications master enabled/disabled state into the notifier", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
     const { notifier } = fakeNotifier();
@@ -988,31 +991,20 @@ describe("App", () => {
         notifier={notifier}
       />,
     );
-    act(() => {
-      control.emit({
-        t: "config.sync",
-        notifySound: false,
-        updateCheck: true,
-        language: null,
-        accountUsage: false,
-        editor: null,
-        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
-        memoEnabled: false,
-      });
+    const configSync = (enabled: boolean): ServerMessage => ({
+      t: "config.sync",
+      notifySound: true,
+      updateCheck: true,
+      language: null,
+      accountUsage: false,
+      editor: null,
+      footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+      notifications: { ...DEFAULT_NOTIFICATION_SETTINGS, enabled },
+      memoEnabled: false,
     });
+    act(() => control.emit(configSync(false)));
     expect(notifier.isEnabled()).toBe(false);
-    act(() => {
-      control.emit({
-        t: "config.sync",
-        notifySound: true,
-        updateCheck: true,
-        language: null,
-        accountUsage: false,
-        editor: null,
-        footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
-        memoEnabled: false,
-      });
-    });
+    act(() => control.emit(configSync(true)));
     expect(notifier.isEnabled()).toBe(true);
   });
 

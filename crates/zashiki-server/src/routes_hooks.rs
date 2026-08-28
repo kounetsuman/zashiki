@@ -77,7 +77,6 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
         resolved.as_ref(),
         control.notify_mode,
         control.notify_history,
-        control.hub.client_count(),
         snap_title,
     );
 
@@ -85,19 +84,14 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
         control.hub.broadcast(crate::protocol::ServerMessage::GitDirty);
     }
     if let Some((kind, name)) = actions.record {
-        control
-            .hub
-            .record_activity(uuid::Uuid::new_v4().to_string(), kind, &name, now_ms());
+        if control.hub.notification_settings().delivers(kind) {
+            control
+                .hub
+                .record_activity(uuid::Uuid::new_v4().to_string(), kind, &name, now_ms());
+        }
     }
-    if let Some((kind, cockpit_terminal_id, title)) = actions.push {
-        control.hub.broadcast(crate::protocol::ServerMessage::Notify {
-            kind,
-            cockpit_terminal_id,
-            title,
-        });
-    }
-    if let Some(mac) = actions.mac {
-        (control.mac_notify)(mac);
+    if let Some(event) = actions.notify {
+        control.hub.notify(event);
     }
 
     Json(crate::protocol::HookEventResponse {
@@ -202,6 +196,9 @@ mod hooks_rest_tests {
     ) -> ControlServices {
         let (refresh, rx) = tokio::sync::mpsc::channel(8);
         drop(rx);
+        let mac_notify: crate::hooks::MacNotify =
+            Arc::new(move |n| mac_log.lock().unwrap().push(n));
+        hub.set_notifier(mode, mac_notify.clone());
         ControlServices {
             hub,
             refresh,
@@ -213,7 +210,7 @@ mod hooks_rest_tests {
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: mode,
             notify_history: true,
-            mac_notify: Arc::new(move |n| mac_log.lock().unwrap().push(n)),
+            mac_notify,
             config_path: None,
             claude_settings: None,
             app_version: None,

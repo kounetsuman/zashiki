@@ -14,10 +14,61 @@ use zashiki_core::session_state::{
 };
 
 use crate::jsonl::{first_user_title, last_user_or_assistant_event};
-use crate::protocol::{CockpitTerminalInfo, SessionUsage};
+use crate::hooks::NotifyEvent;
+use crate::protocol::{CockpitTerminalInfo, NotifyKind, SessionUsage};
 use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
 
 const TITLE_MAX_CHARS: usize = 30;
+
+/// Detect Background Activity edges between two snapshots: per terminal, a subagent / background-shell
+/// count crossing 0→>0 fires a start, >0→0 fires an end. Only terminals present in both snapshots are
+/// considered, so a newly-appearing terminal (or the first poll cycle, which has no previous snapshot)
+/// never fires — a reconnect or restart that resends running state does not burst. Absent counts read
+/// as 0.
+pub fn detect_activity_transitions(prev: &StateSnapshot, cur: &StateSnapshot) -> Vec<NotifyEvent> {
+    let mut events = Vec::new();
+    for session in &cur.sessions {
+        let Some(before) = prev
+            .sessions
+            .iter()
+            .find(|s| s.cockpit_terminal_id == session.cockpit_terminal_id)
+        else {
+            continue;
+        };
+        let counts = [
+            (
+                before.running_subagents.unwrap_or(0),
+                session.running_subagents.unwrap_or(0),
+                NotifyKind::SubagentStart,
+                NotifyKind::SubagentEnd,
+            ),
+            (
+                before.shells_running.unwrap_or(0),
+                session.shells_running.unwrap_or(0),
+                NotifyKind::ShellStart,
+                NotifyKind::ShellEnd,
+            ),
+        ];
+        for (prev_n, cur_n, start, end) in counts {
+            let kind = if prev_n == 0 && cur_n > 0 {
+                Some(start)
+            } else if prev_n > 0 && cur_n == 0 {
+                Some(end)
+            } else {
+                None
+            };
+            if let Some(kind) = kind {
+                events.push(NotifyEvent {
+                    kind,
+                    cockpit_terminal_id: session.cockpit_terminal_id.clone(),
+                    name: session.name.clone(),
+                    session_title: session.title.clone().unwrap_or_default(),
+                });
+            }
+        }
+    }
+    events
+}
 
 pub use crate::poller_types::{
     CockpitTerminal, CockpitTerminalPane, HookEventAge, PollConfig, PollerPorts, Slices, StateSnapshot,
@@ -1023,5 +1074,67 @@ mod tests {
         };
         let (snap2, _) = poller.evaluate(&ports2, &config()).await;
         assert_eq!(snap2.sessions[0].title.as_deref(), Some("最初の依頼"));
+    }
+
+    fn snap(sessions: Vec<CockpitTerminalInfo>) -> StateSnapshot {
+        StateSnapshot {
+            sessions,
+            orgs: vec![],
+            org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
+        }
+    }
+
+    fn sess(id: &str, subagents: Option<u32>, shells: Option<u32>) -> CockpitTerminalInfo {
+        CockpitTerminalInfo {
+            cockpit_terminal_id: id.to_string(),
+            name: "repo".to_string(),
+            org: "org".to_string(),
+            repo: "repo".to_string(),
+            state: "running".to_string(),
+            title: Some("題名".to_string()),
+            sid: None,
+            active: true,
+            running_subagents: subagents,
+            shells_running: shells,
+            limited: false,
+            menu_open: false,
+            usage: None,
+        }
+    }
+
+    fn kinds(events: &[NotifyEvent]) -> Vec<NotifyKind> {
+        events.iter().map(|e| e.kind).collect()
+    }
+
+    #[test]
+    fn transitions_fire_subagent_and_shell_edges_on_the_zero_boundary() {
+        let prev = snap(vec![sess("@1", Some(0), Some(1))]);
+        let cur = snap(vec![sess("@1", Some(2), Some(0))]);
+        let events = detect_activity_transitions(&prev, &cur);
+        assert_eq!(kinds(&events), vec![NotifyKind::SubagentStart, NotifyKind::ShellEnd]);
+        assert_eq!(events[0].name, "repo");
+        assert_eq!(events[0].session_title, "題名");
+    }
+
+    #[test]
+    fn transitions_ignore_changes_that_do_not_cross_zero() {
+        let prev = snap(vec![sess("@1", Some(1), Some(0))]);
+        let cur = snap(vec![sess("@1", Some(3), Some(0))]);
+        assert!(detect_activity_transitions(&prev, &cur).is_empty());
+    }
+
+    #[test]
+    fn transitions_ignore_a_newly_appearing_terminal() {
+        let prev = snap(vec![]);
+        let cur = snap(vec![sess("@1", Some(2), Some(1))]);
+        assert!(detect_activity_transitions(&prev, &cur).is_empty());
+    }
+
+    #[test]
+    fn transitions_treat_absent_counts_as_zero() {
+        let prev = snap(vec![sess("@1", None, None)]);
+        let cur = snap(vec![sess("@1", Some(1), None)]);
+        assert_eq!(kinds(&detect_activity_transitions(&prev, &cur)), vec![NotifyKind::SubagentStart]);
     }
 }
