@@ -192,6 +192,7 @@ describe("CockpitTerminalListView: session rows", () => {
         {
           ...cockpitTerminals[1],
           state: "running_bg_agent",
+          runningSubagents: 1,
         } as CockpitTerminalInfo,
       ],
     });
@@ -217,28 +218,28 @@ describe("CockpitTerminalListView: session rows", () => {
     expect(chip?.textContent).toContain("13");
   });
 
-  it("falls back to 1 on the agent chip when the subagent count is 0/unknown", () => {
-    renderView({
-      cockpitTerminals: [
-        {
-          ...cockpitTerminals[1],
-          state: "running_bg_agent",
-          runningSubagents: 0,
-        } as CockpitTerminalInfo,
-      ],
-    });
-    expect(screen.getByText("robot_2").parentElement?.textContent).toBe(
-      "robot_21",
-    );
-  });
-
-  it("shows no agent chip outside a bg-agent state", () => {
+  it("shows the agent chip whenever a subagent runs, even when the main state is running", () => {
     renderView({
       cockpitTerminals: [
         {
           ...cockpitTerminals[0],
           state: "running",
           runningSubagents: 5,
+        } as CockpitTerminalInfo,
+      ],
+    });
+    const chip = screen.getByText("robot_2").parentElement;
+    expect(chip?.className).toContain("session-activity-agent");
+    expect(chip?.textContent).toContain("5");
+  });
+
+  it("shows no agent chip when the subagent count is 0/unknown", () => {
+    renderView({
+      cockpitTerminals: [
+        {
+          ...cockpitTerminals[1],
+          state: "running_bg_agent",
+          runningSubagents: 0,
         } as CockpitTerminalInfo,
       ],
     });

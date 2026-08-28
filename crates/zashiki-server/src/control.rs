@@ -43,6 +43,8 @@ pub struct ConfigView {
     pub editor: Option<String>,
     /// Status-footer severity thresholds (SETTINGS). Defaults reproduce the built-in bands.
     pub footer_thresholds: crate::protocol::FooterThresholds,
+    /// Per-category notification switches (SETTINGS). Defaults reproduce the standard set.
+    pub notifications: crate::protocol::NotificationSettings,
 }
 
 /// An immediate re-evaluation request to the poller. If `reply` is present, the

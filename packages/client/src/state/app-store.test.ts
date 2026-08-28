@@ -30,6 +30,7 @@ function fakeNotifier() {
     requestPermission: () => Promise.resolve("granted"),
     notify: (opts) => void notified.push(opts),
     playSound: (kind) => void sounds.push(kind),
+    shouldShow: () => true,
   };
   return { notifier, notified, sounds };
 }

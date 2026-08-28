@@ -67,11 +67,11 @@ export function StateIcon({
   );
 }
 
-/** Concurrent background activity as chips: agent follows running_bg_agent, shell follows shellsRunning; both are independent so both can show. */
+/** Concurrent background activity as chips: agent follows runningSubagents, shell follows shellsRunning; both are orthogonal attributes, so a session that also reads as running does not hide either. */
 export function ActivityChips({ session }: { session: CockpitTerminalInfo }) {
   const { t } = useTranslation();
-  const showAgent = session.state === "running_bg_agent";
   const agentCount = session.runningSubagents ?? 0;
+  const showAgent = agentCount > 0;
   const shellCount = session.shellsRunning ?? 0;
   return (
     <>
@@ -83,7 +83,7 @@ export function ActivityChips({ session }: { session: CockpitTerminalInfo }) {
           <span className="material-symbols-outlined session-activity-glyph">
             {BG_AGENT_GLYPH}
           </span>
-          {Math.max(agentCount, 1)}
+          {agentCount}
         </span>
       )}
       {shellCount > 0 && (

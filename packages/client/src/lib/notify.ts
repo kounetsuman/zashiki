@@ -1,9 +1,18 @@
+import {
+  type NotificationSettings,
+  type NotifyCategoryPref,
+  notifyCategoryForKind,
+} from "@zashiki/shared";
+
 import { type NotifyKind, playNotifySound } from "./notify-sound.js";
 
 export type { NotifyKind } from "./notify-sound.js";
 
-/** localStorage key for the client setting equivalent to ZK_NOTIFY ("1"/"0"; default on). */
+/** localStorage key for the master switch fallback before config.sync arrives ("1"/"0"; default on). */
 export const NOTIFY_ENABLED_KEY = "zk.notify.enabled";
+
+/** Preference before config.sync arrives: show and sound (the historical default). */
+const FALLBACK_PREF: NotifyCategoryPref = { notify: true, sound: true };
 
 export type NotifyPermission = NotificationPermission | "unsupported";
 
@@ -33,19 +42,22 @@ export interface NotifyOptions {
 }
 
 export interface Notifier {
+  /** Whether the master switch is on (server config when present, else the localStorage fallback). */
   isEnabled(): boolean;
   setEnabled(v: boolean): void;
   /**
-   * Applies the enabled/disabled state from the server's config file (config.json ->
-   * config.sync). It is held as an in-memory override without rewriting localStorage, so it
-   * does not encroach on the fallback initial value (localStorage) used when the server is disconnected.
+   * Applies the per-category switches from the server's config file (config.json -> config.sync).
+   * Held as an in-memory override without rewriting localStorage, so it does not encroach on the
+   * localStorage master fallback used when the server is disconnected.
    */
-  applyServerConfig(enabled: boolean): void;
+  applyServerConfig(settings: NotificationSettings): void;
   permission(): NotifyPermission;
   requestPermission(): Promise<NotifyPermission>;
   notify(opts: NotifyOptions): void;
-  /** Plays the notification sound only (no OS notification), honoring the enabled setting. */
+  /** Plays the notification sound only (no OS notification), gated by the master + the category's sound. */
   playSound(kind: NotifyKind): void;
+  /** Whether the category's visual should show (master + the category's notify). */
+  shouldShow(kind: NotifyKind): boolean;
 }
 
 export interface NotifierDeps {
@@ -71,29 +83,39 @@ function defaultStorage(): Pick<Storage, "getItem" | "setItem"> | null {
 }
 
 /**
- * Web Notification + notification sound. On/off is governed by the server's config.json
- * (config.sync) and applied as an in-memory override. Before config.sync arrives, it follows
- * the localStorage fallback initial value. Visible notifications appear only when permitted
- * (permission=granted). Sound needs no permission, so it always plays when on.
+ * Web Notification + notification sound, gated per category by the server's config.json (config.sync)
+ * applied as an in-memory override. Before config.sync arrives, the master follows the localStorage
+ * fallback and every category shows and sounds. The visual appears only when permitted
+ * (permission=granted); sound needs no permission, so it plays whenever the category's sound is on.
  */
 export function createNotifier(deps: NotifierDeps = {}): Notifier {
   const storage = deps.storage === undefined ? defaultStorage() : deps.storage;
   const api = deps.api === undefined ? defaultApi() : deps.api;
   const playSound = deps.playSound ?? playNotifySound;
 
-  // Override from server config (null = not arrived -> localStorage fallback)
-  let serverOverride: boolean | null = null;
+  // Override from server config (null = not arrived -> localStorage master fallback).
+  let serverSettings: NotificationSettings | null = null;
 
   const isEnabled = (): boolean =>
-    serverOverride ?? storage?.getItem(NOTIFY_ENABLED_KEY) !== "0";
+    serverSettings
+      ? serverSettings.enabled
+      : storage?.getItem(NOTIFY_ENABLED_KEY) !== "0";
+
+  const prefFor = (kind: NotifyKind): NotifyCategoryPref => {
+    if (serverSettings === null) return FALLBACK_PREF;
+    const category = notifyCategoryForKind(kind);
+    return category === null
+      ? { notify: false, sound: false }
+      : serverSettings.categories[category];
+  };
 
   return {
     isEnabled,
     setEnabled(v) {
       storage?.setItem(NOTIFY_ENABLED_KEY, v ? "1" : "0");
     },
-    applyServerConfig(enabled) {
-      serverOverride = enabled;
+    applyServerConfig(settings) {
+      serverSettings = settings;
     },
     permission() {
       return api === null ? "unsupported" : api.permission;
@@ -103,20 +125,27 @@ export function createNotifier(deps: NotifierDeps = {}): Notifier {
       return api.requestPermission();
     },
     playSound(kind) {
-      if (!isEnabled()) return;
+      if (!isEnabled() || !prefFor(kind).sound) return;
       try {
         playSound(kind);
       } catch {
         // Sound is best-effort
       }
     },
+    shouldShow(kind) {
+      return isEnabled() && prefFor(kind).notify;
+    },
     notify(opts) {
       if (!isEnabled()) return;
-      try {
-        playSound(opts.kind);
-      } catch {
-        // Sound is best-effort
+      const pref = prefFor(opts.kind);
+      if (pref.sound) {
+        try {
+          playSound(opts.kind);
+        } catch {
+          // Sound is best-effort
+        }
       }
+      if (!pref.notify) return;
       if (api === null || api.permission !== "granted") return;
       try {
         const n = api.create(opts.title, { body: opts.body, tag: opts.tag });

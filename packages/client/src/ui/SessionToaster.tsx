@@ -1,3 +1,4 @@
+import { notifyCategoryForKind } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -45,11 +46,7 @@ export function SessionToaster({
             onClick={() => onActivate(toast.cockpitTerminalId)}
           >
             <span className="session-toast-status">
-              {t(
-                toast.kind === "waiting"
-                  ? "notification.waiting"
-                  : "notification.done",
-              )}
+              {t(`notification.${notifyCategoryForKind(toast.kind) ?? "done"}`)}
             </span>
             {toast.org !== "" && (
               <span className="session-toast-org">{toast.org}</span>

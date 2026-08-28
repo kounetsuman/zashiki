@@ -91,6 +91,85 @@ impl Default for FooterThresholds {
     }
 }
 
+/// Per-category notification preference: whether to show the notification and whether to play its sound.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotifyCategoryPref {
+    pub notify: bool,
+    pub sound: bool,
+}
+
+impl NotifyCategoryPref {
+    const fn on() -> Self {
+        Self { notify: true, sound: true }
+    }
+    const fn off() -> Self {
+        Self { notify: false, sound: false }
+    }
+}
+
+/// The per-category switches. `waiting` / `done` mirror the historical on-by-default; the Background
+/// Activity edges are opt-in. Kept in sync with shared/config by the client's protocol tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotifyCategories {
+    pub waiting: NotifyCategoryPref,
+    pub done: NotifyCategoryPref,
+    pub subagent_start: NotifyCategoryPref,
+    pub subagent_end: NotifyCategoryPref,
+    pub shell_start: NotifyCategoryPref,
+    pub shell_end: NotifyCategoryPref,
+}
+
+impl Default for NotifyCategories {
+    fn default() -> Self {
+        Self {
+            waiting: NotifyCategoryPref::on(),
+            done: NotifyCategoryPref::on(),
+            subagent_start: NotifyCategoryPref::off(),
+            subagent_end: NotifyCategoryPref::off(),
+            shell_start: NotifyCategoryPref::off(),
+            shell_end: NotifyCategoryPref::off(),
+        }
+    }
+}
+
+/// Master switch plus per-category preferences. Mirrors the shared `NotificationSettings`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationSettings {
+    pub enabled: bool,
+    pub categories: NotifyCategories,
+}
+
+impl Default for NotificationSettings {
+    fn default() -> Self {
+        Self { enabled: true, categories: NotifyCategories::default() }
+    }
+}
+
+impl NotificationSettings {
+    pub fn pref_for(&self, kind: NotifyKind) -> NotifyCategoryPref {
+        match kind {
+            NotifyKind::Waiting => self.categories.waiting,
+            NotifyKind::Done => self.categories.done,
+            NotifyKind::SubagentStart => self.categories.subagent_start,
+            NotifyKind::SubagentEnd => self.categories.subagent_end,
+            NotifyKind::ShellStart => self.categories.shell_start,
+            NotifyKind::ShellEnd => self.categories.shell_end,
+        }
+    }
+
+    /// Whether the master is on and the category wants either a visual or a sound. Gates both delivery
+    /// and the NOTIFICATION-panel record so a disabled category leaves no trace.
+    pub fn delivers(&self, kind: NotifyKind) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        let pref = self.pref_for(kind);
+        pref.notify || pref.sound
+    }
+}
+
 /// Session status-footer material: token totals plus the epoch-ms starting points for live elapsed.
 /// `turn` is measured from the most recent human prompt; `session` spans the whole transcript.
 /// Tokens/timestamps come from the transcript (no user setup); `limits` arrives via the statusLine bridge.
@@ -123,9 +202,10 @@ pub struct CockpitTerminalInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sid: Option<String>,
     pub active: bool,
-    /// Total number of running subagents (including nested). An approximate value that is only
-    /// meaningful when running_bg_agent. Optional for backward compatibility with older servers (not
-    /// sent when unavailable or in other states).
+    /// Total number of running subagents (including nested). An orthogonal attribute populated
+    /// whenever the background-agent tray is present, independent of the resolved lifecycle state
+    /// (so it survives when the main session simultaneously reads as running). Optional for backward
+    /// compatibility with older servers; 0/absent means no background subagent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub running_subagents: Option<u32>,
     /// Number of persistent background shells (Bash run_in_background) whose output fd is still held
@@ -215,6 +295,10 @@ pub enum ClientMessage {
     /// via config.sync, like the language change.
     #[serde(rename = "config.setFooterThresholds", rename_all = "camelCase")]
     ConfigSetFooterThresholds { footer_thresholds: FooterThresholds },
+    /// Per-category notification switches change from SETTINGS. Persisted to config.json and
+    /// distributed via config.sync, like the footer-thresholds change.
+    #[serde(rename = "config.setNotifications", rename_all = "camelCase")]
+    ConfigSetNotifications { notifications: NotificationSettings },
     /// Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run
     /// wizard or SETTINGS). Idempotent merge; the resulting hooks.status is broadcast.
     #[serde(rename = "hooks.register")]
@@ -271,12 +355,17 @@ pub enum UpdateStatusState {
     Failed,
 }
 
-/// The kind of notify.
+/// The kind of notify. `waiting` / `done` are Claude Code hook events; the rest are Background
+/// Activity edges (subagent / background-shell start & end) emitted by the poller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "snake_case")]
 pub enum NotifyKind {
     Waiting,
     Done,
+    SubagentStart,
+    SubagentEnd,
+    ShellStart,
+    ShellEnd,
 }
 
 /// The kind of Claude Code hook event.
@@ -402,6 +491,7 @@ pub enum ServerMessage {
         memo_enabled: bool,
         editor: Option<String>,
         footer_thresholds: FooterThresholds,
+        notifications: NotificationSettings,
     },
     /// Full distribution of in-app notifications (to all control connections right after connecting
     /// and on changes; a full replacement, not a diff).
@@ -455,6 +545,19 @@ mod tests {
 
     fn to_json(v: &impl Serialize) -> String {
         serde_json::to_string(v).unwrap()
+    }
+
+    #[test]
+    fn delivers_requires_master_and_either_channel() {
+        let mut settings = NotificationSettings::default();
+        assert!(settings.delivers(NotifyKind::Waiting));
+        settings.enabled = false;
+        assert!(!settings.delivers(NotifyKind::Waiting));
+        settings.enabled = true;
+        settings.categories.done = NotifyCategoryPref { notify: false, sound: false };
+        assert!(!settings.delivers(NotifyKind::Done));
+        settings.categories.done = NotifyCategoryPref { notify: false, sound: true };
+        assert!(settings.delivers(NotifyKind::Done));
     }
 
     // ---- client -> server: the wire JSON shape (t tag + camelCase) ----
@@ -854,12 +957,15 @@ mod tests {
             memo_enabled: false,
             editor: Some("cursor -g".into()),
             footer_thresholds: FooterThresholds::default(),
+            notifications: NotificationSettings::default(),
         };
         let json = concat!(
             r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false,"memoEnabled":false,"editor":"cursor -g","footerThresholds":"#,
             r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
-            r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}}}"#
+            r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}},"#,
+            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true},"done":{"notify":true,"sound":true},"subagentStart":{"notify":false,"sound":false},"subagentEnd":{"notify":false,"sound":false},"shellStart":{"notify":false,"sound":false},"shellEnd":{"notify":false,"sound":false}}}"#,
+            r#"}"#
         );
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
@@ -875,12 +981,15 @@ mod tests {
             memo_enabled: true,
             editor: None,
             footer_thresholds: FooterThresholds::default(),
+            notifications: NotificationSettings::default(),
         };
         let json = concat!(
             r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true,"memoEnabled":true,"editor":null,"footerThresholds":"#,
             r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
-            r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}}}"#
+            r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}},"#,
+            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true},"done":{"notify":true,"sound":true},"subagentStart":{"notify":false,"sound":false},"subagentEnd":{"notify":false,"sound":false},"shellStart":{"notify":false,"sound":false},"shellEnd":{"notify":false,"sound":false}}}"#,
+            r#"}"#
         );
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);

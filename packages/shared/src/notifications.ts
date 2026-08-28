@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { NotifyKind } from "./protocol.js";
+
 /**
  * In-app notifications (toasts + the NOTIFICATION panel).
  * Producer-independent sink data. The only current producer is "repos.conf org
@@ -103,20 +105,30 @@ export function errorNotification(
   };
 }
 
+/** Emoji + label per notify kind, used as the NOTIFICATION-panel entry title. */
+const NOTIFY_KIND_LABEL: Record<NotifyKind, string> = {
+  waiting: "⏳ 応答待ち",
+  done: "✅ 完了",
+  subagent_start: "🤖 サブエージェント開始",
+  subagent_end: "🤖 サブエージェント終了",
+  shell_start: "🐚 バックグラウンドシェル開始",
+  shell_end: "🐚 バックグラウンドシェル終了",
+};
+
 /**
- * A notification for stacking Claude Code hooks' waiting/done into NOTIFICATION
- * (same wording as the toast). Accumulates with a unique id per occurrence.
+ * A notification for stacking a notify event into NOTIFICATION (same wording as the toast).
+ * Accumulates with a unique id per occurrence.
  */
 export function notifyNotification(
   id: string,
-  kind: "waiting" | "done",
+  kind: NotifyKind,
   windowTitle: string,
   createdAt: number,
 ): Notification {
   return {
     id,
     level: "info",
-    title: `${kind === "waiting" ? "⏳ 応答待ち" : "✅ 完了"} ${windowTitle}`,
+    title: `${NOTIFY_KIND_LABEL[kind]} ${windowTitle}`,
     body: null,
     createdAt,
     sticky: false,

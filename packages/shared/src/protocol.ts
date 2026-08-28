@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { footerThresholdsSchema } from "./config.js";
+import {
+  footerThresholdsSchema,
+  notificationSettingsSchema,
+} from "./config.js";
 import { notificationSchema } from "./notifications.js";
 
 /** Response returned by the server's /healthz endpoint. */
@@ -117,8 +120,10 @@ export const cockpitTerminalInfoSchema = z.object({
   active: z.boolean(),
   /**
    * Total number of running subagents (including nested grandchildren and beyond).
-   * An approximation counted by the mtime freshness of subagents/*.jsonl, meaningful
-   * only when running_bg_agent (0 in other states or when not fetched). optional for old-server compatibility.
+   * An approximation counted by the mtime freshness of subagents/*.jsonl, floored to 1 whenever the
+   * bg-agent tray is present. An orthogonal attribute populated independent of the lifecycle state
+   * (so it survives the running state, not only running_bg_agent). 0/absent means no background
+   * subagent. Optional for old-server compatibility.
    */
   runningSubagents: z.number().int().min(0).optional(),
   /**
@@ -278,6 +283,15 @@ export const configSetFooterThresholdsSchema = z.object({
 });
 
 /**
+ * Per-category notification switches change from SETTINGS. The whole settings object is sent (small,
+ * and the UI edits it as a unit); the server persists it to config.json and distributes config.sync.
+ */
+export const configSetNotificationsSchema = z.object({
+  t: z.literal("config.setNotifications"),
+  notifications: notificationSettingsSchema,
+});
+
+/**
  * Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run wizard
  * or SETTINGS). Idempotent; the server broadcasts the resulting `hooks.status`.
  */
@@ -350,6 +364,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   configSetMemoEnabledSchema,
   configSetEditorSchema,
   configSetFooterThresholdsSchema,
+  configSetNotificationsSchema,
   hooksRegisterSchema,
   hooksUnregisterSchema,
   updateCheckSchema,
@@ -396,9 +411,20 @@ export const gitDirtySchema = z.object({
   t: z.literal("git.dirty"),
 });
 
+export const notifyKindSchema = z.enum([
+  "waiting",
+  "done",
+  "subagent_start",
+  "subagent_end",
+  "shell_start",
+  "shell_end",
+]);
+
+export type NotifyKind = z.infer<typeof notifyKindSchema>;
+
 export const notifySchema = z.object({
   t: z.literal("notify"),
-  kind: z.enum(["waiting", "done"]),
+  kind: notifyKindSchema,
   cockpitTerminalId: cockpitTerminalIdSchema,
   title: z.string(),
 });
@@ -439,6 +465,8 @@ export const configSyncSchema = z.object({
   editor: z.string().nullable().catch(null).default(null),
   /** Status-footer severity thresholds (defaults to the current bands; omitted by old servers). */
   footerThresholds: footerThresholdsSchema,
+  /** Per-category notification switches (defaults to the standard set; omitted by old servers). */
+  notifications: notificationSettingsSchema,
 });
 
 /**

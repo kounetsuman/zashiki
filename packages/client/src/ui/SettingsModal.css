@@ -197,3 +197,22 @@
 .unsaved-bar-save:hover {
   filter: brightness(1.08);
 }
+
+.notifications-grid {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px 16px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.notifications-grid .notifications-col {
+  font-size: 0.85em;
+  color: var(--modal-text-dim);
+  text-align: center;
+  justify-self: center;
+}
+
+.notifications-grid input[type="checkbox"] {
+  justify-self: center;
+}

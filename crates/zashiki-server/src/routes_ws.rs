@@ -232,6 +232,7 @@ mod ws_control_tests {
                 memo_enabled: false,
                 editor: None,
                 footer_thresholds: Default::default(),
+                notifications: Default::default(),
             },
             vec![],
             snapshot("@1"),
