@@ -16,7 +16,7 @@ Main Area
 ├ Cockpit Tabs — Memo（任意・先頭固定）| Cockpit Terminal | Viewer | Diff
 └ Cockpit View — Cockpit Terminal | Viewer を表示（Cockpit Tab で1つ）
      └ Cockpit Terminal — 耐久ユニット。中で Claude Session (sid) が走る
-          ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / no_claude / starting / unknown
+          ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / watching / no_claude / starting / unknown
           ├ Background Activity — runningSubagents / shellsRunning / limited（直交フラグ）
           ├ menuOpen — 直交フラグ。Claude Code のメニュー/オーバーレイ表示中は状態グリフを歯車に差し替える
           └ term / termId — xterm.js の描画スロット（Cockpit Terminal に張り付く）

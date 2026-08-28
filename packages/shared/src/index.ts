@@ -280,6 +280,7 @@ export {
   isMenuOpen,
   isRunning,
   isWizard,
+  openTasksRemaining,
   subagentFreshWithinSec,
   type TranscriptEvent,
 } from "./session-state.js";

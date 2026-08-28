@@ -17,6 +17,7 @@ pub(crate) fn state_wire(state: CockpitTerminalState) -> &'static str {
         CockpitTerminalState::Running => "running",
         CockpitTerminalState::RunningBgAgent => "running_bg_agent",
         CockpitTerminalState::Idle => "idle",
+        CockpitTerminalState::Watching => "watching",
         CockpitTerminalState::NoClaude => "no_claude",
         CockpitTerminalState::Starting => "starting",
         CockpitTerminalState::Unknown => "unknown",

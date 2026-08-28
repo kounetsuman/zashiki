@@ -163,6 +163,32 @@ export function countRunningSubagents(
   return mtimeAgesSec.filter((age) => age <= freshWithinSec).length;
 }
 
+/**
+ * Task-list footer: `N tasks (X done[, N segment]*)` owning its whole line. Segment labels beyond
+ * `done` (`open` / `in progress` today) are not interpreted, so a wording addition in Claude Code
+ * does not silently kill the detection.
+ */
+const TASKS_FOOTER =
+  /^\s*(\d+)\s+tasks?\s+\((\d+)\s+done(?:,\s+\d+\s+[a-z][a-z ]*)*\)\s*$/;
+
+/**
+ * The remaining task count parsed from the task-list footer: `total - done` when `total > done`,
+ * else null (an all-done footer must not read as busy — the same contract as the agent tray).
+ * The whole capture is scanned bottom-up: the visible task rows and the input box sit between the
+ * footer and the pane bottom, so the footer is not confined to the bottom window.
+ */
+export function openTasksRemaining(capture: string): number | null {
+  const lines = capture.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = TASKS_FOOTER.exec(lines[i] ?? "");
+    if (!m) continue;
+    const total = Number(m[1]);
+    const done = Number(m[2]);
+    return total > done ? total - done : null;
+  }
+  return null;
+}
+
 export interface DetectStateOptions {
   /** Whether claude (with a sid) is in the process tree of the captured pane. */
   hasClaude: boolean;
@@ -190,6 +216,7 @@ export function detectState(
   if (hasBgAgent(capture, opts.bgAgentMarker || DEFAULT_BG_AGENT_MARKER))
     return "running_bg_agent";
   if (!opts.hasClaude) return "no_claude";
+  if (openTasksRemaining(capture) !== null) return "watching";
   return "idle";
 }
 

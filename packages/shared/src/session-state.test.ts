@@ -10,6 +10,7 @@ import {
   isMenuOpen,
   isRunning,
   isWizard,
+  openTasksRemaining,
   subagentFreshWithinSec,
 } from "./session-state.js";
 
@@ -219,6 +220,46 @@ const CAP_BG_80_FULL = `⏺ サブエージェントに調査を委譲しまし�
 const claude = { hasClaude: true };
 const noClaude = { hasClaude: false };
 
+const CAP_TASKS_OPEN =
+  "⏺ 別セッションの完了を待ちます。\n\n  1 tasks (0 done, 1 open)\n  □ Stand by, then review/test/PR #279 after other session finishes\n\n╭───╮\n│ ❯ │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+const CAP_TASKS_ALL_DONE =
+  "⏺ 完了しました。\n\n  3 tasks (3 done, 0 open)\n  ✔ 済みタスク\n╭───╮\n│ ❯ │\n╰───╯\n  ? for shortcuts";
+const CAP_TASKS_QUOTED_IN_HISTORY =
+  '⏺ 過去ログに "5 tasks (2 done, 3 open)" と出ていた話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行';
+const CAP_TASKS_WITH_SPINNER =
+  "✻ Simmering… (esc to interrupt · ctrl+t)\n  1 tasks (0 done, 1 open)\n╭───╮\n│ ❯ │\n╰───╯";
+
+describe("openTasksRemaining (task-list footer parsing)", () => {
+  it("parses footer variants; only total > done counts as remaining", () => {
+    expect(openTasksRemaining("1 tasks (0 done, 1 open)")).toBe(1);
+    expect(openTasksRemaining("  1 task (0 done, 1 open)")).toBe(1);
+    expect(openTasksRemaining("3 tasks (1 done, 1 in progress, 1 open)")).toBe(
+      2,
+    );
+    // An unknown segment label must not kill the detection (Claude Code wording additions).
+    expect(openTasksRemaining("5 tasks (2 done, 3 skipped)")).toBe(3);
+    // All done (or a corrupt done >= total) must not read as busy.
+    expect(openTasksRemaining("3 tasks (3 done)")).toBeNull();
+    expect(openTasksRemaining("3 tasks (3 done, 0 open)")).toBeNull();
+    expect(openTasksRemaining("3 tasks (5 done)")).toBeNull();
+    // The footer owns its whole line: mid-sentence quotes and trailing prose do not match.
+    expect(openTasksRemaining("status: 15 tasks (2 done) remain")).toBeNull();
+    expect(openTasksRemaining("15 tasks (2 done) remain")).toBeNull();
+    expect(openTasksRemaining("8 tasks (mostly done)")).toBeNull();
+    expect(openTasksRemaining("12 tasks (3 done")).toBeNull();
+    expect(openTasksRemaining("tasks (2 done)")).toBeNull();
+  });
+
+  it("the bottom-most footer decides (an all-done footer is not skipped for a staler open one above)", () => {
+    expect(
+      openTasksRemaining("5 tasks (2 done, 3 open)\n3 tasks (3 done)"),
+    ).toBeNull();
+    expect(
+      openTasksRemaining("3 tasks (3 done)\n5 tasks (2 done, 3 open)"),
+    ).toBe(3);
+  });
+});
+
 describe("detectState (table test for the primary capture-based decision)", () => {
   const table: {
     name: string;
@@ -352,6 +393,33 @@ describe("detectState (table test for the primary capture-based decision)", () =
       capture: CAP_WIZARD_TWO_CHOICE,
       opts: noClaude,
       expected: "waiting_input",
+    },
+    // -- watching: open tasks remain after the turn --
+    {
+      name: "watching when the open-task footer sits on an otherwise idle screen",
+      capture: CAP_TASKS_OPEN,
+      expected: "watching",
+    },
+    {
+      name: "idle when the task footer says all done",
+      capture: CAP_TASKS_ALL_DONE,
+      expected: "idle",
+    },
+    {
+      name: "idle when a footer-like phrase is only quoted mid-sentence in the history",
+      capture: CAP_TASKS_QUOTED_IN_HISTORY,
+      expected: "idle",
+    },
+    {
+      name: "running wins over the open-task footer (priority order)",
+      capture: CAP_TASKS_WITH_SPINNER,
+      expected: "running",
+    },
+    {
+      name: "no_claude wins over the open-task footer (a dead pane must not read as watching)",
+      capture: CAP_TASKS_OPEN,
+      opts: noClaude,
+      expected: "no_claude",
     },
     // -- 80-column wrapping --
     {
