@@ -190,6 +190,7 @@ pub fn decide(
     kind: HookKind,
     resolved: Option<&ResolvedWindow>,
     mode: NotifyMode,
+    record_history: bool,
     client_count: usize,
     snap_title: Option<String>,
 ) -> HookActions {
@@ -206,8 +207,9 @@ pub fn decide(
         matched: true,
         ..Default::default()
     };
-    // Independently of delivery (web/mac), always accumulate when matched (only off skips accumulation).
-    if mode != NotifyMode::Off {
+    // Independently of delivery (web/mac), accumulate when matched — unless notifications are off,
+    // or the panel history is disabled (ZK_NOTIFY_HISTORY=off), which still delivers the toast.
+    if mode != NotifyMode::Off && record_history {
         actions.record = Some((nk, win.name.clone()));
     }
     let delivery = notify_delivery(mode, client_count);
@@ -340,19 +342,19 @@ mod tests {
 
     #[test]
     fn decide_tool_only_marks_git_dirty() {
-        let a = decide(HookKind::Tool, None, NotifyMode::Web, 0, None);
+        let a = decide(HookKind::Tool, None, NotifyMode::Web, true, 0, None);
         assert!(a.git_dirty && !a.matched && a.record.is_none() && a.push.is_none());
     }
 
     #[test]
     fn decide_prompt_does_nothing() {
-        let a = decide(HookKind::Prompt, None, NotifyMode::Web, 0, None);
+        let a = decide(HookKind::Prompt, None, NotifyMode::Web, true, 0, None);
         assert_eq!(a, HookActions::default());
     }
 
     #[test]
     fn decide_unresolved_waiting_is_not_matched() {
-        let a = decide(HookKind::Waiting, None, NotifyMode::Web, 0, None);
+        let a = decide(HookKind::Waiting, None, NotifyMode::Web, true, 0, None);
         assert!(!a.matched && a.record.is_none() && a.push.is_none() && a.mac.is_none());
     }
 
@@ -362,7 +364,7 @@ mod tests {
             cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
-        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, 2, Some("題名".to_string()));
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, true, 2, Some("題名".to_string()));
         assert!(a.matched);
         assert_eq!(a.record, Some((NotifyKind::Waiting, "repo-a".to_string())));
         assert_eq!(a.push, Some((NotifyKind::Waiting, "@1".to_string(), "repo-a".to_string())));
@@ -376,7 +378,7 @@ mod tests {
             cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
-        let a = decide(HookKind::Done, Some(&win), NotifyMode::Web, 0, Some("題名".to_string()));
+        let a = decide(HookKind::Done, Some(&win), NotifyMode::Web, true, 0, Some("題名".to_string()));
         assert_eq!(
             a.mac,
             Some(MacNotification {
@@ -393,8 +395,20 @@ mod tests {
             cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
-        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Off, 0, None);
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Off, true, 0, None);
         assert!(a.matched);
         assert!(a.record.is_none() && a.push.is_none() && a.mac.is_none());
+    }
+
+    #[test]
+    fn decide_history_off_delivers_toast_but_skips_record() {
+        let win = ResolvedWindow {
+            cockpit_terminal_id: "@1".to_string(),
+            name: "repo-a".to_string(),
+        };
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, false, 2, None);
+        assert!(a.matched);
+        assert!(a.record.is_none());
+        assert_eq!(a.push, Some((NotifyKind::Waiting, "@1".to_string(), "repo-a".to_string())));
     }
 }

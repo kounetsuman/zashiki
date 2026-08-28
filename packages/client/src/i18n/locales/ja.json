@@ -105,7 +105,8 @@
     "deleteSelected": "選択した通知を削除",
     "confirmDelete": "{{count}} 件の通知を削除しますか？",
     "waiting": "⏳ 応答待ち",
-    "done": "✅ 完了"
+    "done": "✅ 完了",
+    "activate": "このセッションを開く"
   },
   "search": {
     "ariaLabel": "検索",

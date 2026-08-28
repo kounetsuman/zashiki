@@ -44,6 +44,8 @@ export interface Notifier {
   permission(): NotifyPermission;
   requestPermission(): Promise<NotifyPermission>;
   notify(opts: NotifyOptions): void;
+  /** Plays the notification sound only (no OS notification), honoring the enabled setting. */
+  playSound(kind: NotifyKind): void;
 }
 
 export interface NotifierDeps {
@@ -99,6 +101,14 @@ export function createNotifier(deps: NotifierDeps = {}): Notifier {
     async requestPermission() {
       if (api === null) return "unsupported";
       return api.requestPermission();
+    },
+    playSound(kind) {
+      if (!isEnabled()) return;
+      try {
+        playSound(kind);
+      } catch {
+        // Sound is best-effort
+      }
     },
     notify(opts) {
       if (!isEnabled()) return;

@@ -105,7 +105,8 @@
     "deleteSelected": "Delete selected",
     "confirmDelete": "Delete {{count}} notification(s)?",
     "waiting": "⏳ Awaiting response",
-    "done": "✅ Done"
+    "done": "✅ Done",
+    "activate": "Open this session"
   },
   "search": {
     "ariaLabel": "Search",
