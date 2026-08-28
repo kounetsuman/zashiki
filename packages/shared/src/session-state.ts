@@ -4,7 +4,7 @@ import type { CockpitTerminalState } from "./protocol.js";
 
 export const DEFAULT_RUN_MARKER = "(esc to interrupt";
 export const DEFAULT_BG_AGENT_MARKER = "◯";
-export const DEFAULT_LIMIT_MARKER = "usage limit reached";
+export const DEFAULT_LIMIT_MARKER = "claude usage limit reached";
 
 /**
  * Distinctive header phrases of Claude Code's built-in menu/overlay screens (`/login`, `/status`,
@@ -61,15 +61,18 @@ export function isRunning(
   );
 }
 
+// Leading glyphs Claude Code renders before the usage-limit text (`✗` banner, `⎿` result lines),
+// plus whitespace and box borders. Deliberately excludes bullet/quote glyphs and the `⏺` response
+// bullet so prose citing the phrase does not match.
+const LIMIT_LINE_DECORATION = /^[\s│┃|╎┆✗⎿]+/;
+
 /**
- * Detect that Claude Code's usage limit has been reached from the bottom of the
- * screen (last 8 non-empty lines). A substring match on marker (default
- * "usage limit reached"), case-insensitive. This is an attribute orthogonal to
- * the main state, so it is not folded into detectState (to avoid making the case
- * where a limit banner appears during running mutually exclusive). It ignores
- * case because, unlike isRunning's marker (stable casing), the leading casing of
- * the limit text can vary. An empty marker falls back to false to avoid false
- * positives (matching every window).
+ * Detects Claude Code's usage-limit renders (`✗ Claude usage limit reached · /upgrade …`,
+ * `⎿ Claude usage limit reached. …`) in the last 8 non-empty lines. The marker (default
+ * "claude usage limit reached", case-insensitive) must head a line after leading limit decoration
+ * is stripped, so the phrase quoted in command output or source code shown on screen does not
+ * trip the flag. Orthogonal to the main state (a banner can appear while running). An empty
+ * marker yields false (callers resolve the default).
  */
 export function isLimitReached(
   capture: string,
@@ -78,7 +81,7 @@ export function isLimitReached(
   const needle = marker.toLowerCase();
   if (needle === "") return false;
   return bottomNonEmptyLines(capture).some((line) =>
-    line.toLowerCase().includes(needle),
+    line.replace(LIMIT_LINE_DECORATION, "").toLowerCase().startsWith(needle),
   );
 }
 
