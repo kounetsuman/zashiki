@@ -116,8 +116,8 @@ fn main() {
                 Ok((url, owned)) => {
                     *owned_slot.lock().unwrap() = owned;
                     match url.parse::<tauri::Url>() {
-                        Ok(parsed) => {
-                            if let Err(e) = window.navigate(parsed) {
+                        Ok(_) => {
+                            if let Err(e) = window.eval(pages::redirect_script(&url)) {
                                 eprintln!("zashiki: 初期 URL への遷移に失敗しました: {e}");
                             }
                         }
