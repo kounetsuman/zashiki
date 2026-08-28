@@ -322,8 +322,8 @@
   },
   "onboarding": {
     "title": "zashiki へようこそ",
-    "intro": "zashiki は Claude Code のための1画面の AI コックピットです。どのセッションが対応待ちかを示し、複数の操作をまとめて楽にします。",
-    "note": "次に、通知と使用率フッタのための Claude Code 連携を設定します。この案内は設定からいつでも開けます。",
+    "intro": "Claude Code のための1画面コックピット。対応待ちのセッションが一目で分かります。",
+    "note": "次に Claude Code 連携を設定します。設定からいつでも開けます。",
     "skip": "スキップ",
     "getStarted": "はじめる"
   },
