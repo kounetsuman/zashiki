@@ -20,6 +20,7 @@ function fakeStore(): AppStore {
     markNewRequested: vi.fn(),
     clearError: vi.fn(),
     setMemoText: vi.fn(),
+    markMemoSaved: vi.fn(),
   };
 }
 

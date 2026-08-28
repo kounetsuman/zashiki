@@ -214,7 +214,8 @@
     "updating": "Updating…",
     "tooltip": "Update to version {{version}}",
     "opened": "Opened the releases page",
-    "failed": "Update failed"
+    "failed": "Update failed",
+    "saveFailed": "Could not save the memo — update canceled: {{error}}"
   },
   "nav": {
     "ariaLabel": "Navigation"
