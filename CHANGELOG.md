@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-08-28
+
+### Added
+
+- Persistent click-to-focus toasts when a session finishes or waits for input; `ZK_NOTIFY_HISTORY=off` keeps those events out of the NOTIFICATION list while keeping the toasts (#282)
+- Bulk mark-as-read with checkboxes and select-all on notifications (#276)
+- Per-category notification toggles in Settings (#279)
+
+### Changed
+
+- A session standing by with open tasks now shows a watching indicator instead of the done checkmark (#292)
+- Welcome onboarding is visually refined and now closes only via its buttons (#274)
+
+### Fixed
+
+- The session usage percent no longer goes stale while a limit banner is on screen (#294)
+- Quoting a usage-limit message in the terminal no longer falsely triggers limit detection (#290)
+- A terminal running the FleetView dashboard now reports its working/waiting status correctly (#288)
+- The subagent chip stays visible while the main session is also running (#286)
+- Sessions no longer flip to waiting on informational notifications — only ones that ask for input mark waiting (#281)
+- The Memo tab keeps a constant width between saved and unsaved states (#273)
+
 ## [0.15.0] - 2026-08-27
 
 ### Added
@@ -262,7 +284,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.16.0...HEAD
+[0.16.0]: https://github.com/kounetsuman/zashiki/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/kounetsuman/zashiki/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/kounetsuman/zashiki/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/kounetsuman/zashiki/compare/v0.12.0...v0.13.0
