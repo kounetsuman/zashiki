@@ -540,16 +540,22 @@ describe("isRunning / hasBgAgent / isWizard (unit checks of the boundaries)", ()
   });
 });
 
-describe("isLimitReached (detecting the usage-limit banner)", () => {
+describe("isLimitReached (detecting the limit banners)", () => {
   const CAP_LIMIT =
     "⏺ 直前の応答\n✗ Claude usage limit reached · /upgrade to increase your limit\n╭───╮\n│ ❯ │\n╰───╯";
+  const CAP_LIMIT_RETRY =
+    "✳ Session limit reached  Retrying in 20m (6:30pm) · attempt 1/15\n╭───╮\n│ ❯ │\n╰───╯";
   const CAP_LIMIT_HISTORY_QUOTE =
-    "過去ログ: usage limit reached の話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
+    "過去ログ: Claude usage limit reached の話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
   const CAP_RUN_WITH_USAGE_STATUS =
     "✻ Razzle-dazzling… (8m 10s · ↓ 34.3k tokens)\n───\n❯\n───\n  15% usage/5h(-13m) | 46% usage/week";
 
-  it("true for the limit banner at the bottom of the screen", () => {
+  it("true for the lockout banner at the bottom of the screen", () => {
     expect(isLimitReached(CAP_LIMIT)).toBe(true);
+  });
+
+  it("true for the session auto-retry banner", () => {
+    expect(isLimitReached(CAP_LIMIT_RETRY)).toBe(true);
   });
 
   it("is case-insensitive", () => {
@@ -560,18 +566,28 @@ describe("isLimitReached (detecting the usage-limit banner)", () => {
     expect(isLimitReached(CAP_LIMIT_HISTORY_QUOTE)).toBe(false);
   });
 
-  it("false for a usage-rate status line ('... usage/5h') (it does not contain 'usage limit reached')", () => {
+  it("false for a quoted marker mid-line inside the bottom window", () => {
+    const cap =
+      '⏺ 出力\n  "limitReached": "Usage limit reached",\n  the phrase Session limit reached appears quoted\n╭───╮\n│ ❯ │\n╰───╯';
+    expect(isLimitReached(cap)).toBe(false);
+  });
+
+  it("false for a usage-rate status line ('... usage/5h')", () => {
     expect(isLimitReached(CAP_RUN_WITH_USAGE_STATUS)).toBe(false);
   });
 
-  it("an empty marker is always false (prevents false positives matching every window)", () => {
-    expect(isLimitReached(CAP_LIMIT, "")).toBe(false);
+  it("an empty marker list is always false (prevents false positives matching every window)", () => {
+    expect(isLimitReached(CAP_LIMIT, [])).toBe(false);
+    expect(isLimitReached(CAP_LIMIT, [""])).toBe(false);
   });
 
-  it("the marker can be overridden (ZK_LIMIT_MARKER escape hatch)", () => {
+  it("the markers can be overridden with line-head semantics (ZK_LIMIT_MARKER escape hatch)", () => {
     const cap = "RATE_CAP_HIT · resets 3am\n───\n❯\n───";
     expect(isLimitReached(cap)).toBe(false);
-    expect(isLimitReached(cap, "RATE_CAP_HIT")).toBe(true);
+    expect(isLimitReached(cap, ["rate_cap_hit"])).toBe(true);
+    expect(
+      isLimitReached('quoted "RATE_CAP_HIT" mid line', ["rate_cap_hit"]),
+    ).toBe(false);
   });
 
   it("false for the banner phrase quoted inside command output in the bottom window", () => {

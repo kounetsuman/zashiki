@@ -84,8 +84,9 @@ pub struct PollConfig {
     pub poll_sec: f64,
     pub run_marker: Option<String>,
     pub bg_agent_marker: Option<String>,
-    /// Text marker for the usage-limit banner (ZK_LIMIT_MARKER; empty/unset falls back to the
-    /// default). Must head a line after leading decoration, not merely appear in it.
+    /// Comma-separated marker phrases for the limit-reached banners (ZK_LIMIT_MARKER; empty/unset
+    /// falls back to DEFAULT_LIMIT_MARKERS). Each must head a line after leading decoration, not
+    /// merely appear in it.
     pub limit_marker: Option<String>,
     /// Comma-separated marker phrases for Claude Code menu/overlay screens (ZK_MENU_MARKERS;
     /// empty/unset falls back to DEFAULT_MENU_MARKERS).

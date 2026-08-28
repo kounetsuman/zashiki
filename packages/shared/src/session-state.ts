@@ -4,7 +4,16 @@ import type { CockpitTerminalState } from "./protocol.js";
 
 export const DEFAULT_RUN_MARKER = "(esc to interrupt";
 export const DEFAULT_BG_AGENT_MARKER = "◯";
-export const DEFAULT_LIMIT_MARKER = "claude usage limit reached";
+/**
+ * Line-head markers for the limit-reached renders. Claude Code has three wordings: the lockout
+ * banner (`✗ Claude usage limit reached · /upgrade …`), the result line
+ * (`⎿ Claude usage limit reached. …`), and the auto-retry banner
+ * (`✻ Session limit reached · Retrying in …`).
+ */
+export const DEFAULT_LIMIT_MARKERS: readonly string[] = [
+  "claude usage limit reached",
+  "session limit reached",
+];
 
 /**
  * Distinctive header phrases of Claude Code's built-in menu/overlay screens (`/login`, `/status`,
@@ -61,27 +70,43 @@ export function isRunning(
   );
 }
 
-// Leading glyphs Claude Code renders before the usage-limit text (`✗` banner, `⎿` result lines),
-// plus whitespace and box borders. Deliberately excludes bullet/quote glyphs and the `⏺` response
-// bullet so prose citing the phrase does not match.
-const LIMIT_LINE_DECORATION = /^[\s│┃|╎┆✗⎿]+/;
+// Leading glyphs Claude Code renders before the limit text (`✗` banner, `⎿` result lines, and the
+// `· ✢ ✳ ✶ ✻ ✽` spinner frames of the auto-retry banner), plus whitespace and box borders.
+// Deliberately excludes bullet/quote glyphs and the `⏺` response bullet so prose citing the phrase
+// does not match.
+const LIMIT_LINE_DECORATION = /^[\s│┃|╎┆✗⎿·✢✳✶✻✽]+/;
+
+/** Lowercased non-empty marker needles for case-insensitive matching (empty result = match nothing). */
+function lowercaseNeedles(markers: readonly string[]): string[] {
+  return markers.filter((m) => m !== "").map((m) => m.toLowerCase());
+}
+
+/** Whether a needle heads the line after stripping the given leading decoration, case-insensitively. */
+function headStartsWith(
+  line: string,
+  needles: readonly string[],
+  decoration: RegExp,
+): boolean {
+  const head = line.replace(decoration, "").toLowerCase();
+  return needles.some((n) => head.startsWith(n));
+}
 
 /**
- * Detects Claude Code's usage-limit renders (`✗ Claude usage limit reached · /upgrade …`,
- * `⎿ Claude usage limit reached. …`) in the last 8 non-empty lines. The marker (default
- * "claude usage limit reached", case-insensitive) must head a line after leading limit decoration
- * is stripped, so the phrase quoted in command output or source code shown on screen does not
- * trip the flag. Orthogonal to the main state (a banner can appear while running). An empty
- * marker yields false (callers resolve the default).
+ * Detects Claude Code's limit-reached renders (`✗ Claude usage limit reached · /upgrade …`,
+ * `⎿ Claude usage limit reached. …`, `✻ Session limit reached · Retrying …`) in the last 8
+ * non-empty lines. A marker (case-insensitive) must head a line after leading limit decoration is
+ * stripped, so the phrase quoted in command output or source code shown on screen does not trip
+ * the flag. Orthogonal to the main state (a banner can appear while running). An empty marker
+ * list yields false.
  */
 export function isLimitReached(
   capture: string,
-  marker: string = DEFAULT_LIMIT_MARKER,
+  markers: readonly string[] = DEFAULT_LIMIT_MARKERS,
 ): boolean {
-  const needle = marker.toLowerCase();
-  if (needle === "") return false;
+  const needles = lowercaseNeedles(markers);
+  if (needles.length === 0) return false;
   return bottomNonEmptyLines(capture).some((line) =>
-    line.replace(LIMIT_LINE_DECORATION, "").toLowerCase().startsWith(needle),
+    headStartsWith(line, needles, LIMIT_LINE_DECORATION),
   );
 }
 
@@ -102,12 +127,11 @@ export function isMenuOpen(
   capture: string,
   markers: readonly string[] = DEFAULT_MENU_MARKERS,
 ): boolean {
-  const needles = markers.filter((m) => m !== "").map((m) => m.toLowerCase());
+  const needles = lowercaseNeedles(markers);
   if (needles.length === 0) return false;
-  return capture.split("\n").some((line) => {
-    const head = line.replace(MENU_LINE_DECORATION, "").toLowerCase();
-    return needles.some((n) => head.startsWith(n));
-  });
+  return capture
+    .split("\n")
+    .some((line) => headStartsWith(line, needles, MENU_LINE_DECORATION));
 }
 
 /**

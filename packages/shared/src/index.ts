@@ -269,7 +269,7 @@ export {
 export {
   countRunningSubagents,
   DEFAULT_BG_AGENT_MARKER,
-  DEFAULT_LIMIT_MARKER,
+  DEFAULT_LIMIT_MARKERS,
   DEFAULT_MENU_MARKERS,
   DEFAULT_RUN_MARKER,
   type DetectStateOptions,

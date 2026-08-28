@@ -51,6 +51,7 @@ import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
 import {
+  clampFiveHourWhenLimited,
   fmtResetClock,
   pickAccountLimits,
   usageRemainingPercent,
@@ -262,8 +263,12 @@ export function App({
   const limitedCount = cockpitTerminals.filter(
     (s) => s.limited === true,
   ).length;
-  // Account-wide Claude Code usage for the global footer (null until a session reports limits).
-  const accountLimits = pickAccountLimits(cockpitTerminals);
+  // Account-wide Claude Code usage (null until a session reports limits), corrected by the
+  // on-screen limit signal so the footer and the warning dialog read the same number.
+  const accountLimits = clampFiveHourWhenLimited(
+    pickAccountLimits(cockpitTerminals),
+    limitedCount > 0,
+  );
   const usageWarning = useUsageLimitWarning({
     limit: accountLimits?.fiveHour,
     band: footerThresholds.usagePercent.crit,

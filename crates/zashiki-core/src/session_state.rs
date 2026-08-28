@@ -33,8 +33,12 @@ pub enum CockpitTerminalState {
 pub const DEFAULT_RUN_MARKER: &str = "(esc to interrupt";
 /// The line-start marker for a bg-agent line.
 pub const DEFAULT_BG_AGENT_MARKER: &str = "◯";
-/// The text marker for the usage-limit-reached banner (Claude Code's phrasing).
-pub const DEFAULT_LIMIT_MARKER: &str = "claude usage limit reached";
+/// Line-head markers for the limit-reached renders. Claude Code has three wordings: the lockout
+/// banner (`✗ Claude usage limit reached · /upgrade …`), the result line
+/// (`⎿ Claude usage limit reached. …`), and the auto-retry banner
+/// (`✻ Session limit reached · Retrying in …`).
+pub const DEFAULT_LIMIT_MARKERS: &[&str] =
+    &["claude usage limit reached", "session limit reached"];
 
 /// Distinctive header phrases of Claude Code's built-in menu/overlay screens (`/login`, `/status`,
 /// `/usage`, `/model`, `/mcp`, and the wider settings family). A session showing one of these is
@@ -174,29 +178,47 @@ pub fn is_running(capture: &str, marker: &str) -> bool {
         .any(|line| line.contains(marker) || has_live_spinner_timer(line))
 }
 
-/// Leading glyphs Claude Code renders before the usage-limit text (`✗` banner, `⎿` result lines),
-/// plus whitespace and box borders. Deliberately excludes bullet/quote glyphs and the `⏺`
-/// response bullet so prose citing the phrase does not match.
+/// Leading glyphs Claude Code renders before the limit text (`✗` banner, `⎿` result lines, and
+/// the `· ✢ ✳ ✶ ✻ ✽` spinner frames of the auto-retry banner), plus whitespace and box borders.
+/// Deliberately excludes bullet/quote glyphs and the `⏺` response bullet so prose citing the
+/// phrase does not match.
 fn is_limit_line_decoration(c: char) -> bool {
-    is_js_whitespace(c) || matches!(c, '│' | '┃' | '|' | '╎' | '┆' | '✗' | '⎿')
+    is_js_whitespace(c)
+        || matches!(
+            c,
+            '│' | '┃' | '|' | '╎' | '┆' | '✗' | '⎿' | '·' | '✢' | '✳' | '✶' | '✻' | '✽'
+        )
 }
 
-/// Detects Claude Code's usage-limit renders (`✗ Claude usage limit reached · /upgrade …`,
-/// `⎿ Claude usage limit reached. …`) in the last 8 non-empty lines. The marker (default
-/// `claude usage limit reached`, case-insensitive) must head a line after leading limit decoration
-/// is stripped, so the phrase quoted in command output or source code shown on screen does not
-/// trip the flag. Orthogonal to the main state (a banner can appear while running). An empty
-/// marker yields false (callers resolve the default).
-pub fn is_limit_reached(capture: &str, marker: &str) -> bool {
-    if marker.is_empty() {
+/// Detects Claude Code's limit-reached renders (`✗ Claude usage limit reached · /upgrade …`,
+/// `⎿ Claude usage limit reached. …`, `✻ Session limit reached · Retrying …`) in the last 8
+/// non-empty lines. A marker (case-insensitive) must head a line after leading limit decoration is
+/// stripped, so the phrase quoted in command output or source code shown on screen does not trip
+/// the flag. Orthogonal to the main state (a banner can appear while running). An empty marker
+/// list yields false (callers resolve the default).
+pub fn is_limit_reached(capture: &str, markers: &[&str]) -> bool {
+    let needles = lowercase_needles(markers);
+    if needles.is_empty() {
         return false;
     }
-    let needle = marker.to_lowercase();
-    bottom_non_empty_lines(capture).iter().any(|line| {
-        line.trim_start_matches(is_limit_line_decoration)
-            .to_lowercase()
-            .starts_with(&needle)
-    })
+    bottom_non_empty_lines(capture)
+        .iter()
+        .any(|line| head_starts_with(line, &needles, is_limit_line_decoration))
+}
+
+/// Lowercased non-empty marker needles for case-insensitive matching (empty result = match nothing).
+fn lowercase_needles(markers: &[&str]) -> Vec<String> {
+    markers
+        .iter()
+        .filter(|m| !m.is_empty())
+        .map(|m| m.to_lowercase())
+        .collect()
+}
+
+/// Whether a needle heads the line after stripping the given leading decoration, case-insensitively.
+fn head_starts_with(line: &str, needles: &[String], is_decoration: fn(char) -> bool) -> bool {
+    let head = line.trim_start_matches(is_decoration).to_lowercase();
+    needles.iter().any(|n| head.starts_with(n.as_str()))
 }
 
 /// Leading line decoration (whitespace or a box-border/bullet glyph) stripped before a menu marker
@@ -217,18 +239,13 @@ fn is_menu_line_decoration(c: char) -> bool {
 /// Orthogonal to the main state — it only overrides the rendered glyph, so it is not folded into
 /// `detect_state`. An empty marker list (or all-empty markers) yields false.
 pub fn is_menu_open(capture: &str, markers: &[&str]) -> bool {
-    let needles: Vec<String> = markers
-        .iter()
-        .filter(|m| !m.is_empty())
-        .map(|m| m.to_lowercase())
-        .collect();
+    let needles = lowercase_needles(markers);
     if needles.is_empty() {
         return false;
     }
-    capture.split('\n').any(|line| {
-        let head = line.trim_start_matches(is_menu_line_decoration).to_lowercase();
-        needles.iter().any(|n| head.starts_with(n.as_str()))
-    })
+    capture
+        .split('\n')
+        .any(|line| head_starts_with(line, &needles, is_menu_line_decoration))
 }
 
 /// Whether the live background-agent panel (`⏺ main` heading directly above line-start `◯ ` agent
@@ -1328,23 +1345,29 @@ mod tests {
         assert!(has_bg_agent("  ⏺ main\n  ◯ x", "◯"));
     }
 
-    // ---- is_limit_reached (usage-limit banner detection) ----
+    // ---- is_limit_reached (limit banner detection) ----
 
     const CAP_LIMIT: &str = "⏺ 直前の応答\n✗ Claude usage limit reached · /upgrade to increase your limit\n╭───╮\n│ ❯ │\n╰───╯";
+    const CAP_LIMIT_RETRY: &str = "✳ Session limit reached  Retrying in 20m (6:30pm) · attempt 1/15\n╭───╮\n│ ❯ │\n╰───╯";
     const CAP_LIMIT_HISTORY_QUOTE: &str =
-        "過去ログ: usage limit reached の話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
+        "過去ログ: Claude usage limit reached の話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
     const CAP_RUN_WITH_USAGE_STATUS: &str = "✻ Razzle-dazzling… (8m 10s · ↓ 34.3k tokens)\n───\n❯\n───\n  15% usage/5h(-13m) | 46% usage/week";
 
     #[test]
-    fn limit_reached_detects_bottom_banner() {
-        assert!(is_limit_reached(CAP_LIMIT, DEFAULT_LIMIT_MARKER));
+    fn limit_reached_detects_lockout_banner() {
+        assert!(is_limit_reached(CAP_LIMIT, DEFAULT_LIMIT_MARKERS));
+    }
+
+    #[test]
+    fn limit_reached_detects_session_retry_banner() {
+        assert!(is_limit_reached(CAP_LIMIT_RETRY, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_is_case_insensitive() {
         assert!(is_limit_reached(
             "✗ Claude Usage Limit Reached",
-            DEFAULT_LIMIT_MARKER
+            DEFAULT_LIMIT_MARKERS
         ));
     }
 
@@ -1352,64 +1375,75 @@ mod tests {
     fn limit_reached_ignores_history_quote_outside_bottom_window() {
         assert!(!is_limit_reached(
             CAP_LIMIT_HISTORY_QUOTE,
-            DEFAULT_LIMIT_MARKER
+            DEFAULT_LIMIT_MARKERS
         ));
+    }
+
+    #[test]
+    fn limit_reached_ignores_quoted_marker_mid_line_in_bottom_window() {
+        let cap = "⏺ 出力\n  \"limitReached\": \"Usage limit reached\",\n  the phrase Session limit reached appears quoted\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_false_for_usage_percent_status_line() {
         assert!(!is_limit_reached(
             CAP_RUN_WITH_USAGE_STATUS,
-            DEFAULT_LIMIT_MARKER
+            DEFAULT_LIMIT_MARKERS
         ));
     }
 
     #[test]
-    fn limit_reached_empty_marker_never_matches() {
-        assert!(!is_limit_reached(CAP_LIMIT, ""));
+    fn limit_reached_empty_markers_never_match() {
+        assert!(!is_limit_reached(CAP_LIMIT, &[]));
+        assert!(!is_limit_reached(CAP_LIMIT, &[""]));
     }
 
     #[test]
-    fn limit_reached_marker_is_overridable() {
+    fn limit_reached_marker_is_overridable_with_line_head_semantics() {
         let cap = "RATE_CAP_HIT · resets 3am\n───\n❯\n───";
-        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
-        assert!(is_limit_reached(cap, "RATE_CAP_HIT"));
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
+        assert!(is_limit_reached(cap, &["rate_cap_hit"]));
+        assert!(!is_limit_reached(
+            "quoted \"RATE_CAP_HIT\" mid line",
+            &["rate_cap_hit"]
+        ));
     }
 
     #[test]
     fn limit_reached_ignores_quoted_marker_in_bottom_window() {
         let cap = "⏺ Bash(cat en.json)\n  \"limitReached\": \"Usage limit reached\",\n… +96 lines (ctrl+o to expand)\n╭───╮\n│ ❯ │\n╰───╯";
-        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_ignores_source_code_shown_on_screen() {
         let cap = "⏺ Bash(rg DEFAULT_LIMIT_MARKER)\n33:pub const DEFAULT_LIMIT_MARKER: &str = \"claude usage limit reached\";\n╭───╮\n│ ❯ │\n╰───╯";
-        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_ignores_bullet_prose_citing_the_phrase() {
         let cap = "⏺ 説明\n- Claude usage limit reached means the 5-hour window is exhausted\n╭───╮\n│ ❯ │\n╰───╯";
-        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_ignores_response_bullet_prose_starting_with_the_phrase() {
         let cap = "⏺ Claude usage limit reached is the message shown when the window is exhausted\n╭───╮\n│ ❯ │\n╰───╯";
-        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_detects_box_framed_banner() {
         let cap = "⏺ 直前の応答\n│ ✗ Claude usage limit reached · /upgrade │\n╭───╮\n│ ❯ │\n╰───╯";
-        assert!(is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+        assert!(is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_detects_result_line_render() {
         let cap = "⏺ 応答\n⎿  Claude usage limit reached. Your limit will reset at 7pm (Asia/Tokyo).\n╭───╮\n│ ❯ │\n╰───╯";
-        assert!(is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+        assert!(is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     // ---- is_menu_open (Claude Code menu/overlay detection) ----

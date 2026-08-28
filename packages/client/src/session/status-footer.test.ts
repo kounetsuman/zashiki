@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clampFiveHourWhenLimited,
   durationSeverity,
   FIVE_HOUR_WINDOW_MS,
   fmtDuration,
@@ -258,6 +259,30 @@ describe("pickAccountLimits", () => {
       fiveHour: { usedPercent: 5, resetsAt: 300 },
       week: { usedPercent: 70, resetsAt: 900 },
     });
+  });
+});
+
+describe("clampFiveHourWhenLimited", () => {
+  const limits = {
+    fiveHour: { usedPercent: 73, resetsAt: 1_200 },
+    week: { usedPercent: 32, resetsAt: 9_000 },
+  };
+
+  it("forces the five-hour percent to 100 while a session shows the limit banner", () => {
+    expect(clampFiveHourWhenLimited(limits, true)).toEqual({
+      fiveHour: { usedPercent: 100, resetsAt: 1_200 },
+      week: { usedPercent: 32, resetsAt: 9_000 },
+    });
+  });
+
+  it("passes the reading through while no session is limited", () => {
+    expect(clampFiveHourWhenLimited(limits, false)).toBe(limits);
+  });
+
+  it("passes through null and a reading without a five-hour limit", () => {
+    expect(clampFiveHourWhenLimited(null, true)).toBeNull();
+    const weekOnly = { week: { usedPercent: 32, resetsAt: 9_000 } };
+    expect(clampFiveHourWhenLimited(weekOnly, true)).toBe(weekOnly);
   });
 });
 
