@@ -1,16 +1,111 @@
 import { z } from "zod";
 
 /**
+ * The notification categories that can be toggled independently in SETTINGS. `waiting` / `done` are
+ * the Claude Code hook events; the rest are Background Activity edges emitted by the server poller.
+ * Category keys are camelCase; the on-the-wire notify `kind` for the multi-word ones is snake_case
+ * (`subagent_start`, …) — {@link notifyCategoryForKind} bridges the two.
+ */
+export const NOTIFY_CATEGORIES = [
+  "waiting",
+  "done",
+  "subagentStart",
+  "subagentEnd",
+  "shellStart",
+  "shellEnd",
+] as const;
+
+export type NotifyCategory = (typeof NOTIFY_CATEGORIES)[number];
+
+/** Per-category preference: whether to show the notification, and whether to play its sound. */
+export interface NotifyCategoryPref {
+  notify: boolean;
+  sound: boolean;
+}
+
+export interface NotificationSettings {
+  /** Master switch; when false, no category shows or sounds. */
+  enabled: boolean;
+  categories: Record<NotifyCategory, NotifyCategoryPref>;
+}
+
+const NOTIFY_ON: NotifyCategoryPref = { notify: true, sound: true };
+const NOTIFY_OFF: NotifyCategoryPref = { notify: false, sound: false };
+
+/** waiting / done keep the historical on-by-default; the new Background Activity edges are opt-in. */
+export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
+  enabled: true,
+  categories: {
+    waiting: NOTIFY_ON,
+    done: NOTIFY_ON,
+    subagentStart: NOTIFY_OFF,
+    subagentEnd: NOTIFY_OFF,
+    shellStart: NOTIFY_OFF,
+    shellEnd: NOTIFY_OFF,
+  },
+};
+
+function categoryPrefSchema(fallback: NotifyCategoryPref) {
+  return z
+    .object({
+      notify: z.boolean().catch(fallback.notify).default(fallback.notify),
+      sound: z.boolean().catch(fallback.sound).default(fallback.sound),
+    })
+    .catch(fallback)
+    .default(fallback);
+}
+
+export const notificationSettingsSchema = z
+  .object({
+    enabled: z.boolean().catch(true).default(true),
+    categories: z
+      .object({
+        waiting: categoryPrefSchema(NOTIFY_ON),
+        done: categoryPrefSchema(NOTIFY_ON),
+        subagentStart: categoryPrefSchema(NOTIFY_OFF),
+        subagentEnd: categoryPrefSchema(NOTIFY_OFF),
+        shellStart: categoryPrefSchema(NOTIFY_OFF),
+        shellEnd: categoryPrefSchema(NOTIFY_OFF),
+      })
+      .catch(DEFAULT_NOTIFICATION_SETTINGS.categories)
+      .default(DEFAULT_NOTIFICATION_SETTINGS.categories),
+  })
+  .catch(DEFAULT_NOTIFICATION_SETTINGS)
+  .default(DEFAULT_NOTIFICATION_SETTINGS);
+
+/** Maps an on-the-wire notify `kind` to its settings category (null for an unknown kind). */
+export function notifyCategoryForKind(kind: string): NotifyCategory | null {
+  switch (kind) {
+    case "waiting":
+      return "waiting";
+    case "done":
+      return "done";
+    case "subagent_start":
+      return "subagentStart";
+    case "subagent_end":
+      return "subagentEnd";
+    case "shell_start":
+      return "shellStart";
+    case "shell_end":
+      return "shellEnd";
+    default:
+      return null;
+  }
+}
+
+/**
  * Live-apply settings (`~/.zashiki/config.json`).
  * The server watches the file and pushes changes to all clients via `config.sync`.
  */
 export const zashikiConfigSchema = z.object({
-  /** Notification sound on/off. */
+  /** Legacy single notification switch. Read only, for {@link parseConfig} migration; superseded by `notifications`. */
   notifySound: z.boolean().catch(true).default(true),
   /** Poll GitHub Releases for updates (defaults on). Set false to stop the server's outbound egress to github.com. */
   updateCheck: z.boolean().catch(true).default(true),
   /** Display language (selected in SETTINGS). null means unset, deferring to the client's browser detection. */
   language: z.enum(["ja", "en"]).nullable().catch(null).default(null),
+  /** Per-category notification switches (master + show/sound per category). */
+  notifications: notificationSettingsSchema,
 });
 
 export type ZashikiConfig = z.infer<typeof zashikiConfigSchema>;
@@ -19,6 +114,7 @@ export const DEFAULT_CONFIG: ZashikiConfig = {
   notifySound: true,
   updateCheck: true,
   language: null,
+  notifications: DEFAULT_NOTIFICATION_SETTINGS,
 };
 
 /** A colored band of a status-footer indicator: whether it paints and the value at or above which it applies. */
@@ -111,7 +207,27 @@ export const DEFAULT_STARTUP_CONFIG: StartupConfig = {};
  */
 export function parseConfig(input: unknown): ZashikiConfig {
   const result = zashikiConfigSchema.safeParse(input ?? {});
-  return result.success ? result.data : { ...DEFAULT_CONFIG };
+  const config = result.success ? result.data : { ...DEFAULT_CONFIG };
+  return migrateLegacyNotifySound(input, config);
+}
+
+/**
+ * Maps a legacy `notifySound: false` (with no `notifications` block) to the master being off. An
+ * explicit `notifications` always wins.
+ */
+function migrateLegacyNotifySound(
+  input: unknown,
+  config: ZashikiConfig,
+): ZashikiConfig {
+  if (typeof input !== "object" || input === null) return config;
+  const raw = input as Record<string, unknown>;
+  if (raw.notifications !== undefined || raw.notifySound !== false) {
+    return config;
+  }
+  return {
+    ...config,
+    notifications: { ...config.notifications, enabled: false },
+  };
 }
 
 /** Safely interprets the restart-required settings (invalid or missing values fall back to defaults). */

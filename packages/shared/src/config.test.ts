@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CONFIG,
   DEFAULT_FOOTER_THRESHOLDS,
+  DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_STARTUP_CONFIG,
   footerThresholdsSchema,
+  notificationSettingsSchema,
   parseConfig,
   parseStartupConfig,
 } from "./config.js";
@@ -16,28 +18,28 @@ describe("parseConfig", () => {
     expect(parseConfig({})).toEqual(DEFAULT_CONFIG);
   });
 
-  it("reads the specified fields", () => {
-    expect(parseConfig({ notifySound: false, updateCheck: false })).toEqual({
-      notifySound: false,
-      updateCheck: false,
-      language: null,
-    });
-  });
-
   it("reads updateCheck as an opt-out (default on)", () => {
     expect(parseConfig({ updateCheck: false })).toEqual({
-      notifySound: true,
+      ...DEFAULT_CONFIG,
       updateCheck: false,
-      language: null,
     });
   });
 
-  it("fills in missing fields with defaults", () => {
-    expect(parseConfig({ notifySound: false })).toEqual({
-      notifySound: false,
-      updateCheck: true,
-      language: null,
+  it("reads the notifications block, filling absent categories with defaults", () => {
+    const parsed = parseConfig({
+      notifications: {
+        enabled: true,
+        categories: { subagentStart: { notify: true, sound: false } },
+      },
     });
+    expect(parsed.notifications.enabled).toBe(true);
+    expect(parsed.notifications.categories.subagentStart).toEqual({
+      notify: true,
+      sound: false,
+    });
+    expect(parsed.notifications.categories.waiting).toEqual(
+      DEFAULT_NOTIFICATION_SETTINGS.categories.waiting,
+    );
   });
 
   it("falls back to defaults for fields with an invalid type (does not throw)", () => {
@@ -53,11 +55,53 @@ describe("parseConfig", () => {
   });
 
   it("ignores unknown fields", () => {
-    expect(parseConfig({ notifySound: false, extra: "x" })).toEqual({
-      notifySound: false,
-      updateCheck: true,
-      language: null,
+    expect(parseConfig({ updateCheck: false, extra: "x" })).toEqual({
+      ...DEFAULT_CONFIG,
+      updateCheck: false,
     });
+  });
+
+  describe("legacy notifySound migration", () => {
+    it("maps a legacy notifySound=false to the master being off", () => {
+      const parsed = parseConfig({ notifySound: false });
+      expect(parsed.notifications.enabled).toBe(false);
+      expect(parsed.notifications.categories).toEqual(
+        DEFAULT_NOTIFICATION_SETTINGS.categories,
+      );
+    });
+
+    it("leaves the master on when legacy notifySound is true or absent", () => {
+      expect(parseConfig({ notifySound: true }).notifications.enabled).toBe(
+        true,
+      );
+      expect(parseConfig({}).notifications.enabled).toBe(true);
+    });
+
+    it("lets an explicit notifications block win over the legacy field", () => {
+      const parsed = parseConfig({
+        notifySound: false,
+        notifications: { enabled: true },
+      });
+      expect(parsed.notifications.enabled).toBe(true);
+    });
+  });
+});
+
+describe("notificationSettingsSchema", () => {
+  const parse = (input: unknown) => notificationSettingsSchema.parse(input);
+
+  it("fills every category with its default for empty/absent input", () => {
+    expect(parse(undefined)).toEqual(DEFAULT_NOTIFICATION_SETTINGS);
+    expect(parse({})).toEqual(DEFAULT_NOTIFICATION_SETTINGS);
+  });
+
+  it("degrades a malformed category back to its default without throwing", () => {
+    const result = parse({
+      categories: { done: { notify: "yes", sound: 1 } },
+    });
+    expect(result.categories.done).toEqual(
+      DEFAULT_NOTIFICATION_SETTINGS.categories.done,
+    );
   });
 });
 

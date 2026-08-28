@@ -8,6 +8,7 @@ import {
 } from "@testing-library/react";
 import {
   DEFAULT_FOOTER_THRESHOLDS,
+  DEFAULT_NOTIFICATION_SETTINGS,
   type UpdateCheckResultMessage,
 } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -581,5 +582,82 @@ describe("SettingsModal Claude Code integration", () => {
       />,
     );
     expect(screen.getByText("フッタの色分け閾値")).toBeTruthy();
+  });
+
+  it("shows the notifications section only when its handler is wired", () => {
+    const { rerender } = render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
+    expect(screen.queryByLabelText("通知を有効にする")).toBeNull();
+
+    rerender(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        notificationSettings={DEFAULT_NOTIFICATION_SETTINGS}
+        onSetNotifications={noop}
+      />,
+    );
+    expect(screen.getByLabelText("通知を有効にする")).toBeTruthy();
+    expect(screen.getByLabelText("サブエージェント開始 — 通知")).toBeTruthy();
+    expect(screen.getByLabelText("サブエージェント開始 — 音")).toBeTruthy();
+  });
+
+  it("toggling a category's show/sound persists the whole settings object", () => {
+    const onSetNotifications = vi.fn();
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        notificationSettings={DEFAULT_NOTIFICATION_SETTINGS}
+        onSetNotifications={onSetNotifications}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("サブエージェント開始 — 音"));
+    expect(onSetNotifications).toHaveBeenCalledWith({
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      categories: {
+        ...DEFAULT_NOTIFICATION_SETTINGS.categories,
+        subagentStart: { notify: false, sound: true },
+      },
+    });
+  });
+
+  it("turning the master off persists enabled:false", () => {
+    const onSetNotifications = vi.fn();
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        notificationSettings={DEFAULT_NOTIFICATION_SETTINGS}
+        onSetNotifications={onSetNotifications}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("通知を有効にする"));
+    expect(onSetNotifications).toHaveBeenCalledWith({
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      enabled: false,
+    });
+  });
+
+  it("category toggles are disabled while the master is off", () => {
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        notificationSettings={{
+          ...DEFAULT_NOTIFICATION_SETTINGS,
+          enabled: false,
+        }}
+        onSetNotifications={noop}
+      />,
+    );
+    expect(
+      (screen.getByLabelText("完了 — 通知") as HTMLInputElement).disabled,
+    ).toBe(true);
   });
 });

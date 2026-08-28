@@ -6,11 +6,16 @@ use tokio::sync::broadcast;
 use crate::account_status::AccountStatus;
 use crate::claude_settings::RegistrationStatus;
 use crate::control::ConfigView;
+use crate::hooks::{notify_delivery, MacNotification, MacNotify, NotifyEvent, NotifyMode};
 use crate::protocol::{Notification, ServerMessage, CockpitTerminalInfo, UsageLimits};
 use crate::status_poller::StateSnapshot;
 
 struct HubState {
     config: ConfigView,
+    /// The notification channel (ZK_NOTIFY; web/macos/both/off), for delivery routing in `notify`.
+    notify_mode: NotifyMode,
+    /// The macOS notification executor (terminal-notifier by default; a no-op until set by runtime).
+    mac_notify: MacNotify,
     notifications: Vec<Notification>,
     snapshot: StateSnapshot,
     /// Per-org notes (org → Markdown), delivered on connect and re-broadcast on any note change.
@@ -120,6 +125,8 @@ impl ControlHub {
         Arc::new(Self {
             inner: RwLock::new(HubState {
                 config,
+                notify_mode: NotifyMode::default(),
+                mac_notify: Arc::new(|_| {}),
                 notifications,
                 snapshot,
                 notes: BTreeMap::new(),
@@ -131,6 +138,50 @@ impl ControlHub {
             }),
             tx,
         })
+    }
+
+    /// Wires the notification delivery channel + macOS executor. Defaults to web + a no-op executor.
+    pub fn set_notifier(&self, notify_mode: NotifyMode, mac_notify: MacNotify) {
+        let mut state = self.inner.write().unwrap();
+        state.notify_mode = notify_mode;
+        state.mac_notify = mac_notify;
+    }
+
+    /// The live per-category notification switches (a copy).
+    pub fn notification_settings(&self) -> crate::protocol::NotificationSettings {
+        self.inner.read().unwrap().config.notifications
+    }
+
+    /// Deliver a notification, applying the live per-category switches. Nothing is sent unless the
+    /// master is on and the category wants show or sound. The web push carries the event so the client
+    /// renders the visual and/or sound per its own read of the same switches. terminal-notifier cannot
+    /// play a sound without also showing a banner, so the macOS path fires whenever the category wants
+    /// either, and plays its sound only when `sound` is on.
+    pub fn notify(&self, event: NotifyEvent) {
+        let (settings, notify_mode, mac_notify) = {
+            let state = self.inner.read().unwrap();
+            (state.config.notifications, state.notify_mode, state.mac_notify.clone())
+        };
+        if !settings.delivers(event.kind) {
+            return;
+        }
+        let pref = settings.pref_for(event.kind);
+        let delivery = notify_delivery(notify_mode, self.client_count());
+        if delivery.push {
+            self.broadcast(ServerMessage::Notify {
+                kind: event.kind,
+                cockpit_terminal_id: event.cockpit_terminal_id.clone(),
+                title: event.name.clone(),
+            });
+        }
+        if delivery.mac {
+            mac_notify(MacNotification {
+                kind: event.kind,
+                title: event.name,
+                message: event.session_title,
+                sound: pref.sound,
+            });
+        }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<ServerMessage> {
@@ -149,6 +200,7 @@ impl ControlHub {
                 memo_enabled: state.config.memo_enabled,
                 editor: state.config.editor.clone(),
                 footer_thresholds: state.config.footer_thresholds,
+                notifications: state.config.notifications,
             },
             ServerMessage::NotificationsSync {
                 items: state.notifications.clone(),
@@ -241,6 +293,7 @@ impl ControlHub {
             memo_enabled: config.memo_enabled,
             editor: config.editor.clone(),
             footer_thresholds: config.footer_thresholds,
+            notifications: config.notifications,
         };
         self.inner.write().unwrap().config = config;
         let _ = self.tx.send(msg);
@@ -577,6 +630,7 @@ mod tests {
                 memo_enabled: false,
                 editor: None,
                 footer_thresholds: Default::default(),
+                notifications: Default::default(),
             },
             vec![],
             snapshot_with("@1"),
@@ -731,6 +785,7 @@ mod tests {
             memo_enabled: false,
             editor: None,
             footer_thresholds: Default::default(),
+            notifications: Default::default(),
         });
         assert!(matches!(
             rx.recv().await.unwrap(),
@@ -881,5 +936,99 @@ mod tests {
         assert_eq!(second[0].created_at, 1001);
         assert_eq!(second[0].level, crate::protocol::NotificationLevel::Warn);
         assert!(second[0].sticky);
+    }
+
+    fn hub_with_notifications(
+        notifications: crate::protocol::NotificationSettings,
+    ) -> (Arc<ControlHub>, Arc<std::sync::Mutex<Vec<MacNotification>>>) {
+        let config = ConfigView { notifications, ..Default::default() };
+        let hub = ControlHub::new(config, vec![], snapshot_with("@1"));
+        let log = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = log.clone();
+        hub.set_notifier(NotifyMode::Both, Arc::new(move |n| sink.lock().unwrap().push(n)));
+        (hub, log)
+    }
+
+    fn subagent_start_event() -> NotifyEvent {
+        NotifyEvent {
+            kind: crate::protocol::NotifyKind::SubagentStart,
+            cockpit_terminal_id: "@1".to_string(),
+            name: "repo".to_string(),
+            session_title: "題名".to_string(),
+        }
+    }
+
+    fn settings_for_subagent_start(
+        enabled: bool,
+        pref: crate::protocol::NotifyCategoryPref,
+    ) -> crate::protocol::NotificationSettings {
+        let categories = crate::protocol::NotifyCategories {
+            subagent_start: pref,
+            ..Default::default()
+        };
+        crate::protocol::NotificationSettings { enabled, categories }
+    }
+
+    fn pushed_notify(rx: &mut broadcast::Receiver<ServerMessage>) -> bool {
+        std::iter::from_fn(|| rx.try_recv().ok())
+            .any(|m| matches!(m, ServerMessage::Notify { .. }))
+    }
+
+    #[test]
+    fn notify_suppressed_entirely_when_master_off() {
+        let settings = settings_for_subagent_start(
+            false,
+            crate::protocol::NotifyCategoryPref { notify: true, sound: true },
+        );
+        let (hub, macs) = hub_with_notifications(settings);
+        let mut rx = hub.subscribe();
+        hub.notify(subagent_start_event());
+        assert!(!pushed_notify(&mut rx));
+        assert!(macs.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn notify_pushes_and_macs_with_sound_when_category_on() {
+        let settings = settings_for_subagent_start(
+            true,
+            crate::protocol::NotifyCategoryPref { notify: true, sound: true },
+        );
+        let (hub, macs) = hub_with_notifications(settings);
+        let mut rx = hub.subscribe();
+        hub.notify(subagent_start_event());
+        assert!(pushed_notify(&mut rx));
+        let macs = macs.lock().unwrap();
+        assert_eq!(macs.len(), 1);
+        assert!(macs[0].sound);
+    }
+
+    #[test]
+    fn notify_pushes_and_macs_with_sound_when_only_sound_on() {
+        // terminal-notifier can't play a sound without a banner, so a sound-only category still fires
+        // the macOS notification (with sound); the client suppresses the visual per the same switch.
+        let settings = settings_for_subagent_start(
+            true,
+            crate::protocol::NotifyCategoryPref { notify: false, sound: true },
+        );
+        let (hub, macs) = hub_with_notifications(settings);
+        let mut rx = hub.subscribe();
+        hub.notify(subagent_start_event());
+        assert!(pushed_notify(&mut rx));
+        let macs = macs.lock().unwrap();
+        assert_eq!(macs.len(), 1);
+        assert!(macs[0].sound);
+    }
+
+    #[test]
+    fn notify_macs_without_sound_when_visual_on_but_sound_off() {
+        let settings = settings_for_subagent_start(
+            true,
+            crate::protocol::NotifyCategoryPref { notify: true, sound: false },
+        );
+        let (hub, macs) = hub_with_notifications(settings);
+        hub.notify(subagent_start_event());
+        let macs = macs.lock().unwrap();
+        assert_eq!(macs.len(), 1);
+        assert!(!macs[0].sound);
     }
 }

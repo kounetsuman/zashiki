@@ -1,6 +1,7 @@
 import type {
   FooterThresholds,
   HooksStatusMessage,
+  NotificationSettings,
   UpdateCheckResultMessage,
 } from "@zashiki/shared";
 import { useEffect, useState } from "react";
@@ -9,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
 import { FooterThresholdsField } from "./FooterThresholdsField.js";
 import { Modal } from "./Modal.js";
+import { NotificationSettingsField } from "./NotificationSettingsField.js";
 import { OrgNotesEditor } from "./OrgNotesEditor.js";
 import "./SettingsModal.css";
 import {
@@ -84,6 +86,10 @@ export interface SettingsModalProps {
   footerThresholds?: FooterThresholds;
   /** Persist the status-footer severity thresholds (Save). */
   onSaveFooterThresholds?(thresholds: FooterThresholds): void;
+  /** Current per-category notification switches. Omit (with the handler) to hide the section. */
+  notificationSettings?: NotificationSettings;
+  /** Persist the per-category notification switches (applied live). */
+  onSetNotifications?(settings: NotificationSettings): void;
   /** Current Claude Code integration status (from hooks.status). Omit to hide the toggle. */
   hooksStatus?: Omit<HooksStatusMessage, "t">;
   /** Install (true) or remove (false) the integration (hooks.register / hooks.unregister). */
@@ -137,6 +143,8 @@ export function SettingsModal({
   onSaveEditor,
   footerThresholds,
   onSaveFooterThresholds,
+  notificationSettings,
+  onSetNotifications,
   hooksStatus,
   onSetHooksRegistered,
   renderer,
@@ -416,6 +424,13 @@ export function SettingsModal({
                 <FooterThresholdsField
                   value={footerThresholds}
                   onSave={onSaveFooterThresholds}
+                />
+              )}
+            {onSetNotifications !== undefined &&
+              notificationSettings !== undefined && (
+                <NotificationSettingsField
+                  value={notificationSettings}
+                  onChange={onSetNotifications}
                 />
               )}
             {onSetHooksRegistered !== undefined &&

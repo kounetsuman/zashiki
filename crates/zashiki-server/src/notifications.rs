@@ -53,6 +53,10 @@ pub fn notify_notification(
     let label = match kind {
         NotifyKind::Waiting => "⏳ 応答待ち",
         NotifyKind::Done => "✅ 完了",
+        NotifyKind::SubagentStart => "🤖 サブエージェント開始",
+        NotifyKind::SubagentEnd => "🤖 サブエージェント終了",
+        NotifyKind::ShellStart => "🐚 バックグラウンドシェル開始",
+        NotifyKind::ShellEnd => "🐚 バックグラウンドシェル終了",
     };
     Notification {
         id,

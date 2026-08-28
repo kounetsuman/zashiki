@@ -1,4 +1,8 @@
-import { DEFAULT_FOOTER_THRESHOLDS, type ServerMessage } from "@zashiki/shared";
+import {
+  DEFAULT_FOOTER_THRESHOLDS,
+  DEFAULT_NOTIFICATION_SETTINGS,
+  type ServerMessage,
+} from "@zashiki/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ControlClient } from "./control.js";
@@ -175,6 +179,7 @@ describe("ControlClient", () => {
         memoEnabled: false,
         editor: null,
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+        notifications: DEFAULT_NOTIFICATION_SETTINGS,
       },
     ]);
   });
@@ -203,6 +208,7 @@ describe("ControlClient", () => {
         memoEnabled: false,
         editor: null,
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+        notifications: DEFAULT_NOTIFICATION_SETTINGS,
       },
     ]);
   });

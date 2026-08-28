@@ -143,13 +143,27 @@ pub struct MacNotification {
     pub title: String,
     /// Body (e.g. the session's summary title; empty string if absent).
     pub message: String,
+    /// Whether to play the notification sound (the category's `sound` toggle).
+    pub sound: bool,
 }
 
 /// Executor for macOS notifications (terminal-notifier by default; swapped out in tests; fire-and-forget).
 pub type MacNotify = Arc<dyn Fn(MacNotification) + Send + Sync>;
 
+/// A resolved notification to deliver. Delivery — web push vs macOS, plus per-category gating — is
+/// the hub's job ([`crate::control::ControlHub::notify`]); this only carries the material.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotifyEvent {
+    pub kind: NotifyKind,
+    pub cockpit_terminal_id: String,
+    /// Window/repo name — the WS push title and the macOS title.
+    pub name: String,
+    /// Session summary — the macOS body (empty string if absent).
+    pub session_title: String,
+}
+
 /// The plan of side effects to run for a hook event (output of the pure function [`decide`]).
-/// Given the results of the asynchronous fetches, the delivery decision completes synchronously and the handler only executes the plan.
+/// Given the results of the asynchronous fetches, the decision completes synchronously and the handler only executes the plan.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HookActions {
     /// Whether the event was mapped to a work window (response `matched`).
@@ -158,10 +172,8 @@ pub struct HookActions {
     pub git_dirty: bool,
     /// Accumulate into NOTIFICATION (kind, window name). None when off.
     pub record: Option<(NotifyKind, String)>,
-    /// notify push over the control WS (kind, cockpitTerminalId, title).
-    pub push: Option<(NotifyKind, String, String)>,
-    /// macOS notification.
-    pub mac: Option<MacNotification>,
+    /// The notification to hand to the hub for delivery. None when there is nothing to deliver.
+    pub notify: Option<NotifyEvent>,
 }
 
 fn notify_kind_of(kind: HookKind) -> Option<NotifyKind> {
@@ -184,13 +196,14 @@ pub fn hook_event_of(kind: HookKind) -> zashiki_core::session_state::HookEvent {
     }
 }
 
-/// Decide the side-effect plan from the hook kind, resolution result, and delivery settings.
-/// `snap_title` is the "current title of the resolved window" used for the mac notification body (empty string if absent).
+/// Decide the side-effect plan from the hook kind and resolution result. `snap_title` is the current
+/// title of the resolved window, used for the mac notification body (empty string if absent). `mode`
+/// gates only whether the event is surfaced at all (`Off` records nothing and delivers nothing); the
+/// web-vs-mac routing and per-category gating happen at delivery time in the hub.
 pub fn decide(
     kind: HookKind,
     resolved: Option<&ResolvedWindow>,
     mode: NotifyMode,
-    client_count: usize,
     snap_title: Option<String>,
 ) -> HookActions {
     if kind == HookKind::Tool {
@@ -206,21 +219,16 @@ pub fn decide(
         matched: true,
         ..Default::default()
     };
-    // Independently of delivery (web/mac), always accumulate when matched (only off skips accumulation).
-    if mode != NotifyMode::Off {
-        actions.record = Some((nk, win.name.clone()));
+    if mode == NotifyMode::Off {
+        return actions;
     }
-    let delivery = notify_delivery(mode, client_count);
-    if delivery.push {
-        actions.push = Some((nk, win.cockpit_terminal_id.clone(), win.name.clone()));
-    }
-    if delivery.mac {
-        actions.mac = Some(MacNotification {
-            kind: nk,
-            title: win.name.clone(),
-            message: snap_title.unwrap_or_default(),
-        });
-    }
+    actions.record = Some((nk, win.name.clone()));
+    actions.notify = Some(NotifyEvent {
+        kind: nk,
+        cockpit_terminal_id: win.cockpit_terminal_id.clone(),
+        name: win.name.clone(),
+        session_title: snap_title.unwrap_or_default(),
+    });
     actions
 }
 
@@ -340,61 +348,50 @@ mod tests {
 
     #[test]
     fn decide_tool_only_marks_git_dirty() {
-        let a = decide(HookKind::Tool, None, NotifyMode::Web, 0, None);
-        assert!(a.git_dirty && !a.matched && a.record.is_none() && a.push.is_none());
+        let a = decide(HookKind::Tool, None, NotifyMode::Web, None);
+        assert!(a.git_dirty && !a.matched && a.record.is_none() && a.notify.is_none());
     }
 
     #[test]
     fn decide_prompt_does_nothing() {
-        let a = decide(HookKind::Prompt, None, NotifyMode::Web, 0, None);
+        let a = decide(HookKind::Prompt, None, NotifyMode::Web, None);
         assert_eq!(a, HookActions::default());
     }
 
     #[test]
     fn decide_unresolved_waiting_is_not_matched() {
-        let a = decide(HookKind::Waiting, None, NotifyMode::Web, 0, None);
-        assert!(!a.matched && a.record.is_none() && a.push.is_none() && a.mac.is_none());
+        let a = decide(HookKind::Waiting, None, NotifyMode::Web, None);
+        assert!(!a.matched && a.record.is_none() && a.notify.is_none());
     }
 
     #[test]
-    fn decide_matched_web_pushes_and_records() {
+    fn decide_matched_records_and_yields_a_notify_event() {
         let win = ResolvedWindow {
             cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
-        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, 2, Some("題名".to_string()));
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, Some("題名".to_string()));
         assert!(a.matched);
         assert_eq!(a.record, Some((NotifyKind::Waiting, "repo-a".to_string())));
-        assert_eq!(a.push, Some((NotifyKind::Waiting, "@1".to_string(), "repo-a".to_string())));
-        // web with clientCount>0 does not fire a mac notification.
-        assert!(a.mac.is_none());
-    }
-
-    #[test]
-    fn decide_matched_web_no_clients_also_macs_with_snap_title() {
-        let win = ResolvedWindow {
-            cockpit_terminal_id: "@1".to_string(),
-            name: "repo-a".to_string(),
-        };
-        let a = decide(HookKind::Done, Some(&win), NotifyMode::Web, 0, Some("題名".to_string()));
         assert_eq!(
-            a.mac,
-            Some(MacNotification {
-                kind: NotifyKind::Done,
-                title: "repo-a".to_string(),
-                message: "題名".to_string(),
+            a.notify,
+            Some(NotifyEvent {
+                kind: NotifyKind::Waiting,
+                cockpit_terminal_id: "@1".to_string(),
+                name: "repo-a".to_string(),
+                session_title: "題名".to_string(),
             })
         );
     }
 
     #[test]
-    fn decide_off_matched_but_no_record_no_delivery() {
+    fn decide_off_matched_but_no_record_no_notify() {
         let win = ResolvedWindow {
             cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
-        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Off, 0, None);
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Off, None);
         assert!(a.matched);
-        assert!(a.record.is_none() && a.push.is_none() && a.mac.is_none());
+        assert!(a.record.is_none() && a.notify.is_none());
     }
 }

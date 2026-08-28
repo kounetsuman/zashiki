@@ -1,3 +1,9 @@
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  type NotificationSettings,
+  type NotifyCategory,
+  type NotifyCategoryPref,
+} from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,6 +13,16 @@ import {
   type NotificationLike,
   type NotifyKind,
 } from "./notify.js";
+
+function settings(
+  enabled: boolean,
+  overrides: Partial<Record<NotifyCategory, NotifyCategoryPref>> = {},
+): NotificationSettings {
+  return {
+    enabled,
+    categories: { ...DEFAULT_NOTIFICATION_SETTINGS.categories, ...overrides },
+  };
+}
 
 interface CreatedNotification extends NotificationLike {
   title: string;
@@ -140,22 +156,22 @@ describe("createNotifier", () => {
     expect(sound.played).toEqual(["waiting"]);
   });
 
-  it("applyServerConfig overrides enabled/disabled in-memory without modifying localStorage", () => {
+  it("applyServerConfig overrides the master in-memory without modifying localStorage", () => {
     const storage = fakeStorage();
     const n = createNotifier({ storage, api: null, playSound: () => {} });
-    // Disabled by server config -> isEnabled is false, but localStorage is untouched
-    n.applyServerConfig(false);
+    // Master off by server config -> isEnabled is false, but localStorage is untouched
+    n.applyServerConfig(settings(false));
     expect(n.isEnabled()).toBe(false);
     expect(storage.map.has(NOTIFY_ENABLED_KEY)).toBe(false);
     // A separate instance (equivalent to config not yet arrived) stays enabled following the localStorage default
     const fresh = createNotifier({ storage, api: null, playSound: () => {} });
     expect(fresh.isEnabled()).toBe(true);
     // Can be re-enabled via server config
-    n.applyServerConfig(true);
+    n.applyServerConfig(settings(true));
     expect(n.isEnabled()).toBe(true);
   });
 
-  it("applyServerConfig(false) override stops notifications even when localStorage is enabled", () => {
+  it("master off stops notifications even when localStorage is enabled", () => {
     const { api, created } = fakeApi("granted");
     const sound = fakeSound();
     const n = createNotifier({
@@ -163,9 +179,73 @@ describe("createNotifier", () => {
       api,
       playSound: sound.play,
     });
-    n.applyServerConfig(false);
+    n.applyServerConfig(settings(false));
     n.notify({ kind: "done", title: "t" });
     expect(sound.played).toEqual([]);
     expect(created).toEqual([]);
+  });
+
+  it("a category with sound off but show on shows the notification without sound", () => {
+    const { api, created } = fakeApi("granted");
+    const sound = fakeSound();
+    const n = createNotifier({
+      storage: fakeStorage(),
+      api,
+      playSound: sound.play,
+    });
+    n.applyServerConfig(
+      settings(true, { done: { notify: true, sound: false } }),
+    );
+    n.notify({ kind: "done", title: "t" });
+    expect(sound.played).toEqual([]);
+    expect(created).toHaveLength(1);
+  });
+
+  it("a category with show off but sound on plays sound without showing", () => {
+    const { api, created } = fakeApi("granted");
+    const sound = fakeSound();
+    const n = createNotifier({
+      storage: fakeStorage(),
+      api,
+      playSound: sound.play,
+    });
+    n.applyServerConfig(
+      settings(true, { done: { notify: false, sound: true } }),
+    );
+    n.notify({ kind: "done", title: "t" });
+    expect(sound.played).toEqual(["done"]);
+    expect(created).toEqual([]);
+  });
+
+  it("a category with both off does nothing", () => {
+    const { api, created } = fakeApi("granted");
+    const sound = fakeSound();
+    const n = createNotifier({
+      storage: fakeStorage(),
+      api,
+      playSound: sound.play,
+    });
+    n.applyServerConfig(
+      settings(true, { subagentStart: { notify: false, sound: false } }),
+    );
+    n.notify({ kind: "subagent_start", title: "t" });
+    expect(sound.played).toEqual([]);
+    expect(created).toEqual([]);
+  });
+
+  it("a Background Activity category can be opted in for both show and sound", () => {
+    const { api, created } = fakeApi("granted");
+    const sound = fakeSound();
+    const n = createNotifier({
+      storage: fakeStorage(),
+      api,
+      playSound: sound.play,
+    });
+    n.applyServerConfig(
+      settings(true, { shellStart: { notify: true, sound: true } }),
+    );
+    n.notify({ kind: "shell_start", title: "t" });
+    expect(sound.played).toEqual(["shell_start"]);
+    expect(created).toHaveLength(1);
   });
 });

@@ -2,9 +2,11 @@ import {
   type ClientMessage,
   claudeSessionId,
   DEFAULT_FOOTER_THRESHOLDS,
+  DEFAULT_NOTIFICATION_SETTINGS,
   type FooterThresholds,
   type HooksStatusMessage,
   isSinglePathSegment,
+  type NotificationSettings,
   resolveOrgColor,
   type ServerMessage,
   type UpdateCheckResultMessage,
@@ -186,6 +188,8 @@ export function App({
   const [footerThresholds, setFooterThresholds] = useState<FooterThresholds>(
     DEFAULT_FOOTER_THRESHOLDS,
   );
+  const [notificationSettings, setNotificationSettings] =
+    useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [accountUsageModalOpen, setAccountUsageModalOpen] = useState(false);
   const [hooksStatus, setHooksStatus] = useState<HooksStatusMessage | null>(
     null,
@@ -588,7 +592,8 @@ export function App({
   useEffect(() => {
     return control.onMessage((m) => {
       if (m.t !== "config.sync") return;
-      notifier.applyServerConfig(m.notifySound);
+      notifier.applyServerConfig(m.notifications);
+      setNotificationSettings(m.notifications);
       setAccountUsage(m.accountUsage);
       setMemoEnabled(m.memoEnabled);
       setEditor(m.editor);
@@ -643,6 +648,14 @@ export function App({
         t: "config.setFooterThresholds",
         footerThresholds: thresholds,
       });
+    },
+    [control],
+  );
+
+  const saveNotifications = useCallback(
+    (notifications: NotificationSettings): void => {
+      setNotificationSettings(notifications);
+      control.send({ t: "config.setNotifications", notifications });
     },
     [control],
   );
@@ -1018,6 +1031,8 @@ export function App({
           onSaveEditor={saveEditor}
           footerThresholds={footerThresholds}
           onSaveFooterThresholds={saveFooterThresholds}
+          notificationSettings={notificationSettings}
+          onSetNotifications={saveNotifications}
           hooksStatus={hooksStatus ?? undefined}
           onSetHooksRegistered={setHooksRegistered}
           renderer={terminalRenderer.renderer}

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_FOOTER_THRESHOLDS } from "./config.js";
+import {
+  DEFAULT_FOOTER_THRESHOLDS,
+  DEFAULT_NOTIFICATION_SETTINGS,
+} from "./config.js";
 import {
   claudeSessionId,
   clientMessageSchema,
@@ -162,6 +165,12 @@ describe("clientMessageSchema", () => {
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       },
     ],
+    [
+      {
+        t: "config.setNotifications",
+        notifications: DEFAULT_NOTIFICATION_SETTINGS,
+      },
+    ],
     [{ t: "update.check" }],
     [{ t: "update.perform" }],
     [{ t: "account.refresh", restartSessions: true }],
@@ -248,6 +257,24 @@ describe("serverMessageSchema", () => {
     [{ t: "git.dirty" }],
     [{ t: "notify", kind: "waiting", cockpitTerminalId: "@1", title: "x" }],
     [{ t: "notify", kind: "done", cockpitTerminalId: "@2", title: "" }],
+    [
+      {
+        t: "notify",
+        kind: "subagent_start",
+        cockpitTerminalId: "@1",
+        title: "a",
+      },
+    ],
+    [
+      {
+        t: "notify",
+        kind: "subagent_end",
+        cockpitTerminalId: "@1",
+        title: "a",
+      },
+    ],
+    [{ t: "notify", kind: "shell_start", cockpitTerminalId: "@2", title: "b" }],
+    [{ t: "notify", kind: "shell_end", cockpitTerminalId: "@2", title: "b" }],
     [{ t: "select", cockpitTerminalId: "@3" }],
     [
       {
@@ -266,6 +293,7 @@ describe("serverMessageSchema", () => {
         memoEnabled: true,
         editor: "cursor -g",
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+        notifications: DEFAULT_NOTIFICATION_SETTINGS,
       },
     ],
     [
@@ -288,6 +316,17 @@ describe("serverMessageSchema", () => {
             crit: { enabled: true, value: 3_000_000 },
           },
           elapsedMs: { crit: { enabled: false, value: 86_400_000 } },
+        },
+        notifications: {
+          enabled: false,
+          categories: {
+            waiting: { notify: false, sound: false },
+            done: { notify: true, sound: false },
+            subagentStart: { notify: true, sound: true },
+            subagentEnd: { notify: false, sound: false },
+            shellStart: { notify: true, sound: false },
+            shellEnd: { notify: false, sound: true },
+          },
         },
       },
     ],
@@ -312,7 +351,7 @@ describe("serverMessageSchema", () => {
     });
   });
 
-  it("defaults omitted config.sync updateCheck/language/accountUsage/memoEnabled/editor/footerThresholds (compatible with old servers)", () => {
+  it("defaults omitted config.sync updateCheck/language/accountUsage/memoEnabled/editor/footerThresholds/notifications (compatible with old servers)", () => {
     expect(
       serverMessageSchema.parse({
         t: "config.sync",
@@ -327,6 +366,7 @@ describe("serverMessageSchema", () => {
       memoEnabled: false,
       editor: null,
       footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+      notifications: DEFAULT_NOTIFICATION_SETTINGS,
     });
   });
 

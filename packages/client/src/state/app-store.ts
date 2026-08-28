@@ -1,7 +1,8 @@
-import type {
-  CockpitTerminalInfo,
-  Notification,
-  ServerMessage,
+import {
+  type CockpitTerminalInfo,
+  type Notification,
+  notifyCategoryForKind,
+  type ServerMessage,
 } from "@zashiki/shared";
 
 import i18n from "../i18n/index.js";
@@ -253,9 +254,11 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
       const info = state.cockpitTerminals.find(
         (s) => s.cockpitTerminalId === m.cockpitTerminalId,
       );
+      const category = notifyCategoryForKind(m.kind);
+      const label = category === null ? "" : i18n.t(`notification.${category}`);
       deps.notifier.notify({
         kind: m.kind,
-        title: `${i18n.t(m.kind === "waiting" ? "notification.waiting" : "notification.done")} ${m.title}`,
+        title: label ? `${label} ${m.title}` : m.title,
         body: info?.title ?? undefined,
         tag: `zk-${m.cockpitTerminalId}`,
         onClick: () => {

@@ -195,6 +195,15 @@ describe("notifyNotification", () => {
   it("done is completed", () => {
     expect(notifyNotification("id-2", "done", "w", 1).title).toContain("完了");
   });
+
+  it("labels the Background Activity kinds", () => {
+    expect(
+      notifyNotification("id-3", "subagent_start", "w", 1).title,
+    ).toContain("サブエージェント開始");
+    expect(notifyNotification("id-4", "shell_end", "w", 1).title).toContain(
+      "バックグラウンドシェル終了",
+    );
+  });
 });
 
 describe("appendNotification (capped append)", () => {
