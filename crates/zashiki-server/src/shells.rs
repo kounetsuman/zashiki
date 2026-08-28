@@ -52,8 +52,9 @@ pub fn parse_lsof_fd_outputs(lsof_output: &str) -> Vec<ShellOutput> {
     outputs
 }
 
-/// Counts, for one sid, the live wrappers whose task_id is in that sid's backgroundTaskId set (fg =
-/// task_ids absent from the set are excluded).
+/// Counts, for one sid, the live tasks whose task_id is in that sid's backgroundTaskId set (fg =
+/// task_ids absent from the set are excluded). Deduplicates by task_id: the wrapper and any
+/// children inheriting its fd1 are one shell.
 pub fn count_running_shells_for_sid(
     outputs: &[ShellOutput],
     sid: &str,
@@ -62,7 +63,9 @@ pub fn count_running_shells_for_sid(
     outputs
         .iter()
         .filter(|o| o.sid == sid && bg_task_ids.contains(&o.task_id))
-        .count() as u32
+        .map(|o| &o.task_id)
+        .collect::<HashSet<_>>()
+        .len() as u32
 }
 
 #[cfg(test)]
@@ -139,6 +142,20 @@ mod tests {
         assert_eq!(
             count_running_shells_for_sid(&outputs, SID_A, &set(&["bush20ok3", "b48tqxha9"])),
             2
+        );
+    }
+
+    #[test]
+    fn count_treats_multiple_processes_on_the_same_task_as_one_shell() {
+        // A wrapper shell and its child (e.g. `sleep` in a polling loop) both hold the
+        // inherited fd1 to the same output file, so lsof yields one entry per process.
+        let outputs = vec![
+            ShellOutput { sid: SID_A.into(), task_id: "bush20ok3".into() },
+            ShellOutput { sid: SID_A.into(), task_id: "bush20ok3".into() },
+        ];
+        assert_eq!(
+            count_running_shells_for_sid(&outputs, SID_A, &set(&["bush20ok3"])),
+            1
         );
     }
 

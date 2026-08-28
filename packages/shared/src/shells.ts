@@ -59,20 +59,25 @@ export function parseLsofFdOutputs(lsofOutput: string): ShellOutput[] {
 }
 
 /**
- * Reconciles the live wrappers' {sid, taskId} entries against the per-sid set of
+ * Reconciles the live tasks' {sid, taskId} entries against the per-sid set of
  * backgroundTaskIds, and counts, per sid, the shells confirmed as resident bg
- * (fg = IDs not in the set are excluded).
+ * (fg = IDs not in the set are excluded). Deduplicates by taskId: the wrapper
+ * and any children inheriting its fd1 are one shell.
  * A sid with a count of 0 gets no key at all (so it resolves to undefined when served).
  */
 export function countRunningShellsBySid(
   outputs: readonly ShellOutput[],
   bgTaskIdsBySid: ReadonlyMap<string, ReadonlySet<string>>,
 ): Map<string, number> {
-  const counts = new Map<string, number>();
+  const taskIdsBySid = new Map<string, Set<string>>();
   for (const { sid, taskId } of outputs) {
     if (bgTaskIdsBySid.get(sid)?.has(taskId)) {
-      counts.set(sid, (counts.get(sid) ?? 0) + 1);
+      const taskIds = taskIdsBySid.get(sid) ?? new Set();
+      taskIds.add(taskId);
+      taskIdsBySid.set(sid, taskIds);
     }
   }
-  return counts;
+  return new Map(
+    [...taskIdsBySid].map(([sid, taskIds]) => [sid, taskIds.size]),
+  );
 }
