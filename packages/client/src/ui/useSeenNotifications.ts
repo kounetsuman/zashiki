@@ -6,13 +6,13 @@ type StoragePart = Pick<Storage, "getItem" | "setItem">;
 
 export interface SeenNotifications {
   seenIds: string[];
-  markRead(id: string): void;
+  markRead(ids: readonly string[]): void;
 }
 
 /**
  * Tracks which notifications the user has seen (persisted in localStorage) for the unread badge.
- * Notifications are marked read individually; ids for notifications that are gone are dropped so
- * storage does not grow without bound.
+ * Notifications are marked read individually or in bulk; ids for notifications that are gone are
+ * dropped so storage does not grow without bound.
  */
 export function useSeenNotifications(
   notifications: readonly Notification[],
@@ -20,8 +20,11 @@ export function useSeenNotifications(
 ): SeenNotifications {
   const [seenIds, setSeenIds] = useState(() => loadSeenIds(storage));
 
-  const markRead = useCallback((id: string) => {
-    setSeenIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  const markRead = useCallback((ids: readonly string[]) => {
+    setSeenIds((prev) => {
+      const added = ids.filter((id) => !prev.includes(id));
+      return added.length === 0 ? prev : [...prev, ...added];
+    });
   }, []);
 
   useEffect(() => {

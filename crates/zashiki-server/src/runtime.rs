@@ -44,6 +44,8 @@ pub struct ControlRuntimeConfig {
     pub config_path: Option<PathBuf>,
     /// Destination for hook notifications (ZK_NOTIFY; defaults to web).
     pub notify_mode: crate::hooks::NotifyMode,
+    /// Whether waiting/done hook events accumulate in NOTIFICATION (ZK_NOTIFY_HISTORY; defaults on).
+    pub notify_history: bool,
     /// The macOS notification executor (defaults to terminal-notifier; swapped out in tests).
     pub mac_notify: crate::hooks::MacNotify,
     /// Running app version injected by the Tauri shell (ZK_APP_VERSION). None in dev / standalone server,
@@ -167,6 +169,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         hook_events,
         heartbeat: crate::control::HEARTBEAT_INTERVAL,
         notify_mode: config.notify_mode,
+        notify_history: config.notify_history,
         mac_notify: config.mac_notify,
         config_path,
         claude_settings: Some(claude_settings),
@@ -199,6 +202,7 @@ mod tests {
             config: ConfigView::default(),
             config_path: None,
             notify_mode: crate::hooks::NotifyMode::Web,
+            notify_history: true,
             mac_notify: std::sync::Arc::new(|_| {}),
             app_version: None,
         });
@@ -246,6 +250,7 @@ mod tests {
             config: ConfigView::default(),
             config_path: None,
             notify_mode: crate::hooks::NotifyMode::Web,
+            notify_history: true,
             mac_notify: std::sync::Arc::new(|_| {}),
             app_version: None,
         });

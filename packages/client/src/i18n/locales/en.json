@@ -100,6 +100,9 @@
     "emptyRead": "No read notifications",
     "markReadHint": "Double-click to mark as read",
     "markRead": "Mark as read",
+    "markReadSelected": "Mark selected as read",
+    "selectMarkRead": "Select to mark as read",
+    "selectAll": "Select all",
     "select": "Select for deletion",
     "delete": "Delete",
     "deleteSelected": "Delete selected",
@@ -109,7 +112,8 @@
     "subagentStart": "🤖 Subagent started",
     "subagentEnd": "🤖 Subagent finished",
     "shellStart": "🐚 Background shell started",
-    "shellEnd": "🐚 Background shell finished"
+    "shellEnd": "🐚 Background shell finished",
+    "activate": "Open this session"
   },
   "search": {
     "ariaLabel": "Search",
@@ -338,8 +342,8 @@
   },
   "onboarding": {
     "title": "Welcome to zashiki",
-    "intro": "zashiki is your one-screen AI cockpit for Claude Code — it shows which of your sessions is waiting and makes orchestrating them effortless.",
-    "note": "Next, set up the Claude Code integration for notifications and the usage footer. You can reopen this from Settings anytime.",
+    "intro": "Your one-screen cockpit for Claude Code — see which sessions need you at a glance.",
+    "note": "Next, set up the Claude Code integration. You can reopen this from Settings anytime.",
     "skip": "Skip",
     "getStarted": "Get started"
   },

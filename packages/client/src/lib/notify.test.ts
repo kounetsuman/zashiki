@@ -248,4 +248,47 @@ describe("createNotifier", () => {
     expect(sound.played).toEqual(["shell_start"]);
     expect(created).toHaveLength(1);
   });
+
+  it("playSound honors the category's sound switch and the master", () => {
+    const sound = fakeSound();
+    const n = createNotifier({
+      storage: fakeStorage(),
+      api: null,
+      playSound: sound.play,
+    });
+    n.applyServerConfig(
+      settings(true, {
+        done: { notify: true, sound: false },
+        shellEnd: { notify: false, sound: true },
+      }),
+    );
+    n.playSound("done"); // sound off -> silent
+    n.playSound("shell_end"); // sound on -> plays
+    expect(sound.played).toEqual(["shell_end"]);
+    n.applyServerConfig(
+      settings(false, { shellEnd: { notify: true, sound: true } }),
+    );
+    n.playSound("shell_end"); // master off -> silent
+    expect(sound.played).toEqual(["shell_end"]);
+  });
+
+  it("shouldShow reflects the master and the category's show switch", () => {
+    const n = createNotifier({
+      storage: fakeStorage(),
+      api: null,
+      playSound: () => {},
+    });
+    n.applyServerConfig(
+      settings(true, {
+        done: { notify: true, sound: false },
+        subagentEnd: { notify: false, sound: true },
+      }),
+    );
+    expect(n.shouldShow("done")).toBe(true);
+    expect(n.shouldShow("subagent_end")).toBe(false);
+    n.applyServerConfig(
+      settings(false, { done: { notify: true, sound: true } }),
+    );
+    expect(n.shouldShow("done")).toBe(false);
+  });
 });

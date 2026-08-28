@@ -204,6 +204,7 @@ pub fn decide(
     kind: HookKind,
     resolved: Option<&ResolvedWindow>,
     mode: NotifyMode,
+    record_history: bool,
     snap_title: Option<String>,
 ) -> HookActions {
     if kind == HookKind::Tool {
@@ -222,7 +223,11 @@ pub fn decide(
     if mode == NotifyMode::Off {
         return actions;
     }
-    actions.record = Some((nk, win.name.clone()));
+    // The panel record is additionally suppressed when history is off (ZK_NOTIFY_HISTORY=off), which
+    // still delivers the toast; the caller further gates it by the per-category switches.
+    if record_history {
+        actions.record = Some((nk, win.name.clone()));
+    }
     actions.notify = Some(NotifyEvent {
         kind: nk,
         cockpit_terminal_id: win.cockpit_terminal_id.clone(),
@@ -348,19 +353,19 @@ mod tests {
 
     #[test]
     fn decide_tool_only_marks_git_dirty() {
-        let a = decide(HookKind::Tool, None, NotifyMode::Web, None);
+        let a = decide(HookKind::Tool, None, NotifyMode::Web, true, None);
         assert!(a.git_dirty && !a.matched && a.record.is_none() && a.notify.is_none());
     }
 
     #[test]
     fn decide_prompt_does_nothing() {
-        let a = decide(HookKind::Prompt, None, NotifyMode::Web, None);
+        let a = decide(HookKind::Prompt, None, NotifyMode::Web, true, None);
         assert_eq!(a, HookActions::default());
     }
 
     #[test]
     fn decide_unresolved_waiting_is_not_matched() {
-        let a = decide(HookKind::Waiting, None, NotifyMode::Web, None);
+        let a = decide(HookKind::Waiting, None, NotifyMode::Web, true, None);
         assert!(!a.matched && a.record.is_none() && a.notify.is_none());
     }
 
@@ -370,7 +375,7 @@ mod tests {
             cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
-        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, Some("題名".to_string()));
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, true, Some("題名".to_string()));
         assert!(a.matched);
         assert_eq!(a.record, Some((NotifyKind::Waiting, "repo-a".to_string())));
         assert_eq!(
@@ -385,12 +390,24 @@ mod tests {
     }
 
     #[test]
+    fn decide_history_off_still_notifies_but_does_not_record() {
+        let win = ResolvedWindow {
+            cockpit_terminal_id: "@1".to_string(),
+            name: "repo-a".to_string(),
+        };
+        let a = decide(HookKind::Done, Some(&win), NotifyMode::Web, false, None);
+        assert!(a.matched);
+        assert!(a.record.is_none());
+        assert!(a.notify.is_some());
+    }
+
+    #[test]
     fn decide_off_matched_but_no_record_no_notify() {
         let win = ResolvedWindow {
             cockpit_terminal_id: "@1".to_string(),
             name: "repo-a".to_string(),
         };
-        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Off, None);
+        let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Off, true, None);
         assert!(a.matched);
         assert!(a.record.is_none() && a.notify.is_none());
     }

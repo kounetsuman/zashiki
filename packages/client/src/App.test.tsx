@@ -160,6 +160,7 @@ function fakeAppSession() {
 
 function fakeNotifier(permission: NotifyPermission = "granted") {
   const notified: NotifyOptions[] = [];
+  const sounds: string[] = [];
   let enabled = true;
   const requestPermission = vi.fn(() =>
     Promise.resolve("granted" as NotifyPermission),
@@ -175,8 +176,10 @@ function fakeNotifier(permission: NotifyPermission = "granted") {
     permission: () => permission,
     requestPermission,
     notify: (opts: NotifyOptions) => void notified.push(opts),
+    playSound: (kind) => void sounds.push(kind),
+    shouldShow: () => enabled,
   };
-  return { notifier, notified, requestPermission };
+  return { notifier, notified, sounds, requestPermission };
 }
 
 const cockpitTerminals: CockpitTerminalInfo[] = [
@@ -865,10 +868,10 @@ describe("App", () => {
     ).toBeNull();
   });
 
-  it("receiving notify calls notifier.notify, and clicking brings to front + focus-jumps", () => {
+  it("receiving notify plays the sound and shows a session toast; clicking it brings to front + selects", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();
-    const { notifier, notified } = fakeNotifier();
+    const { notifier, notified, sounds } = fakeNotifier();
     const focusSpy = vi.spyOn(window, "focus").mockImplementation(() => {});
     render(
       <App
@@ -905,27 +908,29 @@ describe("App", () => {
         title: "tango",
       }),
     );
-    expect(notified).toHaveLength(1);
-    expect(notified[0]?.title).toBe("⏳ 応答待ち tango");
-    expect(notified[0]?.body).toBe("PR を作る");
-    expect(notified[0]?.tag).toBe("zk-@2");
-    // Notification click -> bring the tab to front + focus-jump to the matching session.
-    act(() => notified[0]?.onClick?.());
+    expect(sounds).toEqual(["waiting"]);
+    expect(notified).toHaveLength(0);
+    const toast = screen.getByRole("button", { name: /応答待ち/ });
+    expect(toast.textContent).toContain("kilo");
+    expect(toast.textContent).toContain("PR を作る");
+    act(() => fireEvent.click(toast));
     expect(focusSpy).toHaveBeenCalled();
-    // Startup bootstrap auto-opens @1 -> the notification click selects @2.
+    // Startup bootstrap auto-opens @1 -> the toast click selects @2.
     expect(f.selected).toEqual(["@1", "@2"]);
     expect(
       screen
         .getByRole("button", { name: ROW_TANGO })
         .getAttribute("aria-current"),
     ).toBe("true");
+    // Activating the terminal clears its toast.
+    expect(screen.queryByRole("button", { name: /応答待ち/ })).toBeNull();
     focusSpy.mockRestore();
   });
 
-  it("a done notify gets a Done title", () => {
+  it("a done notify shows a Done session toast", () => {
     const control = createFakeAppControl();
     const { session } = fakeAppSession();
-    const { notifier, notified } = fakeNotifier();
+    const { notifier, sounds } = fakeNotifier();
     render(
       <App
         control={control}
@@ -942,12 +947,12 @@ describe("App", () => {
       control.emit({
         t: "notify",
         kind: "done",
-        cockpitTerminalId: "@1",
+        cockpitTerminalId: "@2",
         title: "zashiki",
       }),
     );
-    expect(notified[0]?.title).toBe("✅ 完了 zashiki");
-    expect(notified[0]?.body).toBeUndefined();
+    expect(sounds).toEqual(["done"]);
+    expect(screen.getByRole("button", { name: /完了/ })).toBeTruthy();
   });
 
   it("the footer notification-sound and debug toggles are removed (moved to the config file)", () => {

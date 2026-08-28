@@ -17,6 +17,8 @@ function fakeNotifier(): Notifier & { notify: ReturnType<typeof vi.fn> } {
     permission: () => "granted",
     requestPermission: async () => "granted",
     notify: vi.fn(),
+    playSound: () => undefined,
+    shouldShow: () => true,
   };
 }
 

@@ -83,11 +83,65 @@ describe("NotificationView", () => {
       onDelete,
     });
     fireEvent.click(screen.getByRole("button", { name: "既読にする" }));
-    expect(onMarkRead).toHaveBeenCalledWith("u");
+    expect(onMarkRead).toHaveBeenCalledWith(["u"]);
     fireEvent.doubleClick(screen.getByText("未読通知"));
     expect(onMarkRead).toHaveBeenCalledTimes(2);
     expect(onDelete).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "削除" })).toBeNull();
+  });
+
+  it("bulk-marks checked unread items read via the tab-bar action", () => {
+    const onMarkRead = vi.fn();
+    renderView({
+      notifications: [
+        note({ id: "a", title: "未読A" }),
+        note({ id: "b", title: "未読B" }),
+        note({ id: "c", title: "未読C" }),
+      ],
+      onMarkRead,
+    });
+    const checks = screen.getAllByRole("checkbox", { name: "既読対象に選択" });
+    for (const [i, check] of checks.entries())
+      if (i !== 1) fireEvent.click(check);
+    fireEvent.click(
+      screen.getByRole("button", { name: "選択した通知を既読にする" }),
+    );
+    expect(onMarkRead).toHaveBeenCalledWith(["a", "c"]);
+  });
+
+  it("select-all checks every unread item and bulk-marks them read", () => {
+    const onMarkRead = vi.fn();
+    renderView({
+      notifications: [note({ id: "a" }), note({ id: "b" })],
+      onMarkRead,
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "すべて選択" }));
+    for (const check of screen.getAllByRole("checkbox", {
+      name: "既読対象に選択",
+    }))
+      expect((check as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(
+      screen.getByRole("button", { name: "選択した通知を既読にする" }),
+    );
+    expect(onMarkRead).toHaveBeenCalledWith(["a", "b"]);
+  });
+
+  it("select-all on the read tab selects only dismissible items for deletion", () => {
+    const onDelete = vi.fn();
+    renderView({
+      notifications: [
+        note({ id: "a", title: "既読A" }),
+        note({ id: "sys", sticky: true, dismissible: false }),
+        note({ id: "b", title: "既読B" }),
+      ],
+      seenIds: ["a", "sys", "b"],
+      onDelete,
+    });
+    fireEvent.click(screen.getByRole("tab", { name: /既読/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "すべて選択" }));
+    fireEvent.click(screen.getByRole("button", { name: "選択した通知を削除" }));
+    confirmDelete();
+    expect(onDelete).toHaveBeenCalledWith(["a", "b"]);
   });
 
   it("deletes a read item only after confirming, then calls onDelete(id)", () => {
@@ -122,7 +176,10 @@ describe("NotificationView", () => {
       onDelete,
     });
     fireEvent.click(screen.getByRole("tab", { name: /既読/ }));
-    for (const check of screen.getAllByRole("checkbox")) fireEvent.click(check);
+    for (const check of screen.getAllByRole("checkbox", {
+      name: "削除対象に選択",
+    }))
+      fireEvent.click(check);
     fireEvent.click(screen.getByRole("button", { name: "選択した通知を削除" }));
     confirmDelete();
     expect(onDelete).toHaveBeenCalledWith(["a", "b"]);

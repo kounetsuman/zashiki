@@ -76,6 +76,8 @@ pub struct ControlServices {
     pub heartbeat: Duration,
     /// The destination for hooks notifications (ZK_NOTIFY; default web).
     pub notify_mode: crate::hooks::NotifyMode,
+    /// Whether waiting/done hook events accumulate in NOTIFICATION (ZK_NOTIFY_HISTORY; default on).
+    pub notify_history: bool,
     /// The executor for macOS notifications (default terminal-notifier; swapped out in tests).
     pub mac_notify: crate::hooks::MacNotify,
     /// The path to config.json (the write target for SETTINGS' config.update; None for tests etc.).
@@ -196,6 +198,7 @@ mod tests {
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
+                notify_history: true,
                 mac_notify: Arc::new(|_| {}),
                 config_path: None,
                 claude_settings: None,
@@ -275,6 +278,7 @@ mod tests {
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
+                notify_history: true,
                 mac_notify: Arc::new(|_| {}),
                 config_path: Some(config_path),
                 claude_settings: None,
@@ -295,6 +299,7 @@ mod tests {
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
+                notify_history: true,
                 mac_notify: Arc::new(|_| {}),
                 config_path: None,
                 claude_settings: Some(crate::claude_settings_io::ClaudeSettingsPaths {

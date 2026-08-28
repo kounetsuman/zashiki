@@ -43,7 +43,9 @@ pub fn warn_notification(
     }
 }
 
-/// Notification that pushes the hooks waiting/done into NOTIFICATION (same wording as the toast).
+/// Notification that pushes the hooks waiting/done into NOTIFICATION. `toast: Some(false)` so it
+/// appears only in NOTIFICATION: the transient toast is driven by the separate notify push, which
+/// the client renders as a persistent, click-to-focus session toast (avoids double-display).
 pub fn notify_notification(
     id: String,
     kind: NotifyKind,
@@ -66,7 +68,7 @@ pub fn notify_notification(
         created_at,
         sticky: false,
         dismissible: true,
-        toast: None,
+        toast: Some(false),
     }
 }
 
@@ -353,6 +355,7 @@ mod tests {
         assert_eq!(w.title, "⏳ 応答待ち repo-a");
         assert_eq!(w.level, NotificationLevel::Info);
         assert!(w.dismissible && !w.sticky);
+        assert_eq!(w.toast, Some(false));
         let d = notify_notification("id2".to_string(), NotifyKind::Done, "repo-b", 6);
         assert_eq!(d.title, "✅ 完了 repo-b");
     }

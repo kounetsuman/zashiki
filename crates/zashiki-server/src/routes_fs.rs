@@ -343,6 +343,7 @@ mod fs_mutation_rest_tests {
     }
 
     #[cfg(target_os = "macos")]
+    #[ignore = "moves a real file to the OS trash; run with `cargo test -- --ignored`"]
     #[tokio::test]
     async fn delete_moves_a_repo_file_to_trash() {
         let root = tempfile::tempdir().unwrap();

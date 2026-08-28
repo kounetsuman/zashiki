@@ -54,6 +54,10 @@ export interface Notifier {
   permission(): NotifyPermission;
   requestPermission(): Promise<NotifyPermission>;
   notify(opts: NotifyOptions): void;
+  /** Plays the notification sound only (no OS notification), gated by the master + the category's sound. */
+  playSound(kind: NotifyKind): void;
+  /** Whether the category's visual should show (master + the category's notify). */
+  shouldShow(kind: NotifyKind): boolean;
 }
 
 export interface NotifierDeps {
@@ -119,6 +123,17 @@ export function createNotifier(deps: NotifierDeps = {}): Notifier {
     async requestPermission() {
       if (api === null) return "unsupported";
       return api.requestPermission();
+    },
+    playSound(kind) {
+      if (!isEnabled() || !prefFor(kind).sound) return;
+      try {
+        playSound(kind);
+      } catch {
+        // Sound is best-effort
+      }
+    },
+    shouldShow(kind) {
+      return isEnabled() && prefFor(kind).notify;
     },
     notify(opts) {
       if (!isEnabled()) return;

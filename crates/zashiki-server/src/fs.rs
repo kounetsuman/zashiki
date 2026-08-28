@@ -174,8 +174,17 @@ pub fn rename_within_repo(
 /// Moves an entry to the OS trash after confirming it resolves inside the repo. Blocking; callers run it
 /// via spawn_blocking.
 pub fn delete_to_trash(repo_path: &str, rel_path: &str) -> Result<(), (StatusCode, String)> {
+    delete_resolved(repo_path, rel_path, |real| trash::delete(real))
+}
+
+/// Resolves `rel_path` inside the repo, then runs `trash_op` on the real path; a failure maps to a 500.
+fn delete_resolved(
+    repo_path: &str,
+    rel_path: &str,
+    trash_op: impl FnOnce(&Path) -> Result<(), trash::Error>,
+) -> Result<(), (StatusCode, String)> {
     let real = resolve_within_repo(repo_path, rel_path)?;
-    trash::delete(&real).map_err(|e| {
+    trash_op(&real).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("failed to move to trash: {e}"),
@@ -371,14 +380,23 @@ mod tests {
         assert_eq!(code, StatusCode::NOT_FOUND);
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
-    fn delete_moves_entry_to_trash() {
+    fn delete_passes_the_resolved_repo_path_to_the_trash_op() {
         let root = tempfile::tempdir().unwrap();
         let repo = root.path().to_str().unwrap();
-        std::fs::write(root.path().join("trash-me.txt"), "x").unwrap();
-        delete_to_trash(repo, "trash-me.txt").unwrap();
-        assert!(!root.path().join("trash-me.txt").exists());
+        std::fs::write(root.path().join("gone.txt"), "x").unwrap();
+
+        let mut trashed = None;
+        delete_resolved(repo, "gone.txt", |real| {
+            trashed = Some(real.to_path_buf());
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(
+            trashed.unwrap(),
+            resolve_within_repo(repo, "gone.txt").unwrap()
+        );
     }
 
     #[test]

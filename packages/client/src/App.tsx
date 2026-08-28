@@ -77,6 +77,7 @@ import { NavigationBar } from "./ui/NavigationBar.js";
 import { NotificationView } from "./ui/NotificationView.js";
 import { SearchView } from "./ui/SearchView.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
+import { SessionToaster } from "./ui/SessionToaster.js";
 import { SettingsModal } from "./ui/SettingsModal.js";
 import { SourceControlView } from "./ui/SourceControlView.js";
 import { TabBar } from "./ui/TabBar.js";
@@ -243,6 +244,7 @@ export function App({
     orgNotes,
     memo,
     notifications,
+    sessionToasts,
     account,
     lastError,
     selectedCockpitTerminalId,
@@ -1094,6 +1096,11 @@ export function App({
         <CrashReportModal log={crashLog} onClose={dismissCrash} />
       )}
       <Toaster notifications={notifications} />
+      <SessionToaster
+        toasts={sessionToasts}
+        onActivate={store.activateSessionToast}
+        onDismiss={store.dismissSessionToast}
+      />
       {copyToast !== null && (
         <div className="copy-toast" role="status" aria-live="polite">
           {copyToast}

@@ -587,6 +587,7 @@ mod repos_add_rest_tests {
             config: ConfigView::default(),
             config_path: None,
             notify_mode: crate::hooks::NotifyMode::Web,
+            notify_history: true,
             mac_notify: std::sync::Arc::new(|_| {}),
             app_version: None,
         });

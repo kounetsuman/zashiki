@@ -15,6 +15,8 @@ function fakeStore(): AppStore {
     selectCockpitTerminal: vi.fn(),
     focusTerminal: vi.fn(),
     deselect: vi.fn(),
+    activateSessionToast: vi.fn(),
+    dismissSessionToast: vi.fn(),
     markNewRequested: vi.fn(),
     clearError: vi.fn(),
     setMemoText: vi.fn(),

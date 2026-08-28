@@ -100,6 +100,9 @@
     "emptyRead": "既読の通知はありません",
     "markReadHint": "ダブルクリックで既読",
     "markRead": "既読にする",
+    "markReadSelected": "選択した通知を既読にする",
+    "selectMarkRead": "既読対象に選択",
+    "selectAll": "すべて選択",
     "select": "削除対象に選択",
     "delete": "削除",
     "deleteSelected": "選択した通知を削除",
@@ -109,7 +112,8 @@
     "subagentStart": "🤖 サブエージェント開始",
     "subagentEnd": "🤖 サブエージェント終了",
     "shellStart": "🐚 バックグラウンドシェル開始",
-    "shellEnd": "🐚 バックグラウンドシェル終了"
+    "shellEnd": "🐚 バックグラウンドシェル終了",
+    "activate": "このセッションを開く"
   },
   "search": {
     "ariaLabel": "検索",
@@ -338,8 +342,8 @@
   },
   "onboarding": {
     "title": "zashiki へようこそ",
-    "intro": "zashiki は Claude Code のための1画面の AI コックピットです。どのセッションが対応待ちかを示し、複数の操作をまとめて楽にします。",
-    "note": "次に、通知と使用率フッタのための Claude Code 連携を設定します。この案内は設定からいつでも開けます。",
+    "intro": "Claude Code のための1画面コックピット。対応待ちのセッションが一目で分かります。",
+    "note": "次に Claude Code 連携を設定します。設定からいつでも開けます。",
     "skip": "スキップ",
     "getStarted": "はじめる"
   },

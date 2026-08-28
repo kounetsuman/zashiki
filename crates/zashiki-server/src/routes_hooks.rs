@@ -72,7 +72,13 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
             .find(|s| s.cockpit_terminal_id == r.cockpit_terminal_id)
             .and_then(|s| s.title.clone())
     });
-    let actions = hooks::decide(req.kind, resolved.as_ref(), control.notify_mode, snap_title);
+    let actions = hooks::decide(
+        req.kind,
+        resolved.as_ref(),
+        control.notify_mode,
+        control.notify_history,
+        snap_title,
+    );
 
     if actions.git_dirty {
         control.hub.broadcast(crate::protocol::ServerMessage::GitDirty);
@@ -203,6 +209,7 @@ mod hooks_rest_tests {
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: mode,
+            notify_history: true,
             mac_notify,
             config_path: None,
             claude_settings: None,
