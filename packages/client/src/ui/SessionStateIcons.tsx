@@ -10,6 +10,7 @@ const STATE_ICONS: Record<CockpitTerminalState, string> = {
   running: "progress_activity",
   running_bg_agent: "progress_activity",
   idle: "check",
+  watching: "visibility",
   no_claude: "terminal_2",
   starting: "pending",
   unknown: "help",

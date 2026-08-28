@@ -18,6 +18,10 @@ pub enum CockpitTerminalState {
     /// not tied to this variant.
     RunningBgAgent,
     Idle,
+    /// The turn has ended but the on-screen task list still shows remaining work (the
+    /// `N tasks (X done…)` footer with `total > done`): the session is standing by — e.g.
+    /// watching another session — and must not read as completed.
+    Watching,
     NoClaude,
     /// The transient where launch was keyed/spawned but claude has not yet appeared in the process
     /// tree. `detect_state` does not return it; the poller carves it out of `NoClaude` via `apply_startup_grace`.
@@ -361,6 +365,66 @@ fn take_separator_dot(chars: &[char], start: usize) -> Option<usize> {
     Some(skip_ws(chars, i + 1))
 }
 
+/// The remaining task count parsed from the task-list footer
+/// (`N tasks (X done[, Y in progress][, Z open])`): `total - done` when `total > done`, else
+/// `None` (an all-done footer must not read as busy — the same contract as `skill_agents_running`).
+///
+/// The footer heads its own line, so a whole line (whitespace on both ends aside) must parse —
+/// prose that merely quotes the phrase mid-sentence does not match. The whole capture is scanned
+/// bottom-up and the bottom-most footer line decides: the visible task rows and the input box sit
+/// between the footer and the pane bottom, so the footer is not confined to the bottom window
+/// (the same layout reason `is_menu_open` scans everything), while anything higher on screen is
+/// staler than the footer nearest the prompt.
+pub fn open_tasks_remaining(capture: &str) -> Option<usize> {
+    let (total, done) = capture.split('\n').rev().find_map(parse_tasks_footer_line)?;
+    (total > done).then(|| total - done)
+}
+
+/// Parses a whole line as `<total> task(s) (<done> done[, <n> <segment>]*)`, returning
+/// `(total, done)`. Segment labels beyond `done` are not interpreted (`open` / `in progress`
+/// today), so a wording addition in Claude Code does not silently kill the detection. An all-done
+/// footer still parses — the caller must see it and stop, not skip past it to a staler line.
+fn parse_tasks_footer_line(line: &str) -> Option<(usize, usize)> {
+    let trimmed = js_trim_start(line);
+    if !trimmed.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    let (total, i) = take_number(&chars, 0)?;
+    let i = skip_ws_required(&chars, i)?;
+    let i = take_ascii(&chars, i, "tasks").or_else(|| take_ascii(&chars, i, "task"))?;
+    let i = skip_ws_required(&chars, i)?;
+    if chars.get(i) != Some(&'(') {
+        return None;
+    }
+    let (done, i) = take_number(&chars, i + 1)?;
+    let i = skip_ws_required(&chars, i)?;
+    let mut i = take_ascii(&chars, i, "done")?;
+    while chars.get(i) == Some(&',') {
+        let j = skip_ws_required(&chars, i + 1)?;
+        let (_, j) = take_number(&chars, j)?;
+        let j = skip_ws_required(&chars, j)?;
+        i = take_segment_label(&chars, j)?;
+    }
+    if chars.get(i) != Some(&')') || !chars[i + 1..].iter().all(|&c| is_js_whitespace(c)) {
+        return None;
+    }
+    Some((total, done))
+}
+
+/// Consumes a segment label (lowercase ASCII words, single spaces between them, e.g. `open`,
+/// `in progress`), returning the index after it; `None` when no letter is present.
+fn take_segment_label(chars: &[char], start: usize) -> Option<usize> {
+    let mut i = start;
+    while chars
+        .get(i)
+        .is_some_and(|c| c.is_ascii_lowercase() || *c == ' ')
+    {
+        i += 1;
+    }
+    (i > start).then_some(i)
+}
+
 /// Whether the line contains a spot where `❯` is followed (optionally with whitespace) by `[0-9]+.` (`/❯\s*[0-9]+\./`).
 fn has_cursor_number(line: &str) -> bool {
     let chars: Vec<char> = line.chars().collect();
@@ -446,7 +510,7 @@ fn resolve<'a>(marker: Option<&'a str>, default: &'a str) -> &'a str {
 }
 
 /// Capture-primary detection that treats the conversation pane's actual screen as authoritative
-/// (priority: wizard > running > bg (panel or skill agent-tray) > no_claude > fleet-view header > idle).
+/// (priority: wizard > running > bg (panel or skill agent-tray) > no_claude > fleet-view header > watching > idle).
 /// Ordering the fleet-view check after the no_claude return keeps a header left in shell scrollback
 /// after claude exits from reading as busy. `Idle` means "no hint on screen", and the caller chains
 /// it into the jsonl fallback via `fallback_state`.
@@ -474,6 +538,9 @@ pub fn detect_state(capture: &str, opts: &DetectStateOptions) -> CockpitTerminal
         if fleet.working > 0 {
             return CockpitTerminalState::RunningBgAgent;
         }
+    }
+    if open_tasks_remaining(capture).is_some() {
+        return CockpitTerminalState::Watching;
     }
     CockpitTerminalState::Idle
 }
@@ -518,6 +585,22 @@ pub fn fallback_state(
             CockpitTerminalState::Running
         }
         _ => CockpitTerminalState::Idle,
+    }
+}
+
+/// Chains the jsonl fallback onto a scrape without a busy hint (`Idle` / `Watching`): a fresh,
+/// non-interrupted user event rescues either to `Running` (the pre-render race right after
+/// sending); any other verdict keeps the scrape, so the fallback's `Idle` never erases an
+/// on-screen open-task footer.
+pub fn apply_jsonl_fallback(
+    scrape: CockpitTerminalState,
+    last_event: Option<&TranscriptEvent>,
+    mtime_age_sec: Option<f64>,
+    poll_sec: f64,
+) -> CockpitTerminalState {
+    match fallback_state(last_event, mtime_age_sec, poll_sec) {
+        CockpitTerminalState::Running => CockpitTerminalState::Running,
+        _ => scrape,
     }
 }
 
@@ -648,6 +731,15 @@ mod tests {
     const CAP_FLEET_ALL_DONE: &str = "Claude Code v2.1.191\nOpus 4.8 · ~/workspace/charlie/app\n0 awaiting input · 0 working · 3 completed\n\n› describe a task for a new session";
     const CAP_FLEET_QUOTED_IN_HISTORY: &str = "⏺ ログに \"0 awaiting input · 1 working · 0 completed\" と出ていた話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
     const CAP_FLEET_QUOTED_BELOW_TOP_WINDOW: &str = "⏺ 会話の本文\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n  1 awaiting input · 2 working · 3 completed\n───\n❯\n───";
+    const CAP_TASKS_OPEN: &str = "⏺ 別セッションの完了を待ちます。\n\n  1 tasks (0 done, 1 open)\n  □ Stand by, then review/test/PR #279 after other session finishes\n\n╭───╮\n│ ❯ │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+    const CAP_TASKS_ALL_DONE: &str = "⏺ 完了しました。\n\n  3 tasks (3 done, 0 open)\n  ✔ 済みタスク\n╭───╮\n│ ❯ │\n╰───╯\n  ? for shortcuts";
+    const CAP_TASKS_IN_PROGRESS: &str = "⏺ 一段落。\n\n  3 tasks (1 done, 1 in progress, 1 open)\n╭───╮\n│ ❯ │\n╰───╯";
+    const CAP_TASKS_QUOTED_IN_HISTORY: &str =
+        "⏺ 過去ログに \"5 tasks (2 done, 3 open)\" と出ていた話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
+    const CAP_TASKS_WITH_SPINNER: &str =
+        "✻ Simmering… (esc to interrupt · ctrl+t)\n  1 tasks (0 done, 1 open)\n╭───╮\n│ ❯ │\n╰───╯";
+    const CAP_TASKS_WITH_WIZARD: &str = "Do you want to proceed?\n❯ 1. Yes\n  2. No\n  1 tasks (0 done, 1 open)";
+    const CAP_TASKS_FOOTER_ABOVE_BOTTOM_WINDOW: &str = "⏺ 待機します。\n\n  5 tasks (2 done, 3 open)\n  ✔ 済み1\n  ✔ 済み2\n  □ 残り1\n  □ 残り2\n  □ 残り3\n\n╭───╮\n│ ❯ │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
     const CAP_WIZARD_TWO_CHOICE: &str = "❯ 1. Yes\n  2. No";
     const CAP_WIZARD_SINGLE: &str = "❯ 1. Yes";
     const CAP_WIZARD_WITH_MARKER: &str =
@@ -840,9 +932,75 @@ mod tests {
     }
 
     #[test]
+    fn open_tasks_footer_at_idle_is_watching() {
+        assert_eq!(
+            detect_state(CAP_TASKS_OPEN, &claude()),
+            CockpitTerminalState::Watching
+        );
+    }
+
+    #[test]
+    fn tasks_all_done_is_idle() {
+        assert_eq!(
+            detect_state(CAP_TASKS_ALL_DONE, &claude()),
+            CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
+    fn task_in_progress_counts_as_watching() {
+        assert_eq!(
+            detect_state(CAP_TASKS_IN_PROGRESS, &claude()),
+            CockpitTerminalState::Watching
+        );
+    }
+
+    // Enough task rows + the input box push the footer past the bottom window; the whole-capture
+    // scan still finds it.
+    #[test]
+    fn tasks_footer_above_bottom_window_is_watching() {
+        assert_eq!(
+            detect_state(CAP_TASKS_FOOTER_ABOVE_BOTTOM_WINDOW, &claude()),
+            CockpitTerminalState::Watching
+        );
+    }
+
+    #[test]
+    fn tasks_footer_quoted_in_history_is_idle() {
+        assert_eq!(
+            detect_state(CAP_TASKS_QUOTED_IN_HISTORY, &claude()),
+            CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
+    fn running_wins_over_open_tasks_footer() {
+        assert_eq!(
+            detect_state(CAP_TASKS_WITH_SPINNER, &claude()),
+            CockpitTerminalState::Running
+        );
+    }
+
+    #[test]
+    fn wizard_wins_over_open_tasks_footer() {
+        assert_eq!(
+            detect_state(CAP_TASKS_WITH_WIZARD, &claude()),
+            CockpitTerminalState::WaitingInput
+        );
+    }
+
+    #[test]
     fn fleet_view_header_without_claude_is_no_claude() {
         assert_eq!(
             detect_state(CAP_FLEET_WORKING, &no_claude()),
+            CockpitTerminalState::NoClaude
+        );
+    }
+
+    #[test]
+    fn open_tasks_footer_without_claude_is_no_claude() {
+        assert_eq!(
+            detect_state(CAP_TASKS_OPEN, &no_claude()),
             CockpitTerminalState::NoClaude
         );
     }
@@ -852,6 +1010,43 @@ mod tests {
         assert_eq!(
             detect_state(CAP_FLEET_QUOTED_IN_HISTORY, &claude()),
             CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
+    fn open_tasks_remaining_parses_footer_variants() {
+        assert_eq!(open_tasks_remaining("1 tasks (0 done, 1 open)"), Some(1));
+        assert_eq!(open_tasks_remaining("  1 task (0 done, 1 open)"), Some(1));
+        assert_eq!(
+            open_tasks_remaining("3 tasks (1 done, 1 in progress, 1 open)"),
+            Some(2)
+        );
+        // An unknown segment label must not kill the detection (Claude Code wording additions).
+        assert_eq!(open_tasks_remaining("5 tasks (2 done, 3 skipped)"), Some(3));
+        // All done (or a corrupt done >= total) must not read as busy.
+        assert_eq!(open_tasks_remaining("3 tasks (3 done)"), None);
+        assert_eq!(open_tasks_remaining("3 tasks (3 done, 0 open)"), None);
+        assert_eq!(open_tasks_remaining("3 tasks (5 done)"), None);
+        // The footer owns its whole line: mid-sentence quotes and trailing prose do not match.
+        assert_eq!(open_tasks_remaining("status: 15 tasks (2 done) remain"), None);
+        assert_eq!(open_tasks_remaining("15 tasks (2 done) remain"), None);
+        assert_eq!(open_tasks_remaining("8 tasks (mostly done)"), None);
+        assert_eq!(open_tasks_remaining("12 tasks (3 done"), None);
+        assert_eq!(open_tasks_remaining("tasks (2 done)"), None);
+        assert_eq!(open_tasks_remaining("2 tasksdone (1 done)"), None);
+    }
+
+    // The bottom-most footer decides; an all-done footer must not be skipped in favor of a
+    // staler open footer above it.
+    #[test]
+    fn bottom_most_tasks_footer_is_authoritative() {
+        assert_eq!(
+            open_tasks_remaining("5 tasks (2 done, 3 open)\n3 tasks (3 done)"),
+            None
+        );
+        assert_eq!(
+            open_tasks_remaining("3 tasks (3 done)\n5 tasks (2 done, 3 open)"),
+            Some(3)
         );
     }
 
@@ -1336,6 +1531,28 @@ mod tests {
         );
     }
 
+    // ---- apply_jsonl_fallback (fallback chained onto a hint-less scrape) ----
+
+    #[test]
+    fn jsonl_fallback_rescues_idle_and_watching_to_running_on_fresh_user_event() {
+        for s in [CockpitTerminalState::Idle, CockpitTerminalState::Watching] {
+            assert_eq!(
+                apply_jsonl_fallback(s, Some(&user(false)), Some(5.0), 2.0),
+                CockpitTerminalState::Running
+            );
+        }
+    }
+
+    #[test]
+    fn jsonl_fallback_keeps_the_scrape_otherwise() {
+        for s in [CockpitTerminalState::Idle, CockpitTerminalState::Watching] {
+            assert_eq!(apply_jsonl_fallback(s, Some(&user(false)), Some(120.0), 2.0), s);
+            assert_eq!(apply_jsonl_fallback(s, Some(&user(true)), Some(5.0), 2.0), s);
+            assert_eq!(apply_jsonl_fallback(s, None, Some(5.0), 2.0), s);
+            assert_eq!(apply_jsonl_fallback(s, Some(&user(false)), None, 2.0), s);
+        }
+    }
+
     // ---- subagents counting ----
 
     #[test]
@@ -1415,6 +1632,7 @@ mod tests {
             CockpitTerminalState::Running,
             CockpitTerminalState::RunningBgAgent,
             CockpitTerminalState::Idle,
+            CockpitTerminalState::Watching,
             CockpitTerminalState::WaitingInput,
             CockpitTerminalState::Unknown,
         ] {
@@ -1483,6 +1701,7 @@ mod tests {
     fn resolve_without_event_is_scrape() {
         for s in [
             CockpitTerminalState::Idle,
+            CockpitTerminalState::Watching,
             CockpitTerminalState::Running,
             CockpitTerminalState::RunningBgAgent,
             CockpitTerminalState::WaitingInput,
@@ -1507,6 +1726,7 @@ mod tests {
     fn resolve_fresh_waiting_promotes_to_bell() {
         for s in [
             CockpitTerminalState::Idle,
+            CockpitTerminalState::Watching,
             CockpitTerminalState::Running,
             CockpitTerminalState::RunningBgAgent,
         ] {
@@ -1522,6 +1742,16 @@ mod tests {
         assert_eq!(
             resolve_state(CockpitTerminalState::WaitingInput, Some(HookEvent::Done), true, true),
             CockpitTerminalState::Idle
+        );
+    }
+
+    // The Stop hook only says the turn ended; it must not flip a watching scrape (open tasks
+    // still on screen) to idle.
+    #[test]
+    fn resolve_fresh_done_keeps_watching() {
+        assert_eq!(
+            resolve_state(CockpitTerminalState::Watching, Some(HookEvent::Done), true, true),
+            CockpitTerminalState::Watching
         );
     }
 
@@ -1546,6 +1776,10 @@ mod tests {
             assert_eq!(
                 resolve_state(CockpitTerminalState::RunningBgAgent, Some(ev), true, true),
                 CockpitTerminalState::RunningBgAgent
+            );
+            assert_eq!(
+                resolve_state(CockpitTerminalState::Watching, Some(ev), true, true),
+                CockpitTerminalState::Watching
             );
         }
     }

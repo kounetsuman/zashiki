@@ -175,6 +175,18 @@ describe("CockpitTerminalListView: session rows", () => {
     expect(none.className).toContain("state-no_claude");
   });
 
+  it("displays the eye icon with a state class while watching (open tasks, not completed)", () => {
+    renderView({
+      cockpitTerminals: [
+        { ...cockpitTerminals[0], state: "watching" } as CockpitTerminalInfo,
+      ],
+    });
+    const watching = screen.getByText("visibility");
+    expect(watching.className).toContain("state-watching");
+    expect(watching.className).toContain("material-symbols-outlined");
+    expect(screen.queryByText("check")).toBeNull();
+  });
+
   it("displays the pending icon with a state class while starting", () => {
     renderView({
       cockpitTerminals: [

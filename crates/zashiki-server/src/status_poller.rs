@@ -8,10 +8,10 @@ use std::collections::HashMap;
 use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
-    apply_startup_grace, count_running_subagents, detect_state, fallback_state, fleet_view_counts,
-    has_bg_agent,
-    hook_event_fresh_within_sec, is_limit_reached, is_menu_open, resolve_state, skill_agents_running,
-    startup_grace_polls, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
+    apply_jsonl_fallback, apply_startup_grace, count_running_subagents, detect_state,
+    fleet_view_counts, has_bg_agent, hook_event_fresh_within_sec, is_limit_reached, is_menu_open,
+    open_tasks_remaining, resolve_state, skill_agents_running, startup_grace_polls,
+    subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
 use crate::jsonl::{first_user_title, last_user_or_assistant_event};
@@ -93,6 +93,8 @@ pub struct StatusPoller {
     prev_menu_open: HashMap<String, bool>,
     /// The previous background-agent presence of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited, so the subagent chip does not flicker off during copy-mode).
     prev_bg_present: HashMap<String, bool>,
+    /// The previous on-screen open-task fact of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited, so watching does not flicker off during copy-mode).
+    prev_open_tasks: HashMap<String, bool>,
     /// The consecutive no_claude poll count per window (material for the startup grace decision). Reset to 0 on anything other than no_claude.
     no_claude_streak: HashMap<String, u32>,
     /// The most recent picked pane pid per window. The basis for detecting a window rebuild from restore/kill
@@ -145,6 +147,7 @@ impl StatusPoller {
         self.prev_limited.retain(|id, _| live.contains(id.as_str()));
         self.prev_menu_open.retain(|id, _| live.contains(id.as_str()));
         self.prev_bg_present.retain(|id, _| live.contains(id.as_str()));
+        self.prev_open_tasks.retain(|id, _| live.contains(id.as_str()));
         self.no_claude_streak
             .retain(|id, _| live.contains(id.as_str()));
         self.last_pid.retain(|id, _| live.contains(id.as_str()));
@@ -183,6 +186,7 @@ impl StatusPoller {
         let mut skill_agents: Option<usize> = None;
         let mut fleet_view_working: Option<usize> = None;
         let mut bg_agent_scraped = false;
+        let mut open_tasks_on_screen = false;
         let (mut state, limited, menu_open) = if in_mode {
             (
                 self.prev_states
@@ -212,6 +216,7 @@ impl StatusPoller {
             fleet_view_working = fleet_view_counts(&capture).map(|f| f.working);
             bg_agent_scraped =
                 has_bg_agent(&capture, resolve_bg_agent_marker(config)) || skill_agents.is_some();
+            open_tasks_on_screen = open_tasks_remaining(&capture).is_some();
             let limited = is_limit_reached(&capture, resolve_limit_marker(config));
             let markers = resolve_menu_markers(config);
             let marker_refs: Vec<&str> = markers.iter().map(String::as_str).collect();
@@ -224,20 +229,29 @@ impl StatusPoller {
                 .get(&win.cockpit_terminal_id)
                 .copied()
                 .unwrap_or(false);
+            open_tasks_on_screen = self
+                .prev_open_tasks
+                .get(&win.cockpit_terminal_id)
+                .copied()
+                .unwrap_or(false);
         }
 
         let mut slices: Option<Slices> = None;
         if let Some(sid) = &sid {
-            if state == CockpitTerminalState::Idle || need_slices {
+            let no_screen_hint = matches!(
+                state,
+                CockpitTerminalState::Idle | CockpitTerminalState::Watching
+            );
+            if no_screen_hint || need_slices {
                 slices = ports.read_slices(&cwd, sid).await;
             }
-        }
-        if state == CockpitTerminalState::Idle && sid.is_some() {
-            let last_ev = slices
-                .as_ref()
-                .and_then(|s| last_user_or_assistant_event(&s.tail));
-            let age = slices.as_ref().map(|s| s.mtime_age_sec);
-            state = fallback_state(last_ev.as_ref(), age, config.poll_sec);
+            if no_screen_hint {
+                let last_ev = slices
+                    .as_ref()
+                    .and_then(|s| last_user_or_assistant_event(&s.tail));
+                let age = slices.as_ref().map(|s| s.mtime_age_sec);
+                state = apply_jsonl_fallback(state, last_ev.as_ref(), age, config.poll_sec);
+            }
         }
 
         // Startup grace: right after restore/new, claude has not yet appeared in the process tree and looks like
@@ -280,6 +294,13 @@ impl StatusPoller {
                 resolve_state(scrape_state, event, fresh, true)
             }
             None => scrape_state,
+        };
+        // A wizard-priority scrape hides the footer from detect_state, so an arbitration verdict
+        // of Idle (fresh Done clearing a phantom bell) re-reads the on-screen open-task fact.
+        let state = if state == CockpitTerminalState::Idle && open_tasks_on_screen {
+            CockpitTerminalState::Watching
+        } else {
+            state
         };
 
         let mut title: Option<String> = None;
@@ -341,7 +362,8 @@ impl StatusPoller {
                 CockpitTerminalState::Running
                 | CockpitTerminalState::RunningBgAgent
                 | CockpitTerminalState::WaitingInput
-                | CockpitTerminalState::Idle,
+                | CockpitTerminalState::Idle
+                | CockpitTerminalState::Watching,
             ) => ports.session_usage(&cwd, sid).await.map(|d| SessionUsage {
                 turn_tokens: d.turn_tokens,
                 session_tokens: d.session_tokens,
@@ -359,6 +381,8 @@ impl StatusPoller {
             .insert(win.cockpit_terminal_id.clone(), menu_open);
         self.prev_bg_present
             .insert(win.cockpit_terminal_id.clone(), bg_agent_scraped);
+        self.prev_open_tasks
+            .insert(win.cockpit_terminal_id.clone(), open_tasks_on_screen);
         Some(CockpitTerminalInfo {
             cockpit_terminal_id: win.cockpit_terminal_id.clone(),
             name: win.name.clone(),
@@ -891,6 +915,65 @@ mod tests {
         assert_eq!(snap.sessions[0].state, "idle");
     }
 
+    const WATCHING_CAPTURE: &str =
+        "  1 tasks (0 done, 1 open)\n  □ Stand by until the other session finishes\n╭───╮\n│ ❯ │\n╰───╯";
+
+    /// The jsonl fallback's Idle verdict (stale/absent user event) must not erase the on-screen
+    /// open-task footer.
+    #[tokio::test]
+    async fn watching_survives_stale_jsonl_fallback() {
+        let user_tail = r#"{"type":"user","message":{"content":"作業して"}}"#;
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), WATCHING_CAPTURE.to_string())]),
+            slices: HashMap::from([(
+                format!("/repos/charlie/app\u{0}{SID}"),
+                Slices {
+                    head: user_tail.to_string(),
+                    tail: user_tail.to_string(),
+                    mtime_age_sec: 999.0,
+                },
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "watching");
+    }
+
+    /// A fresh user event (the pre-render race right after a prompt) still rescues a watching
+    /// scrape to running, the same as an idle one.
+    #[tokio::test]
+    async fn watching_falls_back_to_running_on_fresh_user_event() {
+        let user_tail = r#"{"type":"user","message":{"content":"作業して"}}"#;
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), WATCHING_CAPTURE.to_string())]),
+            slices: HashMap::from([(
+                format!("/repos/charlie/app\u{0}{SID}"),
+                Slices {
+                    head: user_tail.to_string(),
+                    tail: user_tail.to_string(),
+                    mtime_age_sec: 1.0,
+                },
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "running");
+    }
+
     fn hook_event(age_sec: f64, event: zashiki_core::session_state::HookEvent) -> HookEventAge {
         HookEventAge { event, age_sec }
     }
@@ -938,6 +1021,30 @@ mod tests {
         let mut poller = StatusPoller::new();
         let (snap, _) = poller.evaluate(&ports, &config()).await;
         assert_eq!(snap.sessions[0].state, "idle");
+    }
+
+    /// A fresh `done` clearing a phantom bell lands on watching, not idle, when the open-task
+    /// footer is also on screen (the wizard priority hides the footer from detect_state).
+    #[tokio::test]
+    async fn fresh_done_hook_with_open_tasks_reads_watching() {
+        let cap = "  1 tasks (0 done, 1 open)\n❯ 1. Yes\n  2. No".to_string();
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap)]),
+            hook_events: HashMap::from([(
+                SID.to_string(),
+                hook_event(1.0, zashiki_core::session_state::HookEvent::Done),
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "watching");
     }
 
     /// A stale hook event is ignored; the scrape decides (the bell stays for a real bottom wizard).
