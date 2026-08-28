@@ -34,7 +34,7 @@ pub const DEFAULT_RUN_MARKER: &str = "(esc to interrupt";
 /// The line-start marker for a bg-agent line.
 pub const DEFAULT_BG_AGENT_MARKER: &str = "◯";
 /// The text marker for the usage-limit-reached banner (Claude Code's phrasing).
-pub const DEFAULT_LIMIT_MARKER: &str = "usage limit reached";
+pub const DEFAULT_LIMIT_MARKER: &str = "claude usage limit reached";
 
 /// Distinctive header phrases of Claude Code's built-in menu/overlay screens (`/login`, `/status`,
 /// `/usage`, `/model`, `/mcp`, and the wider settings family). A session showing one of these is
@@ -168,20 +168,29 @@ pub fn is_running(capture: &str, marker: &str) -> bool {
         .any(|line| line.contains(marker) || has_live_spinner_timer(line))
 }
 
-/// Detects Claude Code's usage-limit reached from the bottom of the screen (the last 8 non-empty
-/// lines). A case-insensitive substring match of the marker (default `usage limit reached`). It is
-/// an attribute orthogonal to the main state and is not built into `detect_state` (so as not to make
-/// the case of a limit banner appearing during running mutually exclusive). Case is ignored because,
-/// unlike `is_running`'s marker (stable casing), the leading casing of the limit text can vary. An
-/// empty marker falls to false to avoid a false positive (matching every window) (callers are expected to resolve to the default).
+/// Leading glyphs Claude Code renders before the usage-limit text (`✗` banner, `⎿` result lines),
+/// plus whitespace and box borders. Deliberately excludes bullet/quote glyphs and the `⏺`
+/// response bullet so prose citing the phrase does not match.
+fn is_limit_line_decoration(c: char) -> bool {
+    is_js_whitespace(c) || matches!(c, '│' | '┃' | '|' | '╎' | '┆' | '✗' | '⎿')
+}
+
+/// Detects Claude Code's usage-limit renders (`✗ Claude usage limit reached · /upgrade …`,
+/// `⎿ Claude usage limit reached. …`) in the last 8 non-empty lines. The marker (default
+/// `claude usage limit reached`, case-insensitive) must head a line after leading limit decoration
+/// is stripped, so the phrase quoted in command output or source code shown on screen does not
+/// trip the flag. Orthogonal to the main state (a banner can appear while running). An empty
+/// marker yields false (callers resolve the default).
 pub fn is_limit_reached(capture: &str, marker: &str) -> bool {
     if marker.is_empty() {
         return false;
     }
     let needle = marker.to_lowercase();
-    bottom_non_empty_lines(capture)
-        .iter()
-        .any(|line| line.to_lowercase().contains(&needle))
+    bottom_non_empty_lines(capture).iter().any(|line| {
+        line.trim_start_matches(is_limit_line_decoration)
+            .to_lowercase()
+            .starts_with(&needle)
+    })
 }
 
 /// Leading line decoration (whitespace or a box-border/bullet glyph) stripped before a menu marker
@@ -1214,9 +1223,45 @@ mod tests {
 
     #[test]
     fn limit_reached_marker_is_overridable() {
-        let cap = "◈ RATE_CAP_HIT ◈\n───\n❯\n───";
+        let cap = "RATE_CAP_HIT · resets 3am\n───\n❯\n───";
         assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
         assert!(is_limit_reached(cap, "RATE_CAP_HIT"));
+    }
+
+    #[test]
+    fn limit_reached_ignores_quoted_marker_in_bottom_window() {
+        let cap = "⏺ Bash(cat en.json)\n  \"limitReached\": \"Usage limit reached\",\n… +96 lines (ctrl+o to expand)\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+    }
+
+    #[test]
+    fn limit_reached_ignores_source_code_shown_on_screen() {
+        let cap = "⏺ Bash(rg DEFAULT_LIMIT_MARKER)\n33:pub const DEFAULT_LIMIT_MARKER: &str = \"claude usage limit reached\";\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+    }
+
+    #[test]
+    fn limit_reached_ignores_bullet_prose_citing_the_phrase() {
+        let cap = "⏺ 説明\n- Claude usage limit reached means the 5-hour window is exhausted\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+    }
+
+    #[test]
+    fn limit_reached_ignores_response_bullet_prose_starting_with_the_phrase() {
+        let cap = "⏺ Claude usage limit reached is the message shown when the window is exhausted\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+    }
+
+    #[test]
+    fn limit_reached_detects_box_framed_banner() {
+        let cap = "⏺ 直前の応答\n│ ✗ Claude usage limit reached · /upgrade │\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
+    }
+
+    #[test]
+    fn limit_reached_detects_result_line_render() {
+        let cap = "⏺ 応答\n⎿  Claude usage limit reached. Your limit will reset at 7pm (Asia/Tokyo).\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
     }
 
     // ---- is_menu_open (Claude Code menu/overlay detection) ----
@@ -1230,6 +1275,14 @@ mod tests {
     #[test]
     fn menu_open_detects_marker_behind_box_border() {
         assert!(is_menu_open("│ Claude Code Status         │", DEFAULT_MENU_MARKERS));
+    }
+
+    #[test]
+    fn menu_open_ignores_failure_glyph_prefixed_line() {
+        assert!(!is_menu_open(
+            "✗ Claude Code Status check failed",
+            DEFAULT_MENU_MARKERS
+        ));
     }
 
     #[test]
