@@ -123,9 +123,10 @@ pub struct CockpitTerminalInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sid: Option<String>,
     pub active: bool,
-    /// Total number of running subagents (including nested). An approximate value that is only
-    /// meaningful when running_bg_agent. Optional for backward compatibility with older servers (not
-    /// sent when unavailable or in other states).
+    /// Total number of running subagents (including nested). An orthogonal attribute populated
+    /// whenever the background-agent tray is present, independent of the resolved lifecycle state
+    /// (so it survives when the main session simultaneously reads as running). Optional for backward
+    /// compatibility with older servers; 0/absent means no background subagent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub running_subagents: Option<u32>,
     /// Number of persistent background shells (Bash run_in_background) whose output fd is still held

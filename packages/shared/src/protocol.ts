@@ -117,8 +117,10 @@ export const cockpitTerminalInfoSchema = z.object({
   active: z.boolean(),
   /**
    * Total number of running subagents (including nested grandchildren and beyond).
-   * An approximation counted by the mtime freshness of subagents/*.jsonl, meaningful
-   * only when running_bg_agent (0 in other states or when not fetched). optional for old-server compatibility.
+   * An approximation counted by the mtime freshness of subagents/*.jsonl, floored to 1 whenever the
+   * bg-agent tray is present. An orthogonal attribute populated independent of the lifecycle state
+   * (so it survives the running state, not only running_bg_agent). 0/absent means no background
+   * subagent. Optional for old-server compatibility.
    */
   runningSubagents: z.number().int().min(0).optional(),
   /**

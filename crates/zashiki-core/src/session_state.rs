@@ -13,7 +13,9 @@ pub enum CockpitTerminalState {
     WaitingInput,
     Running,
     /// The state where the normal spinner has been pushed out and only the bottom bg-agent group
-    /// panel remains (subagents running; runningSubagents is meaningful only in this state).
+    /// panel remains (the main session is idle enough for the panel to win). The subagent count is
+    /// an orthogonal attribute (runningSubagents) that also survives the `Running` state, so it is
+    /// not tied to this variant.
     RunningBgAgent,
     Idle,
     NoClaude,
