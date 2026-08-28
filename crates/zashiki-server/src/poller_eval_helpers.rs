@@ -2,7 +2,7 @@
 
 use zashiki_core::repos::org_names;
 use zashiki_core::session_state::{
-    CockpitTerminalState, DEFAULT_LIMIT_MARKER, DEFAULT_MENU_MARKERS,
+    CockpitTerminalState, DEFAULT_BG_AGENT_MARKER, DEFAULT_LIMIT_MARKER, DEFAULT_MENU_MARKERS,
 };
 
 use zashiki_core::process_tree::find_sid_in_tree;
@@ -28,6 +28,14 @@ pub(crate) fn resolve_limit_marker(config: &PollConfig) -> &str {
     match config.limit_marker.as_deref() {
         Some(m) if !m.is_empty() => m,
         _ => DEFAULT_LIMIT_MARKER,
+    }
+}
+
+/// Resolves the bg-agent marker (empty/unset falls back to the default; same policy as detect_state's resolve).
+pub(crate) fn resolve_bg_agent_marker(config: &PollConfig) -> &str {
+    match config.bg_agent_marker.as_deref() {
+        Some(m) if !m.is_empty() => m,
+        _ => DEFAULT_BG_AGENT_MARKER,
     }
 }
 

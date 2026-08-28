@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
-    apply_startup_grace, count_running_subagents, detect_state, fallback_state,
+    apply_startup_grace, count_running_subagents, detect_state, fallback_state, has_bg_agent,
     hook_event_fresh_within_sec, is_limit_reached, is_menu_open, resolve_state, skill_agents_running,
     startup_grace_polls, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
@@ -24,8 +24,8 @@ pub use crate::poller_types::{
 };
 
 use crate::poller_eval_helpers::{
-    build_orgs, is_pane_in_mode, last_path_segment, pick_pane, resolve_limit_marker,
-    resolve_menu_markers, roots_ref, state_wire,
+    build_orgs, is_pane_in_mode, last_path_segment, pick_pane, resolve_bg_agent_marker,
+    resolve_limit_marker, resolve_menu_markers, roots_ref, state_wire,
 };
 
 /// The server-side state poller (the core evaluation logic). It holds the previous state for pane_in_mode skips
@@ -39,6 +39,8 @@ pub struct StatusPoller {
     prev_limited: HashMap<String, bool>,
     /// The previous menu_open of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited).
     prev_menu_open: HashMap<String, bool>,
+    /// The previous background-agent presence of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited, so the subagent chip does not flicker off during copy-mode).
+    prev_bg_present: HashMap<String, bool>,
     /// The consecutive no_claude poll count per window (material for the startup grace decision). Reset to 0 on anything other than no_claude.
     no_claude_streak: HashMap<String, u32>,
     /// The most recent picked pane pid per window. The basis for detecting a window rebuild from restore/kill
@@ -90,6 +92,7 @@ impl StatusPoller {
         self.prev_states.retain(|id, _| live.contains(id.as_str()));
         self.prev_limited.retain(|id, _| live.contains(id.as_str()));
         self.prev_menu_open.retain(|id, _| live.contains(id.as_str()));
+        self.prev_bg_present.retain(|id, _| live.contains(id.as_str()));
         self.no_claude_streak
             .retain(|id, _| live.contains(id.as_str()));
         self.last_pid.retain(|id, _| live.contains(id.as_str()));
@@ -126,6 +129,7 @@ impl StatusPoller {
 
         let in_mode = is_pane_in_mode(win, &picked.pane_id);
         let mut skill_agents: Option<usize> = None;
+        let mut bg_agent_scraped = false;
         let (mut state, limited, menu_open) = if in_mode {
             (
                 self.prev_states
@@ -152,12 +156,21 @@ impl StatusPoller {
                 },
             );
             skill_agents = skill_agents_running(&capture);
+            bg_agent_scraped =
+                has_bg_agent(&capture, resolve_bg_agent_marker(config)) || skill_agents.is_some();
             let limited = is_limit_reached(&capture, resolve_limit_marker(config));
             let markers = resolve_menu_markers(config);
             let marker_refs: Vec<&str> = markers.iter().map(String::as_str).collect();
             let menu_open = is_menu_open(&capture, &marker_refs);
             (state, limited, menu_open)
         };
+        if in_mode {
+            bg_agent_scraped = self
+                .prev_bg_present
+                .get(&win.cockpit_terminal_id)
+                .copied()
+                .unwrap_or(false);
+        }
 
         let mut slices: Option<Slices> = None;
         if let Some(sid) = &sid {
@@ -228,15 +241,21 @@ impl StatusPoller {
             }
         }
 
+        // Orthogonal to the resolved state, not gated on it: detect_state resolves a busy main to
+        // `Running` before it can reach the bg panel, so gating on `RunningBgAgent` would drop the
+        // count whenever the main is also working. A scraped tray is itself proof of >=1 live agent,
+        // so `bg_present` floors the count at 1 even when the jsonl mtimes have gone stale.
+        let bg_present = bg_agent_scraped || state == CockpitTerminalState::RunningBgAgent;
         let mut running_subagents = 0;
-        if state == CockpitTerminalState::RunningBgAgent {
-            if let Some(n) = skill_agents {
-                running_subagents = n;
+        if bg_present {
+            running_subagents = if let Some(n) = skill_agents {
+                n
             } else if let Some(sid) = &sid {
                 let ages = ports.subagent_ages(&cwd, sid).await;
-                running_subagents =
-                    count_running_subagents(&ages, subagent_fresh_within_sec(config.poll_sec));
-            }
+                count_running_subagents(&ages, subagent_fresh_within_sec(config.poll_sec)).max(1)
+            } else {
+                1
+            };
         }
 
         // Only sids with a live fd1 output need a transcript read to tell bg from fg; absent that,
@@ -274,6 +293,8 @@ impl StatusPoller {
         self.prev_limited.insert(win.cockpit_terminal_id.clone(), limited);
         self.prev_menu_open
             .insert(win.cockpit_terminal_id.clone(), menu_open);
+        self.prev_bg_present
+            .insert(win.cockpit_terminal_id.clone(), bg_agent_scraped);
         Some(CockpitTerminalInfo {
             cockpit_terminal_id: win.cockpit_terminal_id.clone(),
             name: win.name.clone(),
@@ -616,6 +637,55 @@ mod tests {
         assert_eq!(snap.sessions[0].state, "running_bg_agent");
         // Within the 30s freshness threshold there are 2 (1.0/5.0); 100.0 is past freshness.
         assert_eq!(snap.sessions[0].running_subagents, Some(2));
+    }
+
+    #[tokio::test]
+    async fn running_main_with_bg_agent_still_counts_running_subagents() {
+        // A live spinner in the bottom window makes detect_state resolve to `running` (isRunning
+        // wins over hasBgAgent), yet the background-agent tray is present. The subagent count must
+        // survive so the chip does not vanish while the main session is also busy.
+        let cap = "✻ Simmering… (esc to interrupt · ctrl+t)\n  ⏺ main\n  ◯ general-purpose  作業  1s\n  ◯ Explore  調査  2s";
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap.to_string())]),
+            subagent_ages: HashMap::from([(
+                format!("/repos/charlie/app\u{0}{SID}"),
+                vec![1.0, 5.0],
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "running");
+        assert_eq!(snap.sessions[0].running_subagents, Some(2));
+    }
+
+    #[tokio::test]
+    async fn bg_agent_tray_without_a_sid_still_reports_at_least_one_subagent() {
+        // detect_state returns RunningBgAgent before the has_claude gate, so a scraped tray with no
+        // resolvable sid must still report >=1 subagent; otherwise the count-driven chip would vanish
+        // on a genuine bg-agent row (state glyph is a spinner but no subagent chip).
+        let cap = "  ⏺ main\n  ◯ general-purpose  作業  1s";
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: "  100    1 -zsh\n".to_string(),
+            captures: HashMap::from([("%1".to_string(), cap.to_string())]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "running_bg_agent");
+        assert_eq!(snap.sessions[0].sid, None);
+        assert_eq!(snap.sessions[0].running_subagents, Some(1));
     }
 
     #[tokio::test]
