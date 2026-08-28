@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
-    apply_startup_grace, count_running_subagents, detect_state, fallback_state,
+    apply_startup_grace, count_running_subagents, detect_state, fallback_state, fleet_view_counts,
     hook_event_fresh_within_sec, is_limit_reached, is_menu_open, resolve_state, skill_agents_running,
     startup_grace_polls, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
@@ -126,6 +126,7 @@ impl StatusPoller {
 
         let in_mode = is_pane_in_mode(win, &picked.pane_id);
         let mut skill_agents: Option<usize> = None;
+        let mut fleet_view_working: Option<usize> = None;
         let (mut state, limited, menu_open) = if in_mode {
             (
                 self.prev_states
@@ -152,6 +153,7 @@ impl StatusPoller {
                 },
             );
             skill_agents = skill_agents_running(&capture);
+            fleet_view_working = fleet_view_counts(&capture).map(|f| f.working);
             let limited = is_limit_reached(&capture, resolve_limit_marker(config));
             let markers = resolve_menu_markers(config);
             let marker_refs: Vec<&str> = markers.iter().map(String::as_str).collect();
@@ -236,6 +238,10 @@ impl StatusPoller {
                 let ages = ports.subagent_ages(&cwd, sid).await;
                 running_subagents =
                     count_running_subagents(&ages, subagent_fresh_within_sec(config.poll_sec));
+                if running_subagents == 0 {
+                    // A dashboard terminal records no subagents of its own; its header count fills in.
+                    running_subagents = fleet_view_working.unwrap_or(0);
+                }
             }
         }
 
@@ -640,6 +646,69 @@ mod tests {
         let (snap, _) = poller.evaluate(&ports, &config()).await;
         assert_eq!(snap.sessions[0].state, "running_bg_agent");
         assert_eq!(snap.sessions[0].running_subagents, Some(6));
+    }
+
+    #[tokio::test]
+    async fn fleet_view_working_counts_sessions_from_capture() {
+        let cap = "Claude Code v2.1.191\nOpus 4.8 · ~/workspace/charlie/app\n0 awaiting input · 2 working · 1 completed\n\n› describe a task for a new session";
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap.to_string())]),
+            // A dashboard terminal has no recorded subagents, so the header count fills in.
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "running_bg_agent");
+        assert_eq!(snap.sessions[0].running_subagents, Some(2));
+    }
+
+    /// A live bg-agent panel keeps its recorded subagent count even when a header-shaped line is
+    /// also visible near the top of the same capture (the recorded count outranks the header).
+    #[tokio::test]
+    async fn bg_agent_panel_count_outranks_fleet_view_header() {
+        let cap = "  1 awaiting input · 9 working · 0 completed\n  ⏺ main\n  ◯ general-purpose  作業  1s";
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap.to_string())]),
+            subagent_ages: HashMap::from([(
+                format!("/repos/charlie/app\u{0}{SID}"),
+                vec![1.0, 2.0],
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "running_bg_agent");
+        assert_eq!(snap.sessions[0].running_subagents, Some(2));
+    }
+
+    #[tokio::test]
+    async fn fleet_view_awaiting_input_maps_to_waiting_input() {
+        let cap = "Claude Code v2.1.191\nOpus 4.8 · ~/workspace/charlie/app\n1 awaiting input · 1 working · 0 completed\n\n› describe a task for a new session";
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap.to_string())]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "waiting_input");
     }
 
     #[tokio::test]
