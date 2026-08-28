@@ -77,7 +77,7 @@ pub use crate::poller_types::{
 
 use crate::poller_eval_helpers::{
     build_orgs, is_pane_in_mode, last_path_segment, pick_pane, resolve_bg_agent_marker,
-    resolve_limit_marker, resolve_menu_markers, roots_ref, state_wire,
+    resolve_limit_markers, resolve_menu_markers, roots_ref, state_wire,
 };
 
 /// The server-side state poller (the core evaluation logic). It holds the previous state for pane_in_mode skips
@@ -215,7 +215,9 @@ impl StatusPoller {
             bg_agent_scraped =
                 has_bg_agent(&capture, resolve_bg_agent_marker(config)) || skill_agents.is_some();
             open_tasks_on_screen = open_tasks_remaining(&capture).is_some();
-            let limited = is_limit_reached(&capture, resolve_limit_marker(config));
+            let limit_markers = resolve_limit_markers(config);
+            let limit_refs: Vec<&str> = limit_markers.iter().map(String::as_str).collect();
+            let limited = is_limit_reached(&capture, &limit_refs);
             let markers = resolve_menu_markers(config);
             let marker_refs: Vec<&str> = markers.iter().map(String::as_str).collect();
             let menu_open = is_menu_open(&capture, &marker_refs);

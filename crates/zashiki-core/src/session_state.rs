@@ -33,8 +33,11 @@ pub enum CockpitTerminalState {
 pub const DEFAULT_RUN_MARKER: &str = "(esc to interrupt";
 /// The line-start marker for a bg-agent line.
 pub const DEFAULT_BG_AGENT_MARKER: &str = "◯";
-/// The text marker for the usage-limit-reached banner (Claude Code's phrasing).
-pub const DEFAULT_LIMIT_MARKER: &str = "usage limit reached";
+/// Line-head markers for the limit-reached banners. Claude Code renders two wordings: the lockout
+/// banner (`✗ Claude usage limit reached · /upgrade …`) and the auto-retry banner
+/// (`✻ Session limit reached · Retrying in …`).
+pub const DEFAULT_LIMIT_MARKERS: &[&str] =
+    &["claude usage limit reached", "session limit reached"];
 
 /// Distinctive header phrases of Claude Code's built-in menu/overlay screens (`/login`, `/status`,
 /// `/usage`, `/model`, `/mcp`, and the wider settings family). A session showing one of these is
@@ -168,29 +171,48 @@ pub fn is_running(capture: &str, marker: &str) -> bool {
         .any(|line| line.contains(marker) || has_live_spinner_timer(line))
 }
 
-/// Detects Claude Code's usage-limit reached from the bottom of the screen (the last 8 non-empty
-/// lines). A case-insensitive substring match of the marker (default `usage limit reached`). It is
-/// an attribute orthogonal to the main state and is not built into `detect_state` (so as not to make
-/// the case of a limit banner appearing during running mutually exclusive). Case is ignored because,
-/// unlike `is_running`'s marker (stable casing), the leading casing of the limit text can vary. An
-/// empty marker falls to false to avoid a false positive (matching every window) (callers are expected to resolve to the default).
-pub fn is_limit_reached(capture: &str, marker: &str) -> bool {
-    if marker.is_empty() {
+/// Detects Claude Code's limit-reached banner from the bottom of the screen (the last 8 non-empty
+/// lines). A marker must head a line — after stripping leading decoration — case-insensitively, so
+/// a quoted occurrence mid-line (i18n resources, docs, chat text) does not trip it while the real
+/// banner (glyph + marker at the line head) still does. It is an attribute orthogonal to the main
+/// state and is not built into `detect_state` (so as not to make the case of a limit banner
+/// appearing during running mutually exclusive). An empty marker list (or all-empty markers) falls
+/// to false to avoid a false positive (matching every window) (callers are expected to resolve to
+/// the default).
+pub fn is_limit_reached(capture: &str, markers: &[&str]) -> bool {
+    let needles = lowercase_needles(markers);
+    if needles.is_empty() {
         return false;
     }
-    let needle = marker.to_lowercase();
     bottom_non_empty_lines(capture)
         .iter()
-        .any(|line| line.to_lowercase().contains(&needle))
+        .any(|line| head_starts_with(line, &needles))
 }
 
-/// Leading line decoration (whitespace or a box-border/bullet glyph) stripped before a menu marker
-/// is tested at the start of a line, so a centered or box-framed overlay title still matches.
-fn is_menu_line_decoration(c: char) -> bool {
+/// Lowercased non-empty marker needles for case-insensitive matching (empty result = match nothing).
+fn lowercase_needles(markers: &[&str]) -> Vec<String> {
+    markers
+        .iter()
+        .filter(|m| !m.is_empty())
+        .map(|m| m.to_lowercase())
+        .collect()
+}
+
+/// Whether a needle heads the line after stripping leading decoration, case-insensitively.
+fn head_starts_with(line: &str, needles: &[String]) -> bool {
+    let head = line.trim_start_matches(is_line_decoration).to_lowercase();
+    needles.iter().any(|n| head.starts_with(n.as_str()))
+}
+
+/// Leading line decoration (whitespace, a box-border/bullet glyph, or a banner status/spinner
+/// glyph) stripped before a menu or limit marker is tested at the start of a line, so a centered,
+/// box-framed, or glyph-prefixed banner line still matches.
+fn is_line_decoration(c: char) -> bool {
     is_js_whitespace(c)
         || matches!(
             c,
-            '│' | '┃' | '|' | '╎' | '┆' | '>' | '*' | '•' | '·' | '-' | '─'
+            '│' | '┃' | '|' | '╎' | '┆' | '>' | '*' | '•' | '·' | '-' | '─' | '✗' | '✻'
+                | '✳' | '✶' | '✽' | '✢'
         )
 }
 
@@ -202,18 +224,13 @@ fn is_menu_line_decoration(c: char) -> bool {
 /// Orthogonal to the main state — it only overrides the rendered glyph, so it is not folded into
 /// `detect_state`. An empty marker list (or all-empty markers) yields false.
 pub fn is_menu_open(capture: &str, markers: &[&str]) -> bool {
-    let needles: Vec<String> = markers
-        .iter()
-        .filter(|m| !m.is_empty())
-        .map(|m| m.to_lowercase())
-        .collect();
+    let needles = lowercase_needles(markers);
     if needles.is_empty() {
         return false;
     }
-    capture.split('\n').any(|line| {
-        let head = line.trim_start_matches(is_menu_line_decoration).to_lowercase();
-        needles.iter().any(|n| head.starts_with(n.as_str()))
-    })
+    capture
+        .split('\n')
+        .any(|line| head_starts_with(line, &needles))
 }
 
 /// Whether the live background-agent panel (`⏺ main` heading directly above line-start `◯ ` agent
@@ -1171,23 +1188,29 @@ mod tests {
         assert!(has_bg_agent("  ⏺ main\n  ◯ x", "◯"));
     }
 
-    // ---- is_limit_reached (usage-limit banner detection) ----
+    // ---- is_limit_reached (limit banner detection) ----
 
     const CAP_LIMIT: &str = "⏺ 直前の応答\n✗ Claude usage limit reached · /upgrade to increase your limit\n╭───╮\n│ ❯ │\n╰───╯";
+    const CAP_LIMIT_RETRY: &str = "✳ Session limit reached  Retrying in 20m (6:30pm) · attempt 1/15\n╭───╮\n│ ❯ │\n╰───╯";
     const CAP_LIMIT_HISTORY_QUOTE: &str =
-        "過去ログ: usage limit reached の話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
+        "過去ログ: Claude usage limit reached の話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
     const CAP_RUN_WITH_USAGE_STATUS: &str = "✻ Razzle-dazzling… (8m 10s · ↓ 34.3k tokens)\n───\n❯\n───\n  15% usage/5h(-13m) | 46% usage/week";
 
     #[test]
-    fn limit_reached_detects_bottom_banner() {
-        assert!(is_limit_reached(CAP_LIMIT, DEFAULT_LIMIT_MARKER));
+    fn limit_reached_detects_lockout_banner() {
+        assert!(is_limit_reached(CAP_LIMIT, DEFAULT_LIMIT_MARKERS));
+    }
+
+    #[test]
+    fn limit_reached_detects_session_retry_banner() {
+        assert!(is_limit_reached(CAP_LIMIT_RETRY, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_is_case_insensitive() {
         assert!(is_limit_reached(
             "✗ Claude Usage Limit Reached",
-            DEFAULT_LIMIT_MARKER
+            DEFAULT_LIMIT_MARKERS
         ));
     }
 
@@ -1195,28 +1218,39 @@ mod tests {
     fn limit_reached_ignores_history_quote_outside_bottom_window() {
         assert!(!is_limit_reached(
             CAP_LIMIT_HISTORY_QUOTE,
-            DEFAULT_LIMIT_MARKER
+            DEFAULT_LIMIT_MARKERS
         ));
+    }
+
+    #[test]
+    fn limit_reached_ignores_quoted_marker_mid_line_in_bottom_window() {
+        let cap = "⏺ 出力\n  \"limitReached\": \"Usage limit reached\",\n  the phrase Session limit reached appears quoted\n╭───╮\n│ ❯ │\n╰───╯";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
     }
 
     #[test]
     fn limit_reached_false_for_usage_percent_status_line() {
         assert!(!is_limit_reached(
             CAP_RUN_WITH_USAGE_STATUS,
-            DEFAULT_LIMIT_MARKER
+            DEFAULT_LIMIT_MARKERS
         ));
     }
 
     #[test]
-    fn limit_reached_empty_marker_never_matches() {
-        assert!(!is_limit_reached(CAP_LIMIT, ""));
+    fn limit_reached_empty_markers_never_match() {
+        assert!(!is_limit_reached(CAP_LIMIT, &[]));
+        assert!(!is_limit_reached(CAP_LIMIT, &[""]));
     }
 
     #[test]
-    fn limit_reached_marker_is_overridable() {
-        let cap = "◈ RATE_CAP_HIT ◈\n───\n❯\n───";
-        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKER));
-        assert!(is_limit_reached(cap, "RATE_CAP_HIT"));
+    fn limit_reached_marker_is_overridable_with_line_head_semantics() {
+        let cap = "✗ RATE_CAP_HIT\n───\n❯\n───";
+        assert!(!is_limit_reached(cap, DEFAULT_LIMIT_MARKERS));
+        assert!(is_limit_reached(cap, &["rate_cap_hit"]));
+        assert!(!is_limit_reached(
+            "quoted \"RATE_CAP_HIT\" mid line",
+            &["rate_cap_hit"]
+        ));
     }
 
     // ---- is_menu_open (Claude Code menu/overlay detection) ----

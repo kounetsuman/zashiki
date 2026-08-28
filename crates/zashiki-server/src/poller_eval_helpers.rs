@@ -2,7 +2,7 @@
 
 use zashiki_core::repos::org_names;
 use zashiki_core::session_state::{
-    CockpitTerminalState, DEFAULT_BG_AGENT_MARKER, DEFAULT_LIMIT_MARKER, DEFAULT_MENU_MARKERS,
+    CockpitTerminalState, DEFAULT_BG_AGENT_MARKER, DEFAULT_LIMIT_MARKERS, DEFAULT_MENU_MARKERS,
 };
 
 use zashiki_core::process_tree::find_sid_in_tree;
@@ -24,12 +24,26 @@ pub(crate) fn state_wire(state: CockpitTerminalState) -> &'static str {
     }
 }
 
-/// Resolves the limit marker (empty/unset falls back to the default; same policy as detect_state's resolve).
-pub(crate) fn resolve_limit_marker(config: &PollConfig) -> &str {
-    match config.limit_marker.as_deref() {
-        Some(m) if !m.is_empty() => m,
-        _ => DEFAULT_LIMIT_MARKER,
+/// Splits a comma-separated marker override (trimmed, empties dropped); an unset or all-empty
+/// override falls back to the defaults.
+fn resolve_markers(raw: Option<&str>, defaults: &[&str]) -> Vec<String> {
+    let parsed: Vec<String> = raw
+        .unwrap_or("")
+        .split(',')
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string)
+        .collect();
+    if parsed.is_empty() {
+        defaults.iter().map(|m| m.to_string()).collect()
+    } else {
+        parsed
     }
+}
+
+/// Resolves the limit markers (ZK_LIMIT_MARKER override, falling back to DEFAULT_LIMIT_MARKERS).
+pub(crate) fn resolve_limit_markers(config: &PollConfig) -> Vec<String> {
+    resolve_markers(config.limit_marker.as_deref(), DEFAULT_LIMIT_MARKERS)
 }
 
 /// Resolves the bg-agent marker (empty/unset falls back to the default; same policy as detect_state's resolve).
@@ -40,23 +54,9 @@ pub(crate) fn resolve_bg_agent_marker(config: &PollConfig) -> &str {
     }
 }
 
-/// Resolves the menu markers by splitting the comma-separated override on commas (trimmed, empties
-/// dropped); an unset or all-empty override falls back to DEFAULT_MENU_MARKERS.
+/// Resolves the menu markers (ZK_MENU_MARKERS override, falling back to DEFAULT_MENU_MARKERS).
 pub(crate) fn resolve_menu_markers(config: &PollConfig) -> Vec<String> {
-    let parsed: Vec<String> = config
-        .menu_markers
-        .as_deref()
-        .unwrap_or("")
-        .split(',')
-        .map(str::trim)
-        .filter(|m| !m.is_empty())
-        .map(str::to_string)
-        .collect();
-    if parsed.is_empty() {
-        DEFAULT_MENU_MARKERS.iter().map(|m| m.to_string()).collect()
-    } else {
-        parsed
-    }
+    resolve_markers(config.menu_markers.as_deref(), DEFAULT_MENU_MARKERS)
 }
 
 /// The last segment of cwd (the repo name).

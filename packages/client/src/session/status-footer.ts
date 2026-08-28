@@ -172,6 +172,21 @@ export function pickAccountLimits(
   return { fiveHour, week };
 }
 
+/**
+ * While a limit banner is on screen, the statusLine percent is stale (it only advances on a
+ * successful request), so the banner wins: force the five-hour percent to 100, keeping `resetsAt`.
+ */
+export function clampFiveHourWhenLimited(
+  limits: UsageLimits | null,
+  limited: boolean,
+): UsageLimits | null {
+  if (!limited || !limits?.fiveHour) return limits;
+  return {
+    ...limits,
+    fiveHour: { ...limits.fiveHour, usedPercent: 100 },
+  };
+}
+
 export interface ResetClockOpts {
   now: number;
   locale?: string;

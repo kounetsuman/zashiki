@@ -4,7 +4,15 @@ import type { CockpitTerminalState } from "./protocol.js";
 
 export const DEFAULT_RUN_MARKER = "(esc to interrupt";
 export const DEFAULT_BG_AGENT_MARKER = "◯";
-export const DEFAULT_LIMIT_MARKER = "usage limit reached";
+/**
+ * Line-head markers for the limit-reached banners. Claude Code renders two wordings: the lockout
+ * banner (`✗ Claude usage limit reached · /upgrade …`) and the auto-retry banner
+ * (`✻ Session limit reached · Retrying in …`).
+ */
+export const DEFAULT_LIMIT_MARKERS: readonly string[] = [
+  "claude usage limit reached",
+  "session limit reached",
+];
 
 /**
  * Distinctive header phrases of Claude Code's built-in menu/overlay screens (`/login`, `/status`,
@@ -61,30 +69,43 @@ export function isRunning(
   );
 }
 
+// Leading line decoration (whitespace, a box-border/bullet glyph, or a banner status/spinner glyph)
+// stripped before a menu or limit marker is tested at the start of a line, so a centered,
+// box-framed, or glyph-prefixed banner line still matches.
+const LINE_DECORATION = /^[\s│┃|╎┆>*•·\-─✗✻✳✶✽✢]+/;
+
+/** Lowercased non-empty marker needles for case-insensitive matching (empty result = match nothing). */
+function lowercaseNeedles(markers: readonly string[]): string[] {
+  return markers.filter((m) => m !== "").map((m) => m.toLowerCase());
+}
+
+/** Whether a needle heads the line after stripping leading decoration, case-insensitively. */
+function headStartsWith(line: string, needles: readonly string[]): boolean {
+  const head = line.replace(LINE_DECORATION, "").toLowerCase();
+  return needles.some((n) => head.startsWith(n));
+}
+
 /**
- * Detect that Claude Code's usage limit has been reached from the bottom of the
- * screen (last 8 non-empty lines). A substring match on marker (default
- * "usage limit reached"), case-insensitive. This is an attribute orthogonal to
- * the main state, so it is not folded into detectState (to avoid making the case
- * where a limit banner appears during running mutually exclusive). It ignores
- * case because, unlike isRunning's marker (stable casing), the leading casing of
- * the limit text can vary. An empty marker falls back to false to avoid false
+ * Detect Claude Code's limit-reached banner from the bottom of the screen (last
+ * 8 non-empty lines). A marker must head a line — after stripping leading
+ * decoration — case-insensitively, so a quoted occurrence mid-line (i18n
+ * resources, docs, chat text) does not trip it while the real banner (glyph +
+ * marker at the line head) still does. This is an attribute orthogonal to the
+ * main state, so it is not folded into detectState (to avoid making the case
+ * where a limit banner appears during running mutually exclusive). An empty
+ * marker list (or all-empty markers) falls back to false to avoid false
  * positives (matching every window).
  */
 export function isLimitReached(
   capture: string,
-  marker: string = DEFAULT_LIMIT_MARKER,
+  markers: readonly string[] = DEFAULT_LIMIT_MARKERS,
 ): boolean {
-  const needle = marker.toLowerCase();
-  if (needle === "") return false;
+  const needles = lowercaseNeedles(markers);
+  if (needles.length === 0) return false;
   return bottomNonEmptyLines(capture).some((line) =>
-    line.toLowerCase().includes(needle),
+    headStartsWith(line, needles),
   );
 }
-
-// Leading line decoration (whitespace or a box-border/bullet glyph) stripped before a menu marker
-// is tested at the start of a line, so a centered or box-framed overlay title still matches.
-const MENU_LINE_DECORATION = /^[\s│┃|╎┆>*•·\-─]+/;
 
 /**
  * Whether one of Claude Code's built-in menu/overlay screens is open, i.e. a marker heads any line of
@@ -99,12 +120,9 @@ export function isMenuOpen(
   capture: string,
   markers: readonly string[] = DEFAULT_MENU_MARKERS,
 ): boolean {
-  const needles = markers.filter((m) => m !== "").map((m) => m.toLowerCase());
+  const needles = lowercaseNeedles(markers);
   if (needles.length === 0) return false;
-  return capture.split("\n").some((line) => {
-    const head = line.replace(MENU_LINE_DECORATION, "").toLowerCase();
-    return needles.some((n) => head.startsWith(n));
-  });
+  return capture.split("\n").some((line) => headStartsWith(line, needles));
 }
 
 /**

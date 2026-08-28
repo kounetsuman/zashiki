@@ -30,7 +30,10 @@ function defaultStorage(): StoragePart | null {
 }
 
 export interface AccountUsageFooterProps {
-  /** Account-wide usage limits aggregated from the cockpit terminals; null until the statusLine bridge reports any. */
+  /**
+   * Account-wide usage limits aggregated from the cockpit terminals (pre-corrected by
+   * clampFiveHourWhenLimited); null until the statusLine bridge reports any.
+   */
   limits: UsageLimits | null;
   /** Whether the account-usage bridge is opted in. When off, only the (clickable) icon is shown. */
   enabled: boolean;
