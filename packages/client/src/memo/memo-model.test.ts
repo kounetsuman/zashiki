@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  confirmMemoSaved,
   EMPTY_MEMO,
   editMemo,
   type MemoBuffer,
@@ -68,5 +69,37 @@ describe("syncMemo", () => {
     // Dirty whitespace-only buffer; the server stored it as empty and echoes "".
     const r = syncMemo(buf("   ", "old"), "");
     expect(memoDirty(r)).toBe(false);
+  });
+
+  it("keeps clean whitespace-only local text when the server echoes its empty form", () => {
+    const base = buf("   ", "");
+    expect(syncMemo(base, "")).toBe(base);
+  });
+});
+
+describe("confirmMemoSaved", () => {
+  it("becomes clean when the buffer still holds the saved text", () => {
+    const r = confirmMemoSaved(buf("hi", ""), "hi");
+    expect(r).toEqual(buf("hi", "hi"));
+    expect(memoDirty(r)).toBe(false);
+  });
+
+  it("keeps edits typed after the save dirty against the new baseline", () => {
+    const r = confirmMemoSaved(buf("hi and more", ""), "hi");
+    expect(r).toEqual(buf("hi and more", "hi"));
+    expect(memoDirty(r)).toBe(true);
+  });
+
+  it("records a whitespace-only save as the empty baseline (the server deletes it)", () => {
+    const r = confirmMemoSaved(buf("   ", "old"), "   ");
+    expect(r.savedText).toBe("");
+    expect(memoDirty(r)).toBe(false);
+  });
+
+  it("never replaces the editor text: a stale confirmation leaves the buffer dirty", () => {
+    // The buffer already advanced to newer text when an older save's confirmation lands.
+    const r = confirmMemoSaved(buf("newer", "newer"), "older");
+    expect(r).toEqual(buf("newer", "older"));
+    expect(memoDirty(r)).toBe(true);
   });
 });

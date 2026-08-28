@@ -7,6 +7,7 @@ import type {
 import i18n from "../i18n/index.js";
 import type { Notifier } from "../lib/notify.js";
 import {
+  confirmMemoSaved,
   EMPTY_MEMO,
   editMemo,
   type MemoBuffer,
@@ -103,6 +104,8 @@ export interface AppStore {
   clearError(): void;
   /** Records a local Memo edit (marks the buffer dirty until saved / synced). */
   setMemoText(text: string): void;
+  /** Re-bases the saved baseline after a confirmed save, without waiting for memo.sync. */
+  markMemoSaved(text: string): void;
 }
 
 /**
@@ -204,6 +207,11 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
 
   function setMemoText(text: string): void {
     const memo = editMemo(state.memo, text);
+    if (memo !== state.memo) setState({ memo });
+  }
+
+  function markMemoSaved(text: string): void {
+    const memo = confirmMemoSaved(state.memo, text);
     if (memo !== state.memo) setState({ memo });
   }
 
@@ -339,5 +347,6 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     },
     clearError,
     setMemoText,
+    markMemoSaved,
   };
 }

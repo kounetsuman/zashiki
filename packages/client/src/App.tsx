@@ -50,6 +50,7 @@ import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
+import { createMemoSaver } from "./memo/memo-saver.js";
 import {
   clampFiveHourWhenLimited,
   fmtResetClock,
@@ -88,6 +89,7 @@ import { UpdateBanner } from "./ui/UpdateBanner.js";
 import { UsageLimitWarningDialog } from "./ui/UsageLimitWarningDialog.js";
 import { useAppKeyboardShortcuts } from "./ui/useAppKeyboardShortcuts.js";
 import { useAppTabs } from "./ui/useAppTabs.js";
+import { useBeforeUnloadGuard } from "./ui/useBeforeUnloadGuard.js";
 import { useClipboardCopy } from "./ui/useClipboardCopy.js";
 import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
@@ -386,7 +388,15 @@ export function App({
   }, [tabsState.tabs, closeTabByKey]);
 
   const { copyToast, flashCopyToast } = useCopyToast();
-  const selfUpdate = useSelfUpdate(control, flashCopyToast, t);
+  const [memoSaver] = useState(() =>
+    createMemoSaver(
+      () => store.getSnapshot().memo,
+      (text) => reposApi.setMemo(text),
+      (text) => store.markMemoSaved(text),
+    ),
+  );
+  const selfUpdate = useSelfUpdate(control, flashCopyToast, t, memoSaver.flush);
+  useBeforeUnloadGuard(memoEnabled && memoDirty(memo));
   const { copySessionIdByCockpitTerminalId } = useClipboardCopy(
     cockpitTerminals,
     flashCopyToast,
@@ -552,14 +562,6 @@ export function App({
       });
     },
     [cockpitTerminals, store, control],
-  );
-
-  // Persist the Memo over REST; the server broadcasts memo.sync so the buffer's saved baseline moves.
-  const saveMemo = useCallback(
-    (text: string): void => {
-      void reposApi.setMemo(text);
-    },
-    [reposApi],
   );
 
   const onChangeMemo = useCallback(
@@ -975,7 +977,7 @@ export function App({
               <MemoEditor
                 buffer={memo}
                 onChange={onChangeMemo}
-                onSave={saveMemo}
+                onSave={memoSaver.save}
                 focusNonce={memoFocusNonce}
               />
             )}
