@@ -4,6 +4,8 @@
 
 `notify-event.sh` は Claude Code の hook（UserPromptSubmit / PostToolUse / Notification / Stop）から呼ばれ、zashiki サーバの `POST /api/hooks/event` へイベントを転送する薄いシェル。サーバはこれを受けて状態の即時再評価と通知配送を行う。
 
+`Notification` を `waiting` として転送するのは、その `notification_type` が画面にウィザード／入力ダイアログを出すもの（`permission_prompt`・`elicitation_dialog`）のときだけ。他の型（`idle_prompt`・`auth_success`・elicitation の完了系）は落とし、アイドルで完了済みのセッションが応答待ちにならないようにする。`notification_type` を持たないペイロード（旧 Claude Code）は従来どおり転送する。
+
 `statusline.sh` は Claude Code の `statusLine` 用の相棒で、そのペイロードを `POST /api/hooks/statusline` へ転送し、セッション状態フッタが使用率を表示できるようにする（`rate_limits` は statusLine コマンドにのみ渡され transcript には載らない）。任意設定であり、フッタのトークン・経過時間は無しでも動く。使用率のセグメントだけがこれを必要とする。
 
 ## 設計上の約束

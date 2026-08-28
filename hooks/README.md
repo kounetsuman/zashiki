@@ -4,6 +4,8 @@
 
 `notify-event.sh` is a thin shell called from Claude Code hooks (UserPromptSubmit / PostToolUse / Notification / Stop) that forwards events to the zashiki server's `POST /api/hooks/event`. On receiving them, the server immediately re-evaluates state and delivers notifications.
 
+A `Notification` is forwarded as `waiting` only when its `notification_type` puts a wizard / input dialog on screen (`permission_prompt`, `elicitation_dialog`); other types (`idle_prompt`, `auth_success`, elicitation completions) are dropped so an idle-but-finished session isn't marked waiting. A payload without `notification_type` (older Claude Code) is forwarded as before.
+
 `statusline.sh` is the companion for Claude Code's `statusLine`: it forwards the payload to `POST /api/hooks/statusline` so the session status footer can show account usage limits (`rate_limits` reaches the statusLine command only, never the transcript). It is optional — the footer's tokens and elapsed time work without it; only the usage-limit segments need it.
 
 ## Design guarantees

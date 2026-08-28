@@ -27,7 +27,20 @@ run_legacy() {
 case "$kind" in
   UserPromptSubmit | prompt) kind=prompt ;;
   PostToolUse | tool) kind=tool ;;
-  Notification | waiting) kind=waiting ;;
+  Notification | waiting)
+    kind=waiting
+    # notification_type gates waiting (see hooks/README.md); "" also covers older Claude Code / no jq.
+    if [ -n "$input" ] && command -v jq >/dev/null 2>&1; then
+      ntype="$(printf '%s' "$input" | jq -r '.notification_type // ""' 2>/dev/null || true)"
+      case "$ntype" in
+        "" | permission_prompt | elicitation_dialog) ;;
+        *)
+          run_legacy
+          exit 0
+          ;;
+      esac
+    fi
+    ;;
   Stop | done) kind=done ;;
   *)
     run_legacy
