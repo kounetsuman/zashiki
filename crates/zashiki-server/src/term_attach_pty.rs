@@ -433,6 +433,7 @@ mod tests {
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             heartbeat: HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
+            notify_history: true,
             mac_notify: std::sync::Arc::new(|_| {}),
             config_path: None,
             claude_settings: None,

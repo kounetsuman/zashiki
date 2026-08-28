@@ -76,6 +76,7 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
         req.kind,
         resolved.as_ref(),
         control.notify_mode,
+        control.notify_history,
         control.hub.client_count(),
         snap_title,
     );
@@ -211,6 +212,7 @@ mod hooks_rest_tests {
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: mode,
+            notify_history: true,
             mac_notify: Arc::new(move |n| mac_log.lock().unwrap().push(n)),
             config_path: None,
             claude_settings: None,

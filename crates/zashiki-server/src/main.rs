@@ -150,6 +150,8 @@ async fn main() {
         notify_mode: zashiki_server::hooks::NotifyMode::from_str_or_default(
             &std::env::var("ZK_NOTIFY").unwrap_or_default(),
         ),
+        // ZK_NOTIFY_HISTORY=off keeps the toast but stops accumulating waiting/done in NOTIFICATION.
+        notify_history: std::env::var("ZK_NOTIFY_HISTORY").unwrap_or_default() != "off",
         mac_notify: zashiki_server::mac_notifier::terminal_notifier(),
         // Real bundle version from the Tauri shell (app.package_info().version). Absent for the standalone
         // server / dev, which disables the update check (#26).

@@ -12,6 +12,12 @@ import {
   type MemoBuffer,
   syncMemo,
 } from "../memo/memo-model.js";
+import {
+  pruneClosedSessionToasts,
+  removeSessionToast,
+  type SessionToast,
+  upsertSessionToast,
+} from "./session-toast-model.js";
 
 /** State the App uses for rendering (the useSyncExternalStore snapshot). */
 export interface AppState {
@@ -27,6 +33,8 @@ export interface AppState {
   memo: MemoBuffer;
   /** In-app notifications. The server holds them and broadcasts the full set via notifications.sync. */
   notifications: Notification[];
+  /** Transient waiting/done session toasts, driven by the notify push and held only client-side. */
+  sessionToasts: SessionToast[];
   /** The signed-in Claude account (auth is global per OS user). Delivered via account.status. */
   account: { loggedIn: boolean; email: string | null };
   lastError: string | null;
@@ -56,7 +64,7 @@ export interface AppStoreDeps {
     getTermId(): string | null;
   };
   notifier: Notifier;
-  /** Brings the tab to the front on notification click (defaults to window.focus; overridden in tests). */
+  /** Brings the tab to the front on toast click (defaults to window.focus; overridden in tests). */
   focusWindow?: () => void;
 }
 
@@ -87,6 +95,10 @@ export interface AppStore {
    * auto-selects the newest added window (showing it in the main area the moment a new session is created).
    */
   markNewRequested(): void;
+  /** Brings the tab to front and selects the terminal a clicked session toast points at. */
+  activateSessionToast(cockpitTerminalId: string): void;
+  /** Dismisses a session toast without selecting its terminal (the × button). */
+  dismissSessionToast(cockpitTerminalId: string): void;
   /** Dismisses the error dialog (clears lastError originating from a server error). */
   clearError(): void;
   /** Records a local Memo edit (marks the buffer dirty until saved / synced). */
@@ -133,6 +145,7 @@ const INITIAL_STATE: AppState = {
   orgNotes: {},
   memo: EMPTY_MEMO,
   notifications: [],
+  sessionToasts: [],
   account: { loggedIn: false, email: null },
   lastError: null,
   selectedCockpitTerminalId: null,
@@ -160,8 +173,20 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     setState({
       selectedCockpitTerminalId: cockpitTerminalId,
       resizeNonce: state.resizeNonce + 1,
+      sessionToasts: removeSessionToast(state.sessionToasts, cockpitTerminalId),
     });
     deps.session.select(cockpitTerminalId);
+  }
+
+  function activateSessionToast(cockpitTerminalId: string): void {
+    (deps.focusWindow ?? (() => window.focus()))();
+    selectCockpitTerminal(cockpitTerminalId);
+  }
+
+  function dismissSessionToast(cockpitTerminalId: string): void {
+    setState({
+      sessionToasts: removeSessionToast(state.sessionToasts, cockpitTerminalId),
+    });
   }
 
   function focusTerminal(): void {
@@ -190,6 +215,13 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
             m.cockpitTerminals,
           )
         : null;
+      const liveIds = new Set(
+        m.cockpitTerminals.map((s) => s.cockpitTerminalId),
+      );
+      const sessionToasts = pruneClosedSessionToasts(
+        state.sessionToasts,
+        liveIds,
+      );
       if (added !== null) {
         pendingNew = false;
         // Move focus to the terminal the moment we auto-switch to the new window.
@@ -202,6 +234,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           selectedCockpitTerminalId: added,
           focusNonce: state.focusNonce + 1,
           resizeNonce: state.resizeNonce + 1,
+          sessionToasts: removeSessionToast(sessionToasts, added),
         });
         deps.session.select(added);
       } else {
@@ -210,6 +243,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           orgs: m.orgs,
           orgColors: m.orgColors,
           orgAliases: m.orgAliases,
+          sessionToasts,
         });
       }
     } else if (m.t === "notifications.sync") {
@@ -249,19 +283,19 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           : `${m.code}: ${m.message}`;
       setState({ lastError });
     } else if (m.t === "notify") {
-      // Web Notification + notification sound. Click brings to front + focus jump.
+      // Sound + a persistent, click-to-focus session toast. The terminal being viewed needs no toast.
+      deps.notifier.playSound(m.kind);
+      if (m.cockpitTerminalId === state.selectedCockpitTerminalId) return;
       const info = state.cockpitTerminals.find(
         (s) => s.cockpitTerminalId === m.cockpitTerminalId,
       );
-      deps.notifier.notify({
-        kind: m.kind,
-        title: `${i18n.t(m.kind === "waiting" ? "notification.waiting" : "notification.done")} ${m.title}`,
-        body: info?.title ?? undefined,
-        tag: `zk-${m.cockpitTerminalId}`,
-        onClick: () => {
-          (deps.focusWindow ?? (() => window.focus()))();
-          selectCockpitTerminal(m.cockpitTerminalId);
-        },
+      setState({
+        sessionToasts: upsertSessionToast(state.sessionToasts, {
+          cockpitTerminalId: m.cockpitTerminalId,
+          kind: m.kind,
+          org: info ? (state.orgAliases[info.org] ?? info.org) : "",
+          title: info?.title ?? null,
+        }),
       });
     } else if (m.t === "select") {
       // External focus request (e.g. a clicked desktop notification via /api/focus):
@@ -296,6 +330,8 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     selectCockpitTerminal,
     focusTerminal,
     deselect,
+    activateSessionToast,
+    dismissSessionToast,
     markNewRequested() {
       pendingNew = true;
     },

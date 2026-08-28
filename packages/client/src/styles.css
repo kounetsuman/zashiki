@@ -2766,6 +2766,61 @@ textarea {
   font-size: 16px;
 }
 
+.session-toaster {
+  position: fixed;
+  right: 12px;
+  top: 12px;
+  z-index: 61;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 340px;
+}
+
+.session-toast {
+  padding: 8px 10px;
+  border-left-color: #7aa2f7;
+}
+.session-toast-waiting {
+  border-left-color: #e5c07b;
+}
+.session-toast-done {
+  border-left-color: #98c379;
+}
+
+.session-toast-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.session-toast-main:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.session-toast-status {
+  font-size: 12px;
+  color: #eee;
+}
+.session-toast-org {
+  font-size: 11px;
+  color: #7aa2f7;
+}
+.session-toast-title {
+  font-size: 11px;
+  color: #9aa0a6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 記号グリフから移行した Material Symbols アイコンの寸法（issue #9）。
  * 折りたたみ矢印・ビューヘッダボタン・行アクション・タブ閉じ等で共通。 */
 .view-arrow.material-symbols-outlined,

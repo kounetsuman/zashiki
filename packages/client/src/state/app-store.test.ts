@@ -21,6 +21,7 @@ function fakeControl() {
 
 function fakeNotifier() {
   const notified: NotifyOptions[] = [];
+  const sounds: string[] = [];
   const notifier: Notifier = {
     isEnabled: () => true,
     setEnabled: () => undefined,
@@ -28,8 +29,9 @@ function fakeNotifier() {
     permission: () => "granted",
     requestPermission: () => Promise.resolve("granted"),
     notify: (opts) => void notified.push(opts),
+    playSound: (kind) => void sounds.push(kind),
   };
-  return { notifier, notified };
+  return { notifier, notified, sounds };
 }
 
 const session: CockpitTerminalInfo = {
@@ -48,7 +50,7 @@ function sessionWith(cockpitTerminalId: string): CockpitTerminalInfo {
 
 function setup() {
   const control = fakeControl();
-  const { notifier, notified } = fakeNotifier();
+  const { notifier, notified, sounds } = fakeNotifier();
   const selected: string[] = [];
   const focused: number[] = [];
   const reconnects: number[] = [];
@@ -68,6 +70,7 @@ function setup() {
   return {
     control,
     notified,
+    sounds,
     selected,
     focused,
     reconnects,
@@ -258,7 +261,54 @@ describe("createAppStore", () => {
     expect(t.reconnects).toEqual([1]);
   });
 
-  it("calls notifier.notify on receiving notify (per-kind title, summary body, tag aggregation)", () => {
+  it("plays the sound and adds a session toast (org alias + summary) on notify", () => {
+    const t = setup();
+    t.control.emit({
+      t: "state.sync",
+      cockpitTerminals: [session],
+      orgs: ["o"],
+      orgColors: {},
+      orgAliases: { o: "Org One" },
+    });
+    t.control.emit({
+      t: "notify",
+      kind: "waiting",
+      cockpitTerminalId: "@1",
+      title: "myrepo",
+    });
+    expect(t.sounds).toEqual(["waiting"]);
+    expect(t.notified).toHaveLength(0);
+    expect(t.store.getSnapshot().sessionToasts).toEqual([
+      {
+        cockpitTerminalId: "@1",
+        kind: "waiting",
+        org: "Org One",
+        title: "最初のプロンプト",
+      },
+    ]);
+  });
+
+  it("does not toast for the already-selected terminal (still plays the sound)", () => {
+    const t = setup();
+    t.control.emit({
+      t: "state.sync",
+      cockpitTerminals: [session],
+      orgs: [],
+      orgColors: {},
+      orgAliases: {},
+    });
+    t.store.selectCockpitTerminal("@1");
+    t.control.emit({
+      t: "notify",
+      kind: "done",
+      cockpitTerminalId: "@1",
+      title: "myrepo",
+    });
+    expect(t.sounds).toEqual(["done"]);
+    expect(t.store.getSnapshot().sessionToasts).toEqual([]);
+  });
+
+  it("activating a session toast brings to front, selects, and clears it", () => {
     const t = setup();
     t.control.emit({
       t: "state.sync",
@@ -269,29 +319,52 @@ describe("createAppStore", () => {
     });
     t.control.emit({
       t: "notify",
-      kind: "waiting",
-      cockpitTerminalId: "@1",
-      title: "myrepo",
-    });
-    expect(t.notified).toHaveLength(1);
-    expect(t.notified[0]?.title).toBe("⏳ 応答待ち myrepo");
-    expect(t.notified[0]?.body).toBe("最初のプロンプト");
-    expect(t.notified[0]?.tag).toBe("zk-@1");
-  });
-
-  it("brings to front and jumps focus on notification click", () => {
-    const t = setup();
-    t.control.emit({
-      t: "notify",
       kind: "done",
       cockpitTerminalId: "@1",
       title: "myrepo",
     });
-    expect(t.notified[0]?.title).toBe("✅ 完了 myrepo");
-    t.notified[0]?.onClick?.();
+    expect(t.store.getSnapshot().sessionToasts).toHaveLength(1);
+    t.store.activateSessionToast("@1");
     expect(t.focused).toEqual([1]);
     expect(t.selected).toEqual(["@1"]);
     expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@1");
+    expect(t.store.getSnapshot().sessionToasts).toEqual([]);
+  });
+
+  it("drops a session toast when its terminal closes, and on manual dismiss", () => {
+    const t = setup();
+    t.control.emit({
+      t: "state.sync",
+      cockpitTerminals: [session, sessionWith("@2")],
+      orgs: [],
+      orgColors: {},
+      orgAliases: {},
+    });
+    t.control.emit({
+      t: "notify",
+      kind: "waiting",
+      cockpitTerminalId: "@1",
+      title: "",
+    });
+    t.control.emit({
+      t: "notify",
+      kind: "waiting",
+      cockpitTerminalId: "@2",
+      title: "",
+    });
+    expect(t.store.getSnapshot().sessionToasts).toHaveLength(2);
+    t.store.dismissSessionToast("@2");
+    expect(
+      t.store.getSnapshot().sessionToasts.map((x) => x.cockpitTerminalId),
+    ).toEqual(["@1"]);
+    t.control.emit({
+      t: "state.sync",
+      cockpitTerminals: [sessionWith("@2")],
+      orgs: [],
+      orgColors: {},
+      orgAliases: {},
+    });
+    expect(t.store.getSnapshot().sessionToasts).toEqual([]);
   });
 
   it("brings to front and selects the window on select, without notifying", () => {
