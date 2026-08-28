@@ -322,8 +322,8 @@
   },
   "onboarding": {
     "title": "Welcome to zashiki",
-    "intro": "zashiki is your one-screen AI cockpit for Claude Code — it shows which of your sessions is waiting and makes orchestrating them effortless.",
-    "note": "Next, set up the Claude Code integration for notifications and the usage footer. You can reopen this from Settings anytime.",
+    "intro": "Your one-screen cockpit for Claude Code — see which sessions need you at a glance.",
+    "note": "Next, set up the Claude Code integration. You can reopen this from Settings anytime.",
     "skip": "Skip",
     "getStarted": "Get started"
   },

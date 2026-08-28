@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import "./onboarding-card.css";
@@ -13,7 +12,7 @@ export interface WelcomeOnboardingModalProps {
 /**
  * First step of the first-run onboarding: a one-screen welcome that hands off to the Claude Code
  * integration setup (FirstRunSetupWizard) so the two read as a single flow. Shares the card styling
- * with that step; Escape and a backdrop click skip the flow.
+ * with that step; the flow is dismissed only through its buttons, not by a backdrop click or Escape.
  */
 export function WelcomeOnboardingModal({
   onStart,
@@ -21,25 +20,13 @@ export function WelcomeOnboardingModal({
 }: WelcomeOnboardingModalProps) {
   const { t } = useTranslation();
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") onSkip();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onSkip]);
-
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: overlay only captures outside clicks (Escape is handled by the window keydown above)
-    // biome-ignore lint/a11y/noStaticElementInteractions: receiver for outside clicks, not an interactive widget
-    <div className="onboarding-backdrop" onClick={onSkip}>
+    <div className="onboarding-backdrop">
       <div
         className="onboarding-card"
         role="dialog"
         aria-modal="true"
         aria-label={t("onboarding.title")}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
       >
         <h2 className="onboarding-title">{t("onboarding.title")}</h2>
         <p className="onboarding-body">{t("onboarding.intro")}</p>

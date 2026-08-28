@@ -21,7 +21,7 @@ describe("WelcomeOnboardingModal", () => {
     expect(onSkip).toHaveBeenCalled();
   });
 
-  it("skips the flow on Escape and a backdrop click", () => {
+  it("stays open on Escape and a backdrop click (dismiss is button-only)", () => {
     const onSkip = vi.fn();
     const { container } = render(
       <WelcomeOnboardingModal onStart={() => {}} onSkip={onSkip} />,
@@ -31,6 +31,6 @@ describe("WelcomeOnboardingModal", () => {
       ".onboarding-backdrop",
     ) as HTMLElement;
     fireEvent.click(backdrop);
-    expect(onSkip).toHaveBeenCalledTimes(2);
+    expect(onSkip).not.toHaveBeenCalled();
   });
 });

@@ -50,9 +50,9 @@ describe("FirstRunSetupWizard", () => {
     ).toBeTruthy();
   });
 
-  it("dismisses on Escape", () => {
+  it("stays open on Escape and a backdrop click (dismiss is button-only)", () => {
     const onDismiss = vi.fn();
-    render(
+    const { container } = render(
       <FirstRunSetupWizard
         statusLineConflict={false}
         onEnable={() => {}}
@@ -60,6 +60,10 @@ describe("FirstRunSetupWizard", () => {
       />,
     );
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(onDismiss).toHaveBeenCalled();
+    const backdrop = container.querySelector(
+      ".onboarding-backdrop",
+    ) as HTMLElement;
+    fireEvent.click(backdrop);
+    expect(onDismiss).not.toHaveBeenCalled();
   });
 });
