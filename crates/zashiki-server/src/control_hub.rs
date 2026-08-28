@@ -97,8 +97,9 @@ pub struct ActivitySummary {
 }
 
 /// A session counts as active when Claude is working (`running`/`running_bg_agent`) or blocked
-/// awaiting the user (`waiting_input`). `idle`/`no_claude`/`starting` are safely restorable and do
-/// not, on their own, warrant a quit confirmation.
+/// awaiting the user (`waiting_input`). `idle`/`watching`/`no_claude`/`starting` are safely
+/// restorable (a watching session's turn has ended; its open tasks persist on disk) and do not,
+/// on their own, warrant a quit confirmation.
 fn is_active_state(state: &str) -> bool {
     matches!(state, "running" | "running_bg_agent" | "waiting_input")
 }

@@ -50,6 +50,9 @@ export type CockpitTerminalId = z.infer<typeof cockpitTerminalIdSchema>;
  * panel at the bottom remains, i.e. a subagent is running. "starting" is the
  * transient state right after restore/new where claude has not yet appeared in
  * the process tree (it resolves to "no_claude" once the grace period is exceeded).
+ * "watching" means the turn has ended but the on-screen task list still shows
+ * remaining work — the session is standing by (e.g. watching another session),
+ * not completed.
  * "unknown" appears only when detection was skipped due to pane_in_mode (copy-mode etc.) and there is not yet a previous state to retain.
  */
 export const cockpitTerminalStateSchema = z.enum([
@@ -57,6 +60,7 @@ export const cockpitTerminalStateSchema = z.enum([
   "running",
   "running_bg_agent",
   "idle",
+  "watching",
   "no_claude",
   "starting",
   "unknown",

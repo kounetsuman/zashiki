@@ -344,7 +344,7 @@ textarea {
     "opsz" 20;
 }
 
-/* 状態色: 入力待 黄 / 実行中 既定 / 完了 緑 / 起動中 青 / claude無 灰 / 新規 薄灰 */
+/* 状態色: 入力待 黄 / 実行中 既定 / 完了 緑 / 監視 紫 / 起動中 青 / claude無 灰 / 新規 薄灰 */
 
 .state-waiting_input {
   color: #e5c07b;
@@ -364,6 +364,10 @@ textarea {
 
 .state-idle {
   color: #98c379;
+}
+
+.state-watching {
+  color: #c678dd;
 }
 
 .state-no_claude {
