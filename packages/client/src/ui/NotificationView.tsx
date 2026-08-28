@@ -1,5 +1,5 @@
 import type { Notification, NotificationLevel } from "@zashiki/shared";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ViewEmpty } from "./ViewEmpty.js";
@@ -7,10 +7,10 @@ import { ViewHeader } from "./ViewHeader.js";
 
 export interface NotificationViewProps {
   notifications: readonly Notification[];
-  /** Set of read ids (used to split into the unread/read tabs). */
+  /** Read ids; splits the list into the unread/read tabs. */
   seenIds: readonly string[];
-  /** Marks a notification as read (mark-read button and double-click). */
-  onMarkRead(id: string): void;
+  /** Marks notifications as read (mark-read button, double-click, and bulk). */
+  onMarkRead(ids: readonly string[]): void;
   /** Deletes the given notifications (confirmed read-tab delete, single or bulk). */
   onDelete(ids: readonly string[]): void;
 }
@@ -41,12 +41,42 @@ export function partitionBySeen(
   return { unread, read };
 }
 
+/** Header checkbox reflecting all/none/partial selection (indeterminate has no React prop). */
+function SelectAllCheckbox({
+  checked,
+  indeterminate,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  label: string;
+  onToggle(): void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      className="notification-select-all"
+      aria-label={label}
+      title={label}
+      checked={checked}
+      onChange={onToggle}
+    />
+  );
+}
+
 /**
  * List of in-app notifications (one view of NAVIGATION). All notifications
  * (error / awaiting response / done / restart required / PTY pressure) accumulate
- * newest-first. Unread items are marked read (button or double-click) but never
+ * newest-first. Unread items are marked read (button, double-click, or bulk) but never
  * deleted; only read items can be deleted, individually or in bulk, and only after
- * a confirm dialog. Non-dismissible ones (restart required) stay until resolved.
+ * a confirm dialog. Each tab offers checkboxes plus select-all for its bulk action.
+ * Non-dismissible ones (restart required) can be marked read but not deleted.
  * Read state is managed in localStorage.
  */
 export function NotificationView({
@@ -75,9 +105,38 @@ export function NotificationView({
       return next;
     });
 
-  const selectedIds = read
-    .filter((n) => n.dismissible && selected.has(n.id))
+  const isSelectable = (n: Notification): boolean =>
+    tab === "unread" ? true : n.dismissible;
+  const selectable = shown.filter(isSelectable);
+  const selectedIds = selectable
+    .filter((n) => selected.has(n.id))
     .map((n) => n.id);
+  const allSelected =
+    selectable.length > 0 && selectedIds.length === selectable.length;
+  const someSelected = selectedIds.length > 0;
+
+  const toggleSelectAll = (): void =>
+    setSelected(allSelected ? new Set() : new Set(selectable.map((n) => n.id)));
+
+  const markReadSelected = (): void => {
+    onMarkRead(selectedIds);
+    setSelected(new Set());
+  };
+
+  const bulkAction =
+    tab === "unread"
+      ? {
+          className: "notification-bulk-read",
+          label: t("notification.markReadSelected"),
+          icon: "mark_email_read",
+          onClick: markReadSelected,
+        }
+      : {
+          className: "notification-bulk-delete",
+          label: t("notification.deleteSelected"),
+          icon: "delete",
+          onClick: () => setPendingDelete(selectedIds),
+        };
 
   const confirmDelete = (): void => {
     if (pendingDelete !== null) onDelete(pendingDelete);
@@ -109,18 +168,28 @@ export function NotificationView({
           {t("notification.read")}
           {read.length > 0 ? ` (${read.length})` : ""}
         </button>
-        {tab === "read" && selectedIds.length > 0 && (
-          <button
-            type="button"
-            className="notification-bulk-delete"
-            aria-label={t("notification.deleteSelected")}
-            title={t("notification.deleteSelected")}
-            onClick={() => setPendingDelete(selectedIds)}
-          >
-            <span className="material-symbols-outlined" aria-hidden="true">
-              delete
-            </span>
-          </button>
+        {selectable.length > 0 && (
+          <div className="notification-tab-actions">
+            <SelectAllCheckbox
+              checked={allSelected}
+              indeterminate={someSelected && !allSelected}
+              label={t("notification.selectAll")}
+              onToggle={toggleSelectAll}
+            />
+            {someSelected && (
+              <button
+                type="button"
+                className={bulkAction.className}
+                aria-label={bulkAction.label}
+                title={bulkAction.label}
+                onClick={bulkAction.onClick}
+              >
+                <span className="material-symbols-outlined" aria-hidden="true">
+                  {bulkAction.icon}
+                </span>
+              </button>
+            )}
+          </div>
         )}
       </div>
       <div className="notification-scroll">
@@ -138,16 +207,20 @@ export function NotificationView({
                 className={`notification-item notification-${n.level}${
                   tab === "read" ? " notification-read" : ""
                 }`}
-                onDoubleClick={() => tab === "unread" && onMarkRead(n.id)}
+                onDoubleClick={() => tab === "unread" && onMarkRead([n.id])}
                 title={
                   tab === "unread" ? t("notification.markReadHint") : undefined
                 }
               >
-                {tab === "read" && n.dismissible && (
+                {isSelectable(n) && (
                   <input
                     type="checkbox"
                     className="notification-select"
-                    aria-label={t("notification.select")}
+                    aria-label={
+                      tab === "unread"
+                        ? t("notification.selectMarkRead")
+                        : t("notification.select")
+                    }
                     checked={selected.has(n.id)}
                     onChange={() => toggleSelected(n.id)}
                   />
@@ -175,7 +248,7 @@ export function NotificationView({
                     title={t("notification.markRead")}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onMarkRead(n.id);
+                      onMarkRead([n.id]);
                     }}
                   >
                     <span

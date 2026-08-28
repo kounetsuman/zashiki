@@ -2496,21 +2496,44 @@ textarea {
   border-bottom-color: #0e639c;
 }
 
-.notification-bulk-delete {
+.notification-tab-actions {
   margin-left: auto;
   align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.notification-select-all {
+  margin: 0;
+  accent-color: #0e639c;
+  cursor: pointer;
+}
+
+.notification-bulk-read,
+.notification-bulk-delete {
   display: inline-flex;
   padding: 2px;
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: #b98a8a;
   cursor: pointer;
+}
+.notification-bulk-read {
+  color: #8aa2b9;
+}
+.notification-bulk-read:hover {
+  color: #7aa2f7;
+  background: #2a2f3a;
+}
+.notification-bulk-delete {
+  color: #b98a8a;
 }
 .notification-bulk-delete:hover {
   color: #e06c75;
   background: #2a2f3a;
 }
+.notification-bulk-read .material-symbols-outlined,
 .notification-bulk-delete .material-symbols-outlined {
   font-size: 18px;
 }
