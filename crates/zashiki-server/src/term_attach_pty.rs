@@ -7,15 +7,17 @@
 //! state-detection poller):
 //! - **Restore on attach / tab switch is self-contained: a screen+scrollback clear, then the raw
 //!   scrollback replay (full history), then the redraw sequence from `screen_formatted()`**. Because
-//!   one xterm instance is shared across Cockpit Terminals, the leading clear wipes the previous
-//!   terminal's leftover scrollback deterministically (replacing a client-side `term.clear()` that used
-//!   to race with this stream), and the redraw re-asserts the selected terminal's input modes (mouse
-//!   tracking, bracketed paste, application cursor/keypad) so another terminal's mouse tracking cannot
-//!   linger on the shared xterm and swallow the wheel (#259). The redraw only carries the current
-//!   screen (the vt100 parser keeps 0 scrollback rows), so scrollback would be empty after a restart or
-//!   tab reopen; the raw replay rebuilds the full history (retained without eviction), and the redraw
-//!   then overwrites the current screen precisely, including colors and cursor position. The raw replay
-//!   may be corrupted at the very start if it begins mid-escape-sequence.
+//!   one xterm instance is shared across Cockpit Terminals, the leading clear both leaves a previous
+//!   terminal's leaked alternate screen (so the erase and replay land on the normal buffer, else a
+//!   leaked alternate buffer swallows the scrollback and the wheel keeps deferring, #308) and wipes the
+//!   previous terminal's leftover scrollback deterministically (replacing a client-side `term.clear()`
+//!   that used to race with this stream). The redraw then re-asserts the selected terminal's mouse
+//!   tracking so another terminal's tracking cannot linger on the shared xterm and swallow the wheel
+//!   (#259). The redraw only carries the current screen (the vt100 parser keeps 0 scrollback rows), so
+//!   scrollback would be empty after a restart or tab reopen; the raw replay rebuilds the full history
+//!   (retained without eviction, and re-enters the alternate screen for an alternate-screen terminal via
+//!   its own `?1049h`), and the redraw then overwrites the current screen precisely, including colors and
+//!   cursor position. The raw replay may be corrupted at the very start if it begins mid-escape-sequence.
 //! - A broadcast `Lagged` recovers automatically by re-subscribing and resending the current screen
 //!   (redraw sequence only). We do not resend the raw replay here, to avoid duplicating scrollback
 //!   the client already holds.
@@ -180,11 +182,14 @@ async fn send_restore(
     Ok(paused_after_replay || paused_after_screen)
 }
 
-/// Prefix that makes the restore stream self-contained: cursor home + erase screen + erase scrollback
-/// (`CSI H` / `CSI 2 J` / `CSI 3 J`). Because a single xterm instance is shared across sessions, this
-/// wipes the previous session's leftover scrollback deterministically before the raw replay rebuilds
-/// this session's history — replacing the client-side `term.clear()` that used to race with the replay.
-const RESTORE_CLEAR_PREFIX: &[u8] = b"\x1b[H\x1b[2J\x1b[3J";
+/// Prefix that makes the restore stream self-contained: leave the alternate screen, then cursor home +
+/// erase screen + erase scrollback (`CSI ? 1049 l` / `CSI H` / `CSI 2 J` / `CSI 3 J`). Because a single
+/// xterm instance is shared across sessions, this wipes the previous session's leftover scrollback
+/// deterministically before the raw replay rebuilds this session's history. The leading `?1049l` forces
+/// the erase and replay onto the normal buffer: the raw replay carries no scrollback in an alternate
+/// buffer, so a leaked alternate screen would otherwise swallow the history and keep the wheel handler
+/// deferring. An alternate-screen session re-enters via its own `?1049h` inside the replay.
+const RESTORE_CLEAR_PREFIX: &[u8] = b"\x1b[?1049l\x1b[H\x1b[2J\x1b[3J";
 
 /// The main loop: subscribe -> initial restore (raw ring replay + redraw sequence) -> then run
 /// live/input/backpressure/heartbeat. Because an owned PTY's attach target can be swapped on a tab switch
@@ -559,6 +564,29 @@ mod tests {
         assert!(
             seen.contains("HELLO-REPLAY"),
             "initial screen restore missing: {seen:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn initial_restore_leaves_alternate_screen_before_replay() {
+        // A previous terminal's leaked alternate screen on the shared xterm would make the raw replay
+        // rebuild into a buffer that has no scrollback; the restore must exit it before the replay so
+        // history and wheel scrolling survive (#308).
+        let services = services_with_pty("t1", "sess-1", cat_cfg()).await;
+        let session = services.sessions.get("sess-1").await.unwrap();
+        session.write_input(b"HELLO-REPLAY\n").unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        let seen = recv_until(&mut ws, "HELLO-REPLAY", 3000).await;
+        let exit_alt = seen
+            .find("\u{1b}[?1049l")
+            .expect("restore must leave the alternate screen");
+        let replay = seen.find("HELLO-REPLAY").unwrap();
+        assert!(
+            exit_alt < replay,
+            "alt-screen exit must precede the replay: {seen:?}"
         );
     }
 
