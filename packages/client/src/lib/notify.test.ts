@@ -1,8 +1,10 @@
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
+  NOTIFY_CATEGORIES,
   type NotificationSettings,
   type NotifyCategory,
   type NotifyCategoryPref,
+  type SoundPreset,
 } from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 
@@ -11,17 +13,22 @@ import {
   NOTIFY_ENABLED_KEY,
   type NotificationApi,
   type NotificationLike,
-  type NotifyKind,
 } from "./notify.js";
 
 function settings(
   enabled: boolean,
-  overrides: Partial<Record<NotifyCategory, NotifyCategoryPref>> = {},
+  overrides: Partial<Record<NotifyCategory, Partial<NotifyCategoryPref>>> = {},
 ): NotificationSettings {
-  return {
-    enabled,
-    categories: { ...DEFAULT_NOTIFICATION_SETTINGS.categories, ...overrides },
-  };
+  const categories = Object.fromEntries(
+    NOTIFY_CATEGORIES.map((category) => [
+      category,
+      {
+        ...DEFAULT_NOTIFICATION_SETTINGS.categories[category],
+        ...(overrides[category] ?? {}),
+      },
+    ]),
+  ) as Record<NotifyCategory, NotifyCategoryPref>;
+  return { enabled, categories };
 }
 
 interface CreatedNotification extends NotificationLike {
@@ -61,8 +68,8 @@ function fakeStorage(initial: Record<string, string> = {}) {
 }
 
 function fakeSound() {
-  const played: NotifyKind[] = [];
-  return { played, play: (kind: NotifyKind) => void played.push(kind) };
+  const played: SoundPreset[] = [];
+  return { played, play: (preset: SoundPreset) => void played.push(preset) };
 }
 
 describe("createNotifier", () => {
@@ -93,7 +100,7 @@ describe("createNotifier", () => {
       tag: "zk-@1",
       onClick: () => clicks.push("clicked"),
     });
-    expect(sound.played).toEqual(["waiting"]);
+    expect(sound.played).toEqual(["descend"]);
     expect(created).toHaveLength(1);
     expect(created[0]?.title).toBe("⏳ 応答待ち myrepo");
     expect(created[0]?.options).toEqual({
@@ -126,7 +133,7 @@ describe("createNotifier", () => {
       playSound: sound.play,
     });
     n.notify({ kind: "done", title: "t" });
-    expect(sound.played).toEqual(["done"]);
+    expect(sound.played).toEqual(["chime"]);
     expect(created).toEqual([]);
   });
 
@@ -153,7 +160,7 @@ describe("createNotifier", () => {
     expect(n.permission()).toBe("unsupported");
     expect(await n.requestPermission()).toBe("unsupported");
     n.notify({ kind: "waiting", title: "t" });
-    expect(sound.played).toEqual(["waiting"]);
+    expect(sound.played).toEqual(["descend"]);
   });
 
   it("applyServerConfig overrides the master in-memory without modifying localStorage", () => {
@@ -213,7 +220,7 @@ describe("createNotifier", () => {
       settings(true, { done: { notify: false, sound: true } }),
     );
     n.notify({ kind: "done", title: "t" });
-    expect(sound.played).toEqual(["done"]);
+    expect(sound.played).toEqual(["chime"]);
     expect(created).toEqual([]);
   });
 
@@ -245,7 +252,7 @@ describe("createNotifier", () => {
       settings(true, { shellStart: { notify: true, sound: true } }),
     );
     n.notify({ kind: "shell_start", title: "t" });
-    expect(sound.played).toEqual(["shell_start"]);
+    expect(sound.played).toEqual(["tick"]);
     expect(created).toHaveLength(1);
   });
 
@@ -264,12 +271,12 @@ describe("createNotifier", () => {
     );
     n.playSound("done"); // sound off -> silent
     n.playSound("shell_end"); // sound on -> plays
-    expect(sound.played).toEqual(["shell_end"]);
+    expect(sound.played).toEqual(["tock"]);
     n.applyServerConfig(
       settings(false, { shellEnd: { notify: true, sound: true } }),
     );
     n.playSound("shell_end"); // master off -> silent
-    expect(sound.played).toEqual(["shell_end"]);
+    expect(sound.played).toEqual(["tock"]);
   });
 
   it("shouldShow reflects the master and the category's show switch", () => {

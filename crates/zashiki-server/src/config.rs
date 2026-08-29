@@ -17,7 +17,7 @@ use std::time::{Duration, SystemTime};
 use crate::control::{ConfigView, ControlHub};
 use crate::protocol::{
     ElapsedBands, FooterBand, FooterThresholds, NotificationSettings, NotifyCategories,
-    NotifyCategoryPref, TokenBands, UsageBands,
+    NotifyCategoryPref, SoundPreset, TokenBands, UsageBands,
 };
 
 /// Polling interval for config watching.
@@ -79,7 +79,11 @@ fn read_pref(
         .and_then(|n| n.get("sound"))
         .and_then(serde_json::Value::as_bool)
         .unwrap_or(default.sound);
-    NotifyCategoryPref { notify, sound }
+    let sound_type = node
+        .and_then(|n| n.get("soundType"))
+        .and_then(|v| serde_json::from_value::<SoundPreset>(v.clone()).ok())
+        .unwrap_or(default.sound_type);
+    NotifyCategoryPref { notify, sound, sound_type }
 }
 
 /// Parse `notifications`, filling absent fields from the defaults. A legacy `notifySound: false` with
@@ -290,8 +294,14 @@ mod tests {
         }))
         .notifications;
         assert!(n.enabled);
-        assert_eq!(n.categories.subagent_start, NotifyCategoryPref { notify: true, sound: false });
-        assert_eq!(n.categories.waiting, NotifyCategoryPref { notify: true, sound: true });
+        assert_eq!(
+            n.categories.subagent_start,
+            NotifyCategoryPref { notify: true, sound: false, sound_type: SoundPreset::Ping }
+        );
+        assert_eq!(
+            n.categories.waiting,
+            NotifyCategoryPref { notify: true, sound: true, sound_type: SoundPreset::Descend }
+        );
     }
 
     #[test]
@@ -300,7 +310,23 @@ mod tests {
             "notifications": { "categories": { "waiting": { "notify": false } } }
         }))
         .notifications;
-        assert_eq!(n.categories.waiting, NotifyCategoryPref { notify: false, sound: true });
+        assert_eq!(
+            n.categories.waiting,
+            NotifyCategoryPref { notify: false, sound: true, sound_type: SoundPreset::Descend }
+        );
+    }
+
+    #[test]
+    fn parse_notifications_reads_and_defaults_sound_type() {
+        let n = parse(json!({
+            "notifications": { "categories": {
+                "done": { "notify": true, "sound": true, "soundType": "bell" },
+                "waiting": { "notify": true, "sound": true, "soundType": "bogus" }
+            } }
+        }))
+        .notifications;
+        assert_eq!(n.categories.done.sound_type, SoundPreset::Bell);
+        assert_eq!(n.categories.waiting.sound_type, SoundPreset::Descend);
     }
 
     #[test]
@@ -380,7 +406,11 @@ mod tests {
         std::fs::write(&path, r#"{"language": "en"}"#).unwrap();
 
         let categories = NotifyCategories {
-            subagent_start: NotifyCategoryPref { notify: true, sound: false },
+            subagent_start: NotifyCategoryPref {
+                notify: true,
+                sound: false,
+                sound_type: SoundPreset::Marimba,
+            },
             ..Default::default()
         };
         let settings = NotificationSettings { enabled: false, categories };

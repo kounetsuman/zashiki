@@ -332,12 +332,12 @@ describe("serverMessageSchema", () => {
         notifications: {
           enabled: false,
           categories: {
-            waiting: { notify: false, sound: false },
-            done: { notify: true, sound: false },
-            subagentStart: { notify: true, sound: true },
-            subagentEnd: { notify: false, sound: false },
-            shellStart: { notify: true, sound: false },
-            shellEnd: { notify: false, sound: true },
+            waiting: { notify: false, sound: false, soundType: "descend" },
+            done: { notify: true, sound: false, soundType: "chime" },
+            subagentStart: { notify: true, sound: true, soundType: "marimba" },
+            subagentEnd: { notify: false, sound: false, soundType: "pong" },
+            shellStart: { notify: true, sound: false, soundType: "tick" },
+            shellEnd: { notify: false, sound: true, soundType: "bell" },
           },
         },
       },

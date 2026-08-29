@@ -1,18 +1,27 @@
 import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  DEFAULT_SOUND_PRESET,
   type NotificationSettings,
+  type NotifyCategory,
   type NotifyCategoryPref,
+  type NotifyKind,
   notifyCategoryForKind,
+  type SoundPreset,
 } from "@zashiki/shared";
 
-import { type NotifyKind, playNotifySound } from "./notify-sound.js";
+import { playNotifySound } from "./notify-sound.js";
 
-export type { NotifyKind } from "./notify-sound.js";
+export type { NotifyKind } from "@zashiki/shared";
 
 /** localStorage key for the master switch fallback before config.sync arrives ("1"/"0"; default on). */
 export const NOTIFY_ENABLED_KEY = "zk.notify.enabled";
 
-/** Preference before config.sync arrives: show and sound (the historical default). */
-const FALLBACK_PREF: NotifyCategoryPref = { notify: true, sound: true };
+/** The preset a kind plays before config.sync arrives: its historical per-category default. */
+function fallbackSoundType(category: NotifyCategory | null): SoundPreset {
+  return category === null
+    ? DEFAULT_SOUND_PRESET
+    : DEFAULT_NOTIFICATION_SETTINGS.categories[category].soundType;
+}
 
 export type NotifyPermission = NotificationPermission | "unsupported";
 
@@ -64,7 +73,7 @@ export interface NotifierDeps {
   storage?: Pick<Storage, "getItem" | "setItem"> | null;
   /** null = an environment without the Notification API (sound only). */
   api?: NotificationApi | null;
-  playSound?: (kind: NotifyKind) => void;
+  playSound?: (preset: SoundPreset) => void;
 }
 
 function defaultApi(): NotificationApi | null {
@@ -102,10 +111,16 @@ export function createNotifier(deps: NotifierDeps = {}): Notifier {
       : storage?.getItem(NOTIFY_ENABLED_KEY) !== "0";
 
   const prefFor = (kind: NotifyKind): NotifyCategoryPref => {
-    if (serverSettings === null) return FALLBACK_PREF;
     const category = notifyCategoryForKind(kind);
+    if (serverSettings === null) {
+      return {
+        notify: true,
+        sound: true,
+        soundType: fallbackSoundType(category),
+      };
+    }
     return category === null
-      ? { notify: false, sound: false }
+      ? { notify: false, sound: false, soundType: DEFAULT_SOUND_PRESET }
       : serverSettings.categories[category];
   };
 
@@ -125,9 +140,10 @@ export function createNotifier(deps: NotifierDeps = {}): Notifier {
       return api.requestPermission();
     },
     playSound(kind) {
-      if (!isEnabled() || !prefFor(kind).sound) return;
+      const pref = prefFor(kind);
+      if (!isEnabled() || !pref.sound) return;
       try {
-        playSound(kind);
+        playSound(pref.soundType);
       } catch {
         // Sound is best-effort
       }
@@ -140,7 +156,7 @@ export function createNotifier(deps: NotifierDeps = {}): Notifier {
       const pref = prefFor(opts.kind);
       if (pref.sound) {
         try {
-          playSound(opts.kind);
+          playSound(pref.soundType);
         } catch {
           // Sound is best-effort
         }

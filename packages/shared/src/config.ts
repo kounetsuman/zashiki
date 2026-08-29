@@ -17,10 +17,32 @@ export const NOTIFY_CATEGORIES = [
 
 export type NotifyCategory = (typeof NOTIFY_CATEGORIES)[number];
 
-/** Per-category preference: whether to show the notification, and whether to play its sound. */
+/**
+ * The selectable notification-sound presets. Each is a short synthesized motif (the tones live in the
+ * client's notify-sound module). Ids are single lowercase words so the server's Rust `SoundPreset`
+ * enum can mirror them with `serde(rename_all = "lowercase")` while staying `Copy`.
+ */
+export const SOUND_PRESETS = [
+  "chime",
+  "descend",
+  "ping",
+  "pong",
+  "tick",
+  "tock",
+  "marimba",
+  "bell",
+] as const;
+
+export type SoundPreset = (typeof SOUND_PRESETS)[number];
+
+/** Fallback preset for an unknown category or a malformed stored value. */
+export const DEFAULT_SOUND_PRESET: SoundPreset = "chime";
+
+/** Per-category preference: whether to show the notification, whether to play a sound, and which sound. */
 export interface NotifyCategoryPref {
   notify: boolean;
   sound: boolean;
+  soundType: SoundPreset;
 }
 
 export interface NotificationSettings {
@@ -29,19 +51,20 @@ export interface NotificationSettings {
   categories: Record<NotifyCategory, NotifyCategoryPref>;
 }
 
-const NOTIFY_ON: NotifyCategoryPref = { notify: true, sound: true };
-const NOTIFY_OFF: NotifyCategoryPref = { notify: false, sound: false };
-
-/** waiting / done keep the historical on-by-default; the new Background Activity edges are opt-in. */
+/**
+ * waiting / done keep the historical on-by-default; the Background Activity edges are opt-in. Each
+ * category's `soundType` reproduces its historical chirp, so upgrading changes nothing until a user
+ * picks a different preset.
+ */
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   enabled: true,
   categories: {
-    waiting: NOTIFY_ON,
-    done: NOTIFY_ON,
-    subagentStart: NOTIFY_OFF,
-    subagentEnd: NOTIFY_OFF,
-    shellStart: NOTIFY_OFF,
-    shellEnd: NOTIFY_OFF,
+    waiting: { notify: true, sound: true, soundType: "descend" },
+    done: { notify: true, sound: true, soundType: "chime" },
+    subagentStart: { notify: false, sound: false, soundType: "ping" },
+    subagentEnd: { notify: false, sound: false, soundType: "pong" },
+    shellStart: { notify: false, sound: false, soundType: "tick" },
+    shellEnd: { notify: false, sound: false, soundType: "tock" },
   },
 };
 
@@ -50,22 +73,31 @@ function categoryPrefSchema(fallback: NotifyCategoryPref) {
     .object({
       notify: z.boolean().catch(fallback.notify).default(fallback.notify),
       sound: z.boolean().catch(fallback.sound).default(fallback.sound),
+      soundType: z
+        .enum(SOUND_PRESETS)
+        .catch(fallback.soundType)
+        .default(fallback.soundType),
     })
     .catch(fallback)
     .default(fallback);
 }
+
+const defaultCategory = (
+  category: NotifyCategory,
+): ReturnType<typeof categoryPrefSchema> =>
+  categoryPrefSchema(DEFAULT_NOTIFICATION_SETTINGS.categories[category]);
 
 export const notificationSettingsSchema = z
   .object({
     enabled: z.boolean().catch(true).default(true),
     categories: z
       .object({
-        waiting: categoryPrefSchema(NOTIFY_ON),
-        done: categoryPrefSchema(NOTIFY_ON),
-        subagentStart: categoryPrefSchema(NOTIFY_OFF),
-        subagentEnd: categoryPrefSchema(NOTIFY_OFF),
-        shellStart: categoryPrefSchema(NOTIFY_OFF),
-        shellEnd: categoryPrefSchema(NOTIFY_OFF),
+        waiting: defaultCategory("waiting"),
+        done: defaultCategory("done"),
+        subagentStart: defaultCategory("subagentStart"),
+        subagentEnd: defaultCategory("subagentEnd"),
+        shellStart: defaultCategory("shellStart"),
+        shellEnd: defaultCategory("shellEnd"),
       })
       .catch(DEFAULT_NOTIFICATION_SETTINGS.categories)
       .default(DEFAULT_NOTIFICATION_SETTINGS.categories),

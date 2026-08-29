@@ -200,7 +200,7 @@
 
 .notifications-grid {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   gap: 8px 16px;
   align-items: center;
   margin-top: 8px;
@@ -215,4 +215,36 @@
 
 .notifications-grid input[type="checkbox"] {
   justify-self: center;
+}
+
+.notifications-grid .notifications-sound-select {
+  justify-self: stretch;
+  min-width: 8em;
+}
+
+.notifications-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.notifications-preview .notifications-preview-label {
+  font-size: 0.85em;
+  color: var(--modal-text-dim);
+}
+
+.notifications-preview-button {
+  padding: 3px 12px;
+  border: 1px solid var(--modal-border-strong);
+  border-radius: var(--modal-radius);
+  background: var(--modal-control-bg);
+  color: var(--modal-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.notifications-preview-button:hover {
+  background: var(--modal-control-bg-hover);
 }

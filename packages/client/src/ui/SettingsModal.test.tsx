@@ -620,7 +620,36 @@ describe("SettingsModal Claude Code integration", () => {
       ...DEFAULT_NOTIFICATION_SETTINGS,
       categories: {
         ...DEFAULT_NOTIFICATION_SETTINGS.categories,
-        subagentStart: { notify: false, sound: true },
+        subagentStart: {
+          ...DEFAULT_NOTIFICATION_SETTINGS.categories.subagentStart,
+          sound: true,
+        },
+      },
+    });
+  });
+
+  it("choosing a category's sound preset persists it", () => {
+    const onSetNotifications = vi.fn();
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        notificationSettings={DEFAULT_NOTIFICATION_SETTINGS}
+        onSetNotifications={onSetNotifications}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("完了 — 音の種類"), {
+      target: { value: "bell" },
+    });
+    expect(onSetNotifications).toHaveBeenCalledWith({
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      categories: {
+        ...DEFAULT_NOTIFICATION_SETTINGS.categories,
+        done: {
+          ...DEFAULT_NOTIFICATION_SETTINGS.categories.done,
+          soundType: "bell",
+        },
       },
     });
   });
