@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { NotifyKind } from "./protocol.js";
 
 /**
- * In-app notifications (toasts + the NOTIFICATION panel).
+ * In-app notifications (toasts + the ACTIVITY and NOTIFICATION views).
  * Producer-independent sink data. The only current producer is "repos.conf org
  * layout changed -> restart required," but future update announcements (e.g.
  * local polling of GitHub Releases) will feed into the same shape. There is no
@@ -32,6 +32,13 @@ export const notificationSchema = z.object({
    * in the NOTIFICATION panel regardless of the toast value.
    */
   toast: z.boolean().optional(),
+  /**
+   * The Cockpit Terminal this entry belongs to. Present only for session activity
+   * events (the ACTIVITY view); absent for system notifications. Its presence
+   * classifies the entry (see partitionNotifications) and drives auto-read when the
+   * target Cockpit Terminal becomes active.
+   */
+  cockpitTerminalId: z.string().min(1).optional(),
 });
 
 export type Notification = z.infer<typeof notificationSchema>;
@@ -105,7 +112,7 @@ export function errorNotification(
   };
 }
 
-/** Emoji + label per notify kind, used as the NOTIFICATION-panel entry title. */
+/** Emoji + label per notify kind, used as the ACTIVITY entry title. */
 const NOTIFY_KIND_LABEL: Record<NotifyKind, string> = {
   waiting: "⏳ 応答待ち",
   done: "✅ 完了",
@@ -116,12 +123,14 @@ const NOTIFY_KIND_LABEL: Record<NotifyKind, string> = {
 };
 
 /**
- * A notification for stacking a notify event into NOTIFICATION (same wording as the toast).
- * Accumulates with a unique id per occurrence.
+ * A notification for stacking a notify event into ACTIVITY (same wording as the toast).
+ * Accumulates with a unique id per occurrence and carries the target Cockpit Terminal so the
+ * entry can be classified as activity and auto-read when that terminal becomes active.
  */
 export function notifyNotification(
   id: string,
   kind: NotifyKind,
+  cockpitTerminalId: string,
   windowTitle: string,
   createdAt: number,
 ): Notification {
@@ -133,7 +142,37 @@ export function notifyNotification(
     createdAt,
     sticky: false,
     dismissible: true,
+    cockpitTerminalId,
   };
+}
+
+/**
+ * Session activity events (the ACTIVITY view) are exactly the terminal-scoped ones, so an entry with
+ * a Cockpit Terminal reference is activity and everything else is a system notification.
+ */
+export function isActivityNotification(n: Notification): boolean {
+  return n.cockpitTerminalId !== undefined;
+}
+
+/** Split the list into the ACTIVITY view (session events) and the NOTIFICATION view (system), preserving order. */
+export function partitionNotifications(list: readonly Notification[]): {
+  activity: Notification[];
+  system: Notification[];
+} {
+  const activity: Notification[] = [];
+  const system: Notification[] = [];
+  for (const n of list) (isActivityNotification(n) ? activity : system).push(n);
+  return { activity, system };
+}
+
+/** Ids of the activity entries targeting the given Cockpit Terminal (input to auto-read when it becomes active). */
+export function activityIdsForCockpitTerminal(
+  list: readonly Notification[],
+  cockpitTerminalId: string,
+): string[] {
+  return list
+    .filter((n) => n.cockpitTerminalId === cockpitTerminalId)
+    .map((n) => n.id);
 }
 
 /** Default list cap (a safeguard so unique-id notifications like error/notify don't accumulate without bound). */

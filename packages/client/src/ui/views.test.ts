@@ -21,13 +21,14 @@ function memStorage(initial: Record<string, string> = {}) {
 }
 
 describe("views pure logic", () => {
-  it("VIEW_DEFS has explorer/search/git/notification with unique ids and shortcuts (help and settings are modals, not switchable views; cockpitTerminals are always fixed and not included)", () => {
+  it("VIEW_DEFS has explorer/search/git/activity/notification with unique ids and shortcuts (help and settings are modals, not switchable views; cockpitTerminals are always fixed and not included)", () => {
     const ids = VIEW_DEFS.map((d: ViewDef) => d.id);
     const keys = VIEW_DEFS.map((d: ViewDef) => d.shortcutKey);
     expect(ids).toEqual([
       "explorer",
       "search",
       "sourceControl",
+      "activity",
       "notification",
     ]);
     expect(new Set(ids).size).toBe(ids.length);

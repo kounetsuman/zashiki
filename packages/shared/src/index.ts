@@ -107,9 +107,11 @@ export {
   memoRequestSchema,
 } from "./memo.js";
 export {
+  activityIdsForCockpitTerminal,
   appendNotification,
   dismissNotification,
   errorNotification,
+  isActivityNotification,
   NOTIFICATIONS_MAX,
   type Notification,
   type NotificationLevel,
@@ -117,6 +119,7 @@ export {
   notificationSchema,
   notifyNotification,
   PTY_PRESSURE_ID,
+  partitionNotifications,
   ptyPressureNotification,
   RESTART_REQUIRED_ID,
   removeNotification,

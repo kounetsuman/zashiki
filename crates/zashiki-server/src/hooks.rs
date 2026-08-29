@@ -170,8 +170,8 @@ pub struct HookActions {
     pub matched: bool,
     /// Trigger to refetch the git panel (PostToolUse).
     pub git_dirty: bool,
-    /// Accumulate into NOTIFICATION (kind, window name). None when off.
-    pub record: Option<(NotifyKind, String)>,
+    /// Accumulate into ACTIVITY (kind, Cockpit Terminal id, window name). None when off.
+    pub record: Option<(NotifyKind, String, String)>,
     /// The notification to hand to the hub for delivery. None when there is nothing to deliver.
     pub notify: Option<NotifyEvent>,
 }
@@ -226,7 +226,7 @@ pub fn decide(
     // The panel record is additionally suppressed when history is off (ZK_NOTIFY_HISTORY=off), which
     // still delivers the toast; the caller further gates it by the per-category switches.
     if record_history {
-        actions.record = Some((nk, win.name.clone()));
+        actions.record = Some((nk, win.cockpit_terminal_id.clone(), win.name.clone()));
     }
     actions.notify = Some(NotifyEvent {
         kind: nk,
@@ -377,7 +377,10 @@ mod tests {
         };
         let a = decide(HookKind::Waiting, Some(&win), NotifyMode::Web, true, Some("題名".to_string()));
         assert!(a.matched);
-        assert_eq!(a.record, Some((NotifyKind::Waiting, "repo-a".to_string())));
+        assert_eq!(
+            a.record,
+            Some((NotifyKind::Waiting, "@1".to_string(), "repo-a".to_string()))
+        );
         assert_eq!(
             a.notify,
             Some(NotifyEvent {

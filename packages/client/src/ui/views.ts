@@ -2,7 +2,12 @@
  * Identifier for the view chosen via the footer's view-switch icons. Add future views to this union.
  * The session list is always pinned (not switchable), so it is not included here.
  */
-export type ViewId = "explorer" | "search" | "sourceControl" | "notification";
+export type ViewId =
+  | "explorer"
+  | "search"
+  | "sourceControl"
+  | "activity"
+  | "notification";
 
 /**
  * Registration info for the view-switch icons in the footer. Future views (search/explorer, etc.)
@@ -39,6 +44,12 @@ export const VIEW_DEFS: readonly ViewDef[] = [
     labelKey: "view.sourceControl",
     icon: "call_split",
     shortcutKey: "g",
+  },
+  {
+    id: "activity",
+    labelKey: "view.activity",
+    icon: "bolt",
+    shortcutKey: "a",
   },
   {
     id: "notification",

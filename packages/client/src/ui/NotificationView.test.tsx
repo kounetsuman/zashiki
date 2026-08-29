@@ -36,6 +36,8 @@ function renderView(
       seenIds={props.seenIds ?? []}
       onMarkRead={props.onMarkRead ?? (() => undefined)}
       onDelete={props.onDelete ?? (() => undefined)}
+      title={props.title}
+      dataView={props.dataView}
     />,
   );
 }
@@ -64,6 +66,15 @@ describe("NotificationView", () => {
     renderView();
     const title = screen.getByText("NOTIFICATION");
     expect(title.closest("header")?.className).toBe("view-header");
+  });
+
+  it("renders a custom caption and data-view when reused as the ACTIVITY view", () => {
+    const { container } = renderView({
+      title: "ACTIVITY",
+      dataView: "activity",
+    });
+    expect(screen.getByText("ACTIVITY")).toBeTruthy();
+    expect(container.querySelector('[data-view="activity"]')).toBeTruthy();
   });
 
   it("renders the title and body", () => {

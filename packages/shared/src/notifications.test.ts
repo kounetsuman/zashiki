@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  activityIdsForCockpitTerminal,
   appendNotification,
   dismissNotification,
   errorNotification,
+  isActivityNotification,
   type Notification,
   notificationSchema,
   notifyNotification,
   PTY_PRESSURE_ID,
+  partitionNotifications,
   ptyPressureNotification,
   RESTART_REQUIRED_ID,
   removeNotification,
@@ -52,6 +55,21 @@ describe("notificationSchema", () => {
       sticky: false,
       dismissible: true,
     });
+  });
+
+  it("round-trips cockpitTerminalId (present for activity, absent for system)", () => {
+    expect(
+      notificationSchema.parse({
+        id: "a1",
+        title: "t",
+        createdAt: 1,
+        cockpitTerminalId: "@3",
+      }).cockpitTerminalId,
+    ).toBe("@3");
+    expect(
+      notificationSchema.parse({ id: "sys", title: "t", createdAt: 1 })
+        .cockpitTerminalId,
+    ).toBeUndefined();
   });
 });
 
@@ -182,27 +200,72 @@ describe("errorNotification", () => {
 });
 
 describe("notifyNotification", () => {
-  it("waiting is awaiting-response, info, dismissible", () => {
-    const r = notifyNotification("id-1", "waiting", "my-window", 7);
+  it("waiting is awaiting-response, info, dismissible; carries its Cockpit Terminal", () => {
+    const r = notifyNotification("id-1", "waiting", "@3", "my-window", 7);
     expect(r.level).toBe("info");
     expect(r.title).toContain("応答待ち");
     expect(r.title).toContain("my-window");
     expect(r.dismissible).toBe(true);
     expect(r.sticky).toBe(false);
     expect(r.createdAt).toBe(7);
+    expect(r.cockpitTerminalId).toBe("@3");
   });
 
   it("done is completed", () => {
-    expect(notifyNotification("id-2", "done", "w", 1).title).toContain("完了");
+    expect(notifyNotification("id-2", "done", "@1", "w", 1).title).toContain(
+      "完了",
+    );
   });
 
   it("labels the Background Activity kinds", () => {
     expect(
-      notifyNotification("id-3", "subagent_start", "w", 1).title,
+      notifyNotification("id-3", "subagent_start", "@1", "w", 1).title,
     ).toContain("サブエージェント開始");
-    expect(notifyNotification("id-4", "shell_end", "w", 1).title).toContain(
-      "バックグラウンドシェル終了",
-    );
+    expect(
+      notifyNotification("id-4", "shell_end", "@1", "w", 1).title,
+    ).toContain("バックグラウンドシェル終了");
+  });
+});
+
+describe("partitionNotifications / isActivityNotification", () => {
+  const activity = notifyNotification("act-1", "waiting", "@2", "repo", 5);
+  const system = restartRequiredNotification(1);
+  const err = errorNotification("err-1", "internal", "boom", 2);
+
+  it("classifies terminal-scoped entries as activity and the rest as system", () => {
+    expect(isActivityNotification(activity)).toBe(true);
+    expect(isActivityNotification(system)).toBe(false);
+    expect(isActivityNotification(err)).toBe(false);
+  });
+
+  it("splits a mixed list with no cross-leak either way", () => {
+    const { activity: a, system: s } = partitionNotifications([
+      activity,
+      system,
+      err,
+    ]);
+    expect(a.map((x) => x.id)).toEqual(["act-1"]);
+    expect(s.map((x) => x.id)).toEqual([RESTART_REQUIRED_ID, "err-1"]);
+  });
+
+  it("preserves upstream order within each partition", () => {
+    const a2 = notifyNotification("act-2", "done", "@2", "repo", 6);
+    const { activity: a } = partitionNotifications([activity, err, a2]);
+    expect(a.map((x) => x.id)).toEqual(["act-1", "act-2"]);
+  });
+});
+
+describe("activityIdsForCockpitTerminal", () => {
+  it("returns only the ids of activity entries targeting that terminal", () => {
+    const list = [
+      notifyNotification("a1", "waiting", "@2", "repo", 1),
+      notifyNotification("a2", "done", "@3", "repo", 2),
+      notifyNotification("a3", "shell_start", "@2", "repo", 3),
+      errorNotification("e1", "internal", "x", 4),
+    ];
+    expect(activityIdsForCockpitTerminal(list, "@2")).toEqual(["a1", "a3"]);
+    expect(activityIdsForCockpitTerminal(list, "@3")).toEqual(["a2"]);
+    expect(activityIdsForCockpitTerminal(list, "@9")).toEqual([]);
   });
 });
 

@@ -463,6 +463,11 @@ pub struct Notification {
     /// this value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub toast: Option<bool>,
+    /// The Cockpit Terminal this entry belongs to. `Some` only for session activity events (the
+    /// ACTIVITY view); `None` for system notifications. Its presence classifies the entry and drives
+    /// auto-read when the target Cockpit Terminal becomes active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cockpit_terminal_id: Option<String>,
 }
 
 /// Messages from server to client (discriminated by `t`).
@@ -1146,6 +1151,7 @@ mod tests {
                     sticky: true,
                     dismissible: false,
                     toast: None,
+                    cockpit_terminal_id: None,
                 },
                 Notification {
                     id: "n2".into(),
@@ -1156,6 +1162,7 @@ mod tests {
                     sticky: false,
                     dismissible: true,
                     toast: None,
+                    cockpit_terminal_id: None,
                 },
             ],
         };
@@ -1176,9 +1183,30 @@ mod tests {
                 sticky: false,
                 dismissible: true,
                 toast: Some(false),
+                cockpit_terminal_id: None,
             }],
         };
         let json = r#"{"t":"notifications.sync","items":[{"id":"e1","level":"error","title":"internal","body":"boom","createdAt":3000,"sticky":false,"dismissible":true,"toast":false}]}"#;
+        assert_eq!(to_json(&msg), json);
+        assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
+    }
+
+    #[test]
+    fn activity_notification_wire_carries_cockpit_terminal_id() {
+        let msg = ServerMessage::NotificationsSync {
+            items: vec![Notification {
+                id: "a1".into(),
+                level: NotificationLevel::Info,
+                title: "⏳ 応答待ち repo-a".into(),
+                body: None,
+                created_at: 4000,
+                sticky: false,
+                dismissible: true,
+                toast: Some(false),
+                cockpit_terminal_id: Some("@3".into()),
+            }],
+        };
+        let json = r#"{"t":"notifications.sync","items":[{"id":"a1","level":"info","title":"⏳ 応答待ち repo-a","body":null,"createdAt":4000,"sticky":false,"dismissible":true,"toast":false,"cockpitTerminalId":"@3"}]}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

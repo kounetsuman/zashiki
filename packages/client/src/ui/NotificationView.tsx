@@ -13,6 +13,10 @@ export interface NotificationViewProps {
   onMarkRead(ids: readonly string[]): void;
   /** Deletes the given notifications (confirmed read-tab delete, single or bulk). */
   onDelete(ids: readonly string[]): void;
+  /** Header caption. The ACTIVITY and NOTIFICATION views share this component with different captions. */
+  title?: string;
+  /** `data-view` attribute for the section (matches the ViewId). */
+  dataView?: string;
 }
 
 type Tab = "unread" | "read";
@@ -84,6 +88,8 @@ export function NotificationView({
   seenIds,
   onMarkRead,
   onDelete,
+  title = "NOTIFICATION",
+  dataView = "notification",
 }: NotificationViewProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("unread");
@@ -145,8 +151,8 @@ export function NotificationView({
   };
 
   return (
-    <section className="notification-view" data-view="notification">
-      <ViewHeader title="NOTIFICATION" />
+    <section className="notification-view" data-view={dataView}>
+      <ViewHeader title={title} />
       <div className="notification-tabs" role="tablist">
         <button
           type="button"
