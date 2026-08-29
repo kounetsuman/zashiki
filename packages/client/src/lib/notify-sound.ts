@@ -73,6 +73,35 @@ const PRESET_VOICES: Record<SoundPreset, PresetVoice> = {
 };
 
 const TONE_SEC = 0.14;
+const MASTER_GAIN = 0.2;
+
+/**
+ * One long-lived context (avoids the per-call startup glitch) feeding a limiter, so overlapping
+ * notifications sum without clipping past the 0 dBFS ceiling. Lazy so no context is opened until the
+ * first sound plays. Held for the page lifetime; the browser reclaims it on unload.
+ */
+let audio: { ctx: AudioContext; master: GainNode } | null = null;
+
+function sharedAudio(): { ctx: AudioContext; master: GainNode } | null {
+  const Ctor = globalThis.AudioContext;
+  if (typeof Ctor !== "function") return null;
+  if (audio === null) {
+    const ctx = new Ctor();
+    // Engages only near full scale, so a single tone passes through untouched.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.1;
+    const master = ctx.createGain();
+    master.gain.value = MASTER_GAIN;
+    master.connect(limiter);
+    limiter.connect(ctx.destination);
+    audio = { ctx, master };
+  }
+  return audio;
+}
 
 /**
  * Plays a notification preset with a Web Audio synthesized tone (akin to Funk/Glass).
@@ -80,12 +109,13 @@ const TONE_SEC = 0.14;
  */
 export function playNotifySound(preset: SoundPreset): void {
   try {
-    const Ctor = globalThis.AudioContext;
-    if (typeof Ctor !== "function") return;
+    const shared = sharedAudio();
+    if (shared === null) return;
+    const { ctx, master } = shared;
+    // Autoplay policy can leave the context suspended until a user gesture.
+    if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
     const voice = PRESET_VOICES[preset] ?? PRESET_VOICES[DEFAULT_SOUND_PRESET];
-    const ctx = new Ctor();
     const now = ctx.currentTime;
-    let end = now;
     for (const [freq, at] of voice.tones) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -93,20 +123,13 @@ export function playNotifySound(preset: SoundPreset): void {
       osc.frequency.value = freq;
       // A mini envelope to prevent click noise
       gain.gain.setValueAtTime(0, now + at);
-      gain.gain.linearRampToValueAtTime(0.2, now + at + 0.01);
+      gain.gain.linearRampToValueAtTime(1, now + at + 0.01);
       gain.gain.linearRampToValueAtTime(0, now + at + TONE_SEC);
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(master);
       osc.start(now + at);
       osc.stop(now + at + TONE_SEC);
-      end = now + at + TONE_SEC;
     }
-    setTimeout(
-      () => {
-        void ctx.close().catch(() => undefined);
-      },
-      (end - now) * 1000 + 100,
-    );
   } catch {
     // Sound is best-effort (does not block the notification itself)
   }
