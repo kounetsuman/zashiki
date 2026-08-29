@@ -74,6 +74,37 @@
   outline: none;
 }
 
+.clip-edit-indent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #bbb;
+}
+
+.clip-edit-indent-label {
+  color: #999;
+}
+
+.clip-edit-indent label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.clip-edit-indent-size select {
+  padding: 2px 4px;
+  background: #141414;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+}
+
 .clip-edit-never {
   display: flex;
   align-items: center;

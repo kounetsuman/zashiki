@@ -7,6 +7,7 @@ import { ClipboardEditModal } from "./ClipboardEditModal.js";
 const writeText = vi.fn<(text: string) => Promise<void>>();
 
 beforeEach(() => {
+  localStorage.clear();
   writeText.mockReset();
   writeText.mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", {
@@ -15,6 +16,10 @@ beforeEach(() => {
   });
 });
 
+function tab(el: HTMLTextAreaElement, opts: { shift?: boolean } = {}) {
+  fireEvent.keyDown(el, { key: "Tab", shiftKey: opts.shift ?? false });
+}
+
 afterEach(cleanup);
 
 function renderModal(
@@ -22,7 +27,7 @@ function renderModal(
 ) {
   const onClose = vi.fn();
   const onSetEnabled = vi.fn();
-  render(
+  const utils = render(
     <ClipboardEditModal
       text={overrides.text ?? "claude \\\n  --flag"}
       enabled={overrides.enabled ?? true}
@@ -30,7 +35,7 @@ function renderModal(
       onClose={onClose}
     />,
   );
-  return { onClose, onSetEnabled };
+  return { onClose, onSetEnabled, ...utils };
 }
 
 describe("ClipboardEditModal", () => {
@@ -83,5 +88,67 @@ describe("ClipboardEditModal", () => {
     expect(box.checked).toBe(false);
     fireEvent.click(box);
     expect(onSetEnabled).toHaveBeenCalledWith(false);
+  });
+
+  it("indents every selected line with the default two spaces on Tab", () => {
+    renderModal({ text: "a\nb" });
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    ta.setSelectionRange(0, ta.value.length);
+    tab(ta);
+    expect(ta.value).toBe("  a\n  b");
+  });
+
+  it("removes one indent level from every selected line on Shift+Tab", () => {
+    renderModal({ text: "    a\n  b" });
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    ta.setSelectionRange(0, ta.value.length);
+    tab(ta, { shift: true });
+    expect(ta.value).toBe("  a\nb");
+  });
+
+  it("indents with a tab once the tab unit is selected, and persists the choice", () => {
+    const { unmount } = render(
+      <ClipboardEditModal
+        text={"a\nb"}
+        enabled
+        onSetEnabled={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "タブ" }));
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    ta.setSelectionRange(0, ta.value.length);
+    tab(ta);
+    expect(ta.value).toBe("\ta\n\tb");
+
+    unmount();
+    render(
+      <ClipboardEditModal
+        text="a"
+        enabled
+        onSetEnabled={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      (screen.getByRole("radio", { name: "タブ" }) as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+
+  it("indents by the chosen space width and persists it", () => {
+    const { unmount } = renderModal({ text: "a" });
+    fireEvent.change(screen.getByRole("combobox", { name: "幅" }), {
+      target: { value: "4" },
+    });
+    const ta = screen.getByRole("textbox") as HTMLTextAreaElement;
+    ta.setSelectionRange(0, ta.value.length);
+    tab(ta);
+    expect(ta.value).toBe("    a");
+
+    unmount();
+    renderModal({ text: "a" });
+    expect(
+      (screen.getByRole("combobox", { name: "幅" }) as HTMLSelectElement).value,
+    ).toBe("4");
   });
 });
