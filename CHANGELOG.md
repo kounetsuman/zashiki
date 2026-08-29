@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-08-29
+
+### Added
+
+- A dedicated Activity view that splits session activity out of the terminal (#306)
+- A Notifications settings tab with per-category sound presets and an inline preview (#304)
+- VSCode-style Tab / Shift+Tab block indent in the clipboard edit modal (#264)
+
+### Fixed
+
+- A leaked terminal alternate screen is now exited before the restore replay, so restored output renders in the normal buffer (#308)
+- A WebView back gesture can no longer strand the app on the startup splash (#302)
+- Unsaved Memo edits are flushed before a self-update, with a warning before the window unloads (#300)
+- Background shells are now counted per task instead of per process, so the count stays accurate (#298)
+- Notification sounds no longer clip, now routed through a shared audio context and limiter (#291)
+
 ## [0.16.0] - 2026-08-28
 
 ### Added
@@ -284,7 +300,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.16.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.17.0...HEAD
+[0.17.0]: https://github.com/kounetsuman/zashiki/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/kounetsuman/zashiki/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/kounetsuman/zashiki/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/kounetsuman/zashiki/compare/v0.13.0...v0.14.0
