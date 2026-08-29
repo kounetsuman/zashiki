@@ -1,4 +1,5 @@
 import {
+  activityIdsForCockpitTerminal,
   type ClientMessage,
   claudeSessionId,
   DEFAULT_FOOTER_THRESHOLDS,
@@ -7,6 +8,7 @@ import {
   type HooksStatusMessage,
   isSinglePathSegment,
   type NotificationSettings,
+  partitionNotifications,
   resolveOrgColor,
   type ServerMessage,
   type UpdateCheckResultMessage,
@@ -259,7 +261,21 @@ export function App({
     notifications,
     viewStorage,
   );
-  const unread = unreadCount(notifications, seenIds);
+  const { activity: activityNotifications, system: systemNotifications } =
+    partitionNotifications(notifications);
+  const activityUnread = unreadCount(activityNotifications, seenIds);
+  const systemUnread = unreadCount(systemNotifications, seenIds);
+  // Auto-read: an activity entry is read once its target Cockpit Terminal is active. Selecting a
+  // terminal by any means (toast, tab, keyboard, external select) funnels through
+  // selectedCockpitTerminalId, so watching it covers "reached via toast" and "activated otherwise".
+  useEffect(() => {
+    if (selectedCockpitTerminalId === null) return;
+    const ids = activityIdsForCockpitTerminal(
+      notifications,
+      selectedCockpitTerminalId,
+    );
+    if (ids.length > 0) markRead(ids);
+  }, [selectedCockpitTerminalId, notifications, markRead]);
   const updateVersion = updateAvailableVersion(notifications);
   // Number of cockpit terminals that have hit the usage limit (input for the footer warning).
   const limitedCount = cockpitTerminals.filter(
@@ -397,6 +413,15 @@ export function App({
   );
   const selfUpdate = useSelfUpdate(control, flashCopyToast, t, memoSaver.flush);
   useBeforeUnloadGuard(memoEnabled && memoDirty(memo));
+
+  // Delete (dismiss) notifications from the read tab; shared by the ACTIVITY and NOTIFICATION views.
+  const deleteNotifications = useCallback(
+    (ids: readonly string[]): void => {
+      for (const id of ids) control.send({ t: "notification.dismiss", id });
+      flashCopyToast(t("toast.notificationsDeleted", { count: ids.length }));
+    },
+    [control, flashCopyToast, t],
+  );
   const { copySessionIdByCockpitTerminalId } = useClipboardCopy(
     cockpitTerminals,
     flashCopyToast,
@@ -826,7 +851,7 @@ export function App({
             setHelpModalOpen(false);
             setSettingsModalOpen(true);
           }}
-          badges={{ notification: unread }}
+          badges={{ activity: activityUnread, notification: systemUnread }}
         />
         {selectedView !== null && (
           <aside className="left-area">
@@ -861,18 +886,22 @@ export function App({
                 onOpenDiff={openDiff}
               />
             )}
-            {selectedView === "notification" && (
+            {selectedView === "activity" && (
               <NotificationView
-                notifications={notifications}
+                title="ACTIVITY"
+                dataView="activity"
+                notifications={activityNotifications}
                 seenIds={seenIds}
                 onMarkRead={markRead}
-                onDelete={(ids) => {
-                  for (const id of ids)
-                    control.send({ t: "notification.dismiss", id });
-                  flashCopyToast(
-                    t("toast.notificationsDeleted", { count: ids.length }),
-                  );
-                }}
+                onDelete={deleteNotifications}
+              />
+            )}
+            {selectedView === "notification" && (
+              <NotificationView
+                notifications={systemNotifications}
+                seenIds={seenIds}
+                onMarkRead={markRead}
+                onDelete={deleteNotifications}
               />
             )}
           </aside>

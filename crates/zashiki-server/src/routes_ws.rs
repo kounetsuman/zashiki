@@ -376,6 +376,7 @@ mod ws_control_tests {
             sticky: false,
             dismissible: true,
             toast: None,
+            cockpit_terminal_id: None,
         };
         let hub = ControlHub::new(ConfigView::default(), vec![notif], snapshot("@1"));
         let port = serve(Some(test_services(hub, vec![]))).await;

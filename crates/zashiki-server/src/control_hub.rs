@@ -392,6 +392,7 @@ impl ControlHub {
         &self,
         id: String,
         kind: crate::protocol::NotifyKind,
+        cockpit_terminal_id: String,
         window_title: &str,
         now_ms: u64,
     ) {
@@ -399,7 +400,13 @@ impl ControlHub {
             let mut state = self.inner.write().unwrap();
             let created = now_ms.max(state.last_notification_at + 1);
             state.last_notification_at = created;
-            let n = crate::notifications::notify_notification(id, kind, window_title, created);
+            let n = crate::notifications::notify_notification(
+                id,
+                kind,
+                cockpit_terminal_id,
+                window_title,
+                created,
+            );
             let next = crate::notifications::append_notification(
                 &state.notifications,
                 n,
@@ -835,8 +842,8 @@ mod tests {
         let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
         let mut rx = hub.subscribe();
         // Even with the same now_ms, createdAt is kept monotonically increasing so occurrence order is preserved (newest-first, so the second entry is at the head).
-        hub.record_activity("id1".to_string(), crate::protocol::NotifyKind::Waiting, "repo-a", 1000);
-        hub.record_activity("id2".to_string(), crate::protocol::NotifyKind::Done, "repo-a", 1000);
+        hub.record_activity("id1".to_string(), crate::protocol::NotifyKind::Waiting, "@1".to_string(), "repo-a", 1000);
+        hub.record_activity("id2".to_string(), crate::protocol::NotifyKind::Done, "@1".to_string(), "repo-a", 1000);
         let _first = next_notifications(&mut rx).await;
         let second = next_notifications(&mut rx).await;
         assert_eq!(second.len(), 2);
@@ -844,6 +851,7 @@ mod tests {
         assert_eq!(second[0].created_at, 1001);
         assert_eq!(second[1].created_at, 1000);
         assert_eq!(second[0].title, "✅ 完了 repo-a");
+        assert_eq!(second[0].cockpit_terminal_id.as_deref(), Some("@1"));
     }
 
     #[tokio::test]
@@ -881,7 +889,7 @@ mod tests {
     async fn record_error_shares_monotonic_clock_with_activity() {
         let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
         let mut rx = hub.subscribe();
-        hub.record_activity("a".to_string(), crate::protocol::NotifyKind::Waiting, "repo", 1000);
+        hub.record_activity("a".to_string(), crate::protocol::NotifyKind::Waiting, "@1".to_string(), "repo", 1000);
         hub.record_error("e".to_string(), "internal", "boom", 1000);
         let _first = next_notifications(&mut rx).await;
         let second = next_notifications(&mut rx).await;

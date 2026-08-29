@@ -20,6 +20,7 @@ pub fn error_notification(id: String, code: &str, message: &str, created_at: u64
         sticky: false,
         dismissible: true,
         toast: Some(false),
+        cockpit_terminal_id: None,
     }
 }
 
@@ -40,15 +41,18 @@ pub fn warn_notification(
         sticky: false,
         dismissible: true,
         toast: None,
+        cockpit_terminal_id: None,
     }
 }
 
-/// Notification that pushes the hooks waiting/done into NOTIFICATION. `toast: Some(false)` so it
-/// appears only in NOTIFICATION: the transient toast is driven by the separate notify push, which
-/// the client renders as a persistent, click-to-focus session toast (avoids double-display).
+/// Notification that pushes the hooks waiting/done into ACTIVITY. `toast: Some(false)` so it
+/// appears only in the ACTIVITY view: the transient toast is driven by the separate notify push, which
+/// the client renders as a persistent, click-to-focus session toast (avoids double-display). Carries
+/// the target Cockpit Terminal so the entry is classified as activity and auto-read when it activates.
 pub fn notify_notification(
     id: String,
     kind: NotifyKind,
+    cockpit_terminal_id: String,
     window_title: &str,
     created_at: u64,
 ) -> Notification {
@@ -69,6 +73,7 @@ pub fn notify_notification(
         sticky: false,
         dismissible: true,
         toast: Some(false),
+        cockpit_terminal_id: Some(cockpit_terminal_id),
     }
 }
 
@@ -103,6 +108,7 @@ pub fn pty_exhaustion_notification(created_at: u64) -> Notification {
         dismissible: true,
         // Panel only, to avoid double-toasting with the ErrorDialog (same policy as error_notification).
         toast: Some(false),
+        cockpit_terminal_id: None,
     }
 }
 
@@ -127,6 +133,7 @@ pub fn scrollback_pressure_notification(used_bytes: usize, created_at: u64) -> N
         sticky: false,
         dismissible: true,
         toast: Some(true),
+        cockpit_terminal_id: None,
     }
 }
 
@@ -147,6 +154,7 @@ pub fn update_available_notification(version: &str, url: &str, created_at: u64) 
         sticky: true,
         dismissible: false,
         toast: Some(true),
+        cockpit_terminal_id: None,
     }
 }
 
@@ -221,6 +229,7 @@ pub fn boundary_notification(failure: BoundaryFailure, created_at: u64) -> Notif
         sticky: failure.sticky(),
         dismissible: true,
         toast: None,
+        cockpit_terminal_id: None,
     }
 }
 
@@ -274,6 +283,7 @@ mod tests {
             sticky: false,
             dismissible: true,
             toast: None,
+            cockpit_terminal_id: None,
         }
     }
 
@@ -350,13 +360,26 @@ mod tests {
     }
 
     #[test]
-    fn notify_notification_uses_toast_wording() {
-        let w = notify_notification("id1".to_string(), NotifyKind::Waiting, "repo-a", 5);
+    fn notify_notification_uses_toast_wording_and_carries_terminal() {
+        let w = notify_notification(
+            "id1".to_string(),
+            NotifyKind::Waiting,
+            "@3".to_string(),
+            "repo-a",
+            5,
+        );
         assert_eq!(w.title, "⏳ 応答待ち repo-a");
         assert_eq!(w.level, NotificationLevel::Info);
         assert!(w.dismissible && !w.sticky);
         assert_eq!(w.toast, Some(false));
-        let d = notify_notification("id2".to_string(), NotifyKind::Done, "repo-b", 6);
+        assert_eq!(w.cockpit_terminal_id.as_deref(), Some("@3"));
+        let d = notify_notification(
+            "id2".to_string(),
+            NotifyKind::Done,
+            "@1".to_string(),
+            "repo-b",
+            6,
+        );
         assert_eq!(d.title, "✅ 完了 repo-b");
     }
 

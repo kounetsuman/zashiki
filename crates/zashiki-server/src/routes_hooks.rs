@@ -83,11 +83,15 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
     if actions.git_dirty {
         control.hub.broadcast(crate::protocol::ServerMessage::GitDirty);
     }
-    if let Some((kind, name)) = actions.record {
+    if let Some((kind, cockpit_terminal_id, name)) = actions.record {
         if control.hub.notification_settings().delivers(kind) {
-            control
-                .hub
-                .record_activity(uuid::Uuid::new_v4().to_string(), kind, &name, now_ms());
+            control.hub.record_activity(
+                uuid::Uuid::new_v4().to_string(),
+                kind,
+                cockpit_terminal_id,
+                &name,
+                now_ms(),
+            );
         }
     }
     if let Some(event) = actions.notify {
