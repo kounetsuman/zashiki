@@ -1,4 +1,4 @@
-import type { NotifyKind } from "../lib/notify-sound.js";
+import type { NotifyKind } from "@zashiki/shared";
 
 /**
  * A transient toast for a Claude Code waiting/done event, driven by the notify push (not the

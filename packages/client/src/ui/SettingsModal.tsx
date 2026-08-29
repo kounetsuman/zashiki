@@ -30,7 +30,7 @@ type UpdateCheckState =
   | { phase: "upToDate" }
   | { phase: "error" };
 
-type SettingsTab = "general" | "developer";
+type SettingsTab = "general" | "notifications" | "developer";
 
 export interface SettingsModalProps {
   /** Current display language (i18n.language). */
@@ -114,8 +114,9 @@ function toLocale(lang: string): Locale {
 /**
  * Settings modal opened from the footer gear, sized to 80% of the window with a scrollable body. A
  * right-side menu switches between a General panel (display language, terminal font size, updates,
- * orgs, integration toggles, external editor) and a Developer mode panel (renderer switch, DevTools,
- * debug panel). Both panels stay mounted so unsaved drafts survive a switch.
+ * orgs, integration toggles, external editor), a Notifications panel (per-category show/sound/preset
+ * plus a sound preview), and a Developer mode panel (renderer switch, DevTools, debug panel). All
+ * panels stay mounted so unsaved drafts survive a switch.
  */
 export function SettingsModal({
   language,
@@ -206,6 +207,17 @@ export function SettingsModal({
               onClick={() => setTab("general")}
             >
               {t("settings.tabGeneral")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="settings-tab-notifications"
+              aria-selected={tab === "notifications"}
+              aria-controls="settings-panel-notifications"
+              className={`modal-nav-item${tab === "notifications" ? " is-active" : ""}`}
+              onClick={() => setTab("notifications")}
+            >
+              {t("settings.tabNotifications")}
             </button>
             <button
               type="button"
@@ -426,13 +438,6 @@ export function SettingsModal({
                   onSave={onSaveFooterThresholds}
                 />
               )}
-            {onSetNotifications !== undefined &&
-              notificationSettings !== undefined && (
-                <NotificationSettingsField
-                  value={notificationSettings}
-                  onChange={onSetNotifications}
-                />
-              )}
             {onSetHooksRegistered !== undefined &&
               hooksStatus !== undefined && (
                 <div className="settings-field">
@@ -470,6 +475,21 @@ export function SettingsModal({
                 </button>
               </div>
             )}
+          </div>
+          <div
+            className="modal-body scrollbar-persistent"
+            role="tabpanel"
+            id="settings-panel-notifications"
+            aria-labelledby="settings-tab-notifications"
+            hidden={tab !== "notifications"}
+          >
+            {onSetNotifications !== undefined &&
+              notificationSettings !== undefined && (
+                <NotificationSettingsField
+                  value={notificationSettings}
+                  onChange={onSetNotifications}
+                />
+              )}
           </div>
           <div
             className="modal-body scrollbar-persistent"

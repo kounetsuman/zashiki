@@ -91,24 +91,40 @@ impl Default for FooterThresholds {
     }
 }
 
-/// Per-category notification preference: whether to show the notification and whether to play its sound.
+/// A selectable notification-sound preset. Mirrors the shared `SoundPreset` union; wire values are the
+/// lowercase ids. Stays `Copy` so `NotifyCategoryPref` can too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SoundPreset {
+    #[default]
+    Chime,
+    Descend,
+    Ping,
+    Pong,
+    Tick,
+    Tock,
+    Marimba,
+    Bell,
+}
+
+/// Per-category notification preference: whether to show the notification, whether to play a sound, and which sound.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NotifyCategoryPref {
     pub notify: bool,
     pub sound: bool,
+    pub sound_type: SoundPreset,
 }
 
 impl NotifyCategoryPref {
-    const fn on() -> Self {
-        Self { notify: true, sound: true }
-    }
-    const fn off() -> Self {
-        Self { notify: false, sound: false }
+    const fn new(notify: bool, sound: bool, sound_type: SoundPreset) -> Self {
+        Self { notify, sound, sound_type }
     }
 }
 
 /// The per-category switches. `waiting` / `done` mirror the historical on-by-default; the Background
-/// Activity edges are opt-in. Kept in sync with shared/config by the client's protocol tests.
+/// Activity edges are opt-in. Each category's `sound_type` reproduces its historical chirp. Kept in
+/// sync with shared/config by the client's protocol tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotifyCategories {
@@ -123,12 +139,12 @@ pub struct NotifyCategories {
 impl Default for NotifyCategories {
     fn default() -> Self {
         Self {
-            waiting: NotifyCategoryPref::on(),
-            done: NotifyCategoryPref::on(),
-            subagent_start: NotifyCategoryPref::off(),
-            subagent_end: NotifyCategoryPref::off(),
-            shell_start: NotifyCategoryPref::off(),
-            shell_end: NotifyCategoryPref::off(),
+            waiting: NotifyCategoryPref::new(true, true, SoundPreset::Descend),
+            done: NotifyCategoryPref::new(true, true, SoundPreset::Chime),
+            subagent_start: NotifyCategoryPref::new(false, false, SoundPreset::Ping),
+            subagent_end: NotifyCategoryPref::new(false, false, SoundPreset::Pong),
+            shell_start: NotifyCategoryPref::new(false, false, SoundPreset::Tick),
+            shell_end: NotifyCategoryPref::new(false, false, SoundPreset::Tock),
         }
     }
 }
@@ -554,9 +570,11 @@ mod tests {
         settings.enabled = false;
         assert!(!settings.delivers(NotifyKind::Waiting));
         settings.enabled = true;
-        settings.categories.done = NotifyCategoryPref { notify: false, sound: false };
+        settings.categories.done =
+            NotifyCategoryPref { notify: false, sound: false, sound_type: SoundPreset::Chime };
         assert!(!settings.delivers(NotifyKind::Done));
-        settings.categories.done = NotifyCategoryPref { notify: false, sound: true };
+        settings.categories.done =
+            NotifyCategoryPref { notify: false, sound: true, sound_type: SoundPreset::Chime };
         assert!(settings.delivers(NotifyKind::Done));
     }
 
@@ -964,7 +982,7 @@ mod tests {
             r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
             r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}},"#,
-            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true},"done":{"notify":true,"sound":true},"subagentStart":{"notify":false,"sound":false},"subagentEnd":{"notify":false,"sound":false},"shellStart":{"notify":false,"sound":false},"shellEnd":{"notify":false,"sound":false}}}"#,
+            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true,"soundType":"descend"},"done":{"notify":true,"sound":true,"soundType":"chime"},"subagentStart":{"notify":false,"sound":false,"soundType":"ping"},"subagentEnd":{"notify":false,"sound":false,"soundType":"pong"},"shellStart":{"notify":false,"sound":false,"soundType":"tick"},"shellEnd":{"notify":false,"sound":false,"soundType":"tock"}}}"#,
             r#"}"#
         );
         assert_eq!(to_json(&msg), json);
@@ -988,7 +1006,7 @@ mod tests {
             r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
             r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}},"#,
-            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true},"done":{"notify":true,"sound":true},"subagentStart":{"notify":false,"sound":false},"subagentEnd":{"notify":false,"sound":false},"shellStart":{"notify":false,"sound":false},"shellEnd":{"notify":false,"sound":false}}}"#,
+            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true,"soundType":"descend"},"done":{"notify":true,"sound":true,"soundType":"chime"},"subagentStart":{"notify":false,"sound":false,"soundType":"ping"},"subagentEnd":{"notify":false,"sound":false,"soundType":"pong"},"shellStart":{"notify":false,"sound":false,"soundType":"tick"},"shellEnd":{"notify":false,"sound":false,"soundType":"tock"}}}"#,
             r#"}"#
         );
         assert_eq!(to_json(&msg), json);

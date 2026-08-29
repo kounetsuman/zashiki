@@ -36,6 +36,8 @@ describe("parseConfig", () => {
     expect(parsed.notifications.categories.subagentStart).toEqual({
       notify: true,
       sound: false,
+      soundType:
+        DEFAULT_NOTIFICATION_SETTINGS.categories.subagentStart.soundType,
     });
     expect(parsed.notifications.categories.waiting).toEqual(
       DEFAULT_NOTIFICATION_SETTINGS.categories.waiting,
@@ -101,6 +103,22 @@ describe("notificationSettingsSchema", () => {
     });
     expect(result.categories.done).toEqual(
       DEFAULT_NOTIFICATION_SETTINGS.categories.done,
+    );
+  });
+
+  it("round-trips a chosen soundType", () => {
+    const result = parse({
+      categories: { waiting: { notify: true, sound: true, soundType: "bell" } },
+    });
+    expect(result.categories.waiting.soundType).toBe("bell");
+  });
+
+  it("falls back to the category default for an unknown soundType", () => {
+    const result = parse({
+      categories: { done: { notify: true, sound: true, soundType: "nope" } },
+    });
+    expect(result.categories.done.soundType).toBe(
+      DEFAULT_NOTIFICATION_SETTINGS.categories.done.soundType,
     );
   });
 });

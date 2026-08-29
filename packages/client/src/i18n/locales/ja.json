@@ -237,6 +237,7 @@
     "save": "保存",
     "close": "閉じる",
     "tabGeneral": "一般",
+    "tabNotifications": "通知",
     "tabDeveloper": "開発モード",
     "fontSize": "ターミナルの文字サイズ",
     "fontSizeDecrease": "文字を小さく",
@@ -269,6 +270,9 @@
     "notificationsMaster": "通知を有効にする",
     "notificationsShow": "通知",
     "notificationsSound": "音",
+    "notificationsSoundType": "音の種類",
+    "notificationsPreview": "試聴:",
+    "notificationsPreviewPlay": "{{name}} を再生",
     "notifyCategory": {
       "waiting": "応答待ち",
       "done": "完了",
@@ -276,6 +280,16 @@
       "subagentEnd": "サブエージェント終了",
       "shellStart": "バックグラウンドシェル開始",
       "shellEnd": "バックグラウンドシェル終了"
+    },
+    "soundPreset": {
+      "chime": "チャイム",
+      "descend": "ディセンド",
+      "ping": "ピン",
+      "pong": "ポン",
+      "tick": "ティック",
+      "tock": "トック",
+      "marimba": "マリンバ",
+      "bell": "ベル"
     },
     "footerThresholds": {
       "section": "フッタの色分け閾値",

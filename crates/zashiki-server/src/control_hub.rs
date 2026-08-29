@@ -979,7 +979,11 @@ mod tests {
     fn notify_suppressed_entirely_when_master_off() {
         let settings = settings_for_subagent_start(
             false,
-            crate::protocol::NotifyCategoryPref { notify: true, sound: true },
+            crate::protocol::NotifyCategoryPref {
+                notify: true,
+                sound: true,
+                sound_type: crate::protocol::SoundPreset::Ping,
+            },
         );
         let (hub, macs) = hub_with_notifications(settings);
         let mut rx = hub.subscribe();
@@ -992,7 +996,11 @@ mod tests {
     fn notify_pushes_and_macs_with_sound_when_category_on() {
         let settings = settings_for_subagent_start(
             true,
-            crate::protocol::NotifyCategoryPref { notify: true, sound: true },
+            crate::protocol::NotifyCategoryPref {
+                notify: true,
+                sound: true,
+                sound_type: crate::protocol::SoundPreset::Ping,
+            },
         );
         let (hub, macs) = hub_with_notifications(settings);
         let mut rx = hub.subscribe();
@@ -1009,7 +1017,11 @@ mod tests {
         // the macOS notification (with sound); the client suppresses the visual per the same switch.
         let settings = settings_for_subagent_start(
             true,
-            crate::protocol::NotifyCategoryPref { notify: false, sound: true },
+            crate::protocol::NotifyCategoryPref {
+                notify: false,
+                sound: true,
+                sound_type: crate::protocol::SoundPreset::Ping,
+            },
         );
         let (hub, macs) = hub_with_notifications(settings);
         let mut rx = hub.subscribe();
@@ -1024,7 +1036,11 @@ mod tests {
     fn notify_macs_without_sound_when_visual_on_but_sound_off() {
         let settings = settings_for_subagent_start(
             true,
-            crate::protocol::NotifyCategoryPref { notify: true, sound: false },
+            crate::protocol::NotifyCategoryPref {
+                notify: true,
+                sound: false,
+                sound_type: crate::protocol::SoundPreset::Ping,
+            },
         );
         let (hub, macs) = hub_with_notifications(settings);
         hub.notify(subagent_start_event());

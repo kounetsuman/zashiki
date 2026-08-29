@@ -237,6 +237,7 @@
     "save": "Save",
     "close": "Close",
     "tabGeneral": "General",
+    "tabNotifications": "Notifications",
     "tabDeveloper": "Development mode",
     "fontSize": "Terminal font size",
     "fontSizeDecrease": "Decrease font size",
@@ -269,6 +270,9 @@
     "notificationsMaster": "Enable notifications",
     "notificationsShow": "Show",
     "notificationsSound": "Sound",
+    "notificationsSoundType": "Sound type",
+    "notificationsPreview": "Preview:",
+    "notificationsPreviewPlay": "Play {{name}}",
     "notifyCategory": {
       "waiting": "Awaiting response",
       "done": "Done",
@@ -276,6 +280,16 @@
       "subagentEnd": "Subagent finished",
       "shellStart": "Background shell started",
       "shellEnd": "Background shell finished"
+    },
+    "soundPreset": {
+      "chime": "Chime",
+      "descend": "Descend",
+      "ping": "Ping",
+      "pong": "Pong",
+      "tick": "Tick",
+      "tock": "Tock",
+      "marimba": "Marimba",
+      "bell": "Bell"
     },
     "footerThresholds": {
       "section": "Footer color thresholds",

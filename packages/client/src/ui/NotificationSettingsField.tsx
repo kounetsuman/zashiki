@@ -3,24 +3,32 @@ import {
   type NotificationSettings,
   type NotifyCategory,
   type NotifyCategoryPref,
+  SOUND_PRESETS,
+  type SoundPreset,
 } from "@zashiki/shared";
 import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
+
+import { playNotifySound } from "../lib/notify-sound.js";
 
 export interface NotificationSettingsFieldProps {
   value: NotificationSettings;
   /** Persist the whole settings object (the server re-broadcasts it via config.sync). */
   onChange(value: NotificationSettings): void;
+  /** Audition a preset. Defaults to the Web Audio synth; injected in tests. */
+  previewSound?(preset: SoundPreset): void;
 }
 
 /**
- * The notifications section of SETTINGS: a master switch plus, per category, an independent "show"
- * and "sound" toggle. Category rows are inert while the master is off. Each change persists the whole
- * settings object immediately (no Save button), matching the other live toggles.
+ * The notifications section of SETTINGS: a master switch; per category an independent "show" toggle,
+ * "sound" toggle, and sound-preset picker; and a preview strip to audition every preset. Category
+ * rows are inert while the master is off. Each change persists the whole settings object immediately
+ * (no Save button), matching the other live toggles. Preview plays regardless of the switches.
  */
 export function NotificationSettingsField({
   value,
   onChange,
+  previewSound = playNotifySound,
 }: NotificationSettingsFieldProps) {
   const { t } = useTranslation();
 
@@ -58,6 +66,9 @@ export function NotificationSettingsField({
         <span className="notifications-col">
           {t("settings.notificationsSound")}
         </span>
+        <span className="notifications-col">
+          {t("settings.notificationsSoundType")}
+        </span>
         {NOTIFY_CATEGORIES.map((category) => {
           const label = t(`settings.notifyCategory.${category}`);
           return (
@@ -81,7 +92,43 @@ export function NotificationSettingsField({
                   setCategory(category, { sound: e.target.checked })
                 }
               />
+              <select
+                className="settings-select notifications-sound-select"
+                aria-label={`${label} — ${t("settings.notificationsSoundType")}`}
+                value={value.categories[category].soundType}
+                disabled={!value.enabled || !value.categories[category].sound}
+                onChange={(e) =>
+                  setCategory(category, {
+                    soundType: e.target.value as SoundPreset,
+                  })
+                }
+              >
+                {SOUND_PRESETS.map((preset) => (
+                  <option key={preset} value={preset}>
+                    {t(`settings.soundPreset.${preset}`)}
+                  </option>
+                ))}
+              </select>
             </Fragment>
+          );
+        })}
+      </div>
+      <div className="notifications-preview">
+        <span className="notifications-preview-label">
+          {t("settings.notificationsPreview")}
+        </span>
+        {SOUND_PRESETS.map((preset) => {
+          const name = t(`settings.soundPreset.${preset}`);
+          return (
+            <button
+              key={preset}
+              type="button"
+              className="notifications-preview-button"
+              aria-label={t("settings.notificationsPreviewPlay", { name })}
+              onClick={() => previewSound(preset)}
+            >
+              {name}
+            </button>
           );
         })}
       </div>
