@@ -131,6 +131,17 @@
     "summary": "{{matches}} 件（{{files}} ファイル）",
     "andMore": " 以上"
   },
+  "quickOpen": {
+    "ariaLabel": "ファイルへ移動",
+    "placeholder": "ファイル名で検索（: を付けると行番号へ移動）",
+    "noResults": "一致するファイルがありません",
+    "truncated": "一部のみ表示中 — 検索語を絞り込んでください"
+  },
+  "openFile": {
+    "dialogTitle": "Zashikiで開くファイルの選択",
+    "tooLarge": "ファイルが大きすぎて開けません（最大 2 MB）",
+    "failed": "選択したファイルを開けませんでした"
+  },
   "git": {
     "stageAll": "すべてステージ（git add .）",
     "unstageAll": "すべてアンステージ（git reset .）",

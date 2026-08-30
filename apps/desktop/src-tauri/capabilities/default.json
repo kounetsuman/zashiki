@@ -6,5 +6,9 @@
   "remote": {
     "urls": ["http://127.0.0.1:*", "http://localhost:*"]
   },
-  "permissions": ["core:default", "allow-open-devtools"]
+  "permissions": [
+    "core:default",
+    "allow-open-devtools",
+    "allow-pick-and-read-file"
+  ]
 }

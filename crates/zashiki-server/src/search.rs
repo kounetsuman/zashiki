@@ -54,6 +54,57 @@ pub struct ScannedRoot {
     pub path: String,
 }
 
+/// One file in the quick-open listing (GET /api/files, `FileEntry`).
+#[derive(Serialize)]
+pub struct FileEntry {
+    pub org: String,
+    pub repo: String,
+    pub path: String,
+    #[serde(rename = "relPath")]
+    pub rel_path: String,
+}
+
+#[derive(Serialize)]
+pub struct FileListResponse {
+    pub truncated: bool,
+    pub files: Vec<FileEntry>,
+}
+
+/// Cap on the quick-open file listing (past this the response is marked truncated).
+pub const FILE_LIST_MAX: usize = 20_000;
+
+/// Maps the newline-delimited output of `rg --files` (one path per line) into file
+/// entries. Paths outside a scan root are dropped; the cap sets truncated=true.
+pub fn parse_rg_files(stdout: &str, roots: &[ScannedRoot], max: usize) -> FileListResponse {
+    let mut files: Vec<FileEntry> = Vec::new();
+    let mut truncated = false;
+    for raw in stdout.split('\n') {
+        let path = raw.strip_suffix('\r').unwrap_or(raw);
+        if path.is_empty() {
+            continue;
+        }
+        let Some(root) = root_for(path, roots) else {
+            continue;
+        };
+        if files.len() >= max {
+            truncated = true;
+            break;
+        }
+        let rel_path = if path == root.path {
+            root.repo.clone()
+        } else {
+            path[root.path.len() + 1..].to_string()
+        };
+        files.push(FileEntry {
+            org: root.org.clone(),
+            repo: root.repo.clone(),
+            path: path.to_string(),
+            rel_path,
+        });
+    }
+    FileListResponse { truncated, files }
+}
+
 pub struct SearchLimits {
     pub max_total: usize,
     pub max_per_file: usize,
@@ -342,6 +393,30 @@ mod tests {
         );
         let resp = parse_rg_json(stdout, &roots(), &DEFAULT_SEARCH_LIMITS);
         assert_eq!(resp.files[0].rel_path, "repo-a");
+    }
+
+    #[test]
+    fn parse_rg_files_maps_paths_to_roots_and_drops_outsiders() {
+        let stdout = concat!(
+            "/r/org1/repo-a/src/x.ts\n",
+            "/r/org1/repo-a/README.md\n",
+            "\n",
+            "/outside/y.ts\n",
+        );
+        let resp = parse_rg_files(stdout, &roots(), FILE_LIST_MAX);
+        assert!(!resp.truncated);
+        assert_eq!(resp.files.len(), 2);
+        assert_eq!(resp.files[0].rel_path, "src/x.ts");
+        assert_eq!(resp.files[0].org, "org1");
+        assert_eq!(resp.files[1].rel_path, "README.md");
+    }
+
+    #[test]
+    fn parse_rg_files_truncates_at_max() {
+        let stdout = concat!("/r/org1/repo-a/a\n", "/r/org1/repo-a/b\n");
+        let resp = parse_rg_files(stdout, &roots(), 1);
+        assert!(resp.truncated);
+        assert_eq!(resp.files.len(), 1);
     }
 
     #[tokio::test]

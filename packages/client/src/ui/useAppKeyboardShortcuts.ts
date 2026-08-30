@@ -13,13 +13,18 @@ export interface AppKeyboardShortcuts {
   newSession(org: string): void;
   duplicateSession(cockpitTerminalId: string): void;
   closeTabByKey(key: string): void;
+  /** Cmd+P — open the quick-open file palette. */
+  openQuickOpen(): void;
+  /** Cmd+O — open the native file picker. */
+  openFile(): void;
 }
 
 /**
  * Wires the global keyboard shortcuts. The view switches use Ctrl+Alt+<key> and the actions use
- * meta keys (Cmd+B/R/N/W), so they do not collide with each other or with the view-local Ctrl-N/X.
- * Meta keys pass through to the browser even while the terminal is focused, so the actions work there;
- * the Ctrl+Alt switches pass through only while a text input/terminal is not being typed in.
+ * meta keys (Cmd+B/R/N/W, Cmd+P quick-open, Cmd+O native open), so they do not collide with each other
+ * or with the view-local Ctrl-N/X. Meta keys pass through to the browser even while the terminal is
+ * focused, so the actions work there; the Ctrl+Alt switches pass through only while a text
+ * input/terminal is not being typed in.
  */
 export function useAppKeyboardShortcuts({
   cockpitTerminals,
@@ -32,6 +37,8 @@ export function useAppKeyboardShortcuts({
   newSession,
   duplicateSession,
   closeTabByKey,
+  openQuickOpen,
+  openFile,
 }: AppKeyboardShortcuts): void {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent): void => {
@@ -114,4 +121,28 @@ export function useAppKeyboardShortcuts({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeKey, closeTabByKey]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== "p" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
+        return;
+      }
+      e.preventDefault();
+      openQuickOpen();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openQuickOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== "o" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) {
+        return;
+      }
+      e.preventDefault();
+      openFile();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [openFile]);
 }

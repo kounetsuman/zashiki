@@ -4554,6 +4554,7 @@ name = "zashiki-desktop"
 version = "0.0.0"
 dependencies = [
  "libc",
+ "serde",
  "serde_json",
  "signal-hook",
  "tauri",

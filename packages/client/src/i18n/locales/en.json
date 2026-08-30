@@ -131,6 +131,17 @@
     "summary": "{{matches}} matches ({{files}} files)",
     "andMore": " or more"
   },
+  "quickOpen": {
+    "ariaLabel": "Go to file",
+    "placeholder": "Search files by name (append : to go to line)",
+    "noResults": "No matching files",
+    "truncated": "Showing partial results — narrow your search"
+  },
+  "openFile": {
+    "dialogTitle": "Select a file to open in Zashiki",
+    "tooLarge": "That file is too large to open (max 2 MB)",
+    "failed": "Could not open the selected file"
+  },
   "git": {
     "stageAll": "Stage all (git add .)",
     "unstageAll": "Unstage all (git reset .)",

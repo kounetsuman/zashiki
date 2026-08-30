@@ -17,6 +17,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
 import type { FilesApi } from "./api/files.js";
+import type { FilesListApi } from "./api/files-list.js";
 import type { FsApi } from "./api/fs.js";
 import type { GitApi } from "./api/git.js";
 import type { ReposApi } from "./api/repos.js";
@@ -110,6 +111,10 @@ const fakeSearchApi: SearchApi = {
 
 const fakeFilesApi: FilesApi = {
   read: () => Promise.resolve(""),
+};
+
+const fakeFilesListApi: FilesListApi = {
+  list: () => Promise.resolve({ truncated: false, files: [] }),
 };
 
 const fakeReposApi: ReposApi = {
@@ -290,6 +295,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -312,6 +318,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -342,6 +349,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -368,6 +376,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -396,6 +405,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -422,6 +432,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -452,6 +463,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -486,6 +498,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -521,6 +534,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -570,6 +584,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -597,6 +612,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -635,6 +651,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -662,6 +679,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -700,6 +718,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -740,6 +759,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -769,6 +789,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -809,6 +830,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -838,6 +860,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -856,6 +879,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -881,6 +905,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         notifier={notifier}
       />,
@@ -939,6 +964,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         notifier={notifier}
       />,
@@ -967,6 +993,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         notifier={notifier}
       />,
@@ -987,6 +1014,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         notifier={notifier}
       />,
@@ -1021,6 +1049,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         notifier={notifier}
       />,
@@ -1043,6 +1072,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -1072,6 +1102,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -1097,6 +1128,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -1125,6 +1157,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1164,6 +1197,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={storage}
       />,
@@ -1202,6 +1236,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1236,6 +1271,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1267,6 +1303,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1303,6 +1340,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1333,6 +1371,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1359,6 +1398,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1383,6 +1423,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1416,6 +1457,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1440,6 +1482,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1470,6 +1513,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -1495,6 +1539,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -1512,6 +1557,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={null}
       />,
@@ -1536,6 +1582,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -1558,6 +1605,7 @@ describe("App", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
       />,
     );
@@ -1617,6 +1665,7 @@ describe("App welcome onboarding", () => {
         fsApi={fakeFsApi}
         searchApi={fakeSearchApi}
         filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
         reposApi={fakeReposApi}
         viewStorage={viewStorage}
       />,

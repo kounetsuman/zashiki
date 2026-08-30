@@ -24,6 +24,8 @@ tauri = { version = "2", features = ["webview-data-url", "devtools"] }
 tauri-plugin-dialog = "2"
 # config.json（~/.zashiki/config.json）の debug フラグ読み取り用（issue #310）。server と同じ設定ファイル。
 serde_json = "1"
+# Cmd+O のネイティブファイル選択結果（PickedFile）を command の戻り値として返すため。
+serde = { version = "1", features = ["derive"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -22,6 +22,12 @@ export interface ViewerProps {
    * of the same file.
    */
   focusNonce?: number;
+  /** 1-based line to scroll to and select once content is ready (from search / quick-open). */
+  revealLine?: number;
+  /** Bumped alongside revealLine so the same line can be re-revealed on a re-open. */
+  revealNonce?: number;
+  /** Called once a pending reveal has been applied, so the owner can clear it (no re-scroll on remount). */
+  onRevealed?(): void;
 }
 
 /**
@@ -29,9 +35,15 @@ export interface ViewerProps {
  * changes the content, the doc is swapped out. Editing is disabled, so cursor
  * position is not a concern.
  */
-function CodeMirrorHost({ buffer }: Pick<ViewerProps, "buffer">) {
+function CodeMirrorHost({
+  buffer,
+  revealLine,
+  revealNonce,
+  onRevealed,
+}: Pick<ViewerProps, "buffer" | "revealLine" | "revealNonce" | "onRevealed">) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const revealedRef = useRef<number | undefined>(undefined);
   // Read the initial doc via a ref so the closure is fixed at view creation
   // time (avoid recreating the view on content changes; the content-sync effect
   // below swaps it out instead).
@@ -92,6 +104,24 @@ function CodeMirrorHost({ buffer }: Pick<ViewerProps, "buffer">) {
     });
   }, [buffer.content]);
 
+  // Scroll to and select the requested line once the doc is populated. Keyed on revealNonce so a
+  // re-open with the same line re-scrolls, while content polling (buffer.content) never re-scrolls.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: buffer.content is a re-run trigger so the scroll can fire once the async read populates the doc.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view === null || revealNonce === undefined || revealLine === undefined)
+      return;
+    if (revealedRef.current === revealNonce) return;
+    const lineNo = Math.min(Math.max(revealLine, 1), view.state.doc.lines);
+    const line = view.state.doc.line(lineNo);
+    revealedRef.current = revealNonce;
+    view.dispatch({
+      selection: { anchor: line.from, head: line.to },
+      effects: EditorView.scrollIntoView(line.from, { y: "center" }),
+    });
+    onRevealed?.();
+  }, [revealNonce, revealLine, buffer.content, onRevealed]);
+
   return <div className="viewer-cm" ref={hostRef} />;
 }
 
@@ -107,6 +137,9 @@ export function Viewer({
   onTogglePreview,
   onCopyPath,
   focusNonce = 0,
+  revealLine,
+  revealNonce,
+  onRevealed,
 }: ViewerProps) {
   const { t } = useTranslation();
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -171,7 +204,12 @@ export function Viewer({
               dangerouslySetInnerHTML={{ __html: previewHtml }}
             />
           ) : (
-            <CodeMirrorHost buffer={buffer} />
+            <CodeMirrorHost
+              buffer={buffer}
+              revealLine={revealLine}
+              revealNonce={revealNonce}
+              onRevealed={onRevealed}
+            />
           ))}
       </div>
     </section>

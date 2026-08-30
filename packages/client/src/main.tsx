@@ -8,6 +8,7 @@ import { I18nextProvider, Trans } from "react-i18next";
 import { App } from "./App.js";
 import { createCrashApi } from "./api/crash.js";
 import { createFilesApi } from "./api/files.js";
+import { createFilesListApi } from "./api/files-list.js";
 import { createFsApi } from "./api/fs.js";
 import { createGitApi } from "./api/git.js";
 import { createReposApi } from "./api/repos.js";
@@ -68,6 +69,7 @@ if (token === null) {
   const fsApi = createFsApi(base, token);
   const searchApi = createSearchApi(base, token);
   const filesApi = createFilesApi(base, token);
+  const filesListApi = createFilesListApi(base, token);
   const reposApi = createReposApi(base, token);
   const crashApi = createCrashApi(base, token);
   root.render(
@@ -96,6 +98,7 @@ if (token === null) {
             fsApi={fsApi}
             searchApi={searchApi}
             filesApi={filesApi}
+            filesListApi={filesListApi}
             reposApi={reposApi}
             crashApi={crashApi}
           />
