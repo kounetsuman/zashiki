@@ -453,16 +453,31 @@ fn basename(path: &Path) -> String {
 }
 
 /// Enumerates repos under every root in repos.conf as `{org, repo, path}`.
+/// A repo's org is its most specific matching root (via `org_of_cwd`), so a repo under a nested
+/// child root is attributed to the child, not the ancestor. Paths are deduplicated across roots
+/// (an ancestor and a descendant root both reach the same repo).
 pub fn scan_repos(conf_path: &Path) -> Vec<ScannedRepo> {
+    let roots = read_conf_roots(conf_path);
+    // org_of_cwd compares against the lossy repo path below, so build the roots on the same lossy
+    // basis; otherwise a non-UTF8 root would drop out and its repos would misattribute to their own basename.
+    let root_strings: Vec<String> = roots
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    let root_strs: Vec<&str> = root_strings.iter().map(String::as_str).collect();
+    let mut seen = HashSet::new();
     let mut out = Vec::new();
-    for root in read_conf_roots(conf_path) {
-        let org = basename(&root);
-        for repo_path in repos_under(&root) {
+    for root in &roots {
+        for repo_path in repos_under(root) {
+            let path = repo_path.to_string_lossy().into_owned();
+            if !seen.insert(path.clone()) {
+                continue;
+            }
             out.push(ScannedRepo {
-                org: org.clone(),
+                org: zashiki_core::repos::org_of_cwd(&path, &root_strs).to_string(),
                 repo: basename(&repo_path),
                 is_worktree: is_linked_worktree(&repo_path),
-                path: repo_path.to_string_lossy().into_owned(),
+                path,
             });
         }
     }
@@ -778,6 +793,37 @@ rel/dir
         assert!(!got.iter().any(|(repo, _)| repo == "repo-c"));
         // every org is base's basename
         assert!(scan_repos(&conf).iter().all(|r| r.org == org));
+    }
+
+    #[test]
+    fn scan_repos_nested_root_attributes_to_most_specific_and_dedups() {
+        let root = tempfile::tempdir().unwrap();
+        let base = root.path();
+        // "inner" is both a repo and a nested org root; "sub" lives under it; "plainrepo" is only under the parent.
+        std::fs::create_dir_all(base.join("inner/.git")).unwrap();
+        std::fs::create_dir_all(base.join("inner/sub/.git")).unwrap();
+        std::fs::create_dir_all(base.join("plainrepo/.git")).unwrap();
+
+        let conf = root.path().join("repos.conf");
+        std::fs::write(&conf, format!("{0}\n{0}/inner\n", base.display())).unwrap();
+
+        let scanned = scan_repos(&conf);
+
+        let mut paths: Vec<String> = scanned.iter().map(|r| r.path.clone()).collect();
+        paths.sort();
+        let mut deduped = paths.clone();
+        deduped.dedup();
+        assert_eq!(paths, deduped, "a repo under a nested root must not be listed twice");
+
+        let org_of = |repo: &str| {
+            scanned
+                .iter()
+                .find(|r| r.repo == repo)
+                .map(|r| r.org.clone())
+        };
+        assert_eq!(org_of("plainrepo"), Some(basename(base)));
+        assert_eq!(org_of("inner"), Some("inner".to_string()));
+        assert_eq!(org_of("sub"), Some("inner".to_string()));
     }
 
     #[test]

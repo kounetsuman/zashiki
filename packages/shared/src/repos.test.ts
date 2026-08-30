@@ -36,6 +36,37 @@ describe("orgOfCwd (port of dom_org_of_cwd)", () => {
   it("when under no root, uses the cwd's own last segment (a catch-all for detection outside the conf)", () => {
     expect(orgOfCwd("/tmp/scratch", ROOTS)).toBe("scratch");
   });
+
+  it("a child root nested under a parent root wins for cwds beneath it, regardless of listing order", () => {
+    const parentFirst = [
+      "/Users/kilo/workspace/delta",
+      "/Users/kilo/workspace/delta/echo",
+    ];
+    const childFirst = [
+      "/Users/kilo/workspace/delta/echo",
+      "/Users/kilo/workspace/delta",
+    ];
+    for (const roots of [parentFirst, childFirst]) {
+      expect(orgOfCwd("/Users/kilo/workspace/delta/echo/repo", roots)).toBe(
+        "echo",
+      );
+      expect(orgOfCwd("/Users/kilo/workspace/delta/echo", roots)).toBe("echo");
+      expect(orgOfCwd("/Users/kilo/workspace/delta/other", roots)).toBe(
+        "delta",
+      );
+    }
+  });
+
+  it("a child root written with a trailing slash still wins for cwds beneath it", () => {
+    const roots = [
+      "/Users/kilo/workspace/delta",
+      "/Users/kilo/workspace/delta/echo/",
+    ];
+    expect(orgOfCwd("/Users/kilo/workspace/delta/echo/repo", roots)).toBe(
+      "echo",
+    );
+    expect(orgOfCwd("/Users/kilo/workspace/delta/echo", roots)).toBe("echo");
+  });
 });
 
 describe("orgRoot (port of dom_org_root)", () => {
