@@ -1265,3 +1265,43 @@ describe("CockpitTerminalListView: org reorder via drag-and-drop", () => {
     expect(kiloHeader.getAttribute("draggable")).toBe("false");
   });
 });
+
+describe("CockpitTerminalListView: row reorder via drag-and-drop", () => {
+  it("reorders session rows within an org and reflects it optimistically", () => {
+    const onReorderRows = vi.fn();
+    renderView({ onReorderRows });
+    const rows = document.querySelectorAll(".session-row");
+    // rows[0]=SID1 (kilo), rows[1]=SID2 (kilo), rows[2]=SID3 (charlie).
+    const src = rows[1] as HTMLElement;
+    const tgt = rows[0] as HTMLElement;
+    fireEvent.dragStart(src);
+    fireEvent.dragOver(tgt);
+    expect(tgt.classList.contains("session-row-drop")).toBe(true);
+    fireEvent.drop(tgt);
+    expect(onReorderRows).toHaveBeenCalledWith([SID2, SID1, SID3]);
+    // The dragged row now sits first within its org (optimistic).
+    const firstRowLabel = document
+      .querySelectorAll(".session-row")[0]
+      ?.querySelector("button")
+      ?.getAttribute("aria-label");
+    expect(firstRowLabel).toBe("tango");
+  });
+
+  it("refuses a cross-org row drop", () => {
+    const onReorderRows = vi.fn();
+    renderView({ onReorderRows });
+    const rows = document.querySelectorAll(".session-row");
+    const charlieRow = rows[2] as HTMLElement; // SID3, org charlie
+    const kiloRow = rows[0] as HTMLElement; // SID1, org kilo
+    fireEvent.dragStart(charlieRow);
+    fireEvent.dragOver(kiloRow);
+    fireEvent.drop(kiloRow);
+    expect(onReorderRows).not.toHaveBeenCalled();
+  });
+
+  it("does not make rows draggable when onReorderRows is omitted", () => {
+    renderView();
+    const row = document.querySelector(".session-row") as HTMLElement;
+    expect(row.getAttribute("draggable")).toBe("false");
+  });
+});

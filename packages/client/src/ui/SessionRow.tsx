@@ -29,6 +29,14 @@ export interface SessionRowProps {
   onClose(cockpitTerminalId: string): void;
   onConfirmClose(cockpitTerminalId: string): void;
   onCancelConfirm(): void;
+  /** Whether this row is a drag source for within-org reordering. Omit/false to disable row dragging. */
+  draggable?: boolean;
+  /** Whether a dragged row is currently hovering this row (shows the insertion indicator). */
+  isDropTarget?: boolean;
+  onRowDragStart?(): void;
+  onRowDragOver?(e: React.DragEvent): void;
+  onRowDrop?(e: React.DragEvent): void;
+  onRowDragEnd?(): void;
 }
 
 /** A single session row: state glyph, title (or inline rename input), close button, and inline close confirm. */
@@ -52,6 +60,12 @@ export function SessionRow({
   onClose,
   onConfirmClose,
   onCancelConfirm,
+  draggable,
+  isDropTarget,
+  onRowDragStart,
+  onRowDragOver,
+  onRowDrop,
+  onRowDragEnd,
 }: SessionRowProps) {
   const { t } = useTranslation();
   // Prefer the manual title (header rename); fall back to the automatic title if none.
@@ -63,8 +77,16 @@ export function SessionRow({
   const displayTitle = resolveTitle(custom, s);
   const fresh = isFresh(s, custom);
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: right-click menu for the row (keyboard is covered by Ctrl-X)
-    <div className="session-row" onContextMenu={onContextMenu}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: right-click menu + drag handle for reordering (keyboard is covered by Ctrl-X)
+    <div
+      className={`session-row${isDropTarget ? " session-row-drop" : ""}`}
+      onContextMenu={onContextMenu}
+      draggable={draggable}
+      onDragStart={onRowDragStart ? () => onRowDragStart() : undefined}
+      onDragOver={onRowDragOver}
+      onDrop={onRowDrop}
+      onDragEnd={onRowDragEnd}
+    >
       {isRenaming ? (
         <div className="view-row session-row-main session-row-editing">
           <StateIcon session={s} fresh={fresh} />

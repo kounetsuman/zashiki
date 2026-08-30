@@ -285,6 +285,9 @@ pub enum ClientMessage {
     },
     #[serde(rename = "cockpitTerminal.close", rename_all = "camelCase")]
     CockpitTerminalClose { cockpit_terminal_id: String },
+    /// New SESSION LIST display order (the full ordered list of cockpit terminal ids).
+    #[serde(rename = "cockpitTerminal.reorder", rename_all = "camelCase")]
+    CockpitTerminalReorder { order: Vec<String> },
     #[serde(rename = "state.refresh")]
     StateRefresh,
     /// Manual dismissal of a notification (the ✕ in the NOTIFICATION panel). Only dismissible
@@ -664,6 +667,12 @@ mod tests {
                 r#"{"t":"cockpitTerminal.close","cockpitTerminalId":"@5"}"#,
                 ClientMessage::CockpitTerminalClose {
                     cockpit_terminal_id: "@5".into(),
+                },
+            ),
+            (
+                r#"{"t":"cockpitTerminal.reorder","order":["a","b"]}"#,
+                ClientMessage::CockpitTerminalReorder {
+                    order: vec!["a".into(), "b".into()],
                 },
             ),
             (r#"{"t":"state.refresh"}"#, ClientMessage::StateRefresh),

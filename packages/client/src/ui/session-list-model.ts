@@ -71,6 +71,55 @@ export function reconcileOrgOrder(
   return optimistic.every((org) => serverSet.has(org)) ? optimistic : server;
 }
 
+/**
+ * Returns the full flat cockpit-terminal id order after dropping `draggedId` just before `targetId`,
+ * but only when both rows belong to the SAME org (a Cockpit Terminal's org is its cwd, so cross-org
+ * moves are meaningless). Otherwise, or when the ids are equal/absent, the current id order is returned.
+ * The full order is sent to the server; within-org relative order is what the poller then groups.
+ */
+export function reorderRowsWithinOrg(
+  cockpitTerminals: CockpitTerminalInfo[],
+  draggedId: string,
+  targetId: string,
+): string[] {
+  const ids = cockpitTerminals.map((s) => s.cockpitTerminalId);
+  const drag = cockpitTerminals.find((s) => s.cockpitTerminalId === draggedId);
+  const target = cockpitTerminals.find((s) => s.cockpitTerminalId === targetId);
+  if (
+    drag === undefined ||
+    target === undefined ||
+    drag.org !== target.org ||
+    draggedId === targetId
+  ) {
+    return ids;
+  }
+  const next = ids.filter((id) => id !== draggedId);
+  next.splice(next.indexOf(targetId), 0, draggedId);
+  return next;
+}
+
+/**
+ * Sorts the terminals by `order` while it covers exactly the same id set, else returns them untouched
+ * (a session added or removed falls back to the server order).
+ */
+export function applyRowOrder(
+  cockpitTerminals: CockpitTerminalInfo[],
+  order: string[] | null,
+): CockpitTerminalInfo[] {
+  if (order === null || order.length !== cockpitTerminals.length) {
+    return cockpitTerminals;
+  }
+  const rank = new Map(order.map((id, i) => [id, i]));
+  if (!cockpitTerminals.every((s) => rank.has(s.cockpitTerminalId))) {
+    return cockpitTerminals;
+  }
+  return [...cockpitTerminals].sort(
+    (a, b) =>
+      (rank.get(a.cockpitTerminalId) ?? 0) -
+      (rank.get(b.cockpitTerminalId) ?? 0),
+  );
+}
+
 /** Idle with neither an automatic nor a manual title = a new/unused session. */
 export function isFresh(
   s: CockpitTerminalInfo,
