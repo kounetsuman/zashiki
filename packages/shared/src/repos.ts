@@ -13,13 +13,23 @@ function basename(path: string): string {
 
 /**
  * Which org the cwd belongs to (the org name = the last element of the root).
- * If it is not under any root, the last element of the cwd itself (a catch-all for detection outside the conf).
+ * When roots are nested (one is an ancestor of another), the most specific matching root wins,
+ * independent of listing order. If it is not under any root, the last element of the cwd itself
+ * (a catch-all for detection outside the conf).
  */
 export function orgOfCwd(cwd: string, roots: readonly string[]): string {
+  let best: string | null = null;
+  let bestLen = 0;
   for (const root of roots) {
-    if (cwd === root || cwd.startsWith(`${root}/`)) return basename(root);
+    const trimmed = stripTrailingSlashes(root);
+    const under =
+      cwd === root || cwd === trimmed || cwd.startsWith(`${trimmed}/`);
+    if (under && trimmed.length > bestLen) {
+      best = root;
+      bestLen = trimmed.length;
+    }
   }
-  return basename(cwd);
+  return basename(best ?? cwd);
 }
 
 /** org name → root absolute path (null if no match). */

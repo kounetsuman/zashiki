@@ -174,10 +174,14 @@ fn strip_line_end(text: &str) -> &str {
     t.strip_suffix('\r').unwrap_or(t)
 }
 
+/// The scan root a match path belongs to. When repos are nested (one repo's path is inside
+/// another's, as with a nested org root), the most specific root wins, so relPath is computed
+/// against the innermost repo rather than an ancestor.
 fn root_for<'a>(path: &str, roots: &'a [ScannedRoot]) -> Option<&'a ScannedRoot> {
     roots
         .iter()
-        .find(|r| path == r.path || path.starts_with(&format!("{}/", r.path)))
+        .filter(|r| path == r.path || path.starts_with(&format!("{}/", r.path)))
+        .max_by_key(|r| r.path.len())
 }
 
 /// Formats the output of `rg --json` (newline-delimited JSON) into a SearchResponse.
@@ -383,6 +387,32 @@ mod tests {
         let resp = parse_rg_json(stdout, &roots(), &limits);
         assert!(resp.truncated);
         assert_eq!(resp.files.len(), 1);
+    }
+
+    #[test]
+    fn parse_rg_json_attributes_nested_repo_to_most_specific_root() {
+        // A repo nested inside another repo's path (as a nested org root produces): a hit under the
+        // inner repo must be attributed to the inner repo, not the enclosing one.
+        let roots = vec![
+            ScannedRoot {
+                org: "outer".to_string(),
+                repo: "outer".to_string(),
+                path: "/r/outer".to_string(),
+            },
+            ScannedRoot {
+                org: "inner".to_string(),
+                repo: "inner".to_string(),
+                path: "/r/outer/inner".to_string(),
+            },
+        ];
+        let stdout = concat!(
+            r#"{"type":"match","data":{"path":{"text":"/r/outer/inner/src/x.ts"},"lines":{"text":"foo"},"line_number":1,"submatches":[{"start":0,"end":3}]}}"#,
+            "\n",
+        );
+        let resp = parse_rg_json(stdout, &roots, &DEFAULT_SEARCH_LIMITS);
+        assert_eq!(resp.files.len(), 1);
+        assert_eq!(resp.files[0].repo, "inner");
+        assert_eq!(resp.files[0].rel_path, "src/x.ts");
     }
 
     #[test]

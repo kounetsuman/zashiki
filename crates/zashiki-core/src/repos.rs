@@ -15,14 +15,21 @@ fn basename(path: &str) -> &str {
 }
 
 /// Which org the cwd belongs to (org name = the last element of a root).
-/// If it is under no root, the last element of the cwd itself (a fallback for detecting paths outside the conf).
+/// When roots are nested (one is an ancestor of another), the most specific matching root wins,
+/// independent of listing order. If it is under no root, the last element of the cwd itself
+/// (a fallback for detecting paths outside the conf).
 pub fn org_of_cwd<'a>(cwd: &'a str, roots: &[&'a str]) -> &'a str {
+    let mut best: Option<&'a str> = None;
+    let mut best_len = 0;
     for &root in roots {
-        if cwd == root || cwd.starts_with(&format!("{root}/")) {
-            return basename(root);
+        let trimmed = root.trim_end_matches('/');
+        let under = cwd == root || cwd == trimmed || cwd.starts_with(&format!("{trimmed}/"));
+        if under && trimmed.len() > best_len {
+            best = Some(root);
+            best_len = trimmed.len();
         }
     }
-    basename(cwd)
+    basename(best.unwrap_or(cwd))
 }
 
 /// org name → root absolute path (None if there is no match).
@@ -81,6 +88,52 @@ mod tests {
     #[test]
     fn org_of_cwd_outside_any_root() {
         assert_eq!(org_of_cwd("/tmp/scratch", ROOTS), "scratch");
+    }
+
+    #[test]
+    fn org_of_cwd_nested_root_prefers_most_specific() {
+        // A child root nested under a parent root: cwd under the child belongs to the child org,
+        // no matter which root is listed first (the most specific root wins, not the first match).
+        let parent_first = &[
+            "/Users/kilo/workspace/delta",
+            "/Users/kilo/workspace/delta/echo",
+        ];
+        let child_first = &[
+            "/Users/kilo/workspace/delta/echo",
+            "/Users/kilo/workspace/delta",
+        ];
+        for roots in [parent_first, child_first] {
+            assert_eq!(
+                org_of_cwd("/Users/kilo/workspace/delta/echo/repo", roots),
+                "echo"
+            );
+            assert_eq!(
+                org_of_cwd("/Users/kilo/workspace/delta/echo", roots),
+                "echo"
+            );
+            // cwd under only the parent still resolves to the parent.
+            assert_eq!(
+                org_of_cwd("/Users/kilo/workspace/delta/other", roots),
+                "delta"
+            );
+        }
+    }
+
+    #[test]
+    fn org_of_cwd_nested_root_with_trailing_slash() {
+        // A child root written with a trailing slash (as repos.conf may contain) still wins under it.
+        let roots = &[
+            "/Users/kilo/workspace/delta",
+            "/Users/kilo/workspace/delta/echo/",
+        ];
+        assert_eq!(
+            org_of_cwd("/Users/kilo/workspace/delta/echo/repo", roots),
+            "echo"
+        );
+        assert_eq!(
+            org_of_cwd("/Users/kilo/workspace/delta/echo", roots),
+            "echo"
+        );
     }
 
     #[test]
