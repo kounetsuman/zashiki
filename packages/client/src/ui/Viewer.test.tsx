@@ -119,4 +119,39 @@ describe("Viewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "プレビュー" }));
     expect(onTogglePreview).toHaveBeenCalled();
   });
+
+  it("renders an image buffer as <img> pointing at the media URL", () => {
+    const { container } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "assets/logo.png",
+          content: null,
+          media: { kind: "image", url: "blob:img-1" },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    const img = container.querySelector("img.viewer-media");
+    expect(img?.getAttribute("src")).toBe("blob:img-1");
+  });
+
+  it("renders a video buffer as <video controls>", () => {
+    const { container } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "clip.mp4",
+          content: null,
+          media: { kind: "video", url: "blob:vid-1" },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    const video = container.querySelector("video.viewer-media");
+    expect(video?.getAttribute("src")).toBe("blob:vid-1");
+    expect(video?.hasAttribute("controls")).toBe(true);
+  });
 });

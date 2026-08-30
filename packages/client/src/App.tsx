@@ -112,6 +112,7 @@ import { useViewSelection } from "./ui/useViewSelection.js";
 import { useXtermRenderer } from "./ui/useXtermRenderer.js";
 import { Viewer } from "./ui/Viewer.js";
 import { WelcomeOnboardingModal } from "./ui/WelcomeOnboardingModal.js";
+import { type MediaKind, mediaKind } from "./viewer/media.js";
 import {
   viewerKeysUnderPath,
   viewersAffectedByRename,
@@ -348,7 +349,9 @@ export function App({
   const {
     buffers: viewerBuffers,
     ensureBuffer,
+    ensureMediaBuffer,
     openExternal: openExternalViewer,
+    openExternalMedia,
     closeBuffer: closeViewerBuffer,
     togglePreview: toggleViewerPreview,
     pathOf: viewerPathOf,
@@ -378,10 +381,14 @@ export function App({
   const clearViewerReveal = useCallback(() => setViewerReveal(null), []);
   const openViewer = useCallback(
     (repoPath: string, relPath: string, line?: number | null): void => {
-      const key = ensureBuffer(repoPath, relPath);
+      const kind = mediaKind(relPath);
+      const key =
+        kind !== null
+          ? ensureMediaBuffer(repoPath, relPath, kind)
+          : ensureBuffer(repoPath, relPath);
       openViewerTab(key);
       setViewerFocusNonce((n) => n + 1);
-      if (typeof line === "number" && line > 0) {
+      if (kind === null && typeof line === "number" && line > 0) {
         setViewerReveal((prev) => ({
           key,
           line,
@@ -389,7 +396,7 @@ export function App({
         }));
       }
     },
-    [openViewerTab, ensureBuffer],
+    [openViewerTab, ensureBuffer, ensureMediaBuffer],
   );
 
   // Quick-open palette (Cmd+P). The file list is fetched each time it opens and generation-guarded so
@@ -500,14 +507,27 @@ export function App({
     },
     [openViewerTab, openExternalViewer],
   );
-  const fileDrop = useFileDrop(openExternalFile, (name, error) => {
-    flashCopyToast(
-      t(
-        error === "tooLarge" ? "viewer.dropTooLarge" : "viewer.dropReadFailed",
-        { name },
-      ),
-    );
-  });
+  const openExternalMediaFile = useCallback(
+    (name: string, file: File, kind: MediaKind): void => {
+      openViewerTab(openExternalMedia(name, file, kind));
+      setViewerFocusNonce((n) => n + 1);
+    },
+    [openViewerTab, openExternalMedia],
+  );
+  const fileDrop = useFileDrop(
+    openExternalFile,
+    openExternalMediaFile,
+    (name, error) => {
+      flashCopyToast(
+        t(
+          error === "tooLarge"
+            ? "viewer.dropTooLarge"
+            : "viewer.dropReadFailed",
+          { name },
+        ),
+      );
+    },
+  );
 
   // Cmd+O: pick a file via the native dialog and open it read-only in the viewer (external buffer).
   const openFileFromDialog = useCallback((): void => {

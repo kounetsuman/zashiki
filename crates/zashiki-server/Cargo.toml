@@ -19,6 +19,8 @@ regex = "1"
 # 静的配信（client dist）+ CORS（dev の webview は localhost:5173 から 127.0.0.1:8790 を叩く＝
 # クロスオリジン。許可オリジンにのみ ACAO を返す。#290）。
 tower-http = { version = "0.6", features = ["fs", "cors"] }
+# ServeFile を認証・パス検証の後段でリクエスト単位に呼ぶ（Range/206 の動画配信）ための oneshot。
+tower = { version = "0.5", features = ["util"] }
 # git status のパース等、server ロジックを寄せる先。
 zashiki-core = { path = "../zashiki-core" }
 # サーバが各セッションの PTY を単一所有するための PTY 管理。

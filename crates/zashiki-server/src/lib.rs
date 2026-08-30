@@ -77,7 +77,9 @@ pub use security::{is_allowed_host, is_allowed_origin, token_from_query, token_m
 
 use crate::app_state::AppState;
 use crate::middleware::{host_origin_guard, require_token};
-use crate::routes_fs::{file_read, file_write, fs_delete, fs_list, fs_rename, fs_reveal};
+use crate::routes_fs::{
+    file_read, file_write, fs_delete, fs_list, fs_rename, fs_reveal, media_read,
+};
 use crate::routes_git::{
     git_commit, git_diff, git_open, git_remove_worktree, git_stage, git_stage_all, git_status,
     git_unstage, git_unstage_all,
@@ -176,6 +178,7 @@ pub fn build_router(config: ServerConfig) -> Router {
                 (state.file_max_bytes + 64 * 1024) as usize,
             )),
         )
+        .route("/api/media", get(media_read))
         .route("/api/search", post(search_route))
         .route("/api/files", get(files_route))
         .route("/api/sessions/save", post(sessions_save))

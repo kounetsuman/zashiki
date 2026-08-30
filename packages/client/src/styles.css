@@ -933,6 +933,16 @@ textarea {
   inset: 0;
 }
 
+/* Image/video preview: fit within the body without overflowing, centered. */
+.viewer-media {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
 /* ---- Memo（issue #268。唯一の編集可能サーフェス） ---- */
 
 /* Memo タブ active の間、main area 本体にオーバーレイ表示（Viewer と同じ被せ方）。 */

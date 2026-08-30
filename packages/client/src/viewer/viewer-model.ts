@@ -6,19 +6,28 @@
  * holds only state transitions. Realtime reflection is driven by polling re-firing bufferLoaded.
  */
 
+import type { MediaKind } from "./media.js";
+
 export type BufferStatus = "loading" | "ready" | "error";
+
+export interface MediaSource {
+  readonly kind: MediaKind;
+  readonly url: string;
+}
 
 export interface ViewerBuffer {
   readonly repoPath: string;
   readonly relPath: string;
   readonly status: BufferStatus;
-  /** The content last read. null if not yet loaded. */
+  /** The content last read. null if not yet loaded, or when the buffer is media (rendered from `media.url`). */
   readonly content: string | null;
   readonly error?: string;
   /** Whether the Markdown preview is showing (meaningful only for .md; toggle). */
   readonly preview: boolean;
   /** Content was supplied directly (e.g. a file dropped from Finder), not read from a repo. */
   readonly external?: boolean;
+  /** Present when the buffer is an image/video; the Viewer renders it from the URL. */
+  readonly media?: MediaSource;
 }
 
 export type ViewerBuffers = Readonly<Record<string, ViewerBuffer>>;
@@ -52,9 +61,12 @@ export function externalViewerKey(name: string): string {
   return viewerKey(EXTERNAL_VIEWER_REPO, name);
 }
 
-/** Whether the buffer is re-read on the poll interval. External buffers hold no repo path to read from. */
+/**
+ * Whether the buffer is re-read on the poll interval. External buffers hold no repo path to read from,
+ * and media buffers render from a URL rather than a polled text read.
+ */
 export function shouldPollBuffer(buf: ViewerBuffer): boolean {
-  return buf.external !== true;
+  return buf.external !== true && buf.media === undefined;
 }
 
 function patch(
@@ -107,6 +119,48 @@ export function openExternalBuffer(
       content,
       preview: existing?.preview ?? false,
       external: true,
+    },
+  };
+}
+
+/** Opens (or refreshes) a repo file rendered as image/video, streamed from `url` rather than read as text. */
+export function openMediaBuffer(
+  bufs: ViewerBuffers,
+  repoPath: string,
+  relPath: string,
+  media: MediaSource,
+): ViewerBuffers {
+  const key = viewerKey(repoPath, relPath);
+  if (bufs[key]?.media?.url === media.url) return bufs;
+  return {
+    ...bufs,
+    [key]: {
+      repoPath,
+      relPath,
+      status: "ready",
+      content: null,
+      preview: false,
+      media,
+    },
+  };
+}
+
+/** Opens a dropped file rendered as image/video from an object `url` (no repo read). */
+export function openExternalMediaBuffer(
+  bufs: ViewerBuffers,
+  name: string,
+  media: MediaSource,
+): ViewerBuffers {
+  return {
+    ...bufs,
+    [externalViewerKey(name)]: {
+      repoPath: EXTERNAL_VIEWER_REPO,
+      relPath: name,
+      status: "ready",
+      content: null,
+      preview: false,
+      external: true,
+      media,
     },
   };
 }

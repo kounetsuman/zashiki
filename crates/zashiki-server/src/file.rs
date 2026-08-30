@@ -51,6 +51,20 @@ fn resolve_within_repo(repo_path: &str, file: &str) -> Result<PathBuf, (StatusCo
     }
 }
 
+/// Resolves a repo-relative path to an in-repo absolute path and asserts it is a regular file.
+/// Shared by /api/file and /api/media so both enforce the same realpath containment + isFile defense.
+fn resolved_file_within_repo(
+    repo_path: &str,
+    file: &str,
+) -> Result<(PathBuf, std::fs::Metadata), (StatusCode, String)> {
+    let abs = resolve_within_repo(repo_path, file)?;
+    let meta = std::fs::metadata(&abs).map_err(|e| status_for_fs_error(&e))?;
+    if !meta.is_file() {
+        return Err((StatusCode::BAD_REQUEST, "not a file".to_string()));
+    }
+    Ok((abs, meta))
+}
+
 /// Reads from an abs path that has passed the in-repo realpath check (blocking; callers use spawn_blocking).
 /// statFile → 400 if !isFile, 413 if size>max, readTextFile → content.
 pub fn read_within_repo(
@@ -58,11 +72,7 @@ pub fn read_within_repo(
     file: &str,
     max_bytes: u64,
 ) -> Result<String, (StatusCode, String)> {
-    let abs = resolve_within_repo(repo_path, file)?;
-    let meta = std::fs::metadata(&abs).map_err(|e| status_for_fs_error(&e))?;
-    if !meta.is_file() {
-        return Err((StatusCode::BAD_REQUEST, "not a file".to_string()));
-    }
+    let (abs, meta) = resolved_file_within_repo(repo_path, file)?;
     if meta.len() > max_bytes {
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
@@ -72,6 +82,16 @@ pub fn read_within_repo(
     // Content is read as UTF-8; non-UTF-8 bytes are replaced lossily (reads never fail).
     let bytes = std::fs::read(&abs).map_err(|e| status_for_fs_error(&e))?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// Resolves a repo-relative file to an absolute path for streaming (realpath containment + isFile),
+/// with no size cap so large videos stream rather than being rejected.
+pub fn media_path_within_repo(
+    repo_path: &str,
+    file: &str,
+) -> Result<PathBuf, (StatusCode, String)> {
+    let (abs, _) = resolved_file_within_repo(repo_path, file)?;
+    Ok(abs)
 }
 
 /// Overwrites content to an abs path that has passed the in-repo realpath check (blocking).
@@ -130,6 +150,30 @@ mod tests {
         std::fs::write(&big, "x".repeat(100)).unwrap();
         let (code, _) = read_within_repo(&repo, "big.txt", 32).unwrap_err();
         assert_eq!(code, StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[test]
+    fn media_path_resolves_a_file_and_rejects_a_directory() {
+        let (_d, repo) = repo();
+        assert!(media_path_within_repo(&repo, "README.md").is_ok());
+        let (code, msg) = media_path_within_repo(&repo, "src").unwrap_err();
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert_eq!(msg, "not a file");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn media_path_symlink_escape_is_400() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::write(dir.path().join("secret.mp4"), "x").unwrap();
+        std::os::unix::fs::symlink(dir.path().join("secret.mp4"), repo.join("escape.mp4"))
+            .unwrap();
+        let repo_str = repo.to_string_lossy();
+        let (code, msg) = media_path_within_repo(&repo_str, "escape.mp4").unwrap_err();
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert_eq!(msg, "file resolves outside the repo");
     }
 
     #[test]

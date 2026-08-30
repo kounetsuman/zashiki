@@ -8,7 +8,11 @@ import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { renderMarkdown } from "../viewer/markdown.js";
-import { isMarkdown, type ViewerBuffer } from "../viewer/viewer-model.js";
+import {
+  isMarkdown,
+  type MediaSource,
+  type ViewerBuffer,
+} from "../viewer/viewer-model.js";
 import { Loading } from "./Loading.js";
 
 export interface ViewerProps {
@@ -125,6 +129,24 @@ function CodeMirrorHost({
   return <div className="viewer-cm" ref={hostRef} />;
 }
 
+function MediaHost({
+  media,
+  relPath,
+}: {
+  media: MediaSource;
+  relPath: string;
+}) {
+  if (media.kind === "video") {
+    return (
+      // biome-ignore lint/a11y/useMediaCaption: local media preview has no caption track
+      <video className="viewer-media" src={media.url} controls>
+        {relPath}
+      </video>
+    );
+  }
+  return <img className="viewer-media" src={media.url} alt={relPath} />;
+}
+
 /**
  * File viewer. Overlays the main-area body only while the viewer tab in the
  * unified tab bar is active. Displays read-only via CodeMirror 6 (line numbers,
@@ -196,7 +218,9 @@ export function Viewer({
           </div>
         )}
         {buffer.status === "ready" &&
-          (showPreview ? (
+          (buffer.media !== undefined ? (
+            <MediaHost media={buffer.media} relPath={buffer.relPath} />
+          ) : showPreview ? (
             // markdown-it escapes raw HTML with html:false (mitigates XSS).
             <div
               className="viewer-preview markdown-body"
