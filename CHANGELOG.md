@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Cmd+P` quick-open palette: fuzzy-find a file across all orgs (the active org ranks first) and open it in the Viewer; append `:line` to jump to a line (#312)
+- `Cmd+O` opens the native file picker and shows the chosen file read-only in the Viewer (#312)
+
 ## [0.17.0] - 2026-08-29
 
 ### Added

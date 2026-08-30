@@ -60,6 +60,7 @@ mod control_hub;
 mod control_session;
 mod control_term;
 mod middleware;
+mod routes_files;
 mod routes_fs;
 mod routes_git;
 mod routes_health;
@@ -85,6 +86,7 @@ use crate::routes_health::{ack_last_crash, healthz, last_crash, token_probe};
 use crate::routes_repos::{
     fs_browse, fs_repos, fs_validate, memo_set, orgs_note, repos_add, repos_list,
 };
+use crate::routes_files::files_route;
 use crate::routes_hooks::{focus_session, hooks_event, hooks_statusline};
 use crate::routes_search::search_route;
 use crate::routes_sessions::{sessions_restore, sessions_save};
@@ -175,6 +177,7 @@ pub fn build_router(config: ServerConfig) -> Router {
             )),
         )
         .route("/api/search", post(search_route))
+        .route("/api/files", get(files_route))
         .route("/api/sessions/save", post(sessions_save))
         .route("/api/sessions/restore", post(sessions_restore))
         .route("/api/hooks/event", post(hooks_event))

@@ -41,11 +41,7 @@ describe("useModalEscape", () => {
         <Modal onClose={closeChild} />
       </>,
     );
-    rerender(
-      <>
-        <Modal onClose={closeParent} />
-      </>,
-    );
+    rerender(<Modal onClose={closeParent} />);
     fireEvent.keyDown(window, { key: "Escape" });
     expect(closeParent).toHaveBeenCalledOnce();
     expect(closeChild).not.toHaveBeenCalled();

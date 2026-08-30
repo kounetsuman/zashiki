@@ -4,6 +4,7 @@ import {
   claudeSessionId,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
+  type FileEntry,
   type FooterThresholds,
   type HooksStatusMessage,
   isSinglePathSegment,
@@ -25,6 +26,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { CrashApi } from "./api/crash.js";
 import type { FilesApi } from "./api/files.js";
+import type { FilesListApi } from "./api/files-list.js";
 import type { FsApi } from "./api/fs.js";
 import type { GitApi } from "./api/git.js";
 import type { ReposApi } from "./api/repos.js";
@@ -50,6 +52,7 @@ import {
 } from "./lib/first-run-wizard.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
+import { pickAndReadFile } from "./lib/open-file-dialog.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
 import { createMemoSaver } from "./memo/memo-saver.js";
@@ -79,6 +82,7 @@ import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
 import { MemoEditor } from "./ui/MemoEditor.js";
 import { NavigationBar } from "./ui/NavigationBar.js";
 import { NotificationView } from "./ui/NotificationView.js";
+import { QuickOpen } from "./ui/QuickOpen.js";
 import { SearchView } from "./ui/SearchView.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
 import { SessionToaster } from "./ui/SessionToaster.js";
@@ -161,6 +165,8 @@ export interface AppProps {
   searchApi: SearchApi;
   /** The viewer's file read REST (read-only). */
   filesApi: FilesApi;
+  /** The quick-open (Cmd+P) file-listing REST. */
+  filesListApi: FilesListApi;
   /** The "add org" REST (registers a directory into repos.conf). */
   reposApi: ReposApi;
   /** Surfaces the previous run's crash log on launch (omitted in tests that don't exercise it). */
@@ -178,6 +184,7 @@ export function App({
   fsApi,
   searchApi,
   filesApi,
+  filesListApi,
   reposApi,
   crashApi,
   notifier: notifierProp,
@@ -358,16 +365,61 @@ export function App({
   const activeDiffBuffer =
     activeDiffKey !== null ? (diffBuffers[activeDiffKey] ?? null) : null;
 
-  // Open a file as a viewer tab (from explorer/search). ensureBuffer fires a read if not yet loaded.
-  // Bumping the nonce moves focus to the viewer so it becomes the active view (un-dims it).
+  // Open a file as a viewer tab (from explorer/search/quick-open). ensureBuffer fires a read if not
+  // yet loaded. Bumping the nonce moves focus to the viewer so it becomes the active view (un-dims it).
+  // A target line (from search/quick-open) is recorded per buffer key so the viewer scrolls to it once
+  // the content is ready.
   const [viewerFocusNonce, setViewerFocusNonce] = useState(0);
+  const [viewerReveal, setViewerReveal] = useState<{
+    key: string;
+    line: number;
+    nonce: number;
+  } | null>(null);
+  const clearViewerReveal = useCallback(() => setViewerReveal(null), []);
   const openViewer = useCallback(
-    (repoPath: string, relPath: string): void => {
-      openViewerTab(ensureBuffer(repoPath, relPath));
+    (repoPath: string, relPath: string, line?: number | null): void => {
+      const key = ensureBuffer(repoPath, relPath);
+      openViewerTab(key);
       setViewerFocusNonce((n) => n + 1);
+      if (typeof line === "number" && line > 0) {
+        setViewerReveal((prev) => ({
+          key,
+          line,
+          nonce: (prev?.nonce ?? 0) + 1,
+        }));
+      }
     },
     [openViewerTab, ensureBuffer],
   );
+
+  // Quick-open palette (Cmd+P). The file list is fetched each time it opens and generation-guarded so
+  // a slow response can't repopulate a palette the user already closed. The active org ranks first.
+  const activeOrg = activeSession?.org ?? orgs[0] ?? null;
+  const [quickOpenVisible, setQuickOpenVisible] = useState(false);
+  const [quickOpenFiles, setQuickOpenFiles] = useState<{
+    files: FileEntry[];
+    truncated: boolean;
+  }>({ files: [], truncated: false });
+  const quickOpenGen = useRef(0);
+  const openQuickOpen = useCallback((): void => {
+    setQuickOpenVisible(true);
+    quickOpenGen.current += 1;
+    const gen = quickOpenGen.current;
+    void filesListApi.list().then(
+      (res) => {
+        if (gen === quickOpenGen.current)
+          setQuickOpenFiles({ files: res.files, truncated: res.truncated });
+      },
+      () => {
+        if (gen === quickOpenGen.current)
+          setQuickOpenFiles({ files: [], truncated: false });
+      },
+    );
+  }, [filesListApi]);
+  const closeQuickOpen = useCallback((): void => {
+    quickOpenGen.current += 1;
+    setQuickOpenVisible(false);
+  }, []);
 
   // Open a file's diff as a diff tab (from the double-click on a Source Control file row).
   const [diffFocusNonce, setDiffFocusNonce] = useState(0);
@@ -456,6 +508,22 @@ export function App({
       ),
     );
   });
+
+  // Cmd+O: pick a file via the native dialog and open it read-only in the viewer (external buffer).
+  const openFileFromDialog = useCallback((): void => {
+    void pickAndReadFile(t("openFile.dialogTitle")).then(
+      (picked) => {
+        if (picked !== null) openExternalFile(picked.name, picked.content);
+      },
+      (err: unknown) => {
+        // Tauri rejects with a raw string code; the browser fallback throws an Error with the code.
+        const reason = err instanceof Error ? err.message : String(err);
+        flashCopyToast(
+          t(reason === "tooLarge" ? "openFile.tooLarge" : "openFile.failed"),
+        );
+      },
+    );
+  }, [t, openExternalFile, flashCopyToast]);
 
   // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
   const copyDiffPath = useCallback(
@@ -607,6 +675,8 @@ export function App({
     newSession,
     duplicateSession,
     closeTabByKey,
+    openQuickOpen,
+    openFile: openFileFromDialog,
   });
 
   // When all cockpit terminals are removed, release the terminal and stop work regeneration via
@@ -872,8 +942,8 @@ export function App({
                 api={searchApi}
                 orgColors={orgColors}
                 orgAliases={orgAliases}
-                onOpen={(file, _line) =>
-                  openViewer(repoPathOfSearchFile(file), file.relPath)
+                onOpen={(file, line) =>
+                  openViewer(repoPathOfSearchFile(file), file.relPath, line)
                 }
               />
             )}
@@ -981,6 +1051,17 @@ export function App({
                 onTogglePreview={() => toggleViewerPreview(activeViewerKey)}
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
                 focusNonce={viewerFocusNonce}
+                revealLine={
+                  viewerReveal?.key === activeViewerKey
+                    ? viewerReveal.line
+                    : undefined
+                }
+                revealNonce={
+                  viewerReveal?.key === activeViewerKey
+                    ? viewerReveal.nonce
+                    : undefined
+                }
+                onRevealed={clearViewerReveal}
               />
             )}
             {activeDiffBuffer !== null && activeDiffKey !== null && (
@@ -1041,6 +1122,20 @@ export function App({
           />
         </aside>
       </div>
+      {quickOpenVisible && (
+        <QuickOpen
+          files={quickOpenFiles.files}
+          truncated={quickOpenFiles.truncated}
+          activeOrg={activeOrg}
+          orgColors={orgColors}
+          orgAliases={orgAliases}
+          onOpen={(file, line) => {
+            openViewer(repoPathOfSearchFile(file), file.relPath, line);
+            closeQuickOpen();
+          }}
+          onClose={closeQuickOpen}
+        />
+      )}
       {helpModalOpen && <HelpModal onClose={() => setHelpModalOpen(false)} />}
       {settingsModalOpen && (
         <SettingsModal

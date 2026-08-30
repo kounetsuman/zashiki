@@ -8,6 +8,11 @@
 
 You can also use right-click. Right-click an org heading → New session; right-click a row → Delete.
 
+## Opening files
+
+- `Cmd+O`: Open the native file picker and show the chosen file read-only in the Viewer.
+- `Cmd+P`: Open the quick-open palette to fuzzy-find a file across all orgs (the active org ranks first) and open it. Append `:` and a line number (e.g. `App.tsx:42`) to jump to that line. Arrow keys move the selection, Enter opens, Escape closes.
+
 ## Toggling view visibility (NAVIGATION)
 
 Use `Ctrl+Alt+<key>` to toggle each view's visibility.

@@ -26,6 +26,16 @@ export {
 } from "./config.js";
 export { formatSessionName } from "./domain.js";
 export {
+  type FileEntry,
+  type FileListResponse,
+  fileEntrySchema,
+  fileListResponseSchema,
+  filterFiles,
+  parseQuickOpenQuery,
+  type QuickOpenQuery,
+  type ScoredFile,
+} from "./file-list.js";
+export {
   FILE_MAX_BYTES,
   type FileReadResponse,
   type FileWriteRequest,

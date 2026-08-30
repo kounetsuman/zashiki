@@ -31,6 +31,46 @@ fn open_devtools(webview: tauri::WebviewWindow) {
     webview.open_devtools();
 }
 
+/// A file chosen via the native open dialog, already read into memory.
+#[derive(serde::Serialize)]
+struct PickedFile {
+    name: String,
+    content: String,
+}
+
+/// Cmd+O: shows the native open dialog (with a localized title passed from the UI) and returns the
+/// chosen file's name and text. Returns Ok(None) when the user cancels. `max_bytes` is the single
+/// source of truth for the size cap (the client passes its shared FILE_MAX_BYTES). Errors are the
+/// stable codes "tooLarge" / "readFailed" so the UI can show a specific message. The picker runs off
+/// the main thread (blocking_pick_file dispatches the modal to the main thread itself).
+#[tauri::command]
+async fn pick_and_read_file(
+    app: tauri::AppHandle,
+    title: String,
+    max_bytes: u64,
+) -> Result<Option<PickedFile>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog().file().set_title(&title).blocking_pick_file()
+    })
+    .await
+    .map_err(|_| "readFailed".to_string())?;
+    let Some(file_path) = picked else {
+        return Ok(None);
+    };
+    let path = file_path.into_path().map_err(|_| "readFailed".to_string())?;
+    let meta = std::fs::metadata(&path).map_err(|_| "readFailed".to_string())?;
+    if meta.len() > max_bytes {
+        return Err("tooLarge".to_string());
+    }
+    let content = std::fs::read_to_string(&path).map_err(|_| "readFailed".to_string())?;
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string_lossy().into_owned());
+    Ok(Some(PickedFile { name, content }))
+}
+
 fn main() {
     let cfg = Config::from_env();
     let base = base_url(&cfg);
@@ -54,7 +94,7 @@ fn main() {
     let owned_in_setup = Arc::clone(&owned_server);
     let build_result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![open_devtools])
+        .invoke_handler(tauri::generate_handler![open_devtools, pick_and_read_file])
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if win_quitting.load(Ordering::SeqCst) {
