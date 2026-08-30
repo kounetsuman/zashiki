@@ -10,10 +10,31 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::control::{ControlHub, RefreshRequest};
+use crate::hooks::NotifyEvent;
 use crate::repos::SharedRepos;
 use crate::status_poller::{
     detect_activity_transitions, PollConfig, PollerPorts, StateSnapshot, StatusPoller,
 };
+
+/// Deliver Background Activity transitions: record each into the ACTIVITY view (gated by the same
+/// per-category switch as delivery, so a disabled category leaves no trace) and fire its push /
+/// macOS notification. Mirrors the hook path (`routes_hooks`), which records and notifies together;
+/// without the record, subagent/shell edges would surface only as a transient toast and never enter
+/// the ACTIVITY view. One `now_ms` for the batch is fine — `record_activity` keeps createdAt monotonic.
+fn deliver_transitions(hub: &ControlHub, events: Vec<NotifyEvent>, now_ms: u64) {
+    for event in events {
+        if hub.notification_settings().delivers(event.kind) {
+            hub.record_activity(
+                uuid::Uuid::new_v4().to_string(),
+                event.kind,
+                event.cockpit_terminal_id.clone(),
+                &event.name,
+                now_ms,
+            );
+        }
+        hub.notify(event);
+    }
+}
 
 /// Refresh the reloadable fields (repos roots + org colors) from the shared handle before each
 /// evaluation, so a live repos.conf change (add / external edit) reflects without a restart.
@@ -39,9 +60,7 @@ async fn evaluate_and_publish<P: PollerPorts>(
         hub.publish_snapshot(snapshot.clone());
     }
     if let Some(prev) = prev {
-        for event in detect_activity_transitions(&prev, &snapshot) {
-            hub.notify(event);
-        }
+        deliver_transitions(hub, detect_activity_transitions(&prev, &snapshot), crate::now_ms());
     }
     snapshot
 }
@@ -231,5 +250,76 @@ mod tests {
             .expect("reply channel open");
         assert_eq!(snapshot.sessions[0].cockpit_terminal_id, "@1");
         handle.abort();
+    }
+
+    use crate::protocol::{
+        NotificationSettings, NotifyCategories, NotifyCategoryPref, NotifyKind, SoundPreset,
+    };
+    use tokio::sync::broadcast;
+
+    fn on() -> NotifyCategoryPref {
+        NotifyCategoryPref { notify: true, sound: false, sound_type: SoundPreset::Ping }
+    }
+
+    fn settings_with_subagent_start(enabled: bool, pref: NotifyCategoryPref) -> NotificationSettings {
+        NotificationSettings {
+            enabled,
+            categories: NotifyCategories { subagent_start: pref, ..Default::default() },
+        }
+    }
+
+    fn hub_with(settings: NotificationSettings) -> Arc<ControlHub> {
+        ControlHub::new(
+            ConfigView { notifications: settings, ..Default::default() },
+            vec![],
+            empty_snapshot(),
+        )
+    }
+
+    fn subagent_start_event() -> NotifyEvent {
+        NotifyEvent {
+            kind: NotifyKind::SubagentStart,
+            cockpit_terminal_id: "@1".to_string(),
+            name: "work".to_string(),
+            session_title: "題名".to_string(),
+        }
+    }
+
+    fn next_notifications(rx: &mut broadcast::Receiver<ServerMessage>) -> Option<Vec<crate::protocol::Notification>> {
+        std::iter::from_fn(|| rx.try_recv().ok()).find_map(|m| match m {
+            ServerMessage::NotificationsSync { items } => Some(items),
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn transition_records_into_activity_view_when_category_on() {
+        let hub = hub_with(settings_with_subagent_start(true, on()));
+        let mut rx = hub.subscribe();
+        deliver_transitions(&hub, vec![subagent_start_event()], 1000);
+        let items = next_notifications(&mut rx).expect("notifications.sync recorded");
+        assert_eq!(items.len(), 1);
+        // The Cockpit Terminal reference is what classifies the entry as ACTIVITY (isActivityNotification).
+        assert_eq!(items[0].cockpit_terminal_id.as_deref(), Some("@1"));
+        assert!(items[0].title.contains("サブエージェント開始"));
+    }
+
+    #[test]
+    fn transition_leaves_no_activity_when_category_off() {
+        let hub = hub_with(settings_with_subagent_start(
+            true,
+            NotifyCategoryPref { notify: false, sound: false, sound_type: SoundPreset::Ping },
+        ));
+        let mut rx = hub.subscribe();
+        deliver_transitions(&hub, vec![subagent_start_event()], 1000);
+        assert!(next_notifications(&mut rx).is_none());
+    }
+
+    #[test]
+    fn transition_leaves_no_activity_when_master_off() {
+        let hub = hub_with(settings_with_subagent_start(false, on()));
+        let mut rx = hub.subscribe();
+        deliver_transitions(&hub, vec![subagent_start_event()], 1000);
+        assert!(next_notifications(&mut rx).is_none());
     }
 }
