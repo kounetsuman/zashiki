@@ -242,6 +242,131 @@ pub(crate) async fn orgs_note(State(state): State<AppState>, body: axum::body::B
     Json(serde_json::json!({ "ok": true })).into_response()
 }
 
+/// Reloads the shared live repos set from the conf and nudges the poller, so a color/alias edit shows
+/// up in state.sync without waiting on the file watcher (mirrors the immediate reflection `repos_add` does).
+async fn reflect_repos_change(state: &AppState, conf_path: &std::path::Path) {
+    if let Some(control) = &state.control {
+        if let Ok(mut guard) = control.repos.write() {
+            *guard = repos::read_repos_state(conf_path);
+        }
+        let _ = control.refresh.send(RefreshRequest { reply: None }).await;
+    }
+}
+
+#[derive(Deserialize)]
+struct OrgColorBody {
+    org: String,
+    color: String,
+}
+
+/// `POST /api/orgs/color`. Rewrites the org's repos.conf line to set its display color (a blank `color`
+/// clears it back to the automatic hash color), preserving the verbatim path and any alias. Reflects the
+/// change live via state.sync. `404` when the org has no line to rewrite. Returns `{"ok": true}`.
+pub(crate) async fn orgs_color(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let Some(conf_path) = (*state.repos_conf).clone() else {
+        return json_error_with_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "repos.conf path is not configured",
+            "no_conf",
+        );
+    };
+    let Ok(req) = serde_json::from_slice::<OrgColorBody>(&body) else {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "invalid request body",
+            "invalid_body",
+        );
+    };
+    if req.org.trim().is_empty() {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "org must not be empty",
+            "org_invalid",
+        );
+    }
+    let color = req.color.trim();
+    let edit = if color.is_empty() {
+        repos::StyleEdit::Clear
+    } else if repos::is_valid_color_token(color) {
+        repos::StyleEdit::Set(color.to_ascii_lowercase())
+    } else {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "color must be a #rgb or #rrggbb token",
+            "color_invalid",
+        );
+    };
+    match repos::set_org_style_in_conf(&conf_path, &req.org, edit, repos::StyleEdit::Keep) {
+        Err(e) => json_error_with_code(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string(), "io"),
+        Ok(false) => json_error_with_code(
+            StatusCode::NOT_FOUND,
+            "org has no repos.conf line",
+            "org_not_found",
+        ),
+        Ok(true) => {
+            reflect_repos_change(&state, &conf_path).await;
+            Json(serde_json::json!({ "ok": true })).into_response()
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct OrgAliasBody {
+    org: String,
+    alias: String,
+}
+
+/// `POST /api/orgs/alias`. Rewrites the org's repos.conf line to set its display alias (a blank `alias`
+/// clears it back to the org identity), preserving the verbatim path and any color. Reflects the change
+/// live via state.sync. `404` when the org has no line to rewrite. Returns `{"ok": true}`.
+pub(crate) async fn orgs_alias(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let Some(conf_path) = (*state.repos_conf).clone() else {
+        return json_error_with_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "repos.conf path is not configured",
+            "no_conf",
+        );
+    };
+    let Ok(req) = serde_json::from_slice::<OrgAliasBody>(&body) else {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "invalid request body",
+            "invalid_body",
+        );
+    };
+    if req.org.trim().is_empty() {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "org must not be empty",
+            "org_invalid",
+        );
+    }
+    let alias = req.alias.trim();
+    let edit = if alias.is_empty() {
+        repos::StyleEdit::Clear
+    } else if repos::is_valid_alias_token(alias) {
+        repos::StyleEdit::Set(alias.to_string())
+    } else {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "alias must be a single token without whitespace or #",
+            "alias_invalid",
+        );
+    };
+    match repos::set_org_style_in_conf(&conf_path, &req.org, repos::StyleEdit::Keep, edit) {
+        Err(e) => json_error_with_code(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string(), "io"),
+        Ok(false) => json_error_with_code(
+            StatusCode::NOT_FOUND,
+            "org has no repos.conf line",
+            "org_not_found",
+        ),
+        Ok(true) => {
+            reflect_repos_change(&state, &conf_path).await;
+            Json(serde_json::json!({ "ok": true })).into_response()
+        }
+    }
+}
+
 #[derive(Deserialize)]
 struct MemoBody {
     text: String,
@@ -515,6 +640,104 @@ mod repos_add_rest_tests {
         let (s, _b) = send_note(app(conf), &format!(r#"{{"org":"acme","text":"{big}"}}"#)).await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
         assert!(!dir.path().join("notes/acme.md").exists());
+    }
+
+    async fn send_to(app: axum::Router, uri: &str, body: &str) -> (StatusCode, String) {
+        let req = HttpRequest::builder()
+            .method("POST")
+            .uri(format!("{uri}?token=t"))
+            .header("host", OK_HOST)
+            .header("x-zashiki-token", "t")
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    #[tokio::test]
+    async fn color_set_then_clear_rewrites_the_org_line() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        std::fs::write(&conf, "/ws/acme\n").unwrap();
+
+        let (s, b) = send_to(
+            app(conf.clone()),
+            "/api/orgs/color",
+            r##"{"org":"acme","color":"#7AA2F7"}"##,
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "body: {b}");
+        // Written lowercased and whitespace-separated so it reads back as a color, not a comment.
+        assert_eq!(std::fs::read_to_string(&conf).unwrap(), "/ws/acme   #7aa2f7\n");
+
+        let (s2, _) =
+            send_to(app(conf.clone()), "/api/orgs/color", r#"{"org":"acme","color":""}"#).await;
+        assert_eq!(s2, StatusCode::OK);
+        assert_eq!(std::fs::read_to_string(&conf).unwrap(), "/ws/acme\n");
+    }
+
+    #[tokio::test]
+    async fn color_invalid_returns_400_and_unknown_org_returns_404() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        std::fs::write(&conf, "/ws/acme\n").unwrap();
+
+        let (s, _) = send_to(
+            app(conf.clone()),
+            "/api/orgs/color",
+            r#"{"org":"acme","color":"blue"}"#,
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+
+        let (s2, _) = send_to(
+            app(conf),
+            "/api/orgs/color",
+            r##"{"org":"ghost","color":"#f00"}"##,
+        )
+        .await;
+        assert_eq!(s2, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn alias_set_then_clear_preserves_color() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        std::fs::write(&conf, "/ws/acme   #7aa2f7\n").unwrap();
+
+        let (s, b) = send_to(
+            app(conf.clone()),
+            "/api/orgs/alias",
+            r#"{"org":"acme","alias":"Frontend"}"#,
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "body: {b}");
+        assert_eq!(
+            std::fs::read_to_string(&conf).unwrap(),
+            "/ws/acme   @Frontend   #7aa2f7\n"
+        );
+
+        let (s2, _) =
+            send_to(app(conf.clone()), "/api/orgs/alias", r#"{"org":"acme","alias":""}"#).await;
+        assert_eq!(s2, StatusCode::OK);
+        assert_eq!(std::fs::read_to_string(&conf).unwrap(), "/ws/acme   #7aa2f7\n");
+    }
+
+    #[tokio::test]
+    async fn alias_with_whitespace_returns_400() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        std::fs::write(&conf, "/ws/acme\n").unwrap();
+        let (s, _) = send_to(
+            app(conf),
+            "/api/orgs/alias",
+            r#"{"org":"acme","alias":"two words"}"#,
+        )
+        .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
     }
 
     async fn send_memo(app: axum::Router, body: &str) -> (StatusCode, String) {

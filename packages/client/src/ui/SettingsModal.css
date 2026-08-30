@@ -4,6 +4,40 @@
   height: min(90vh, 720px);
 }
 
+.settings-org-appearance {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-org-appearance-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-org-appearance-name {
+  min-width: 120px;
+  font-weight: 600;
+}
+
+.settings-org-appearance-row .settings-org-color {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.settings-org-appearance-row .settings-org-alias {
+  flex: 1;
+  min-width: 120px;
+}
+
 .settings-org-notes {
   display: flex;
   flex-direction: column;

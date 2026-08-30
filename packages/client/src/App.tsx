@@ -792,6 +792,20 @@ export function App({
     [reposApi],
   );
 
+  // Persist an org color / alias over REST; the server reflects it via state.sync (a blank value resets).
+  const saveOrgColor = useCallback(
+    (org: string, color: string): void => {
+      void reposApi.setColor(org, color);
+    },
+    [reposApi],
+  );
+  const saveOrgAlias = useCallback(
+    (org: string, alias: string): void => {
+      void reposApi.setAlias(org, alias);
+    },
+    [reposApi],
+  );
+
   // Track the Claude Code integration status the server pushes (on connect and after each change).
   useEffect(() => {
     return control.onMessage((m) => {
@@ -1172,7 +1186,10 @@ export function App({
           orgs={orgs}
           orgNotes={orgNotes}
           orgAliases={orgAliases}
+          orgColors={orgColors}
           onSaveNote={saveOrgNote}
+          onSaveColor={saveOrgColor}
+          onSaveAlias={saveOrgAlias}
           onCheckForUpdates={checkForUpdates}
           clipboardEditModal={clipboardEdit.enabled}
           onSetClipboardEditModal={clipboardEdit.setEnabled}
