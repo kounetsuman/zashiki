@@ -4,7 +4,7 @@
 
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use serde::Serialize;
 use tokio::process::Command;
@@ -13,8 +13,15 @@ use tokio::task::JoinSet;
 
 use crate::repos::ScannedRepo;
 
-/// Number of git processes to run concurrently (8; guards against resource exhaustion).
+/// Max git processes run at once for status scans (bounded by [`status_semaphore`]).
 const STATUS_CONCURRENCY: usize = 8;
+
+/// Process-wide status-scan budget, shared by every concurrent `GET /api/git/status`.
+fn status_semaphore() -> Arc<Semaphore> {
+    static SEM: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    SEM.get_or_init(|| Arc::new(Semaphore::new(STATUS_CONCURRENCY)))
+        .clone()
+}
 
 /// Response for `GET /api/git/status` (`GitStatusResponse`).
 #[derive(Serialize)]
@@ -378,11 +385,10 @@ async fn last_commit_iso(path: &Path) -> String {
 
 async fn build_repo_status(r: ScannedRepo) -> RepoStatus {
     let path = Path::new(&r.path);
-    let (branch, raw, last_commit) = tokio::join!(
-        resolve_branch(path),
-        git_output(path, &["status", "--porcelain=v1"]),
-        last_commit_iso(path),
-    );
+    // Awaited in series, not joined: one git process per held permit keeps STATUS_CONCURRENCY an exact process cap.
+    let branch = resolve_branch(path).await;
+    let raw = git_output(path, &["--no-optional-locks", "status", "--porcelain=v1"]).await;
+    let last_commit = last_commit_iso(path).await;
     let parsed = zashiki_core::git::parse_git_status(&raw);
     RepoStatus {
         org: r.org,
@@ -403,25 +409,36 @@ pub async fn remove_worktree(path: &Path) -> Result<(), GitError> {
     run_git(path, &["worktree", "remove", "--", &path_str]).await
 }
 
-/// Collect each repo's status in parallel (up to 8) and return them preserving input order.
-pub async fn git_status(scanned: Vec<ScannedRepo>) -> Vec<RepoStatus> {
-    let sem = Arc::new(Semaphore::new(STATUS_CONCURRENCY));
+/// Runs `work` over `items` with at most `sem`'s permits in flight, returning results in input order.
+async fn run_bounded<I, R, F, Fut>(items: Vec<I>, sem: Arc<Semaphore>, work: F) -> Vec<R>
+where
+    I: Send + 'static,
+    R: Send + 'static,
+    F: Fn(I) -> Fut + Send + Sync + Clone + 'static,
+    Fut: std::future::Future<Output = R> + Send,
+{
     let mut set = JoinSet::new();
-    for (index, repo) in scanned.into_iter().enumerate() {
+    for (index, item) in items.into_iter().enumerate() {
         let sem = sem.clone();
+        let work = work.clone();
         set.spawn(async move {
             let _permit = sem.acquire_owned().await.expect("semaphore not closed");
-            (index, build_repo_status(repo).await)
+            (index, work(item).await)
         });
     }
-    let mut indexed: Vec<(usize, RepoStatus)> = Vec::new();
+    let mut indexed: Vec<(usize, R)> = Vec::new();
     while let Some(joined) = set.join_next().await {
         if let Ok(pair) = joined {
             indexed.push(pair);
         }
     }
     indexed.sort_by_key(|(i, _)| *i);
-    indexed.into_iter().map(|(_, rs)| rs).collect()
+    indexed.into_iter().map(|(_, r)| r).collect()
+}
+
+/// Collect each repo's status under the process-wide concurrency cap, preserving input order.
+pub async fn git_status(scanned: Vec<ScannedRepo>) -> Vec<RepoStatus> {
+    run_bounded(scanned, status_semaphore(), build_repo_status).await
 }
 
 /// Body validation for `POST /api/git/open`. Does not open files whose symlink
@@ -631,6 +648,40 @@ mod tests {
             .changed
             .iter()
             .any(|e| e.code == "??" && e.path == "untracked.md"));
+    }
+
+    #[tokio::test]
+    async fn run_bounded_caps_concurrency_and_keeps_order() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let permits = 3;
+        let sem = Arc::new(Semaphore::new(permits));
+        let live = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+
+        let out = run_bounded((0..50).collect::<Vec<usize>>(), sem, {
+            let live = live.clone();
+            let peak = peak.clone();
+            move |n: usize| {
+                let live = live.clone();
+                let peak = peak.clone();
+                async move {
+                    let in_flight = live.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(in_flight, Ordering::SeqCst);
+                    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+                    live.fetch_sub(1, Ordering::SeqCst);
+                    n * 2
+                }
+            }
+        })
+        .await;
+
+        assert_eq!(out, (0..50).map(|n| n * 2).collect::<Vec<usize>>());
+        assert!(
+            peak.load(Ordering::SeqCst) <= permits,
+            "peak {} exceeded cap {permits}",
+            peak.load(Ordering::SeqCst)
+        );
     }
 
     #[tokio::test]
