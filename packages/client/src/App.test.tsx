@@ -111,6 +111,7 @@ const fakeSearchApi: SearchApi = {
 
 const fakeFilesApi: FilesApi = {
   read: () => Promise.resolve(""),
+  mediaUrl: (repoPath, file) => `/api/media?repoPath=${repoPath}&file=${file}`,
 };
 
 const fakeFilesListApi: FilesListApi = {

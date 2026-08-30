@@ -721,6 +721,91 @@ mod git_file_rest_tests {
         assert_eq!(s, StatusCode::BAD_REQUEST);
     }
 
+    // ---- /api/media ----
+
+    async fn media_req(
+        app: axum::Router,
+        repo_path: &str,
+        file: &str,
+        extra: &[(&str, &str)],
+    ) -> (StatusCode, axum::http::HeaderMap, Vec<u8>) {
+        let q = format!(
+            "/api/media?token=t&repoPath={}&file={}",
+            urlencoding(repo_path),
+            urlencoding(file)
+        );
+        let mut builder = HttpRequest::builder().uri(&q).header("host", OK_HOST);
+        for (k, v) in extra {
+            builder = builder.header(*k, *v);
+        }
+        let resp = app
+            .oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        (status, headers, bytes.to_vec())
+    }
+
+    #[tokio::test]
+    async fn media_read_serves_bytes_with_content_type() {
+        let fx = fixture();
+        let png = [0x89u8, b'P', b'N', b'G', 1, 2, 3, 4, 5, 6];
+        std::fs::write(Path::new(&fx.repo_a).join("logo.png"), png).unwrap();
+        let (s, h, body) = media_req(app(&fx), &fx.repo_a, "logo.png", &[]).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(h.get("content-type").unwrap(), "image/png");
+        assert_eq!(body, png);
+    }
+
+    /// Range requests must return 206 so `<video>` can seek without buffering the whole file.
+    #[tokio::test]
+    async fn media_read_supports_range_requests() {
+        let fx = fixture();
+        let data: Vec<u8> = (0..20u8).collect();
+        std::fs::write(Path::new(&fx.repo_a).join("clip.mp4"), &data).unwrap();
+        let (s, h, body) =
+            media_req(app(&fx), &fx.repo_a, "clip.mp4", &[("range", "bytes=0-3")]).await;
+        assert_eq!(s, StatusCode::PARTIAL_CONTENT);
+        assert!(h.get("content-range").is_some());
+        assert_eq!(body, vec![0, 1, 2, 3]);
+    }
+
+    /// A media file above the text max still streams (no size cap), unlike /api/file which 413s.
+    #[tokio::test]
+    async fn media_read_streams_files_above_the_text_limit() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("big.mp4"), vec![7u8; 100]).unwrap();
+        let (s, _, body) = media_req(app(&fx), &fx.repo_a, "big.mp4", &[]).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(body.len(), 100);
+    }
+
+    #[tokio::test]
+    async fn media_read_rejects_missing_directory_and_outside_allowlist() {
+        let fx = fixture();
+        let (s, _, _) = media_req(app(&fx), &fx.repo_a, "nope.png", &[]).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+        let (s, _, _) = media_req(app(&fx), &fx.repo_a, "src", &[]).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        let org1 = Path::new(&fx.repo_a).parent().unwrap().to_string_lossy();
+        let (s, _, _) = media_req(app(&fx), &org1, "README.md", &[]).await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn media_read_requires_token() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("logo.png"), [1u8, 2, 3]).unwrap();
+        let q = format!(
+            "/api/media?repoPath={}&file=logo.png",
+            urlencoding(&fx.repo_a)
+        );
+        let (s, _) = request(app(&fx), &q, Some(OK_HOST), &[]).await;
+        assert_eq!(s, StatusCode::UNAUTHORIZED);
+    }
+
     #[tokio::test]
     async fn file_write_happy_and_errors() {
         let fx = fixture();

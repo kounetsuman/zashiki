@@ -1,10 +1,12 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Query, Request, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
 use serde::Deserialize;
+use tower::ServiceExt;
+use tower_http::services::ServeFile;
 
 use crate::app_state::{scan, AppState};
 use crate::wire_support::{guard_file_path, json_error, json_ok, parse_json_body};
@@ -35,6 +37,38 @@ pub(crate) async fn file_read(
     match result {
         Ok(content) => Json(serde_json::json!({ "content": content })).into_response(),
         Err((status, msg)) => json_error(status, &msg),
+    }
+}
+
+/// `GET /api/media`: streams a repo image/video for `<img>` / `<video>`. Delegates to ServeFile so
+/// Range requests get 206 partial responses (video seeking) with a content type inferred from the path.
+/// The raw Request is forwarded to ServeFile so it can read the Range header.
+pub(crate) async fn media_read(
+    State(state): State<AppState>,
+    Query(params): Query<FileReadParams>,
+    req: Request,
+) -> Response {
+    let repo_path = params.repo_path.unwrap_or_default();
+    let file = params.file.unwrap_or_default();
+    if let Err((status, msg)) = guard_file_path(&state, &repo_path, &file).await {
+        return json_error(status, &msg);
+    }
+    let resolved = tokio::task::spawn_blocking({
+        let repo_path = repo_path.clone();
+        let file = file.clone();
+        move || file::media_path_within_repo(&repo_path, &file)
+    })
+    .await
+    .unwrap_or_else(|_| {
+        Err((StatusCode::INTERNAL_SERVER_ERROR, "media task failed".to_string()))
+    });
+    let abs = match resolved {
+        Ok(abs) => abs,
+        Err((status, msg)) => return json_error(status, &msg),
+    };
+    match ServeFile::new(abs).oneshot(req).await {
+        Ok(res) => res.into_response(),
+        Err(unreachable) => match unreachable {},
     }
 }
 

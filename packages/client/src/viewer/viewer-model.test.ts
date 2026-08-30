@@ -9,6 +9,8 @@ import {
   isMarkdown,
   openBuffer,
   openExternalBuffer,
+  openExternalMediaBuffer,
+  openMediaBuffer,
   shouldPollBuffer,
   splitViewerKey,
   viewerKey,
@@ -124,6 +126,53 @@ describe("external (dropped) buffers", () => {
     const ext = openExternalBuffer({}, NAME, "x")[EKEY];
     expect(repo && shouldPollBuffer(repo)).toBe(true);
     expect(ext && shouldPollBuffer(ext)).toBe(false);
+  });
+});
+
+describe("media buffers", () => {
+  const IMG = "assets/logo.png";
+  const IMG_KEY = viewerKey(REPO, IMG);
+
+  it("openMediaBuffer inserts a ready repo buffer that renders from the URL", () => {
+    const bufs = openMediaBuffer({}, REPO, IMG, {
+      kind: "image",
+      url: "/api/media?x=1",
+    });
+    expect(bufs[IMG_KEY]).toMatchObject({
+      repoPath: REPO,
+      relPath: IMG,
+      status: "ready",
+      content: null,
+      media: { kind: "image", url: "/api/media?x=1" },
+    });
+  });
+
+  it("openMediaBuffer returns the same reference when the URL is unchanged", () => {
+    const bufs = openMediaBuffer({}, REPO, IMG, { kind: "image", url: "u" });
+    expect(openMediaBuffer(bufs, REPO, IMG, { kind: "image", url: "u" })).toBe(
+      bufs,
+    );
+  });
+
+  it("openExternalMediaBuffer marks the dropped buffer external", () => {
+    const key = externalViewerKey("clip.mp4");
+    const bufs = openExternalMediaBuffer({}, "clip.mp4", {
+      kind: "video",
+      url: "blob:abc",
+    });
+    expect(bufs[key]).toMatchObject({
+      relPath: "clip.mp4",
+      status: "ready",
+      external: true,
+      media: { kind: "video", url: "blob:abc" },
+    });
+  });
+
+  it("shouldPollBuffer excludes media buffers", () => {
+    const media = openMediaBuffer({}, REPO, IMG, { kind: "image", url: "u" })[
+      IMG_KEY
+    ];
+    expect(media && shouldPollBuffer(media)).toBe(false);
   });
 });
 

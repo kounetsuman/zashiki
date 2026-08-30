@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
+import type { MediaKind } from "../viewer/media.js";
 import {
   bufferFailed,
   bufferLoaded,
@@ -9,6 +10,8 @@ import {
   externalViewerKey,
   openBuffer,
   openExternalBuffer,
+  openExternalMediaBuffer,
+  openMediaBuffer,
   shouldPollBuffer,
   type ViewerBuffers,
   viewerKey,
@@ -31,8 +34,12 @@ export interface Viewer {
   buffers: ViewerBuffers;
   /** Ensures a buffer for the file (firing a read only when new) and returns its key. */
   ensureBuffer(repoPath: string, relPath: string): string;
+  /** Ensures a repo image/video buffer streamed from the media URL (no text read) and returns its key. */
+  ensureMediaBuffer(repoPath: string, relPath: string, kind: MediaKind): string;
   /** Opens a dropped file from content already in hand (no repo read) and returns its key. */
   openExternal(name: string, content: string): string;
+  /** Opens a dropped image/video from an object URL created for the file, and returns its key. */
+  openExternalMedia(name: string, file: File, kind: MediaKind): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
   /** Absolute path of the buffer at key, or null when it is gone. */
@@ -53,6 +60,14 @@ export function useViewer(
   const buffersRef = useRef(buffers);
   buffersRef.current = buffers;
   const readSeqRef = useRef<Record<string, number>>({});
+  const objectUrlsRef = useRef<Record<string, string>>({});
+
+  const revokeObjectUrl = useCallback((key: string): void => {
+    const url = objectUrlsRef.current[key];
+    if (url === undefined) return;
+    URL.revokeObjectURL(url);
+    delete objectUrlsRef.current[key];
+  }, []);
 
   const loadFile = useCallback(
     (key: string, repoPath: string, relPath: string, silent: boolean) => {
@@ -96,14 +111,41 @@ export function useViewer(
     [loadFile],
   );
 
+  const ensureMediaBuffer = useCallback(
+    (repoPath: string, relPath: string, kind: MediaKind): string => {
+      const url = filesApi.mediaUrl(repoPath, relPath);
+      setBuffers((prev) =>
+        openMediaBuffer(prev, repoPath, relPath, { kind, url }),
+      );
+      return viewerKey(repoPath, relPath);
+    },
+    [filesApi],
+  );
+
   const openExternal = useCallback((name: string, content: string): string => {
     setBuffers((prev) => openExternalBuffer(prev, name, content));
     return externalViewerKey(name);
   }, []);
 
-  const closeBuffer = useCallback((key: string): void => {
-    setBuffers((prev) => dropBuffer(prev, key));
-  }, []);
+  const openExternalMedia = useCallback(
+    (name: string, file: File, kind: MediaKind): string => {
+      const key = externalViewerKey(name);
+      revokeObjectUrl(key);
+      const url = URL.createObjectURL(file);
+      objectUrlsRef.current[key] = url;
+      setBuffers((prev) => openExternalMediaBuffer(prev, name, { kind, url }));
+      return key;
+    },
+    [revokeObjectUrl],
+  );
+
+  const closeBuffer = useCallback(
+    (key: string): void => {
+      revokeObjectUrl(key);
+      setBuffers((prev) => dropBuffer(prev, key));
+    },
+    [revokeObjectUrl],
+  );
 
   const togglePreview = useCallback((key: string): void => {
     setBuffers((prev) => bufferTogglePreview(prev, key));
@@ -132,10 +174,19 @@ export function useViewer(
     return () => window.clearInterval(id);
   }, [activeViewerKey, loadFile]);
 
+  useEffect(() => {
+    const urls = objectUrlsRef.current;
+    return () => {
+      for (const url of Object.values(urls)) URL.revokeObjectURL(url);
+    };
+  }, []);
+
   return {
     buffers,
     ensureBuffer,
+    ensureMediaBuffer,
     openExternal,
+    openExternalMedia,
     closeBuffer,
     togglePreview,
     pathOf,

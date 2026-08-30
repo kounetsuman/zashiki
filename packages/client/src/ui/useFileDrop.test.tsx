@@ -14,9 +14,14 @@ afterEach(cleanup);
 
 function Harness(props: {
   onFile: (name: string, content: string) => void;
+  onMedia?: (name: string, file: File, kind: "image" | "video") => void;
   onError: (name: string, error: FileDropError) => void;
 }) {
-  const drop = useFileDrop(props.onFile, props.onError);
+  const drop = useFileDrop(
+    props.onFile,
+    props.onMedia ?? vi.fn(),
+    props.onError,
+  );
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: drop receiver under test, not an interactive widget
     <div data-testid="zone" onDragOver={drop.onDragOver} onDrop={drop.onDrop} />
@@ -55,6 +60,31 @@ describe("useFileDrop", () => {
       dataTransfer: transfer(["text/plain"]),
     });
     expect(onFile).not.toHaveBeenCalled();
+  });
+
+  it("routes a dropped image to onMedia without reading it as text", () => {
+    const onFile = vi.fn();
+    const onMedia = vi.fn();
+    render(<Harness onFile={onFile} onMedia={onMedia} onError={vi.fn()} />);
+    const img = new File(["PNG"], "logo.png");
+    fireEvent.drop(screen.getByTestId("zone"), {
+      dataTransfer: transfer(["Files"], [img]),
+    });
+    expect(onMedia).toHaveBeenCalledWith("logo.png", img, "image");
+    expect(onFile).not.toHaveBeenCalled();
+  });
+
+  it("routes an oversize video to onMedia (media has no size cap)", () => {
+    const onMedia = vi.fn();
+    const onError = vi.fn();
+    render(<Harness onFile={vi.fn()} onMedia={onMedia} onError={onError} />);
+    const big = new File(["x"], "clip.mp4");
+    Object.defineProperty(big, "size", { value: FILE_MAX_BYTES + 1 });
+    fireEvent.drop(screen.getByTestId("zone"), {
+      dataTransfer: transfer(["Files"], [big]),
+    });
+    expect(onMedia).toHaveBeenCalledWith("clip.mp4", big, "video");
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it("rejects a file over the size cap without reading it", () => {
