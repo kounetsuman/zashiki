@@ -125,6 +125,8 @@ const fakeReposApi: ReposApi = {
   browse: () => Promise.resolve({ entries: [], truncated: false }),
   list: () => Promise.resolve({ orgs: [] }),
   setNote: () => Promise.resolve(),
+  setColor: () => Promise.resolve(),
+  setAlias: () => Promise.resolve(),
   setMemo: () => Promise.resolve(),
 };
 

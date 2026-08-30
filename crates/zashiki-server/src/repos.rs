@@ -90,46 +90,51 @@ fn expand_root(line: &str, home: &Path, cwd: &Path) -> Option<PathBuf> {
     Some(normalize_lexical(&expanded))
 }
 
-/// Parses the body of repos.conf into a list of roots plus per-org colors and aliases (pure function).
-/// A line is `path [@alias] [#color]`: everything after `#` is a comment, picked up as a color only when
-/// whitespace-separated and a valid color token (a `#` adjacent to the path is a comment); a trailing
-/// whitespace-separated `@alias` token (before the color) sets the org's display name. Internal whitespace
-/// in the path is preserved. Color and alias are bound to org=basename, first occurrence wins.
+/// Splits one repos.conf line into its verbatim path plus optional `@alias` and `#color` tokens,
+/// applying the same comment/adjacency rules as {@link parse_conf}. Returns `None` for a blank or
+/// comment-only line (one with no path). The path slice borrows the input, trimmed of surrounding
+/// whitespace but with internal whitespace preserved. Shared by parsing and the in-place line rewrite.
+fn split_conf_line(raw: &str) -> Option<(&str, Option<String>, Option<String>)> {
+    let line = raw.trim();
+    match line.find('#') {
+        None => {
+            if line.is_empty() {
+                return None;
+            }
+            let (path, alias) = split_trailing_alias(line);
+            if path.is_empty() {
+                return None;
+            }
+            Some((path, alias, None))
+        }
+        Some(hash) => {
+            let before = &line[..hash];
+            let (path, alias) = split_trailing_alias(before);
+            if path.is_empty() {
+                return None; // A leading `#` (comment line / leading color token) has no path, so drop it.
+            }
+            // A `#` adjacent to the path (or alias) is a comment as before (not treated as a color).
+            let separated = before.chars().next_back().is_some_and(char::is_whitespace);
+            let color = if separated {
+                let head = line[hash..].split_whitespace().next().unwrap_or("");
+                is_color_token(head).then(|| head.to_ascii_lowercase())
+            } else {
+                None
+            };
+            Some((path, alias, color))
+        }
+    }
+}
+
 pub fn parse_conf(text: &str, home: &Path, cwd: &Path) -> ReposConf {
     let mut seen = HashSet::new();
     let mut roots = Vec::new();
     let mut color_by_org = BTreeMap::new();
     let mut alias_by_org = BTreeMap::new();
     for raw in text.lines() {
-        let line = raw.trim();
-        let (path, alias, color) = match line.find('#') {
-            None => {
-                if line.is_empty() {
-                    continue;
-                }
-                let (path, alias) = split_trailing_alias(line);
-                (path, alias, None)
-            }
-            Some(hash) => {
-                let before = &line[..hash];
-                let (path, alias) = split_trailing_alias(before);
-                if path.is_empty() {
-                    continue; // A leading `#` (comment line / leading color token) has no path, so drop it.
-                }
-                // A `#` adjacent to the path (or alias) is a comment as before (not treated as a color).
-                let separated = before.chars().next_back().is_some_and(char::is_whitespace);
-                let color = if separated {
-                    let head = line[hash..].split_whitespace().next().unwrap_or("");
-                    is_color_token(head).then(|| head.to_ascii_lowercase())
-                } else {
-                    None
-                };
-                (path, alias, color)
-            }
-        };
-        if path.is_empty() {
+        let Some((path, alias, color)) = split_conf_line(raw) else {
             continue;
-        }
+        };
         let Some(abs) = expand_root(path, home, cwd) else {
             continue;
         };
@@ -226,6 +231,103 @@ pub fn resolve_conf_path(path: &str) -> Option<PathBuf> {
 /// rejects a color that would otherwise be written but silently read back as a comment.
 pub fn is_valid_color_token(token: &str) -> bool {
     is_color_token(token)
+}
+
+/// Upper bound on an org alias (character count). Kept equal to the client's `ORG_ALIAS_MAX_CHARS`.
+pub const ORG_ALIAS_MAX_CHARS: usize = 64;
+
+/// Whether `value` is a storable alias name (the part after `@`): non-empty, within the length cap, not
+/// itself starting with `@` (which `format_conf_line` would render as `@@value`), and free of whitespace
+/// and `#` so the written `@value` token parses back verbatim rather than being truncated or swallowed as
+/// a comment. The stored form omits the leading `@`.
+pub fn is_valid_alias_token(value: &str) -> bool {
+    !value.is_empty()
+        && !value.starts_with('@')
+        && value.chars().count() <= ORG_ALIAS_MAX_CHARS
+        && value.chars().all(|c| !c.is_whitespace() && c != '#')
+}
+
+/// How to change one style attribute (color or alias) on an org's conf line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StyleEdit {
+    /// Leave the attribute as it is in the current line.
+    Keep,
+    /// Set it to this token (color `#rgb`/`#rrggbb`; alias without `@`). The caller validates it.
+    Set(String),
+    /// Remove the attribute (color falls back to automatic; alias to the org identity).
+    Clear,
+}
+
+fn apply_edit(edit: &StyleEdit, current: Option<String>) -> Option<String> {
+    match edit {
+        StyleEdit::Keep => current,
+        StyleEdit::Set(value) => Some(value.clone()),
+        StyleEdit::Clear => None,
+    }
+}
+
+/// Rewrites the first repos.conf line whose root basename equals `org`, applying the `color`/`alias`
+/// edits while preserving the verbatim path and the attribute left `Keep`. Other lines pass through
+/// untouched, and the file's trailing-newline shape is preserved. Returns the new text, or `None` when
+/// no line matches `org` (so the caller can report "org not found" rather than writing an unchanged file).
+pub fn set_org_style(
+    text: &str,
+    org: &str,
+    color: StyleEdit,
+    alias: StyleEdit,
+    home: &Path,
+    cwd: &Path,
+) -> Option<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut edited = false;
+    for raw in text.lines() {
+        if !edited {
+            if let Some((path, cur_alias, cur_color)) = split_conf_line(raw) {
+                let basename = expand_root(path, home, cwd).and_then(|abs| {
+                    abs.file_name().map(|s| s.to_string_lossy().into_owned())
+                });
+                if basename.as_deref() == Some(org) {
+                    let new_color = apply_edit(&color, cur_color);
+                    let new_alias = apply_edit(&alias, cur_alias);
+                    lines.push(format_conf_line(
+                        path,
+                        new_alias.as_deref(),
+                        new_color.as_deref(),
+                    ));
+                    edited = true;
+                    continue;
+                }
+            }
+        }
+        lines.push(raw.to_string());
+    }
+    if !edited {
+        return None;
+    }
+    let mut out = lines.join("\n");
+    if text.ends_with('\n') {
+        out.push('\n');
+    }
+    Some(out)
+}
+
+/// Reads repos.conf, rewrites the `org`'s line per the edits, and writes it back atomically (temp +
+/// rename). Returns whether a matching line was found and rewritten (`false` leaves the file untouched).
+pub fn set_org_style_in_conf(
+    conf_path: &Path,
+    org: &str,
+    color: StyleEdit,
+    alias: StyleEdit,
+) -> std::io::Result<bool> {
+    let text = std::fs::read_to_string(conf_path).unwrap_or_default();
+    let (home, cwd) = conf_home_cwd();
+    match set_org_style(&text, org, color, alias, &home, &cwd) {
+        Some(new_text) => {
+            write_repos_conf_atomic(conf_path, &new_text)?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
 }
 
 fn write_repos_conf_atomic(path: &Path, text: &str) -> std::io::Result<()> {
@@ -541,6 +643,130 @@ rel/dir
         // The appended color is read back (whitespace-separated), bound to org=basename.
         let conf = parse_conf(&text, home, cwd);
         assert_eq!(conf.color_by_org.get("b"), Some(&"#f00".to_string()));
+    }
+
+    #[test]
+    fn set_org_style_sets_color_on_a_bare_line_preserving_verbatim_path() {
+        let home = Path::new("/home/u");
+        let cwd = Path::new("/work");
+        let text = "~/ws/foo\n/tmp/bar\n";
+        let out = set_org_style(
+            text,
+            "foo",
+            StyleEdit::Set("#7aa2f7".to_string()),
+            StyleEdit::Keep,
+            home,
+            cwd,
+        )
+        .expect("foo should match");
+        // The `~` path stays verbatim (portable); only foo's line gains the color; bar is untouched.
+        assert_eq!(out, "~/ws/foo   #7aa2f7\n/tmp/bar\n");
+        let conf = parse_conf(&out, home, cwd);
+        assert_eq!(conf.color_by_org.get("foo"), Some(&"#7aa2f7".to_string()));
+    }
+
+    #[test]
+    fn set_org_style_clears_color_but_keeps_alias() {
+        let home = Path::new("/home/u");
+        let cwd = Path::new("/work");
+        let text = "/tmp/foo   @Frontend   #7aa2f7\n";
+        let out = set_org_style(text, "foo", StyleEdit::Clear, StyleEdit::Keep, home, cwd)
+            .expect("foo should match");
+        assert_eq!(out, "/tmp/foo   @Frontend\n");
+        let conf = parse_conf(&out, home, cwd);
+        assert!(conf.color_by_org.get("foo").is_none());
+        assert_eq!(conf.alias_by_org.get("foo"), Some(&"Frontend".to_string()));
+    }
+
+    #[test]
+    fn set_org_style_sets_alias_but_keeps_color() {
+        let home = Path::new("/home/u");
+        let cwd = Path::new("/work");
+        let text = "/tmp/foo   #7aa2f7\n";
+        let out = set_org_style(
+            text,
+            "foo",
+            StyleEdit::Keep,
+            StyleEdit::Set("Backend".to_string()),
+            home,
+            cwd,
+        )
+        .expect("foo should match");
+        assert_eq!(out, "/tmp/foo   @Backend   #7aa2f7\n");
+        let conf = parse_conf(&out, home, cwd);
+        assert_eq!(conf.alias_by_org.get("foo"), Some(&"Backend".to_string()));
+        assert_eq!(conf.color_by_org.get("foo"), Some(&"#7aa2f7".to_string()));
+    }
+
+    #[test]
+    fn set_org_style_rewrites_only_the_first_line_for_a_shared_basename() {
+        let home = Path::new("/home/u");
+        let cwd = Path::new("/work");
+        let text = "/a/foo\n/b/foo\n";
+        let out = set_org_style(
+            text,
+            "foo",
+            StyleEdit::Set("#f00".to_string()),
+            StyleEdit::Keep,
+            home,
+            cwd,
+        )
+        .expect("foo should match");
+        // First-occurrence-wins mirrors parse_conf: only the first `foo` line is rewritten.
+        assert_eq!(out, "/a/foo   #f00\n/b/foo\n");
+    }
+
+    #[test]
+    fn set_org_style_returns_none_when_org_absent() {
+        let home = Path::new("/home/u");
+        let cwd = Path::new("/work");
+        assert!(set_org_style(
+            "/tmp/foo\n",
+            "missing",
+            StyleEdit::Set("#f00".to_string()),
+            StyleEdit::Keep,
+            home,
+            cwd,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn set_org_style_in_conf_persists_and_reports_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        let target = dir.path().join("myorg");
+        std::fs::create_dir_all(&target).unwrap();
+        let path = target.to_string_lossy().into_owned();
+        append_root_to_conf(&conf, &path, None, None).unwrap();
+
+        assert!(set_org_style_in_conf(
+            &conf,
+            "myorg",
+            StyleEdit::Set("#9ece6a".to_string()),
+            StyleEdit::Keep,
+        )
+        .unwrap());
+        assert_eq!(
+            read_repos_state(&conf).colors.get("myorg"),
+            Some(&"#9ece6a".to_string())
+        );
+
+        // An unknown org changes nothing and reports no match.
+        let before = std::fs::read_to_string(&conf).unwrap();
+        assert!(!set_org_style_in_conf(&conf, "nope", StyleEdit::Clear, StyleEdit::Keep).unwrap());
+        assert_eq!(std::fs::read_to_string(&conf).unwrap(), before);
+    }
+
+    #[test]
+    fn is_valid_alias_token_rejects_whitespace_hash_and_empty() {
+        assert!(is_valid_alias_token("Frontend"));
+        assert!(is_valid_alias_token("フロント"));
+        assert!(!is_valid_alias_token(""));
+        assert!(!is_valid_alias_token("has space"));
+        assert!(!is_valid_alias_token("with#hash"));
+        assert!(!is_valid_alias_token("@leading"));
+        assert!(!is_valid_alias_token(&"x".repeat(ORG_ALIAS_MAX_CHARS + 1)));
     }
 
     #[test]

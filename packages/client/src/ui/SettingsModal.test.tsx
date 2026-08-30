@@ -109,24 +109,6 @@ describe("SettingsModal General tab", () => {
     expect(screen.getByRole("option", { name: "English" })).toBeTruthy();
   });
 
-  it("shows the add-org entry only when onAddOrg is provided and calls it on click", () => {
-    const onAddOrg = vi.fn();
-    const { rerender } = render(
-      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
-    );
-    expect(screen.queryByRole("button", { name: "組織を追加" })).toBeNull();
-    rerender(
-      <SettingsModal
-        language="ja"
-        onSaveLanguage={noop}
-        onClose={noop}
-        onAddOrg={onAddOrg}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "組織を追加" }));
-    expect(onAddOrg).toHaveBeenCalled();
-  });
-
   it("calls onSaveLanguage with the selected language after changing it and saving", () => {
     const onSaveLanguage = vi.fn();
     render(
@@ -408,6 +390,116 @@ describe("SettingsModal General tab", () => {
     expect(
       await screen.findByText("アップデートを確認できませんでした。"),
     ).toBeTruthy();
+  });
+});
+
+describe("SettingsModal Organizations tab", () => {
+  const openOrganizations = () =>
+    fireEvent.click(screen.getByRole("tab", { name: "組織" }));
+
+  it("shows the add-org entry only when onAddOrg is provided and calls it on click", () => {
+    const onAddOrg = vi.fn();
+    const { rerender } = render(
+      <SettingsModal language="ja" onSaveLanguage={noop} onClose={noop} />,
+    );
+    openOrganizations();
+    expect(screen.queryByRole("button", { name: "組織を追加" })).toBeNull();
+    rerender(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        onAddOrg={onAddOrg}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "組織を追加" }));
+    expect(onAddOrg).toHaveBeenCalled();
+  });
+
+  it("saves an org color pick and resets to automatic", () => {
+    const onSaveColor = vi.fn();
+    const onSaveAlias = vi.fn();
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        orgs={["acme"]}
+        orgColors={{ acme: "#7aa2f7" }}
+        onSaveColor={onSaveColor}
+        onSaveAlias={onSaveAlias}
+      />,
+    );
+    openOrganizations();
+    const picker = screen.getByLabelText("acme の色") as HTMLInputElement;
+    expect(picker.value).toBe("#7aa2f7");
+    // A pick commits on blur, not on every intermediate onChange (avoids a write per drag step).
+    fireEvent.change(picker, { target: { value: "#ff0000" } });
+    expect(onSaveColor).not.toHaveBeenCalled();
+    fireEvent.blur(picker);
+    expect(onSaveColor).toHaveBeenCalledWith("acme", "#ff0000");
+
+    fireEvent.click(screen.getByRole("button", { name: "自動に戻す" }));
+    expect(onSaveColor).toHaveBeenLastCalledWith("acme", "");
+  });
+
+  it("labels the color picker by the org alias when one is set", () => {
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        orgs={["acme"]}
+        orgAliases={{ acme: "Frontend" }}
+        onSaveColor={noop}
+        onSaveAlias={noop}
+      />,
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "組織" }));
+    expect(screen.getByLabelText("Frontend の色")).toBeTruthy();
+  });
+
+  it("saves an alias only after it changes from the stored value", () => {
+    const onSaveAlias = vi.fn();
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        orgs={["acme"]}
+        orgAliases={{ acme: "Frontend" }}
+        onSaveColor={noop}
+        onSaveAlias={onSaveAlias}
+      />,
+    );
+    openOrganizations();
+    const aliasField = screen.getByLabelText(
+      "acme の表示名",
+    ) as HTMLInputElement;
+    expect(aliasField.value).toBe("Frontend");
+    const save = screen.getByRole("button", {
+      name: "表示名を保存",
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+
+    fireEvent.change(aliasField, { target: { value: "FE" } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(onSaveAlias).toHaveBeenCalledWith("acme", "FE");
+  });
+
+  it("renders the per-org note editor when onSaveNote is wired", () => {
+    render(
+      <SettingsModal
+        language="ja"
+        onSaveLanguage={noop}
+        onClose={noop}
+        orgs={["acme"]}
+        onSaveNote={noop}
+      />,
+    );
+    openOrganizations();
+    expect(screen.getByText("組織メモ")).toBeTruthy();
   });
 });
 

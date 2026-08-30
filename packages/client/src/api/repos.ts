@@ -6,6 +6,8 @@ import {
   fsListResponseSchema,
   fsValidateResponseSchema,
   type MemoRequest,
+  type OrgAliasRequest,
+  type OrgColorRequest,
   type OrgNoteRequest,
   type ReposListResponse,
   reposListResponseSchema,
@@ -25,6 +27,10 @@ export interface ReposApi {
   list(signal?: AbortSignal): Promise<ReposListResponse>;
   /** Save an org's note (a blank `text` removes it). The updated set arrives via notes.sync. */
   setNote(org: string, text: string): Promise<void>;
+  /** Set an org's color (a blank `color` resets to the automatic color). Reflected via state.sync. */
+  setColor(org: string, color: string): Promise<void>;
+  /** Set an org's alias (a blank `alias` resets to the org identity). Reflected via state.sync. */
+  setAlias(org: string, alias: string): Promise<void>;
   /** Save the app-wide Memo. The updated text arrives via memo.sync. */
   setMemo(text: string): Promise<void>;
 }
@@ -107,6 +113,30 @@ export function createReposApi(
     async setNote(org, text) {
       const body: OrgNoteRequest = { org, text };
       const res = await fetchFn(`${base}/api/orgs/note`, {
+        method: "POST",
+        headers: { ...authHeaders(token), "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const { message, code } = await errorOf(res);
+        throw new ReposAddError(message, code);
+      }
+    },
+    async setColor(org, color) {
+      const body: OrgColorRequest = { org, color } as OrgColorRequest;
+      const res = await fetchFn(`${base}/api/orgs/color`, {
+        method: "POST",
+        headers: { ...authHeaders(token), "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const { message, code } = await errorOf(res);
+        throw new ReposAddError(message, code);
+      }
+    },
+    async setAlias(org, alias) {
+      const body: OrgAliasRequest = { org, alias } as OrgAliasRequest;
+      const res = await fetchFn(`${base}/api/orgs/alias`, {
         method: "POST",
         headers: { ...authHeaders(token), "content-type": "application/json" },
         body: JSON.stringify(body),

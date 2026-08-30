@@ -147,6 +147,14 @@ export {
   orgNoteRequestSchema,
 } from "./org-note.js";
 export {
+  ORG_ALIAS_MAX_CHARS,
+  type OrgAliasRequest,
+  type OrgColorRequest,
+  orgAliasRequestSchema,
+  orgAliasSchema,
+  orgColorRequestSchema,
+} from "./org-style.js";
+export {
   buildProcessMaps,
   findSidInTree,
   type ProcessEntry,

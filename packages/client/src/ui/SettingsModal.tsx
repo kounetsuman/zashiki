@@ -11,6 +11,7 @@ import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
 import { FooterThresholdsField } from "./FooterThresholdsField.js";
 import { Modal } from "./Modal.js";
 import { NotificationSettingsField } from "./NotificationSettingsField.js";
+import { OrgAppearanceEditor } from "./OrgAppearanceEditor.js";
 import { OrgNotesEditor } from "./OrgNotesEditor.js";
 import "./SettingsModal.css";
 import {
@@ -30,7 +31,7 @@ type UpdateCheckState =
   | { phase: "upToDate" }
   | { phase: "error" };
 
-type SettingsTab = "general" | "notifications" | "developer";
+type SettingsTab = "general" | "organizations" | "notifications" | "developer";
 
 export interface SettingsModalProps {
   /** Current display language (i18n.language). */
@@ -60,10 +61,16 @@ export interface SettingsModalProps {
   orgs?: string[];
   /** org → stored Markdown note (from notes.sync). */
   orgNotes?: Record<string, string>;
-  /** org → display alias, for labeling the note picker. */
+  /** org → display alias, for labeling the note picker and the appearance rows. */
   orgAliases?: Record<string, string>;
+  /** org → explicit color from repos.conf, for the appearance rows' swatches. */
+  orgColors?: Record<string, string>;
   /** Persist an org's note (a blank value removes it). Omit (with `orgs`) to hide the editor. */
   onSaveNote?(org: string, text: string): void;
+  /** Set an org's color (a blank value resets to automatic). Omit (with `onSaveAlias`) to hide the appearance editor. */
+  onSaveColor?(org: string, color: string): void;
+  /** Set an org's alias (a blank value resets to the identity). Omit (with `onSaveColor`) to hide the appearance editor. */
+  onSaveAlias?(org: string, alias: string): void;
   /**
    * Run an on-demand update check (sends `update.check` and resolves with the server's reply).
    * Omit to hide the entry (e.g. in isolated tests without a control channel).
@@ -114,9 +121,10 @@ function toLocale(lang: string): Locale {
 /**
  * Settings modal opened from the footer gear, sized to 80% of the window with a scrollable body. A
  * right-side menu switches between a General panel (display language, terminal font size, updates,
- * orgs, integration toggles, external editor), a Notifications panel (per-category show/sound/preset
- * plus a sound preview), and a Developer mode panel (renderer switch, DevTools, debug panel). All
- * panels stay mounted so unsaved drafts survive a switch.
+ * integration toggles, external editor), an Organizations panel (add org, per-org color/alias, and
+ * per-org notes), a Notifications panel (per-category show/sound/preset plus a sound preview), and a
+ * Developer mode panel (renderer switch, DevTools, debug panel). All panels stay mounted so unsaved
+ * drafts survive a switch.
  */
 export function SettingsModal({
   language,
@@ -132,7 +140,10 @@ export function SettingsModal({
   orgs,
   orgNotes,
   orgAliases,
+  orgColors,
   onSaveNote,
+  onSaveColor,
+  onSaveAlias,
   onCheckForUpdates,
   clipboardEditModal,
   onSetClipboardEditModal,
@@ -207,6 +218,17 @@ export function SettingsModal({
               onClick={() => setTab("general")}
             >
               {t("settings.tabGeneral")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="settings-tab-organizations"
+              aria-selected={tab === "organizations"}
+              aria-controls="settings-panel-organizations"
+              className={`modal-nav-item${tab === "organizations" ? " is-active" : ""}`}
+              onClick={() => setTab("organizations")}
+            >
+              {t("settings.tabOrganizations")}
             </button>
             <button
               type="button"
@@ -334,33 +356,6 @@ export function SettingsModal({
                 )}
               </div>
             )}
-            {onAddOrg !== undefined && (
-              <div className="settings-field">
-                <span className="settings-label">
-                  {t("settings.orgSection")}
-                </span>
-                <button
-                  type="button"
-                  className="settings-save"
-                  onClick={onAddOrg}
-                >
-                  {t("settings.addOrg")}
-                </button>
-              </div>
-            )}
-            {onSaveNote !== undefined && orgs !== undefined && (
-              <div className="settings-field settings-field-column">
-                <span className="settings-label">
-                  {t("settings.orgNotesLabel")}
-                </span>
-                <OrgNotesEditor
-                  orgs={orgs}
-                  notes={orgNotes ?? {}}
-                  aliases={orgAliases ?? {}}
-                  onSave={onSaveNote}
-                />
-              </div>
-            )}
             {onSetClipboardEditModal !== undefined && (
               <label className="settings-field settings-toggle">
                 <input
@@ -473,6 +468,57 @@ export function SettingsModal({
                 >
                   {t("settings.showOnboarding")}
                 </button>
+              </div>
+            )}
+          </div>
+          <div
+            className="modal-body scrollbar-persistent"
+            role="tabpanel"
+            id="settings-panel-organizations"
+            aria-labelledby="settings-tab-organizations"
+            hidden={tab !== "organizations"}
+          >
+            {onAddOrg !== undefined && (
+              <div className="settings-field">
+                <span className="settings-label">
+                  {t("settings.orgSection")}
+                </span>
+                <button
+                  type="button"
+                  className="settings-save"
+                  onClick={onAddOrg}
+                >
+                  {t("settings.addOrg")}
+                </button>
+              </div>
+            )}
+            {onSaveColor !== undefined &&
+              onSaveAlias !== undefined &&
+              orgs !== undefined && (
+                <div className="settings-field settings-field-column">
+                  <span className="settings-label">
+                    {t("settings.orgAppearanceLabel")}
+                  </span>
+                  <OrgAppearanceEditor
+                    orgs={orgs}
+                    colors={orgColors ?? {}}
+                    aliases={orgAliases ?? {}}
+                    onSaveColor={onSaveColor}
+                    onSaveAlias={onSaveAlias}
+                  />
+                </div>
+              )}
+            {onSaveNote !== undefined && orgs !== undefined && (
+              <div className="settings-field settings-field-column">
+                <span className="settings-label">
+                  {t("settings.orgNotesLabel")}
+                </span>
+                <OrgNotesEditor
+                  orgs={orgs}
+                  notes={orgNotes ?? {}}
+                  aliases={orgAliases ?? {}}
+                  onSave={onSaveNote}
+                />
               </div>
             )}
           </div>
