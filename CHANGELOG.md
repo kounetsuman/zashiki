@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-08-30
+
 ### Added
 
+- Image and video preview in the Viewer: image and video files opened from the Explorer or dropped from Finder now render inline instead of showing raw bytes (#314)
 - `Cmd+P` quick-open palette: fuzzy-find a file across all orgs (the active org ranks first) and open it in the Viewer; append `:line` to jump to a line (#312)
 - `Cmd+O` opens the native file picker and shows the chosen file read-only in the Viewer (#312)
 
@@ -305,7 +308,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.17.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.18.0...HEAD
+[0.18.0]: https://github.com/kounetsuman/zashiki/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/kounetsuman/zashiki/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/kounetsuman/zashiki/compare/v0.15.0...v0.16.0
 [0.15.0]: https://github.com/kounetsuman/zashiki/compare/v0.14.0...v0.15.0
