@@ -86,8 +86,8 @@ use crate::routes_git::{
 };
 use crate::routes_health::{ack_last_crash, healthz, last_crash, token_probe};
 use crate::routes_repos::{
-    fs_browse, fs_repos, fs_validate, memo_set, orgs_alias, orgs_color, orgs_note, repos_add,
-    repos_list,
+    fs_browse, fs_repos, fs_validate, memo_set, orgs_alias, orgs_color, orgs_note, orgs_order,
+    repos_add, repos_list,
 };
 use crate::routes_files::files_route;
 use crate::routes_hooks::{focus_session, hooks_event, hooks_statusline};
@@ -157,6 +157,7 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/orgs/note", post(orgs_note))
         .route("/api/orgs/color", post(orgs_color))
         .route("/api/orgs/alias", post(orgs_alias))
+        .route("/api/orgs/order", post(orgs_order))
         .route("/api/memo", post(memo_set))
         .route("/api/fs/list", get(fs_list))
         .route("/api/fs/validate", get(fs_validate))

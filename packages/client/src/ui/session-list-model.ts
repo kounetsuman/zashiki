@@ -36,6 +36,41 @@ export function displayOrgs(
   return result;
 }
 
+/**
+ * Returns `orgList` with `dragged` removed and re-inserted just before `target` (a drag-and-drop move —
+ * dropping an org onto another places it immediately before that one). If either org is absent or they
+ * are the same, the list is returned unchanged.
+ */
+export function reorderOrgs(
+  orgList: string[],
+  dragged: string,
+  target: string,
+): string[] {
+  if (dragged === target) return orgList;
+  const from = orgList.indexOf(dragged);
+  const to = orgList.indexOf(target);
+  if (from === -1 || to === -1) return orgList;
+  const next = [...orgList];
+  next.splice(from, 1);
+  next.splice(next.indexOf(target), 0, dragged);
+  return next;
+}
+
+/**
+ * Chooses the org order to display: the optimistic order from the last drag while it still covers exactly
+ * the same set of orgs as the server, otherwise the server order. Keying on the set (not the order) means
+ * a frequent state.sync that only changes session state does not discard the drag, while adding or removing
+ * an org falls back to the server — which is also the only order the server can persist for conf-backed orgs.
+ */
+export function reconcileOrgOrder(
+  optimistic: string[] | null,
+  server: string[],
+): string[] {
+  if (optimistic === null || optimistic.length !== server.length) return server;
+  const serverSet = new Set(server);
+  return optimistic.every((org) => serverSet.has(org)) ? optimistic : server;
+}
+
 /** Idle with neither an automatic nor a manual title = a new/unused session. */
 export function isFresh(
   s: CockpitTerminalInfo,

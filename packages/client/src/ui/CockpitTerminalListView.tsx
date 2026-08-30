@@ -9,7 +9,12 @@ import type { TitleMap } from "../lib/conversation-title.js";
 import { ReposConfGuide } from "./ReposConfGuide.js";
 import { SessionContextMenu } from "./SessionContextMenu.js";
 import { SessionRow } from "./SessionRow.js";
-import { displayOrgs, focusKey } from "./session-list-model.js";
+import {
+  displayOrgs,
+  focusKey,
+  reconcileOrgOrder,
+  reorderOrgs,
+} from "./session-list-model.js";
 import { useConfirmClose } from "./useConfirmClose.js";
 import { useRowRename } from "./useRowRename.js";
 import { useSessionContextMenu } from "./useSessionContextMenu.js";
@@ -61,6 +66,11 @@ export interface CockpitTerminalListViewProps {
    * row menu. Non-UUID windows (unbound/plain-shell) cannot be renamed since commitTitle is a no-op.
    */
   onRename?(cockpitTerminalId: string, name: string, title: string): void;
+  /**
+   * Persist a new org display order after an org-header drag-and-drop (the full order is sent). Omit to
+   * disable reordering (headers are then not draggable).
+   */
+  onReorderOrgs?(orgs: string[]): void;
 }
 
 /**
@@ -87,10 +97,29 @@ export function CockpitTerminalListView({
   onDuplicate,
   onCopySessionId,
   onRename,
+  onReorderOrgs,
 }: CockpitTerminalListViewProps) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const orgList = displayOrgs(orgs, cockpitTerminals);
+  const [dragOrg, setDragOrg] = useState<string | null>(null);
+  const [dropOrg, setDropOrg] = useState<string | null>(null);
+  // Keep the just-dragged order on screen (the server round-trip, and orgs it cannot persist, would
+  // otherwise snap the list back); reconcileOrgOrder drops it once the org set actually changes.
+  const [optimisticOrder, setOptimisticOrder] = useState<string[] | null>(null);
+  const orgList = reconcileOrgOrder(
+    optimisticOrder,
+    displayOrgs(orgs, cockpitTerminals),
+  );
+
+  const dropOnOrg = (target: string): void => {
+    if (dragOrg !== null && dragOrg !== target && onReorderOrgs !== undefined) {
+      const next = reorderOrgs(orgList, dragOrg, target);
+      setOptimisticOrder(next);
+      onReorderOrgs(next);
+    }
+    setDragOrg(null);
+    setDropOrg(null);
+  };
 
   // The row menu has at most 4 items: Delete + (when provided) Rename + Duplicate + Copy session id.
   const rowItemCount =
@@ -223,10 +252,34 @@ export function CockpitTerminalListView({
             // biome-ignore lint/a11y/noStaticElementInteractions: right-click menu for the org area (keyboard is covered by Ctrl-N)
             <section
               key={org}
-              className="session-org"
+              className={`session-org${
+                dropOrg === org ? " session-org-drop" : ""
+              }`}
               onContextMenu={openOrgMenu(org)}
+              onDragOver={(e) => {
+                if (dragOrg !== null && dragOrg !== org) {
+                  e.preventDefault();
+                  setDropOrg(org);
+                }
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                dropOnOrg(org);
+              }}
             >
-              <div className="session-org-header">
+              {/* biome-ignore lint/a11y/noStaticElementInteractions: drag handle for reordering; keyboard reorder is a separate follow-up */}
+              <div
+                className="session-org-header"
+                draggable={onReorderOrgs !== undefined}
+                onDragStart={(e) => {
+                  setDragOrg(org);
+                  if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragEnd={() => {
+                  setDragOrg(null);
+                  setDropOrg(null);
+                }}
+              >
                 <button
                   type="button"
                   ref={

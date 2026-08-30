@@ -330,6 +330,73 @@ pub fn set_org_style_in_conf(
     }
 }
 
+/// A run of consecutive repos.conf lines ending at a root line: any leading comment/blank lines travel
+/// with the root below them, so reordering a root keeps its own comment. The trailing run (comments/
+/// blanks after the last root) has `org = None` and always stays at the end.
+struct ConfBlock {
+    org: Option<String>,
+    lines: Vec<String>,
+}
+
+/// Reorders the root lines of repos.conf so their orgs (root basenames) follow `org_order`, keeping every
+/// line verbatim (path, alias, color, comments) and preserving each root's leading comment block. Orgs not
+/// named in `org_order` keep their original relative position after the named ones; the trailing comment
+/// block stays last. Purely presentational — only line order changes, so re-parsing yields the same roots.
+pub fn reorder_conf_roots(text: &str, org_order: &[String], home: &Path, cwd: &Path) -> String {
+    let mut blocks: Vec<ConfBlock> = Vec::new();
+    let mut pending: Vec<String> = Vec::new();
+    for raw in text.lines() {
+        let org = split_conf_line(raw)
+            .and_then(|(path, _, _)| expand_root(path, home, cwd))
+            .and_then(|abs| abs.file_name().map(|s| s.to_string_lossy().into_owned()));
+        if let Some(org) = org {
+            pending.push(raw.to_string());
+            blocks.push(ConfBlock {
+                org: Some(org),
+                lines: std::mem::take(&mut pending),
+            });
+        } else {
+            pending.push(raw.to_string());
+        }
+    }
+    let trailing = pending;
+
+    let mut used = vec![false; blocks.len()];
+    let mut ordered: Vec<String> = Vec::new();
+    for wanted in org_order {
+        for (i, block) in blocks.iter().enumerate() {
+            if !used[i] && block.org.as_deref() == Some(wanted.as_str()) {
+                used[i] = true;
+                ordered.extend(block.lines.iter().cloned());
+            }
+        }
+    }
+    for (i, block) in blocks.iter().enumerate() {
+        if !used[i] {
+            ordered.extend(block.lines.iter().cloned());
+        }
+    }
+    ordered.extend(trailing);
+
+    let mut out = ordered.join("\n");
+    if text.ends_with('\n') && !out.is_empty() {
+        out.push('\n');
+    }
+    out
+}
+
+/// Reads repos.conf, reorders its root lines to follow `org_order`, and writes it back atomically. A
+/// missing file is treated as empty (writes nothing meaningful). Reordering never changes membership.
+pub fn reorder_conf_roots_in_conf(conf_path: &Path, org_order: &[String]) -> std::io::Result<()> {
+    let text = std::fs::read_to_string(conf_path).unwrap_or_default();
+    let (home, cwd) = conf_home_cwd();
+    let new_text = reorder_conf_roots(&text, org_order, &home, &cwd);
+    if new_text != text {
+        write_repos_conf_atomic(conf_path, &new_text)?;
+    }
+    Ok(())
+}
+
 fn write_repos_conf_atomic(path: &Path, text: &str) -> std::io::Result<()> {
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir)?;
@@ -771,6 +838,69 @@ rel/dir
         let before = std::fs::read_to_string(&conf).unwrap();
         assert!(!set_org_style_in_conf(&conf, "nope", StyleEdit::Clear, StyleEdit::Keep).unwrap());
         assert_eq!(std::fs::read_to_string(&conf).unwrap(), before);
+    }
+
+    #[test]
+    fn reorder_conf_roots_reorders_lines_verbatim_keeping_alias_color_and_comments() {
+        let home = Path::new("/home/u");
+        let cwd = Path::new("/work");
+        let text = "\
+# top comment
+/ws/alpha   @A   #f00
+/ws/bravo
+# note for charlie
+/ws/charlie   #0f0
+";
+        let out = reorder_conf_roots(
+            text,
+            &[
+                "charlie".to_string(),
+                "alpha".to_string(),
+                "bravo".to_string(),
+            ],
+            home,
+            cwd,
+        );
+        // charlie (with its own leading comment) first, then alpha (with its alias/color), then bravo.
+        // The very first "# top comment" travels with alpha (the root it preceded).
+        assert_eq!(
+            out,
+            "\
+# note for charlie
+/ws/charlie   #0f0
+# top comment
+/ws/alpha   @A   #f00
+/ws/bravo
+"
+        );
+        // Reordering is presentational: the parsed roots/colors/aliases are unchanged.
+        let before = parse_conf(text, home, cwd);
+        let after = parse_conf(&out, home, cwd);
+        assert_eq!(before.color_by_org, after.color_by_org);
+        assert_eq!(before.alias_by_org, after.alias_by_org);
+        assert_eq!(
+            before.roots.iter().collect::<std::collections::HashSet<_>>(),
+            after.roots.iter().collect::<std::collections::HashSet<_>>()
+        );
+    }
+
+    #[test]
+    fn reorder_conf_roots_appends_unnamed_orgs_after_named_ones() {
+        let home = Path::new("/home/u");
+        let cwd = Path::new("/work");
+        let text = "/ws/a\n/ws/b\n/ws/c\n";
+        // Only name c and a; b (unnamed) keeps its original relative position, after the named ones.
+        let out = reorder_conf_roots(text, &["c".to_string(), "a".to_string()], home, cwd);
+        assert_eq!(out, "/ws/c\n/ws/a\n/ws/b\n");
+    }
+
+    #[test]
+    fn reorder_conf_roots_in_conf_persists_reordered_roots() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        std::fs::write(&conf, "/ws/a\n/ws/b\n").unwrap();
+        reorder_conf_roots_in_conf(&conf, &["b".to_string(), "a".to_string()]).unwrap();
+        assert_eq!(std::fs::read_to_string(&conf).unwrap(), "/ws/b\n/ws/a\n");
     }
 
     #[test]

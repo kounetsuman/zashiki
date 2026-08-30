@@ -150,9 +150,11 @@ export {
   ORG_ALIAS_MAX_CHARS,
   type OrgAliasRequest,
   type OrgColorRequest,
+  type OrgOrderRequest,
   orgAliasRequestSchema,
   orgAliasSchema,
   orgColorRequestSchema,
+  orgOrderRequestSchema,
 } from "./org-style.js";
 export {
   buildProcessMaps,
