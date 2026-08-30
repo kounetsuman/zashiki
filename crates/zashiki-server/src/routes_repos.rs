@@ -368,6 +368,36 @@ pub(crate) async fn orgs_alias(State(state): State<AppState>, body: axum::body::
 }
 
 #[derive(Deserialize)]
+struct OrgOrderBody {
+    orgs: Vec<String>,
+}
+
+/// `POST /api/orgs/order`. Reorders the repos.conf root lines so their orgs follow the given display
+/// order (each line kept verbatim). Purely presentational — membership is unchanged. Reflects the new
+/// order live via state.sync (org order = build_orgs = root order). Returns `{"ok": true}`.
+pub(crate) async fn orgs_order(State(state): State<AppState>, body: axum::body::Bytes) -> Response {
+    let Some(conf_path) = (*state.repos_conf).clone() else {
+        return json_error_with_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "repos.conf path is not configured",
+            "no_conf",
+        );
+    };
+    let Ok(req) = serde_json::from_slice::<OrgOrderBody>(&body) else {
+        return json_error_with_code(
+            StatusCode::BAD_REQUEST,
+            "invalid request body",
+            "invalid_body",
+        );
+    };
+    if let Err(e) = repos::reorder_conf_roots_in_conf(&conf_path, &req.orgs) {
+        return json_error_with_code(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string(), "io");
+    }
+    reflect_repos_change(&state, &conf_path).await;
+    Json(serde_json::json!({ "ok": true })).into_response()
+}
+
+#[derive(Deserialize)]
 struct MemoBody {
     text: String,
 }
@@ -724,6 +754,24 @@ mod repos_add_rest_tests {
             send_to(app(conf.clone()), "/api/orgs/alias", r#"{"org":"acme","alias":""}"#).await;
         assert_eq!(s2, StatusCode::OK);
         assert_eq!(std::fs::read_to_string(&conf).unwrap(), "/ws/acme   #7aa2f7\n");
+    }
+
+    #[tokio::test]
+    async fn order_reorders_conf_root_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("repos.conf");
+        std::fs::write(&conf, "/ws/a\n/ws/b\n/ws/c\n").unwrap();
+        let (s, b) = send_to(
+            app(conf.clone()),
+            "/api/orgs/order",
+            r#"{"orgs":["c","a","b"]}"#,
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "body: {b}");
+        assert_eq!(
+            std::fs::read_to_string(&conf).unwrap(),
+            "/ws/c\n/ws/a\n/ws/b\n"
+        );
     }
 
     #[tokio::test]

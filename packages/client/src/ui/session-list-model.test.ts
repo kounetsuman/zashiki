@@ -9,6 +9,8 @@ import {
   focusKey,
   isFresh,
   nextFocusTarget,
+  reconcileOrgOrder,
+  reorderOrgs,
 } from "./session-list-model.js";
 
 function session(
@@ -179,5 +181,40 @@ describe("nextFocusTarget", () => {
       kind: "row",
       cockpitTerminalId: "w2",
     });
+  });
+});
+
+describe("reorderOrgs", () => {
+  it("drops a dragged org just before a later target", () => {
+    expect(reorderOrgs(["a", "b", "c"], "a", "c")).toEqual(["b", "a", "c"]);
+  });
+
+  it("drops a dragged org just before an earlier target", () => {
+    expect(reorderOrgs(["a", "b", "c"], "c", "a")).toEqual(["c", "a", "b"]);
+  });
+
+  it("returns the list unchanged when dragged equals target or either is absent", () => {
+    expect(reorderOrgs(["a", "b"], "a", "a")).toEqual(["a", "b"]);
+    expect(reorderOrgs(["a", "b"], "x", "a")).toEqual(["a", "b"]);
+    expect(reorderOrgs(["a", "b"], "a", "x")).toEqual(["a", "b"]);
+  });
+});
+
+describe("reconcileOrgOrder", () => {
+  it("keeps the optimistic order while it covers the same org set", () => {
+    expect(reconcileOrgOrder(["b", "a"], ["a", "b"])).toEqual(["b", "a"]);
+  });
+
+  it("falls back to the server order when the org set changes", () => {
+    expect(reconcileOrgOrder(["b", "a"], ["a", "b", "c"])).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+    expect(reconcileOrgOrder(["b", "a"], ["a", "z"])).toEqual(["a", "z"]);
+  });
+
+  it("uses the server order when there is no optimistic order", () => {
+    expect(reconcileOrgOrder(null, ["a", "b"])).toEqual(["a", "b"]);
   });
 });

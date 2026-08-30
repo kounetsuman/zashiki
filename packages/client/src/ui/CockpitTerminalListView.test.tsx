@@ -1233,3 +1233,35 @@ describe("CockpitTerminalListView: Rename", () => {
     expect(props.onRename).not.toHaveBeenCalled();
   });
 });
+
+describe("CockpitTerminalListView: org reorder via drag-and-drop", () => {
+  it("persists the new order and reflects it optimistically when an org header is dropped onto another", () => {
+    const onReorderOrgs = vi.fn();
+    renderView({ onReorderOrgs });
+    const kiloHeader = screen
+      .getByText("kilo (2)")
+      .closest(".session-org-header") as HTMLElement;
+    const deltaSection = screen
+      .getByText("delta (0)")
+      .closest(".session-org") as HTMLElement;
+    fireEvent.dragStart(kiloHeader);
+    fireEvent.dragOver(deltaSection);
+    // The hovered drop target shows the insertion indicator.
+    expect(deltaSection.classList.contains("session-org-drop")).toBe(true);
+    fireEvent.drop(deltaSection);
+    expect(onReorderOrgs).toHaveBeenCalledWith(["charlie", "kilo", "delta"]);
+    // The list moves immediately (optimistic), without waiting for a state.sync round-trip.
+    const labels = Array.from(
+      document.querySelectorAll(".session-org-label"),
+    ).map((e) => e.textContent);
+    expect(labels).toEqual(["charlie (1)", "kilo (2)", "delta (0)"]);
+  });
+
+  it("does not make headers draggable when onReorderOrgs is omitted", () => {
+    renderView();
+    const kiloHeader = screen
+      .getByText("kilo (2)")
+      .closest(".session-org-header") as HTMLElement;
+    expect(kiloHeader.getAttribute("draggable")).toBe("false");
+  });
+});

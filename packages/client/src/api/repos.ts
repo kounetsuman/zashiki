@@ -9,6 +9,7 @@ import {
   type OrgAliasRequest,
   type OrgColorRequest,
   type OrgNoteRequest,
+  type OrgOrderRequest,
   type ReposListResponse,
   reposListResponseSchema,
 } from "@zashiki/shared";
@@ -31,6 +32,8 @@ export interface ReposApi {
   setColor(org: string, color: string): Promise<void>;
   /** Set an org's alias (a blank `alias` resets to the org identity). Reflected via state.sync. */
   setAlias(org: string, alias: string): Promise<void>;
+  /** Persist the org display order (reorders repos.conf root lines). Reflected via state.sync. */
+  setOrgOrder(orgs: string[]): Promise<void>;
   /** Save the app-wide Memo. The updated text arrives via memo.sync. */
   setMemo(text: string): Promise<void>;
 }
@@ -137,6 +140,18 @@ export function createReposApi(
     async setAlias(org, alias) {
       const body: OrgAliasRequest = { org, alias } as OrgAliasRequest;
       const res = await fetchFn(`${base}/api/orgs/alias`, {
+        method: "POST",
+        headers: { ...authHeaders(token), "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const { message, code } = await errorOf(res);
+        throw new ReposAddError(message, code);
+      }
+    },
+    async setOrgOrder(orgs) {
+      const body: OrgOrderRequest = { orgs };
+      const res = await fetchFn(`${base}/api/orgs/order`, {
         method: "POST",
         headers: { ...authHeaders(token), "content-type": "application/json" },
         body: JSON.stringify(body),

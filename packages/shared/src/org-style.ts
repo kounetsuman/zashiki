@@ -3,10 +3,11 @@ import { z } from "zod";
 import { orgColorTokenSchema } from "./repos-add.js";
 
 /**
- * REST contracts for changing an org's display style in repos.conf: its color (`POST /api/orgs/color`)
- * and its alias (`POST /api/orgs/alias`). Each rewrites the org's conf line, preserving the verbatim
- * path and the untouched attribute; a blank value resets that attribute (color → automatic hash color,
- * alias → the org identity). After the write the server reflects it live via state.sync.
+ * REST contracts for changing an org's display style in repos.conf: its color (`POST /api/orgs/color`),
+ * its alias (`POST /api/orgs/alias`), and the org display order (`POST /api/orgs/order`). The color/alias
+ * rewrites the org's conf line, preserving the verbatim path and the untouched attribute; a blank value
+ * resets that attribute (color → automatic hash color, alias → the org identity). The order reorders the
+ * conf root lines. After the write the server reflects it live via state.sync.
  */
 
 /** Max alias length (character count, matching the server's `ORG_ALIAS_MAX_CHARS`). */
@@ -37,3 +38,9 @@ export const orgAliasRequestSchema = z.object({
   alias: z.union([orgAliasSchema, z.literal("")]),
 });
 export type OrgAliasRequest = z.infer<typeof orgAliasRequestSchema>;
+
+export const orgOrderRequestSchema = z.object({
+  /** The full org display order to persist (reorders repos.conf root lines; membership unchanged). */
+  orgs: z.array(z.string().min(1)),
+});
+export type OrgOrderRequest = z.infer<typeof orgOrderRequestSchema>;

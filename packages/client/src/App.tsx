@@ -792,6 +792,14 @@ export function App({
     [reposApi],
   );
 
+  // Persist the org display order after a drag reorder; the server reflects it via state.sync.
+  const saveOrgOrder = useCallback(
+    (nextOrgs: string[]): void => {
+      void reposApi.setOrgOrder(nextOrgs);
+    },
+    [reposApi],
+  );
+
   // Persist an org color / alias over REST; the server reflects it via state.sync (a blank value resets).
   const saveOrgColor = useCallback(
     (org: string, color: string): void => {
@@ -1153,6 +1161,7 @@ export function App({
             onDuplicate={duplicateSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}
+            onReorderOrgs={saveOrgOrder}
           />
         </aside>
       </div>

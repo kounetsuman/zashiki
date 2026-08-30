@@ -143,6 +143,14 @@ textarea {
   justify-content: space-between;
 }
 
+.session-org-header[draggable="true"] {
+  cursor: grab;
+}
+
+.session-org-drop {
+  box-shadow: inset 0 2px 0 0 #7aa2f7;
+}
+
 .session-org-toggle {
   background: transparent;
   border: none;

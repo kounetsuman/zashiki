@@ -127,6 +127,7 @@ const fakeReposApi: ReposApi = {
   setNote: () => Promise.resolve(),
   setColor: () => Promise.resolve(),
   setAlias: () => Promise.resolve(),
+  setOrgOrder: () => Promise.resolve(),
   setMemo: () => Promise.resolve(),
 };
 
