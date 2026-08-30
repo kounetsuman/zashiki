@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-08-30
+
+### Added
+
+- A dedicated Organizations settings tab to recolor or rename an existing org, with a native color picker and alias field (each resettable to the automatic default) (#319)
+- Drag org headers in the SESSION LIST to reorder org groups; the new order is persisted (#323)
+- Drag session rows to reorder them within their own org group; the order persists across restart (#324)
+
+### Fixed
+
+- Subagent and background-shell start/end now appear in the ACTIVITY view instead of only as a transient toast (#320)
+- A repo registered as its own org inside another org's directory is now attributed to the most specific root, so its sessions no longer show under the parent org and its repos are no longer listed twice (#317)
+
 ## [0.18.0] - 2026-08-30
 
 ### Added
@@ -308,7 +321,8 @@ First public release. macOS (Apple Silicon).
 
 - npm CLI distribution — Zashiki is now a desktop app only (#21)
 
-[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.18.0...HEAD
+[Unreleased]: https://github.com/kounetsuman/zashiki/compare/v0.19.0...HEAD
+[0.19.0]: https://github.com/kounetsuman/zashiki/compare/v0.18.0...v0.19.0
 [0.18.0]: https://github.com/kounetsuman/zashiki/compare/v0.17.0...v0.18.0
 [0.17.0]: https://github.com/kounetsuman/zashiki/compare/v0.16.0...v0.17.0
 [0.16.0]: https://github.com/kounetsuman/zashiki/compare/v0.15.0...v0.16.0
