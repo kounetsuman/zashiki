@@ -34,6 +34,9 @@ struct Entry {
 #[derive(Default)]
 pub struct SessionRegistry {
     sessions: Mutex<HashMap<String, Entry>>,
+    /// User-chosen display order of ids (the SESSION LIST). Ids present here sort by their position; ids
+    /// absent (e.g. freshly created) sort after them by id. Empty means "no manual order" — pure id order.
+    order: Mutex<Vec<String>>,
     /// A flag that blocks new creates after graceful shutdown begins (prevents orphaning a claude launched during teardown).
     shutting_down: AtomicBool,
 }
@@ -101,17 +104,32 @@ impl SessionRegistry {
         ids
     }
 
-    /// Returns all registered sessions as `(id, session, meta)` in ascending id order (material the poller maps onto windows).
+    /// Returns all registered sessions as `(id, session, meta)` in display order: ids named in the manual
+    /// `order` first (by their position), then any unordered ids by ascending id. With no manual order this
+    /// is plain ascending id order.
     pub async fn entries(&self) -> Vec<(String, Arc<PtySession>, SessionMeta)> {
         let sessions = self.sessions.lock().await;
+        let order = self.order.lock().await;
+        let rank: HashMap<&String, usize> =
+            order.iter().enumerate().map(|(i, id)| (id, i)).collect();
         let mut ids: Vec<&String> = sessions.keys().collect();
-        ids.sort();
+        ids.sort_by(|a, b| {
+            let ra = rank.get(a).copied().unwrap_or(usize::MAX);
+            let rb = rank.get(b).copied().unwrap_or(usize::MAX);
+            ra.cmp(&rb).then_with(|| a.cmp(b))
+        });
         ids.into_iter()
             .map(|id| {
                 let e = &sessions[id];
                 (id.clone(), e.session.clone(), e.meta.clone())
             })
             .collect()
+    }
+
+    /// Sets the manual display order of ids (the SESSION LIST after a drag reorder). Ids not registered are
+    /// harmless (ignored by {@link Self::entries}); registered ids omitted here sort after the named ones.
+    pub async fn set_order(&self, order: Vec<String>) {
+        *self.order.lock().await = order;
     }
 
     /// The number of registrations.
@@ -135,6 +153,7 @@ impl SessionRegistry {
         let Some(session) = entry.map(|e| e.session) else {
             return false;
         };
+        self.order.lock().await.retain(|o| o != id);
         session.terminate();
         tokio::time::sleep(TERMINATE_GRACE).await;
         let _ = tokio::task::spawn_blocking(move || session.shutdown()).await;
@@ -185,6 +204,25 @@ mod tests {
         cmd.arg("sleep 60");
         cmd.env("TERM", "xterm-256color");
         PtyConfig::new(cmd)
+    }
+
+    #[tokio::test]
+    async fn entries_follow_manual_order_then_fall_back_to_id_order() {
+        let reg = SessionRegistry::new();
+        for id in ["a", "b", "c"] {
+            reg.create(id, sleep_cfg()).await.unwrap();
+        }
+        // No manual order → ascending id order.
+        let ids = |v: Vec<(String, _, _)>| v.into_iter().map(|(id, _, _)| id).collect::<Vec<_>>();
+        assert_eq!(ids(reg.entries().await), vec!["a", "b", "c"]);
+
+        // Manual order wins; an id omitted from it (c) sorts after the named ones.
+        reg.set_order(vec!["b".to_string(), "a".to_string()]).await;
+        assert_eq!(ids(reg.entries().await), vec!["b", "a", "c"]);
+
+        // Removing a manually-ordered id drops it from the order (no stale slot).
+        reg.remove("b").await;
+        assert_eq!(ids(reg.entries().await), vec!["a", "c"]);
     }
 
     #[tokio::test]

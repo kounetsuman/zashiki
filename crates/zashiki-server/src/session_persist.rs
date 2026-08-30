@@ -172,6 +172,7 @@ async fn rebuild(
     warnings: &mut Vec<String>,
 ) {
     let claude = resolve_claude_program();
+    let mut restored_order = Vec::new();
     for (i, entry) in entries.iter().enumerate() {
         let cwd = resolve_cwd(&entry.cwd);
         let meta = SessionMeta {
@@ -197,10 +198,12 @@ async fn rebuild(
             };
             (id, new_plan_to_config(&plan))
         };
-        if let Err(e) = registry.create_with_meta(id, config, meta).await {
-            warnings.push(format!("{}: セッション作成に失敗しました ({e})", entry.wname));
+        match registry.create_with_meta(id.clone(), config, meta).await {
+            Ok(_) => restored_order.push(id),
+            Err(e) => warnings.push(format!("{}: セッション作成に失敗しました ({e})", entry.wname)),
         }
     }
+    registry.set_order(restored_order).await;
 }
 
 /// The body of `POST /api/sessions/save`. Saves every UUID registration in the registry to last.tsv plus a timestamped backup.
@@ -471,6 +474,32 @@ mod tests {
         // The registry was empty before restore, so there is no prerestore backup.
         assert!(out.backup_path.is_none());
         // Rebuilt keyed by sid (the id convention matches a new session.new → re-savable).
+        assert_eq!(reg.list().await, vec![UUID_B.to_string(), UUID_A.to_string()]);
+
+        cleanup(&reg).await;
+    }
+
+    #[tokio::test]
+    async fn restore_preserves_last_tsv_line_order_in_entries() {
+        let reg = SessionRegistry::new();
+        let dir = tempfile::tempdir().unwrap();
+        // Line order is UUID_A then UUID_B, but UUID_B < UUID_A by id — so a plain id sort would flip
+        // them. entries() must instead follow the saved line order, proving a prior reorder survives.
+        let content = format!("1\talpha\t/tmp\t{UUID_A}\n2\tbeta\t/tmp\t{UUID_B}\n");
+        std::fs::write(dir.path().join("last.tsv"), content).unwrap();
+
+        restore_sessions(&reg, dir.path(), None, true, "/bin/sh", None)
+            .await
+            .unwrap();
+
+        let entry_ids: Vec<String> = reg
+            .entries()
+            .await
+            .into_iter()
+            .map(|(id, _, _)| id)
+            .collect();
+        assert_eq!(entry_ids, vec![UUID_A.to_string(), UUID_B.to_string()]);
+        // list() is pure id order (the opposite here), confirming entries() honors the saved order.
         assert_eq!(reg.list().await, vec![UUID_B.to_string(), UUID_A.to_string()]);
 
         cleanup(&reg).await;

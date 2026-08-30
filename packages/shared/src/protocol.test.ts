@@ -162,6 +162,7 @@ describe("clientMessageSchema", () => {
       },
     ],
     [{ t: "cockpitTerminal.close", cockpitTerminalId: "@5" }],
+    [{ t: "cockpitTerminal.reorder", order: ["@1", "@5"] }],
     [{ t: "state.refresh" }],
     [{ t: "config.update", language: "ja" }],
     [{ t: "config.update", language: "en" }],

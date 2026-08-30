@@ -4,6 +4,7 @@ import type {
 } from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 import {
+  applyRowOrder,
   buildVisibleItems,
   displayOrgs,
   focusKey,
@@ -11,6 +12,7 @@ import {
   nextFocusTarget,
   reconcileOrgOrder,
   reorderOrgs,
+  reorderRowsWithinOrg,
 } from "./session-list-model.js";
 
 function session(
@@ -216,5 +218,41 @@ describe("reconcileOrgOrder", () => {
 
   it("uses the server order when there is no optimistic order", () => {
     expect(reconcileOrgOrder(null, ["a", "b"])).toEqual(["a", "b"]);
+  });
+});
+
+describe("reorderRowsWithinOrg", () => {
+  const terms = [session("w1", "a"), session("w2", "a"), session("w3", "b")];
+
+  it("moves a row just before another row in the same org", () => {
+    expect(reorderRowsWithinOrg(terms, "w2", "w1")).toEqual(["w2", "w1", "w3"]);
+  });
+
+  it("refuses a cross-org move and returns the current id order", () => {
+    expect(reorderRowsWithinOrg(terms, "w1", "w3")).toEqual(["w1", "w2", "w3"]);
+  });
+
+  it("is a no-op for equal or absent ids", () => {
+    expect(reorderRowsWithinOrg(terms, "w1", "w1")).toEqual(["w1", "w2", "w3"]);
+    expect(reorderRowsWithinOrg(terms, "zzz", "w1")).toEqual([
+      "w1",
+      "w2",
+      "w3",
+    ]);
+  });
+});
+
+describe("applyRowOrder", () => {
+  const terms = [session("w1", "a"), session("w2", "a")];
+
+  it("sorts terminals by the optimistic order while the id set matches", () => {
+    expect(
+      applyRowOrder(terms, ["w2", "w1"]).map((s) => s.cockpitTerminalId),
+    ).toEqual(["w2", "w1"]);
+  });
+
+  it("returns terminals untouched when the set differs or order is null", () => {
+    expect(applyRowOrder(terms, ["w2", "w9"])).toEqual(terms);
+    expect(applyRowOrder(terms, null)).toEqual(terms);
   });
 });

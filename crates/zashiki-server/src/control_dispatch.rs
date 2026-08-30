@@ -228,6 +228,11 @@ pub(crate) async fn handle_client_message(
             trigger_refresh(services).await;
             true
         }
+        ClientMessage::CockpitTerminalReorder { order } => {
+            services.sessions.set_order(order).await;
+            trigger_refresh(services).await;
+            true
+        }
         ClientMessage::TermOpen {
             term_id,
             cockpit_terminal_id,

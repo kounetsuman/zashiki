@@ -10,10 +10,12 @@ import { ReposConfGuide } from "./ReposConfGuide.js";
 import { SessionContextMenu } from "./SessionContextMenu.js";
 import { SessionRow } from "./SessionRow.js";
 import {
+  applyRowOrder,
   displayOrgs,
   focusKey,
   reconcileOrgOrder,
   reorderOrgs,
+  reorderRowsWithinOrg,
 } from "./session-list-model.js";
 import { useConfirmClose } from "./useConfirmClose.js";
 import { useRowRename } from "./useRowRename.js";
@@ -71,6 +73,11 @@ export interface CockpitTerminalListViewProps {
    * disable reordering (headers are then not draggable).
    */
   onReorderOrgs?(orgs: string[]): void;
+  /**
+   * Persist a new session-row order after a within-org row drag (the full flat list of cockpit terminal
+   * ids is sent). Omit to disable row reordering (rows are then not draggable).
+   */
+  onReorderRows?(order: string[]): void;
 }
 
 /**
@@ -98,6 +105,7 @@ export function CockpitTerminalListView({
   onCopySessionId,
   onRename,
   onReorderOrgs,
+  onReorderRows,
 }: CockpitTerminalListViewProps) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -111,6 +119,13 @@ export function CockpitTerminalListView({
     displayOrgs(orgs, cockpitTerminals),
   );
 
+  const [dragRow, setDragRow] = useState<CockpitTerminalInfo | null>(null);
+  const [dropRow, setDropRow] = useState<string | null>(null);
+  const [optimisticRowOrder, setOptimisticRowOrder] = useState<string[] | null>(
+    null,
+  );
+  const displayTerminals = applyRowOrder(cockpitTerminals, optimisticRowOrder);
+
   const dropOnOrg = (target: string): void => {
     if (dragOrg !== null && dragOrg !== target && onReorderOrgs !== undefined) {
       const next = reorderOrgs(orgList, dragOrg, target);
@@ -119,6 +134,25 @@ export function CockpitTerminalListView({
     }
     setDragOrg(null);
     setDropOrg(null);
+  };
+
+  const dropOnRow = (target: CockpitTerminalInfo): void => {
+    if (
+      dragRow !== null &&
+      dragRow.org === target.org &&
+      dragRow.cockpitTerminalId !== target.cockpitTerminalId &&
+      onReorderRows !== undefined
+    ) {
+      const next = reorderRowsWithinOrg(
+        displayTerminals,
+        dragRow.cockpitTerminalId,
+        target.cockpitTerminalId,
+      );
+      setOptimisticRowOrder(next);
+      onReorderRows(next);
+    }
+    setDragRow(null);
+    setDropRow(null);
   };
 
   // The row menu has at most 4 items: Delete + (when provided) Rename + Duplicate + Copy session id.
@@ -135,7 +169,7 @@ export function CockpitTerminalListView({
   const { focused, setFocused, focusedRef, visibleKeys, moveFocus } =
     useSessionListFocus(
       orgList,
-      cockpitTerminals,
+      displayTerminals,
       collapsed,
       selectedCockpitTerminalId,
     );
@@ -246,7 +280,7 @@ export function CockpitTerminalListView({
       <div className="session-list-scroll">
         {connected && orgList.length === 0 && <ReposConfGuide />}
         {orgList.map((org) => {
-          const orgSessions = cockpitTerminals.filter((s) => s.org === org);
+          const orgSessions = displayTerminals.filter((s) => s.org === org);
           const isCollapsed = collapsed.has(org);
           return (
             // biome-ignore lint/a11y/noStaticElementInteractions: right-click menu for the org area (keyboard is covered by Ctrl-N)
@@ -356,6 +390,29 @@ export function CockpitTerminalListView({
                     onClose={onClose}
                     onConfirmClose={confirmClose}
                     onCancelConfirm={cancelClose}
+                    draggable={onReorderRows !== undefined}
+                    isDropTarget={dropRow === s.cockpitTerminalId}
+                    onRowDragStart={() => setDragRow(s)}
+                    onRowDragOver={(e) => {
+                      if (
+                        dragRow !== null &&
+                        dragRow.org === s.org &&
+                        dragRow.cockpitTerminalId !== s.cockpitTerminalId
+                      ) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDropRow(s.cockpitTerminalId);
+                      }
+                    }}
+                    onRowDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      dropOnRow(s);
+                    }}
+                    onRowDragEnd={() => {
+                      setDragRow(null);
+                      setDropRow(null);
+                    }}
                   />
                 ))}
             </section>

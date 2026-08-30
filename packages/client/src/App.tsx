@@ -1162,6 +1162,9 @@ export function App({
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}
             onReorderOrgs={saveOrgOrder}
+            onReorderRows={(order) =>
+              control.send({ t: "cockpitTerminal.reorder", order })
+            }
           />
         </aside>
       </div>

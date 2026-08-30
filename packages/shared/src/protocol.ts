@@ -227,6 +227,12 @@ export const cockpitTerminalCloseSchema = z.object({
   cockpitTerminalId: cockpitTerminalIdSchema,
 });
 
+/** New SESSION LIST display order after a row drag (the full ordered list of cockpit terminal ids). */
+export const cockpitTerminalReorderSchema = z.object({
+  t: z.literal("cockpitTerminal.reorder"),
+  order: z.array(cockpitTerminalIdSchema),
+});
+
 /** Manual refresh. The server re-evaluates immediately and returns state.sync to the requester. */
 export const stateRefreshSchema = z.object({
   t: z.literal("state.refresh"),
@@ -361,6 +367,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   termAckSchema,
   cockpitTerminalNewSchema,
   cockpitTerminalCloseSchema,
+  cockpitTerminalReorderSchema,
   stateRefreshSchema,
   notificationDismissSchema,
   configUpdateSchema,
