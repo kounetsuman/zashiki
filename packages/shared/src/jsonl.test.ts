@@ -5,6 +5,7 @@ import {
   claudeProjectDirName,
   firstUserTitle,
   lastUserOrAssistantEvent,
+  loopWakeupPending,
 } from "./jsonl.js";
 
 const user = (content: unknown): string =>
@@ -93,6 +94,81 @@ describe("lastUserOrAssistantEvent (port of inf_jsonl_last_event)", () => {
       type: "user",
       interrupted: false,
     });
+  });
+});
+
+describe("loopWakeupPending (pending self-paced /loop wakeup in the transcript tail)", () => {
+  const scheduleWakeup = (): string =>
+    assistant([
+      {
+        type: "tool_use",
+        name: "ScheduleWakeup",
+        input: { delaySeconds: 1200, reason: "r", prompt: "p" },
+      },
+    ]);
+  const wakeupResult = (): string =>
+    user([{ type: "tool_result", content: "scheduled" }]);
+  const fire = (): string =>
+    JSON.stringify({
+      type: "system",
+      subtype: "scheduled_task_fire",
+      content: "Claude resuming /loop wakeup (Aug 27 3:46pm)",
+    });
+
+  it("pending when the latest boundary is a ScheduleWakeup", () => {
+    expect(
+      loopWakeupPending([scheduleWakeup(), wakeupResult()].join("\n")),
+    ).toBe(true);
+  });
+
+  it("pending survives trailing noise after the wakeup", () => {
+    const content = [
+      scheduleWakeup(),
+      wakeupResult(),
+      JSON.stringify({ type: "ai-title", title: "x" }),
+      JSON.stringify({ type: "mode" }),
+    ].join("\n");
+    expect(loopWakeupPending(content)).toBe(true);
+  });
+
+  it("not pending when the user took over after the wakeup", () => {
+    const content = [
+      scheduleWakeup(),
+      wakeupResult(),
+      user("代わりにこうして"),
+    ].join("\n");
+    expect(loopWakeupPending(content)).toBe(false);
+  });
+
+  it("not pending when the last wakeup fired without rescheduling", () => {
+    const content = [
+      scheduleWakeup(),
+      wakeupResult(),
+      fire(),
+      assistant([{ type: "text", text: "loop done" }]),
+    ].join("\n");
+    expect(loopWakeupPending(content)).toBe(false);
+  });
+
+  it("pending when rescheduled after a fire", () => {
+    const content = [
+      fire(),
+      assistant([{ type: "text", text: "continuing" }]),
+      scheduleWakeup(),
+      wakeupResult(),
+    ].join("\n");
+    expect(loopWakeupPending(content)).toBe(true);
+  });
+
+  it("a tool_result-only tail is not a boundary", () => {
+    expect(loopWakeupPending(wakeupResult())).toBe(false);
+  });
+
+  it("not pending without any boundary or when empty", () => {
+    expect(loopWakeupPending("")).toBe(false);
+    expect(loopWakeupPending(assistant([{ type: "text", text: "done" }]))).toBe(
+      false,
+    );
   });
 });
 

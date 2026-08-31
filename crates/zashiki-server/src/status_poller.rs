@@ -8,13 +8,13 @@ use std::collections::HashMap;
 use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
-    apply_jsonl_fallback, apply_startup_grace, count_running_subagents, detect_state,
-    fleet_view_counts, has_bg_agent, hook_event_fresh_within_sec, is_limit_reached, is_menu_open,
-    open_tasks_remaining, resolve_state, skill_agents_running, startup_grace_polls,
+    apply_jsonl_fallback, apply_loop_pending, apply_startup_grace, count_running_subagents,
+    detect_state, fleet_view_counts, has_bg_agent, hook_event_fresh_within_sec, is_limit_reached,
+    is_menu_open, open_tasks_remaining, resolve_state, skill_agents_running, startup_grace_polls,
     subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
-use crate::jsonl::{first_user_title, last_user_or_assistant_event};
+use crate::jsonl::{first_user_title, last_user_or_assistant_event, loop_wakeup_pending};
 use crate::hooks::NotifyEvent;
 use crate::protocol::{CockpitTerminalInfo, NotifyKind, SessionUsage};
 use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
@@ -253,6 +253,10 @@ impl StatusPoller {
                     .and_then(|s| last_user_or_assistant_event(&s.tail));
                 let age = slices.as_ref().map(|s| s.mtime_age_sec);
                 state = apply_jsonl_fallback(state, last_ev.as_ref(), age, config.poll_sec);
+                let loop_pending = slices
+                    .as_ref()
+                    .is_some_and(|s| loop_wakeup_pending(&s.tail));
+                state = apply_loop_pending(state, loop_pending);
             }
         }
 

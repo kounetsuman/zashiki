@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyLoopPending,
   countRunningSubagents,
   DEFAULT_MENU_MARKERS,
   detectState,
@@ -731,6 +732,28 @@ describe("fallbackState (jsonl fallback when the capture has no clues)", () => {
     expect(fallbackState(ev, 30, 0)).toBe("running");
     expect(fallbackState(ev, 31, -1)).toBe("idle");
     expect(fallbackState(ev, 30, Number.NaN)).toBe("running");
+  });
+});
+
+describe("applyLoopPending (a pending self-paced /loop wakeup keeps a session off completed)", () => {
+  it("promotes a still-idle scrape to watching", () => {
+    expect(applyLoopPending("idle", true)).toBe("watching");
+  });
+
+  it("keeps idle when no wakeup is pending", () => {
+    expect(applyLoopPending("idle", false)).toBe("idle");
+  });
+
+  it("never downgrades a busy scrape", () => {
+    for (const s of [
+      "running",
+      "running_bg_agent",
+      "waiting_input",
+      "watching",
+      "no_claude",
+    ] as const) {
+      expect(applyLoopPending(s, true)).toBe(s);
+    }
   });
 });
 

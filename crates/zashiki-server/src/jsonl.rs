@@ -74,6 +74,50 @@ pub fn last_user_or_assistant_event(jsonl_tail: &str) -> Option<TranscriptEvent>
     None
 }
 
+/// Whether the transcript tail shows a pending self-paced `/loop` wakeup: the newest turn boundary
+/// is a `ScheduleWakeup`, not yet superseded by a human prompt or a fired wakeup. Between iterations
+/// the pane looks identical to a completed session, so the poller uses this to keep it off the
+/// "completed" read. See the tests for the boundary cases.
+pub fn loop_wakeup_pending(jsonl_tail: &str) -> bool {
+    let lines: Vec<&str> = jsonl_tail.split('\n').filter(|l| !l.is_empty()).collect();
+    let start = lines.len().saturating_sub(LAST_EVENT_TAIL_LINES);
+    for line in lines[start..].iter().rev() {
+        let Some(event) = parse_line(line) else {
+            continue;
+        };
+        if let Some(pending) = classify_loop_boundary(&event) {
+            return pending;
+        }
+    }
+    false
+}
+
+/// Classifies an event as a loop turn boundary: `Some(true)` schedules a wakeup, `Some(false)` ends
+/// the loop (human prompt or fired wakeup), `None` is noise the scan skips.
+fn classify_loop_boundary(event: &Value) -> Option<bool> {
+    match event.get("type").and_then(Value::as_str) {
+        Some("assistant") if has_schedule_wakeup(event) => Some(true),
+        Some("user") if is_human_prompt(event) => Some(false),
+        Some("system")
+            if event.get("subtype").and_then(Value::as_str) == Some("scheduled_task_fire") =>
+        {
+            Some(false)
+        }
+        _ => None,
+    }
+}
+
+/// Whether an assistant message carries a `ScheduleWakeup` tool_use block.
+fn has_schedule_wakeup(event: &Value) -> bool {
+    let Some(Value::Array(blocks)) = content_of(event) else {
+        return false;
+    };
+    blocks.iter().any(|b| {
+        b.get("type").and_then(Value::as_str) == Some("tool_use")
+            && b.get("name").and_then(Value::as_str) == Some("ScheduleWakeup")
+    })
+}
+
 /// Strips meta tags emitted when running skills/slash commands (command-name keeps its inner /foo).
 /// The opening and closing local-command tags match independently.
 fn strip_command_tags(text: &str) -> String {
@@ -423,6 +467,93 @@ mod tests {
             TranscriptKind::User,
             false,
         );
+    }
+
+    // ---- loop_wakeup_pending ----
+
+    fn schedule_wakeup_line() -> String {
+        assistant_line(json!([{
+            "type": "tool_use",
+            "name": "ScheduleWakeup",
+            "input": {"delaySeconds": 1200, "reason": "r", "prompt": "p"},
+        }]))
+    }
+
+    fn wakeup_result_line() -> String {
+        user_line(json!([{"type": "tool_result", "content": "scheduled"}]))
+    }
+
+    fn fire_line() -> String {
+        json!({
+            "type": "system",
+            "subtype": "scheduled_task_fire",
+            "content": "Claude resuming /loop wakeup (Aug 27 3:46pm)",
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn pending_when_latest_boundary_is_schedule_wakeup() {
+        let jsonl = [schedule_wakeup_line(), wakeup_result_line()].join("\n");
+        assert!(loop_wakeup_pending(&jsonl));
+    }
+
+    #[test]
+    fn pending_survives_trailing_noise_after_the_wakeup() {
+        let jsonl = [
+            schedule_wakeup_line(),
+            wakeup_result_line(),
+            json!({"type": "ai-title", "title": "x"}).to_string(),
+            json!({"type": "mode"}).to_string(),
+        ]
+        .join("\n");
+        assert!(loop_wakeup_pending(&jsonl));
+    }
+
+    #[test]
+    fn not_pending_when_user_took_over_after_the_wakeup() {
+        let jsonl = [
+            schedule_wakeup_line(),
+            wakeup_result_line(),
+            user_line(json!("代わりにこうして")),
+        ]
+        .join("\n");
+        assert!(!loop_wakeup_pending(&jsonl));
+    }
+
+    #[test]
+    fn not_pending_when_last_wakeup_fired_without_rescheduling() {
+        let jsonl = [
+            schedule_wakeup_line(),
+            wakeup_result_line(),
+            fire_line(),
+            assistant_line(json!([{"type": "text", "text": "loop done, nothing left"}])),
+        ]
+        .join("\n");
+        assert!(!loop_wakeup_pending(&jsonl));
+    }
+
+    #[test]
+    fn pending_when_rescheduled_after_a_fire() {
+        let jsonl = [
+            fire_line(),
+            assistant_line(json!([{"type": "text", "text": "continuing"}])),
+            schedule_wakeup_line(),
+            wakeup_result_line(),
+        ]
+        .join("\n");
+        assert!(loop_wakeup_pending(&jsonl));
+    }
+
+    #[test]
+    fn tool_result_only_tail_is_not_a_boundary() {
+        assert!(!loop_wakeup_pending(&wakeup_result_line()));
+    }
+
+    #[test]
+    fn not_pending_without_any_boundary_or_when_empty() {
+        assert!(!loop_wakeup_pending(""));
+        assert!(!loop_wakeup_pending(&assistant_line(json!([{"type": "text", "text": "done"}]))));
     }
 
     // ---- first_user_title ----

@@ -273,3 +273,15 @@ export function fallbackState(
     ? "running"
     : "idle";
 }
+
+/**
+ * Promotes a still-"idle" scrape to "watching" when a self-paced /loop wakeup is pending, so a
+ * session sleeping between iterations does not read as completed. Only "idle" is promoted; any
+ * busier verdict (a fresh-user "running", an open-task "watching") is kept.
+ */
+export function applyLoopPending(
+  scrape: CockpitTerminalState,
+  loopPending: boolean,
+): CockpitTerminalState {
+  return scrape === "idle" && loopPending ? "watching" : scrape;
+}

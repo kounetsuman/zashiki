@@ -75,6 +75,67 @@ export function lastUserOrAssistantEvent(
   return null;
 }
 
+/** A human-typed user line: a `user` event whose content is not solely a tool_result block. */
+function isHumanPrompt(event: Record<string, unknown>): boolean {
+  if (event.type !== "user") return false;
+  const content = contentOf(event);
+  if (!Array.isArray(content)) return true;
+  return !content.some(
+    (b) =>
+      typeof b === "object" &&
+      b !== null &&
+      (b as { type?: unknown }).type === "tool_result",
+  );
+}
+
+/** Whether an assistant message carries a `ScheduleWakeup` tool_use block. */
+function hasScheduleWakeup(event: Record<string, unknown>): boolean {
+  const content = contentOf(event);
+  if (!Array.isArray(content)) return false;
+  return content.some(
+    (b) =>
+      typeof b === "object" &&
+      b !== null &&
+      (b as { type?: unknown }).type === "tool_use" &&
+      (b as { name?: unknown }).name === "ScheduleWakeup",
+  );
+}
+
+/**
+ * Classifies an event as a loop turn boundary: true schedules a wakeup, false ends the
+ * loop (human prompt or fired wakeup), null is noise the scan skips.
+ */
+function classifyLoopBoundary(event: Record<string, unknown>): boolean | null {
+  if (event.type === "assistant" && hasScheduleWakeup(event)) return true;
+  if (event.type === "user" && isHumanPrompt(event)) return false;
+  if (event.type === "system" && event.subtype === "scheduled_task_fire")
+    return false;
+  return null;
+}
+
+/**
+ * Whether the transcript tail shows a pending self-paced `/loop` wakeup: the newest turn boundary
+ * is a `ScheduleWakeup`, not yet superseded by a human prompt or a fired wakeup. Between iterations
+ * the pane looks identical to a completed session, so the poller uses this to keep it off the
+ * "completed" read. See the tests for the boundary cases.
+ * @param jsonlTail the tail portion of the jsonl (the whole file is fine; only the last 50 lines are examined)
+ */
+export function loopWakeupPending(jsonlTail: string): boolean {
+  const lines = jsonlTail
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .slice(-LAST_EVENT_TAIL_LINES);
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line === undefined) continue;
+    const event = parseLine(line);
+    if (!event) continue;
+    const boundary = classifyLoopBoundary(event);
+    if (boundary !== null) return boundary;
+  }
+  return false;
+}
+
 /** Strips the meta tags added when running a skill/slash command (command-name keeps its inner /foo). */
 function stripCommandTags(text: string): string {
   return text

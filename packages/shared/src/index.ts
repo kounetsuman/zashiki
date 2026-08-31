@@ -110,6 +110,7 @@ export {
   claudeProjectDirName,
   firstUserTitle,
   lastUserOrAssistantEvent,
+  loopWakeupPending,
 } from "./jsonl.js";
 export {
   MEMO_MAX_CHARS,
@@ -293,6 +294,7 @@ export {
   searchResponseSchema,
 } from "./search.js";
 export {
+  applyLoopPending,
   countRunningSubagents,
   DEFAULT_BG_AGENT_MARKER,
   DEFAULT_LIMIT_MARKERS,
