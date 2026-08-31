@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-08-31
+
+### Fixed
+
+- A self-paced `/loop` session (looping with no interval, sleeping between iterations) no longer reads as completed while it is only standing by for its next wakeup (#330)
+- Bounded the git status scan to a process-wide concurrency cap so registered worktrees no longer saturate every CPU core on each poll cycle (#328)
+
 ## [0.19.0] - 2026-08-30
 
 ### Added
