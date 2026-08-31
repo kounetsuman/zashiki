@@ -630,6 +630,19 @@ pub fn apply_jsonl_fallback(
     }
 }
 
+/// Promotes a still-`Idle` scrape to `Watching` when a self-paced `/loop` wakeup is pending, so a
+/// session sleeping between iterations does not read as completed. Only `Idle` is promoted; any
+/// busier verdict (a fresh-user `Running`, an open-task `Watching`) is kept.
+pub fn apply_loop_pending(
+    scrape: CockpitTerminalState,
+    loop_pending: bool,
+) -> CockpitTerminalState {
+    match scrape {
+        CockpitTerminalState::Idle if loop_pending => CockpitTerminalState::Watching,
+        other => other,
+    }
+}
+
 /// The mtime freshness threshold (seconds) for the running-subagent count (the shared freshness rule).
 pub fn subagent_fresh_within_sec(poll_sec: f64) -> f64 {
     fresh_window_sec(poll_sec)
@@ -1637,6 +1650,37 @@ mod tests {
             assert_eq!(apply_jsonl_fallback(s, Some(&user(true)), Some(5.0), 2.0), s);
             assert_eq!(apply_jsonl_fallback(s, None, Some(5.0), 2.0), s);
             assert_eq!(apply_jsonl_fallback(s, Some(&user(false)), None, 2.0), s);
+        }
+    }
+
+    // ---- apply_loop_pending (pending self-paced /loop wakeup keeps a session off "completed") ----
+
+    #[test]
+    fn loop_pending_promotes_idle_to_watching() {
+        assert_eq!(
+            apply_loop_pending(CockpitTerminalState::Idle, true),
+            CockpitTerminalState::Watching
+        );
+    }
+
+    #[test]
+    fn loop_pending_false_keeps_idle() {
+        assert_eq!(
+            apply_loop_pending(CockpitTerminalState::Idle, false),
+            CockpitTerminalState::Idle
+        );
+    }
+
+    #[test]
+    fn loop_pending_never_downgrades_a_busy_scrape() {
+        for s in [
+            CockpitTerminalState::Running,
+            CockpitTerminalState::RunningBgAgent,
+            CockpitTerminalState::WaitingInput,
+            CockpitTerminalState::Watching,
+            CockpitTerminalState::NoClaude,
+        ] {
+            assert_eq!(apply_loop_pending(s, true), s);
         }
     }
 
