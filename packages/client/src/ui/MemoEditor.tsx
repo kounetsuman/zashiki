@@ -2,7 +2,7 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView, keymap, scrollPastEnd } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
@@ -58,6 +58,7 @@ function CodeMirrorHost({
             },
           ]),
           basicSetup,
+          scrollPastEnd(),
           oneDark,
           language.of([]),
           EditorView.updateListener.of((u) => {
