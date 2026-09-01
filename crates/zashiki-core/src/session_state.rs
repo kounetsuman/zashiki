@@ -168,14 +168,48 @@ fn matches_timer_after(chars: &[char], start: usize) -> bool {
     false
 }
 
-/// Whether the running-spinner line is visible at the bottom of the pane (the last 8 non-empty
-/// lines). In addition to a substring match of the marker (default `(esc to interrupt`), it also
-/// detects the new UI's live timer structurally (OR). Restricting to the bottom avoids misdetecting
-/// a marker quoted in the history body as running.
+/// Line-head glyphs of Claude Code's pinned todo rows (`□ open item`, `✔ done item`, …).
+/// Best-effort defaults: an unlisted glyph merely degrades to the pre-fix behavior (the row counts
+/// against the run-detection window), and the list is cheap to extend — the same escape-hatch idea
+/// as the run/limit markers.
+const TASK_CHECKBOX_HEADS: &[char] = &['□', '☐', '▢', '☑', '☒', '✔', '✓'];
+
+/// Whether a line is a row of Claude Code's pinned todo list — a checkbox-headed row or the
+/// `N tasks (…)` footer. Such rows sit between the running spinner and the input box; skipping them
+/// lets the spinner re-enter the widened run-detection window (see `bottom_lines_for_run_detection`).
+fn is_pinned_task_line(line: &str) -> bool {
+    js_trim_start(line).starts_with(|c: char| TASK_CHECKBOX_HEADS.contains(&c))
+        || parse_tasks_footer_line(line).is_some()
+}
+
+/// The last `BOTTOM_WINDOW_LINES` non-empty lines with the pinned todo rows removed, so a live
+/// status line sitting just above a pinned todo list re-enters the window. Dropping the rows can
+/// pull an older line into view, so `is_running` requires a spinner shape (not a bare marker
+/// substring) on this widened window; limit / bg-agent detection keep the unfiltered
+/// `bottom_non_empty_lines`.
+fn bottom_lines_for_run_detection(capture: &str) -> Vec<&str> {
+    let lines: Vec<&str> = capture
+        .split('\n')
+        .filter(|l| has_non_whitespace(l) && !is_pinned_task_line(l))
+        .collect();
+    let start = lines.len().saturating_sub(BOTTOM_WINDOW_LINES);
+    lines[start..].to_vec()
+}
+
+/// Whether a spinner line is visible near the bottom of the pane.
+///
+/// Two windows are scanned. The plain bottom window (`bottom_non_empty_lines`) keeps the original
+/// loose marker match (default `(esc to interrupt`). A pinned todo list can push the live status
+/// line above that window, so the todo-skipping window is also scanned — but there a match must be
+/// spinner-shaped (the new UI's live timer, or the marker on a line bearing the `…` gerund ellipsis)
+/// so a marker merely quoted in history prose sitting above the todos is not misread as running.
 pub fn is_running(capture: &str, marker: &str) -> bool {
     bottom_non_empty_lines(capture)
         .iter()
-        .any(|line| line.contains(marker) || has_live_spinner_timer(line))
+        .any(|line| line.contains(marker))
+        || bottom_lines_for_run_detection(capture)
+            .iter()
+            .any(|line| has_live_spinner_timer(line) || (line.contains('…') && line.contains(marker)))
 }
 
 /// Leading glyphs Claude Code renders before the limit text (`✗` banner, `⎿` result lines, and
@@ -749,6 +783,10 @@ mod tests {
     const CAP_MARKER_AT_9TH_HISTORY_QUOTE: &str =
         "引用: (esc to interrupt を検出する話\n1行\n2行\n3行\n4行\n5行\n6行\n7行\n8行";
     const CAP_SHORT_RUN: &str = "a\n(esc to interrupt)";
+    const CAP_RUN_TODOS_PINNED: &str = "✻ Grooving… (5m 30s · ↓ 22.7k tokens)\n  □ material-input pure module + tests\n  □ refactor actions.ts\n  □ update register-form.tsx\n  □ verify (test/typecheck/lint/budget)\n╭───╮\n│ ❯ │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+    const CAP_RUN_MANY_TODOS_PINNED: &str = "✻ Grooving… (5m 30s · ↓ 22.7k tokens)\n  ✔ done a\n  ✔ done b\n  □ open c\n  □ open d\n  □ open e\n  □ open f\n  □ open g\n  □ open h\n  □ open i\n  □ open j\n╭───╮\n│ ❯ │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+    const CAP_RUN_EXPANDED_SPINNER_TODOS: &str = "✻ Cogitating… (esc to interrupt · ctrl+t to hide todos · 123s · ↓ 2.3k tokens)\n  □ open a\n  □ open b\n  □ open c\n  □ open d\n  □ open e\n  □ open f\n  □ open g\n  □ open h\n╭───╮\n│ ❯ │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
+    const CAP_IDLE_MARKER_QUOTE_ABOVE_TODOS: &str = "引用: (esc to interrupt を検出する話\n  □ open a\n  □ open b\n  □ open c\n  □ open d\n  □ open e\n  □ open f\n  □ open g\n  □ open h\n╭───╮\n│ ❯ │\n╰───╯\n  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents";
     const CAP_BG: &str = "✻ Waiting for 1 background agent to finish\n\n───\n❯\n───\n  1.4Mトークン/回\n  ⏵⏵ bypass ... ← for agents\n\n  ⏺ main\n  ◯ general-purpose  作業  29s · ↓ 9.7k tokens";
     const CAP_BG_MULTI: &str = "  ⏺ main\n  ◯ general-purpose  A  1s\n  ◯ Explore  B  2s";
     const CAP_BG_MANY_AGENTS: &str = "✻ Waiting for 8 background agents to finish… (ctrl+t to view)\n╭──────────────────────────────────────╮\n│ ❯                                     │\n╰──────────────────────────────────────╯\n  ⏵⏵ bypass permissions\n  ⏺ main\n  ◯ general-purpose  探索1  9s · ↓ 1.2k tokens\n  ◯ Explore  探索2  8s · ↓ 1.1k tokens\n  ◯ Explore  探索3  8s\n  ◯ general-purpose  探索4  7s\n  ◯ Explore  探索5  6s\n  ◯ Explore  探索6  5s\n  ◯ general-purpose  探索7  4s\n  ◯ Explore  探索8  3s";
@@ -849,6 +887,31 @@ mod tests {
         assert_eq!(
             detect_state(CAP_SHORT_RUN, &claude()),
             CockpitTerminalState::Running
+        );
+    }
+
+    #[test]
+    fn running_spinner_survives_pinned_todo_list() {
+        assert_eq!(
+            detect_state(CAP_RUN_TODOS_PINNED, &claude()),
+            CockpitTerminalState::Running
+        );
+        assert_eq!(
+            detect_state(CAP_RUN_MANY_TODOS_PINNED, &claude()),
+            CockpitTerminalState::Running
+        );
+        assert_eq!(
+            detect_state(CAP_RUN_EXPANDED_SPINNER_TODOS, &claude()),
+            CockpitTerminalState::Running
+        );
+    }
+
+    #[test]
+    fn idle_marker_quote_above_pinned_todos_is_not_running() {
+        assert!(!is_running(CAP_IDLE_MARKER_QUOTE_ABOVE_TODOS, DEFAULT_RUN_MARKER));
+        assert_eq!(
+            detect_state(CAP_IDLE_MARKER_QUOTE_ABOVE_TODOS, &claude()),
+            CockpitTerminalState::Idle
         );
     }
 
@@ -1326,6 +1389,14 @@ mod tests {
             m
         ));
         assert!(is_running("✻ Cogitating… (123s · ↓ 2.3k tokens)", m));
+    }
+
+    #[test]
+    fn is_running_true_when_spinner_pushed_up_by_pinned_todos() {
+        let m = DEFAULT_RUN_MARKER;
+        assert!(is_running(CAP_RUN_TODOS_PINNED, m));
+        assert!(is_running(CAP_RUN_MANY_TODOS_PINNED, m));
+        assert!(is_running(CAP_RUN_EXPANDED_SPINNER_TODOS, m));
     }
 
     #[test]
