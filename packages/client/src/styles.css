@@ -1030,6 +1030,177 @@ textarea {
   inset: 0;
 }
 
+/* Memo find/replace widget (issue #335). Float CodeMirror's top panel as a card at the editor's
+   top-right (VSCode-style overlay) instead of the default full-width bottom bar, so it never
+   reflows the document. Scoped to .memo-body so the read-only Viewer is untouched. */
+.memo-body .cm-panels.cm-panels-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: auto;
+  z-index: 6;
+  border: none;
+  background: transparent;
+}
+
+.memo-find {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 6px 14px 0 0;
+  padding: 4px 6px;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+
+.memo-find-expand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  width: 16px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #888;
+  cursor: pointer;
+}
+
+.memo-find-expand:hover {
+  background: #2f2f2f;
+  color: #ddd;
+}
+
+.memo-find-expand .material-symbols-outlined {
+  font-size: 18px;
+  transition: transform 0.1s ease;
+}
+
+.memo-find.is-replace-open .memo-find-expand .material-symbols-outlined {
+  transform: rotate(90deg);
+}
+
+.memo-find-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.memo-find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.memo-find-replace-row {
+  display: none;
+}
+
+.memo-find.is-replace-open .memo-find-replace-row {
+  display: flex;
+}
+
+.memo-find-field {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 236px;
+  padding: 0 4px;
+  background: #141414;
+  border: 1px solid #333;
+  border-radius: 3px;
+}
+
+.memo-find-field:focus-within {
+  border-color: #4a7;
+}
+
+.memo-find-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: #ddd;
+  font: inherit;
+  padding: 3px 4px;
+}
+
+.memo-find-input:focus {
+  outline: none;
+}
+
+.memo-find-toggles {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.memo-find-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #888;
+  cursor: pointer;
+}
+
+.memo-find-toggle:hover {
+  background: #2f2f2f;
+  color: #ddd;
+}
+
+.memo-find-toggle.is-active {
+  background: #163b52;
+  border-color: #2b6a94;
+  color: #cfe6ff;
+}
+
+.memo-find-toggle .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.memo-find-count {
+  min-width: 4.5em;
+  padding: 0 2px;
+  text-align: right;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
+
+.memo-find-count.is-empty {
+  color: #c66;
+}
+
+.memo-find-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.memo-find-btn:hover {
+  background: #2f2f2f;
+  color: #ddd;
+}
+
+.memo-find-btn .material-symbols-outlined {
+  font-size: 18px;
+}
+
 .viewer-preview {
   position: absolute;
   inset: 0;

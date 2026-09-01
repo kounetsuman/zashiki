@@ -8,6 +8,7 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { type MemoBuffer, memoDirty } from "../memo/memo-model.js";
+import { memoSearch } from "./memo-search-panel.js";
 
 export interface MemoEditorProps {
   buffer: MemoBuffer;
@@ -57,6 +58,7 @@ function CodeMirrorHost({
               },
             },
           ]),
+          memoSearch(),
           basicSetup,
           scrollPastEnd(),
           oneDark,

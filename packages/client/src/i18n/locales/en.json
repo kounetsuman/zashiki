@@ -177,7 +177,21 @@
   "memo": {
     "editorLabel": "Memo editor",
     "title": "Memo",
-    "save": "Save"
+    "save": "Save",
+    "find": {
+      "placeholder": "Find",
+      "replacePlaceholder": "Replace",
+      "matchCase": "Match case",
+      "wholeWord": "Match whole word",
+      "regexp": "Use regular expression",
+      "previous": "Previous match (Shift+Enter)",
+      "next": "Next match (Enter)",
+      "close": "Close (Esc)",
+      "replace": "Replace",
+      "replaceAll": "Replace all",
+      "toggleReplace": "Toggle replace",
+      "noMatches": "No results"
+    }
   },
   "explorer": {
     "truncated": "Showing partial results (too many entries)",
