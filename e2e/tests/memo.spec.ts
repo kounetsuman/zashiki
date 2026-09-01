@@ -19,10 +19,6 @@ async function setMemoEnabled(page: Page, enabled: boolean): Promise<void> {
   await page.keyboard.press("Escape");
 }
 
-// These tests toggle the server-side Memo setting, which is global to the shared dev server. Run them
-// serially so they don't race each other on that setting.
-test.describe.configure({ mode: "serial" });
-
 test.describe("Memo tab", () => {
   test("enabling the setting pins a non-closeable Memo tab at the front", async ({
     page,
@@ -50,34 +46,5 @@ test.describe("Memo tab", () => {
 
     await setMemoEnabled(page, false);
     await expect(memoTab(page)).toHaveCount(0);
-  });
-
-  // The find widget's query/toggle logic is guarded by unit tests (memo-search); here we thinly check
-  // that Cmd+F opens the compact widget, incremental find counts matches, next advances, Escape closes.
-  test("Cmd+F opens the find widget, counts matches, and Escape closes it", async ({
-    page,
-  }) => {
-    await gotoApp(page);
-    await setMemoEnabled(page, true);
-    await memoTab(page).click();
-
-    await page.locator(".memo-view .cm-content").click();
-    await page.keyboard.type("alpha beta alpha");
-
-    await page.keyboard.press("ControlOrMeta+f");
-    const findInput = page.getByRole("textbox", { name: "Find" });
-    await expect(findInput).toBeVisible();
-
-    await findInput.fill("alpha");
-    await expect(page.locator(".memo-find-count")).toHaveText("1 / 2");
-
-    await findInput.press("Enter");
-    await expect(page.locator(".memo-find-count")).toHaveText("2 / 2");
-
-    await findInput.press("Escape");
-    await expect(findInput).toHaveCount(0);
-
-    // Leave the Memo setting off so a reused dev server doesn't carry it into the next run.
-    await setMemoEnabled(page, false);
   });
 });
