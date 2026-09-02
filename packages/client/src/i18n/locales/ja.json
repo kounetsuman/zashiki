@@ -65,7 +65,8 @@
   "toast": {
     "sessionIdCopied": "セッションIDをコピーしました",
     "pathCopied": "パスをコピーしました",
-    "notificationsDeleted": "{{count}} 件の通知を削除しました"
+    "notificationsDeleted": "{{count}} 件の通知を削除しました",
+    "memoSaveFailed": "メモを保存できませんでした。接続を確認して再試行してください"
   },
   "sessionList": {
     "ariaLabel": "セッション一覧",

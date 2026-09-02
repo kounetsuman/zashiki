@@ -466,9 +466,19 @@ export function App({
   const [memoSaver] = useState(() =>
     createMemoSaver(
       () => store.getSnapshot().memo,
-      (text) => reposApi.setMemo(text),
+      (text, signal) => reposApi.setMemo(text, signal),
       (text) => store.markMemoSaved(text),
     ),
+  );
+  // A failed/timed-out save leaves the buffer dirty (onSaved didn't run); surface it so the user knows
+  // to retry rather than assuming it saved.
+  const saveMemo = useCallback(
+    (text: string): void => {
+      void memoSaver
+        .save(text)
+        .catch(() => flashCopyToast(t("toast.memoSaveFailed")));
+    },
+    [memoSaver, flashCopyToast, t],
   );
   const selfUpdate = useSelfUpdate(control, flashCopyToast, t, memoSaver.flush);
   useBeforeUnloadGuard(memoEnabled && memoDirty(memo));
@@ -1129,7 +1139,7 @@ export function App({
               <MemoEditor
                 buffer={memo}
                 onChange={onChangeMemo}
-                onSave={memoSaver.save}
+                onSave={saveMemo}
                 focusNonce={memoFocusNonce}
               />
             )}

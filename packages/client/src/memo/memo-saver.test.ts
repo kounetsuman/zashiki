@@ -68,6 +68,32 @@ describe("createMemoSaver.save", () => {
     await saver.save("works");
     expect(onSaved).toHaveBeenCalledWith("works");
   });
+
+  it("times out and aborts a stalled post so it doesn't wedge later saves", async () => {
+    const onSaved = vi.fn();
+    let aborted = false;
+    // A realistic stalled request: it only settles once its signal aborts, like fetch on timeout.
+    const stalled = (_text: string, signal: AbortSignal) =>
+      new Promise<void>((_, reject) => {
+        signal.addEventListener("abort", () => {
+          aborted = true;
+          reject(new Error("aborted"));
+        });
+      });
+    const post = vi
+      .fn<(text: string, signal: AbortSignal) => Promise<void>>()
+      .mockImplementationOnce(stalled)
+      .mockResolvedValue(undefined);
+    const saver = createMemoSaver(() => EMPTY_MEMO, post, onSaved, 5);
+
+    await expect(saver.save("stalls")).rejects.toThrow();
+    expect(aborted).toBe(true);
+    expect(onSaved).not.toHaveBeenCalled();
+
+    await saver.save("recovers");
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(onSaved).toHaveBeenCalledExactlyOnceWith("recovers");
+  });
 });
 
 describe("createMemoSaver.flush", () => {

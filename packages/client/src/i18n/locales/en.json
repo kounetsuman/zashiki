@@ -65,7 +65,8 @@
   "toast": {
     "sessionIdCopied": "Copied the session ID",
     "pathCopied": "Copied the path",
-    "notificationsDeleted": "Deleted {{count}} notification(s)"
+    "notificationsDeleted": "Deleted {{count}} notification(s)",
+    "memoSaveFailed": "Couldn't save the Memo — check the connection and try again"
   },
   "sessionList": {
     "ariaLabel": "Session list",
