@@ -6,14 +6,21 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::jsonl::{background_task_ids, claude_project_dir_name, session_usage, SessionUsageData};
+use crate::jsonl::{
+    background_task_ids, claude_project_dir_name, session_usage, user_line_title, SessionUsageData,
+};
 use crate::status_poller::Slices;
 
 const DEFAULT_MAX_SLICE_BYTES: u64 = 64 * 1024;
+
+/// The first user event sits near the top of a transcript; stop scanning for its start past this much
+/// preamble so a transcript with no user event is not re-read whole every poll. This caps where the
+/// first user line may start, not its length — a matched user line is still read in full beyond it.
+const MAX_TITLE_SCAN_BYTES: u64 = 256 * 1024;
 
 type NowMs = Box<dyn Fn() -> u64 + Send + Sync>;
 
@@ -62,6 +69,24 @@ impl ClaudeProjectsAdapter {
         let max = self.max_slice_bytes;
         let now = (self.now_ms)();
         tokio::task::spawn_blocking(move || read_slices_sync(&path, max, now))
+            .await
+            .ok()
+            .flatten()
+    }
+
+    /// The first user-utterance title (None when the file is missing/unreadable or has no user event).
+    /// See `read_first_user_title_sync` for why this reads whole lines rather than the head slice.
+    pub async fn read_first_user_title(
+        &self,
+        cwd: &str,
+        sid: &str,
+        max_chars: usize,
+    ) -> Option<String> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        tokio::task::spawn_blocking(move || read_first_user_title_sync(&path, max_chars))
             .await
             .ok()
             .flatten()
@@ -145,6 +170,31 @@ fn read_slices_sync(path: &Path, max_bytes: u64, now_ms_val: u64) -> Option<Slic
         tail,
         mtime_age_sec,
     })
+}
+
+/// Returns the first user-utterance title, scanning whole lines from the file start (None at EOF, when
+/// the first user event is empty, or when no user event begins within `MAX_TITLE_SCAN_BYTES`). Reads a
+/// complete line rather than the byte-capped head slice so a first user line inflated past the slice cap
+/// by inline base64 (pasted images) still parses; `from_utf8_lossy` keeps the slice path's byte tolerance.
+fn read_first_user_title_sync(path: &Path, max_chars: usize) -> Option<String> {
+    let mut reader = BufReader::new(fs::File::open(path).ok()?);
+    let mut buf = Vec::new();
+    let mut preamble_bytes = 0u64;
+    loop {
+        buf.clear();
+        let read = reader.read_until(b'\n', &mut buf).ok()?;
+        if read == 0 {
+            return None;
+        }
+        let line = String::from_utf8_lossy(&buf);
+        if let Some(title) = user_line_title(line.trim_end_matches(['\r', '\n']), max_chars) {
+            return title;
+        }
+        preamble_bytes += read as u64;
+        if preamble_bytes > MAX_TITLE_SCAN_BYTES {
+            return None;
+        }
+    }
 }
 
 /// Elapsed seconds since mtime for each `agent-*.jsonl` file in the subagents directory (unordered).
@@ -303,6 +353,59 @@ mod tests {
         let ev = last_user_or_assistant_event(&slices.tail).expect("tail event");
         assert_eq!(ev.kind, TranscriptKind::User);
         assert!(!ev.interrupted);
+    }
+
+    #[test]
+    fn first_user_title_survives_a_first_line_larger_than_the_slice_cap() {
+        let tmp = tempfile::tempdir().unwrap();
+        let meta: String = (0..80)
+            .map(|_| format!("{{\"type\":\"summary\",\"summary\":\"{}\"}}\n", "s".repeat(180)))
+            .collect();
+        let image = "A".repeat(200 * 1024);
+        let first_user = format!(
+            "{{\"type\":\"user\",\"message\":{{\"content\":[{{\"type\":\"text\",\"text\":\"状態の正当性を確認\"}},{{\"type\":\"image\",\"source\":{{\"data\":\"{image}\"}}}}]}}}}"
+        );
+        let path = write_jsonl(tmp.path(), SID, &format!("{meta}{first_user}\n"), BASE_SEC);
+
+        let head = read_slices_sync(&path, 64 * 1024, BASE_SEC * 1000)
+            .unwrap()
+            .head;
+        assert_eq!(first_user_title(&head, 30), None);
+
+        assert_eq!(
+            read_first_user_title_sync(&path, 30).as_deref(),
+            Some("状態の正当性を確認")
+        );
+    }
+
+    #[tokio::test]
+    async fn read_first_user_title_missing_transcript_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert!(adapter.read_first_user_title(CWD, SID, 30).await.is_none());
+    }
+
+    #[test]
+    fn first_user_title_stops_at_an_empty_first_user_utterance() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"summary\",\"summary\":\"s\"}\n{\"type\":\"user\",\"message\":{\"content\":\"\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"後の依頼\"}}\n";
+        let path = write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        assert_eq!(read_first_user_title_sync(&path, 30), None);
+    }
+
+    #[test]
+    fn first_user_title_is_none_when_no_user_event_starts_within_the_scan_bound() {
+        let tmp = tempfile::tempdir().unwrap();
+        let filler = format!(
+            "{{\"type\":\"summary\",\"summary\":\"{}\"}}\n",
+            "s".repeat(1024)
+        );
+        let preamble: String = std::iter::repeat(filler)
+            .take((MAX_TITLE_SCAN_BYTES as usize / 1024) + 8)
+            .collect();
+        let content = format!("{preamble}{{\"type\":\"user\",\"message\":{{\"content\":\"届かない\"}}}}\n");
+        let path = write_jsonl(tmp.path(), SID, &content, BASE_SEC);
+        assert_eq!(read_first_user_title_sync(&path, 30), None);
     }
 
     #[test]

@@ -98,6 +98,12 @@ impl PollerPorts for PtyPollerPorts {
         self.projects.read_slices(cwd, sid).await
     }
 
+    async fn read_first_user_title(&self, cwd: &str, sid: &str, max_chars: usize) -> Option<String> {
+        self.projects
+            .read_first_user_title(cwd, sid, max_chars)
+            .await
+    }
+
     async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
         self.projects.subagent_ages(cwd, sid).await
     }

@@ -14,7 +14,7 @@ use zashiki_core::session_state::{
     subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
-use crate::jsonl::{first_user_title, last_user_or_assistant_event, loop_wakeup_pending};
+use crate::jsonl::{last_user_or_assistant_event, loop_wakeup_pending};
 use crate::hooks::NotifyEvent;
 use crate::protocol::{CockpitTerminalInfo, NotifyKind, SessionUsage};
 use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
@@ -178,9 +178,6 @@ impl StatusPoller {
         let org = org_of_cwd(&cwd, &roots_ref(&config.repos_roots)).to_string();
 
         let title_key = sid.as_ref().map(|s| format!("{cwd}\u{0}{s}"));
-        let need_slices = title_key
-            .as_ref()
-            .is_some_and(|k| !self.title_cache.contains_key(k));
 
         let in_mode = is_pane_in_mode(win, &picked.pane_id);
         let mut skill_agents: Option<usize> = None;
@@ -244,7 +241,7 @@ impl StatusPoller {
                 state,
                 CockpitTerminalState::Idle | CockpitTerminalState::Watching
             );
-            if no_screen_hint || need_slices {
+            if no_screen_hint {
                 slices = ports.read_slices(&cwd, sid).await;
             }
             if no_screen_hint {
@@ -310,16 +307,17 @@ impl StatusPoller {
         };
 
         let mut title: Option<String> = None;
-        if let Some(key) = &title_key {
-            title = self.title_cache.get(key).cloned();
-            if title.is_none() {
-                if let Some(s) = &slices {
-                    if let Some(t) = first_user_title(&s.head, TITLE_MAX_CHARS) {
+        if let (Some(key), Some(sid)) = (&title_key, &sid) {
+            title = match self.title_cache.get(key) {
+                Some(cached) => Some(cached.clone()),
+                None => {
+                    let fresh = ports.read_first_user_title(&cwd, sid, TITLE_MAX_CHARS).await;
+                    if let Some(t) = &fresh {
                         self.title_cache.insert(key.clone(), t.clone());
-                        title = Some(t);
                     }
+                    fresh
                 }
-            }
+            };
         }
 
         // Orthogonal to the resolved state, not gated on it: detect_state resolves a busy main to
@@ -410,6 +408,7 @@ impl StatusPoller {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jsonl::first_user_title;
     use std::collections::{BTreeMap, HashSet};
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
@@ -464,6 +463,16 @@ mod tests {
                     tail: s.tail.clone(),
                     mtime_age_sec: s.mtime_age_sec,
                 })
+        }
+        async fn read_first_user_title(
+            &self,
+            cwd: &str,
+            sid: &str,
+            max_chars: usize,
+        ) -> Option<String> {
+            self.slices
+                .get(&format!("{cwd}\u{0}{sid}"))
+                .and_then(|s| first_user_title(&s.head, max_chars))
         }
         async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
             self.subagent_ages
