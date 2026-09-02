@@ -83,10 +83,15 @@ export type UsageLimit = z.infer<typeof usageLimitSchema>;
  * Account usage limits Claude Code exposes to its statusLine (5-hour window and weekly). These are
  * global to the Claude account; the server reconciles the per-session readings into one and delivers
  * it via `state.sync`'s `accountLimits`. Each window is absent until the bridge has reported it.
+ *
+ * `capturedAt` (epoch ms) is when the server last received a statusLine reading, refreshed even when the
+ * reconciled value is unchanged. The reading only advances when a hook-registered session takes a turn,
+ * so the footer uses this to flag a value that has gone unrefreshed as possibly stale.
  */
 export const usageLimitsSchema = z.object({
   fiveHour: usageLimitSchema.optional(),
   week: usageLimitSchema.optional(),
+  capturedAt: z.number().int().optional(),
 });
 
 export type UsageLimits = z.infer<typeof usageLimitsSchema>;

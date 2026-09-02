@@ -231,6 +231,7 @@
       "session": "session",
       "percentRemaining": "{{percent}}% · {{time}} left",
       "percentElapsed": "{{percent}}% · {{time}} elapsed",
+      "percentStale": "{{percent}}% · stale",
       "tokensTitle": "Tokens the API touched — this turn / this session",
       "elapsedTitle": "Elapsed — this turn / this session"
     },
@@ -241,6 +242,7 @@
       "weekTitle": "Claude Code current week usage",
       "enableTitle": "Show Claude Code account usage (click to enable)",
       "resetsAt": "until {{time}}",
+      "lastUpdated": "updated {{time}}",
       "modeRemaining": "remaining",
       "modeElapsed": "elapsed",
       "modeToggleTitle": "Toggle usage time — remaining / elapsed (now: {{mode}})"

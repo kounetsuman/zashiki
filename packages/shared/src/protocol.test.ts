@@ -266,6 +266,7 @@ describe("serverMessageSchema", () => {
         accountLimits: {
           fiveHour: { usedPercent: 42, resetsAt: 1700010000000 },
           week: { usedPercent: 61 },
+          capturedAt: 1700010050000,
         },
       },
     ],

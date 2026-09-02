@@ -65,9 +65,25 @@ fn merge_window(stored: Option<UsageLimit>, incoming: Option<UsageLimit>) -> Opt
     }
 }
 
+/// Whether `incoming` re-confirms (does not lag behind) the stored value for one window — the gate for
+/// refreshing `captured_at`. A reading confirms when it reports a later window, or the same/undecidable
+/// window at no lower a percent (so reset-time jitter within the epsilon and a re-reported equal percent
+/// both count), or simply doesn't carry this window (absence is not disagreement). Only a reading from an
+/// earlier window, or the same window at a strictly lower percent, lags and fails to confirm.
+fn window_confirms(stored: Option<UsageLimit>, incoming: Option<UsageLimit>) -> bool {
+    let (Some(s), Some(i)) = (stored, incoming) else {
+        return true;
+    };
+    match (s.resets_at, i.resets_at) {
+        (Some(sr), Some(ir)) if ir > sr.saturating_add(RESET_EPSILON_MS) => true,
+        (Some(sr), Some(ir)) if sr > ir.saturating_add(RESET_EPSILON_MS) => false,
+        _ => i.used_percent >= s.used_percent,
+    }
+}
+
 /// Folds an incoming statusLine reading into the stored account-global reading, keeping the fresher of
 /// each window. Returns None when neither side carries any window (so the footer stays hidden until a
-/// real reading arrives).
+/// real reading arrives). `captured_at` is left absent here and stamped by [`ControlHub::publish_rate_limits`].
 fn reconcile_account_limits(
     stored: Option<UsageLimits>,
     incoming: UsageLimits,
@@ -75,7 +91,8 @@ fn reconcile_account_limits(
     let (stored_five, stored_week) = stored.map_or((None, None), |s| (s.five_hour, s.week));
     let five_hour = merge_window(stored_five, incoming.five_hour);
     let week = merge_window(stored_week, incoming.week);
-    (five_hour.is_some() || week.is_some()).then_some(UsageLimits { five_hour, week })
+    (five_hour.is_some() || week.is_some())
+        .then_some(UsageLimits { five_hour, week, captured_at: None })
 }
 
 /// The shared state + broadcast that all control connections refer to. When the poller
@@ -283,20 +300,38 @@ impl ControlHub {
         let _ = self.tx.send(sync);
     }
 
-    /// Folds a statusLine-bridge reading into the single account-global usage reading and re-broadcasts
-    /// state.sync — but only when the reconciled value actually changed. Account usage is global, so a
-    /// stale reading from an idle session (older window or lower percent) is discarded rather than
-    /// overwriting a fresher one, keeping the footer steady across tab switches. The statusLine fires
-    /// on every render, so an unconditional broadcast would storm the clients.
-    pub fn publish_rate_limits(&self, incoming: UsageLimits) {
+    /// Folds a statusLine-bridge reading into the single account-global usage reading. A stale reading
+    /// from an idle session (older window or lower percent) is discarded so it can't regress the display.
+    /// `captured_at` (this receipt time) advances only when the reading *confirms* the shown value — a
+    /// fresher value, or the same value re-reported — never on a discarded staler one, so the footer's
+    /// stale check can't be defeated by an idle session re-emitting an old reading. A pure `captured_at`
+    /// refresh (value unchanged) rides the poller's next state.sync instead of broadcasting here, since
+    /// the statusLine fires on every render. `None` (clock unavailable) keeps the prior timestamp.
+    pub fn publish_rate_limits(&self, incoming: UsageLimits, captured_at: Option<u64>) {
         let sync = {
             let mut guard = self.inner.write().unwrap();
             let state = &mut *guard;
-            let reconciled = reconcile_account_limits(state.account_limits, incoming);
-            if reconciled.is_none() || state.account_limits == reconciled {
+            let Some(mut reconciled) = reconcile_account_limits(state.account_limits, incoming) else {
+                return;
+            };
+            let (stored_five, stored_week) = state
+                .account_limits
+                .map_or((None, None), |s| (s.five_hour, s.week));
+            let value_changed =
+                (stored_five, stored_week) != (reconciled.five_hour, reconciled.week);
+            let confirms = value_changed
+                || (window_confirms(stored_five, incoming.five_hour)
+                    && window_confirms(stored_week, incoming.week));
+            let prev_captured = state.account_limits.and_then(|s| s.captured_at);
+            reconciled.captured_at = if confirms {
+                captured_at.or(prev_captured)
+            } else {
+                prev_captured
+            };
+            state.account_limits = Some(reconciled);
+            if !value_changed {
                 return;
             }
-            state.account_limits = reconciled;
             state_sync_of(&state.snapshot, state.account_limits)
         };
         let _ = self.tx.send(sync);
@@ -720,6 +755,7 @@ mod tests {
                 resets_at,
             }),
             week: None,
+            captured_at: None,
         }
     }
 
@@ -776,7 +812,7 @@ mod tests {
 
     #[test]
     fn reconcile_account_limits_is_none_when_nothing_reported() {
-        let empty = UsageLimits { five_hour: None, week: None };
+        let empty = UsageLimits { five_hour: None, week: None, captured_at: None };
         assert_eq!(reconcile_account_limits(None, empty), None);
     }
 
@@ -785,7 +821,7 @@ mod tests {
         let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
         let mut rx = hub.subscribe();
 
-        hub.publish_rate_limits(five_hour(80));
+        hub.publish_rate_limits(five_hour(80), Some(1_000));
         assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(80));
 
         // A subsequent poll carries the account-global reading unchanged (it's not per session).
@@ -793,14 +829,37 @@ mod tests {
         assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(80));
     }
 
+    fn recv_account_captured_at(msg: ServerMessage) -> Option<u64> {
+        match msg {
+            ServerMessage::StateSync { account_limits, .. } => account_limits?.captured_at,
+            _ => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_refreshes_captured_at_without_rebroadcasting_an_unchanged_value() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+
+        // First reading broadcasts and stamps its receipt time.
+        hub.publish_rate_limits(five_hour(80), Some(1_000));
+        assert_eq!(recv_account_captured_at(rx.recv().await.unwrap()), Some(1_000));
+
+        // A later reading of the same value does not rebroadcast, but the fresher captured_at is stored
+        // and rides the next poll's state.sync — proof of liveness for a steady value.
+        hub.publish_rate_limits(five_hour(80), Some(5_000));
+        hub.publish_snapshot(snapshot_with("@2"));
+        assert_eq!(recv_account_captured_at(rx.recv().await.unwrap()), Some(5_000));
+    }
+
     #[tokio::test]
     async fn publish_rate_limits_skips_rebroadcast_when_value_unchanged() {
         let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
         let mut rx = hub.subscribe();
 
-        hub.publish_rate_limits(five_hour(80));
-        hub.publish_rate_limits(five_hour(80));
-        hub.publish_rate_limits(five_hour(90));
+        hub.publish_rate_limits(five_hour(80), Some(1_000));
+        hub.publish_rate_limits(five_hour(80), Some(2_000));
+        hub.publish_rate_limits(five_hour(90), Some(3_000));
 
         // The unchanged reading is skipped, so the second delivery is the 90 update, not another 80.
         assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(80));
@@ -815,13 +874,72 @@ mod tests {
 
         // A high reading, then a stale idle-session reading (same window, lower) that must not regress
         // the display, then a genuinely higher one.
-        hub.publish_rate_limits(five_hour_at(90, window));
-        hub.publish_rate_limits(five_hour_at(30, window));
-        hub.publish_rate_limits(five_hour_at(95, window));
+        hub.publish_rate_limits(five_hour_at(90, window), Some(1_000));
+        hub.publish_rate_limits(five_hour_at(30, window), Some(2_000));
+        hub.publish_rate_limits(five_hour_at(95, window), Some(3_000));
 
         // The stale 30 is discarded (no rebroadcast), so the deliveries are 90 then 95.
         assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(90));
         assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(95));
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_keeps_captured_at_when_a_stale_reading_is_discarded() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+        let window = Some(9_000_000);
+
+        hub.publish_rate_limits(five_hour_at(90, window), Some(1_000));
+        let _ = rx.recv().await.unwrap();
+
+        // An idle session re-emits an older/lower reading: it is discarded, and must NOT advance
+        // captured_at — otherwise the footer would treat the unconfirmed 90 as fresh indefinitely.
+        hub.publish_rate_limits(five_hour_at(30, window), Some(2_000));
+        hub.publish_snapshot(snapshot_with("@2"));
+        match rx.recv().await.unwrap() {
+            ServerMessage::StateSync { account_limits, .. } => {
+                let l = account_limits.unwrap();
+                assert_eq!(l.five_hour.unwrap().used_percent, 90);
+                assert_eq!(l.captured_at, Some(1_000));
+            }
+            _ => panic!("expected state.sync"),
+        }
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_advances_captured_at_when_incoming_reports_only_one_window() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+        let w = Some(9_000_000);
+        let both = |five, week| UsageLimits {
+            five_hour: Some(UsageLimit { used_percent: five, resets_at: w }),
+            week: Some(UsageLimit { used_percent: week, resets_at: w }),
+            captured_at: None,
+        };
+
+        hub.publish_rate_limits(both(80, 50), Some(1_000));
+        let _ = rx.recv().await.unwrap();
+
+        // A live reading that carries only the five-hour window, re-confirming 80%: the absent week is
+        // not a disagreement, so captured_at advances rather than the footer going stale.
+        hub.publish_rate_limits(five_hour_at(80, w), Some(100_000));
+        hub.publish_snapshot(snapshot_with("@2"));
+        assert_eq!(recv_account_captured_at(rx.recv().await.unwrap()), Some(100_000));
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_advances_captured_at_across_sub_epsilon_reset_jitter() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+
+        hub.publish_rate_limits(five_hour_at(80, Some(9_000_000)), Some(1_000));
+        let _ = rx.recv().await.unwrap();
+
+        // Same percent, reset time wobbling within RESET_EPSILON_MS across sessions: still a live
+        // confirmation, so captured_at advances.
+        hub.publish_rate_limits(five_hour_at(80, Some(9_060_000)), Some(100_000));
+        hub.publish_snapshot(snapshot_with("@2"));
+        assert_eq!(recv_account_captured_at(rx.recv().await.unwrap()), Some(100_000));
     }
 
     #[tokio::test]
@@ -831,6 +949,7 @@ mod tests {
         let week = |used_percent, resets_at| UsageLimits {
             five_hour: None,
             week: Some(UsageLimit { used_percent, resets_at: Some(resets_at) }),
+            captured_at: None,
         };
         let recv_week = |msg| match msg {
             ServerMessage::StateSync { account_limits, .. } => {
@@ -840,9 +959,9 @@ mod tests {
         };
         let base = 9_000_000;
 
-        hub.publish_rate_limits(week(61, base));
+        hub.publish_rate_limits(week(61, base), Some(1_000));
         // The weekly window rolls over (a week later): the lower percent must be taken, not stuck at 61.
-        hub.publish_rate_limits(week(2, base + 7 * 86_400_000));
+        hub.publish_rate_limits(week(2, base + 7 * 86_400_000), Some(2_000));
 
         assert_eq!(recv_week(rx.recv().await.unwrap()), Some(61));
         assert_eq!(recv_week(rx.recv().await.unwrap()), Some(2));

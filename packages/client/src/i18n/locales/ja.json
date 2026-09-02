@@ -231,6 +231,7 @@
       "session": "セッション",
       "percentRemaining": "{{percent}}% · 残り{{time}}",
       "percentElapsed": "{{percent}}% · 経過{{time}}",
+      "percentStale": "{{percent}}% · 更新待ち",
       "tokensTitle": "API が扱ったトークン — 今ターン / セッション累計",
       "elapsedTitle": "経過時間 — 今ターン / セッション累計"
     },
@@ -241,6 +242,7 @@
       "weekTitle": "Claude Code 今週の使用率",
       "enableTitle": "Claude Code のアカウント使用率を表示（クリックで有効化）",
       "resetsAt": "{{time}} まで",
+      "lastUpdated": "最終更新 {{time}}",
       "modeRemaining": "残時間",
       "modeElapsed": "経過時間",
       "modeToggleTitle": "使用時間の残／経過を切替（現在: {{mode}}）"

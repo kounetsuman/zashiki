@@ -121,7 +121,11 @@ pub(crate) async fn hooks_statusline(
     };
     let matched = match crate::hooks::parse_statusline_limits(&json) {
         Some((_sid, limits)) => {
-            control.hub.publish_rate_limits(limits);
+            let captured_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|d| d.as_millis() as u64);
+            control.hub.publish_rate_limits(limits, captured_at);
             true
         }
         None => false,

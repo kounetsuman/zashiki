@@ -16,6 +16,7 @@ import {
   nextUsageTimeMode,
   saveUsageTimeMode,
   usageDisplayMs,
+  usageFreshness,
   usageSeverity,
   WEEK_WINDOW_MS,
 } from "../session/status-footer.js";
@@ -103,6 +104,8 @@ export function AccountUsageFooter({
     const severity = limit
       ? usageSeverity(limit.usedPercent, thresholds)
       : undefined;
+    const freshness = usageFreshness(limit, limits?.capturedAt, now);
+    const stale = freshness !== "live";
     const displayMs =
       limit?.resetsAt !== undefined
         ? usageDisplayMs(mode, limit.resetsAt, now, windowMs)
@@ -110,12 +113,14 @@ export function AccountUsageFooter({
     const value =
       limit === undefined
         ? DASH
-        : displayMs !== undefined
-          ? t(percentTimeKey, {
-              percent: limit.usedPercent,
-              time: fmtCountdown(displayMs),
-            })
-          : `${limit.usedPercent}%`;
+        : freshness === "expired"
+          ? t("footer.status.percentStale", { percent: limit.usedPercent })
+          : displayMs !== undefined
+            ? t(percentTimeKey, {
+                percent: limit.usedPercent,
+                time: fmtCountdown(displayMs),
+              })
+            : `${limit.usedPercent}%`;
     const meterPercent =
       displayMs !== undefined
         ? (displayMs / windowMs) * 100
@@ -124,15 +129,28 @@ export function AccountUsageFooter({
       percent: 100,
       time: fmtCountdown(windowMs),
     });
-    const tooltip =
-      limit?.resetsAt !== undefined
-        ? `${title} · ${t("footer.account.resetsAt", {
+    const resetNote =
+      freshness !== "expired" && limit?.resetsAt !== undefined
+        ? ` · ${t("footer.account.resetsAt", {
             time: fmtResetClock(limit.resetsAt, { now }),
           })}`
-        : title;
+        : "";
+    const staleNote =
+      stale && limits?.capturedAt !== undefined
+        ? ` · ${t("footer.account.lastUpdated", {
+            time: fmtResetClock(limits.capturedAt, { now }),
+          })}`
+        : "";
+    const tooltip = `${title}${resetNote}${staleNote}`;
     return (
       <Tooltip className="ss-group" label={tooltip}>
-        <span className="account-usage-cell">
+        <span
+          className={
+            stale
+              ? "account-usage-cell account-usage-stale"
+              : "account-usage-cell"
+          }
+        >
           <StatusCell
             value={
               <span className="account-usage-value">
