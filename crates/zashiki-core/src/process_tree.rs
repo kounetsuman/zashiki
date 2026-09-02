@@ -121,6 +121,15 @@ pub struct ProcessMaps {
     pub children_of: HashMap<i64, Vec<i64>>,
 }
 
+impl ProcessMaps {
+    /// Whether a claude process for this sid exists anywhere in the snapshot. Unlike `find_sid_in_tree`
+    /// (which walks down from one pane pid), it answers "is this session's claude alive?" even when the
+    /// pane pid no longer reaches it.
+    pub fn has_sid(&self, sid: &str) -> bool {
+        self.pid_to_sid.values().any(|s| s == sid)
+    }
+}
+
 /// Build the sid map and the parent-child map from a ps snapshot (non-claude processes are not added to the sid map).
 pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
     let mut pid_to_sid = HashMap::new();
@@ -284,6 +293,14 @@ mod tests {
     #[test]
     fn find_none_for_missing_pid() {
         assert_eq!(find_sid_in_tree(9999, &tree_maps()), None);
+    }
+
+    #[test]
+    fn has_sid_finds_claude_regardless_of_reachability() {
+        let maps = tree_maps();
+        assert!(maps.has_sid(SID));
+        assert!(maps.has_sid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeffff"));
+        assert!(!maps.has_sid("ffffffff-ffff-ffff-ffff-ffffffffffff"));
     }
 
     #[test]

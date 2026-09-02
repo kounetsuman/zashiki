@@ -100,6 +100,10 @@ pub struct StatusPoller {
     /// The most recent picked pane pid per window. The basis for detecting a window rebuild from restore/kill
     /// (a pid change under the same cockpit_terminal_id) and resetting the streak (closes the gap where stale carried-over state disables the grace).
     last_pid: HashMap<String, i64>,
+    /// The most recent sid seen per window (sid is stable across resume). When the pane-pid trace later
+    /// fails to reach claude, this recovers the session as long as that sid is still live in the ps
+    /// table (`ProcessMaps::has_sid`), so a stale pane pid does not misread a live session as no_claude.
+    last_sid: HashMap<String, String>,
     /// `cwd\0sid` → the first user-utterance title (cached since it is immutable).
     title_cache: HashMap<String, String>,
 }
@@ -151,6 +155,7 @@ impl StatusPoller {
         self.no_claude_streak
             .retain(|id, _| live.contains(id.as_str()));
         self.last_pid.retain(|id, _| live.contains(id.as_str()));
+        self.last_sid.retain(|id, _| live.contains(id.as_str()));
 
         let snapshot = StateSnapshot {
             orgs: build_orgs(&config.repos_roots, &sessions),
@@ -173,8 +178,23 @@ impl StatusPoller {
     ) -> Option<CockpitTerminalInfo> {
         let picked = pick_pane(win, maps)?;
         let cwd = picked.cwd;
-        let sid = picked.sid;
         let pid = picked.pid;
+        // A pane pid change means restore/kill rebuilt the window, so the remembered sid no longer
+        // belongs to it and must not be recovered below.
+        if self.last_pid.get(&win.cockpit_terminal_id) != Some(&pid) {
+            self.last_sid.remove(&win.cockpit_terminal_id);
+        }
+        // The pane-pid trace can miss a live claude when the recorded pane pid goes stale; fall back to
+        // the last-seen sid only while its claude is still in the ps table (proof it is alive, not exited).
+        let sid = picked.sid.or_else(|| {
+            self.last_sid
+                .get(&win.cockpit_terminal_id)
+                .filter(|s| maps.has_sid(s.as_str()))
+                .cloned()
+        });
+        if let Some(s) = &sid {
+            self.last_sid.insert(win.cockpit_terminal_id.clone(), s.clone());
+        }
         let org = org_of_cwd(&cwd, &roots_ref(&config.repos_roots)).to_string();
 
         let title_key = sid.as_ref().map(|s| format!("{cwd}\u{0}{s}"));
@@ -714,6 +734,105 @@ mod tests {
         // Same cockpit_terminal_id, different pid (= rebuild) with claude not appearing → discard the stale streak and return to starting.
         assert_eq!(
             poller.evaluate(&dead(200), &cfg).await.0.sessions[0].state,
+            "starting"
+        );
+    }
+
+    /// A live claude no longer reachable from the recorded pane pid (a stale pane pid) is recovered via
+    /// the last-seen sid because that sid is still in the ps table. Poll 1 traces claude and caches the
+    /// sid; polls 2 & 3 keep claude in ps but re-parented off the pane subtree (unreachable by BFS), so
+    /// the session reads idle — with the recovered sid surfaced — instead of settling to no_claude.
+    #[tokio::test]
+    async fn live_claude_untraceable_from_pane_pid_is_recovered_via_ps() {
+        let cwd = "/repos/charlie/app";
+        let mut cfg = config();
+        cfg.poll_sec = 8.0;
+        let mut poller = StatusPoller::new();
+
+        let traced = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            ..Default::default()
+        };
+        assert_eq!(poller.evaluate(&traced, &cfg).await.0.sessions[0].state, "running");
+
+        let untraceable = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: format!("  100    1 -zsh\n  300  999 claude --session-id {SID}\n"),
+            captures: HashMap::from([(
+                "%1".to_string(),
+                "⏺ done.\n╭─╮\n│ ❯ │\n╰─╯\n  ? for shortcuts".to_string(),
+            )]),
+            ..Default::default()
+        };
+        let s2 = poller.evaluate(&untraceable, &cfg).await.0.sessions.remove(0);
+        assert_eq!(s2.state, "idle");
+        assert_eq!(s2.sid.as_deref(), Some(SID));
+        assert_eq!(
+            poller.evaluate(&untraceable, &cfg).await.0.sessions[0].state,
+            "idle"
+        );
+    }
+
+    /// A genuinely exited claude (its sid absent from ps) is not recovered, so it still settles to
+    /// no_claude past the grace — the deliberate surfacing of a dead/failed session is preserved.
+    #[tokio::test]
+    async fn exited_claude_absent_from_ps_settles_no_claude() {
+        let cwd = "/repos/charlie/app";
+        let mut cfg = config();
+        cfg.poll_sec = 8.0;
+        let mut poller = StatusPoller::new();
+
+        let traced = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            ..Default::default()
+        };
+        assert_eq!(poller.evaluate(&traced, &cfg).await.0.sessions[0].state, "running");
+
+        let exited = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: "  100    1 -zsh\n".to_string(),
+            captures: HashMap::from([("%1".to_string(), "just a shell".to_string())]),
+            ..Default::default()
+        };
+        assert_eq!(
+            poller.evaluate(&exited, &cfg).await.0.sessions[0].state,
+            "starting"
+        );
+        assert_eq!(
+            poller.evaluate(&exited, &cfg).await.0.sessions[0].state,
+            "no_claude"
+        );
+    }
+
+    /// A window rebuild (new pane pid) retires the remembered sid, so a lingering old claude still in ps
+    /// is not recovered onto the rebuilt terminal — it reads starting (grace), not the prior session.
+    #[tokio::test]
+    async fn rebuilt_window_does_not_recover_prior_sid() {
+        let cwd = "/repos/charlie/app";
+        let mut cfg = config();
+        cfg.poll_sec = 8.0;
+        let mut poller = StatusPoller::new();
+
+        let traced = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            ..Default::default()
+        };
+        assert_eq!(poller.evaluate(&traced, &cfg).await.0.sessions[0].state, "running");
+
+        let rebuilt = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 200, 0, cwd)])],
+            ps: format!("  200    1 -zsh\n  300  999 claude --session-id {SID}\n"),
+            captures: HashMap::from([("%1".to_string(), "just a shell".to_string())]),
+            ..Default::default()
+        };
+        assert_eq!(
+            poller.evaluate(&rebuilt, &cfg).await.0.sessions[0].state,
             "starting"
         );
     }
