@@ -138,29 +138,34 @@ fn strip_command_tags(text: &str) -> String {
     COMMAND_NAME.replace_all(&t, "").into_owned()
 }
 
-/// Builds a summary title from the first user utterance (collapses newlines/runs of spaces, takes the first max_chars characters).
-pub fn first_user_title(jsonl_head: &str, max_chars: usize) -> Option<String> {
-    for line in jsonl_head.split('\n') {
-        if line.is_empty() || !line.contains(r#""type":"user""#) {
-            continue;
-        }
-        let Some(event) = parse_line(line) else {
-            continue;
-        };
-        if event.get("type").and_then(Value::as_str) != Some("user") {
-            continue;
-        }
-        let raw = content_of(&event).map(text_of_content).unwrap_or_default();
-        let title = strip_command_tags(&raw)
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
-        if title.is_empty() {
-            return None;
-        }
-        return Some(title.chars().take(max_chars).collect());
+/// Builds a title from one jsonl line (collapses newlines/runs of spaces, takes the first max_chars characters).
+/// `None` when the line is not a parseable user event (the caller keeps scanning); `Some(None)` when it is a
+/// user event whose utterance is empty (the caller stops with no title); `Some(Some(t))` for the utterance title.
+pub(crate) fn user_line_title(line: &str, max_chars: usize) -> Option<Option<String>> {
+    if line.is_empty() || !line.contains(r#""type":"user""#) {
+        return None;
     }
-    None
+    let event = parse_line(line)?;
+    if event.get("type").and_then(Value::as_str) != Some("user") {
+        return None;
+    }
+    let raw = content_of(&event).map(text_of_content).unwrap_or_default();
+    let title = strip_command_tags(&raw)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if title.is_empty() {
+        return Some(None);
+    }
+    Some(Some(title.chars().take(max_chars).collect()))
+}
+
+/// Builds a summary title from the first user utterance in the head slice.
+pub fn first_user_title(jsonl_head: &str, max_chars: usize) -> Option<String> {
+    jsonl_head
+        .split('\n')
+        .find_map(|line| user_line_title(line, max_chars))
+        .flatten()
 }
 
 /// cwd -> the project directory name under ~/.claude/projects (replaces `/` with `-`).

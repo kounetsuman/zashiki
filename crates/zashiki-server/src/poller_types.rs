@@ -52,6 +52,16 @@ pub trait PollerPorts {
     fn ps_snapshot(&self) -> impl Future<Output = String> + Send;
     /// The head/tail slices of jsonl (None if the sid is unresolved or unread).
     fn read_slices(&self, cwd: &str, sid: &str) -> impl Future<Output = Option<Slices>> + Send;
+    /// The first user-utterance title (None if unresolved). Defaulted to None so stubs that do not
+    /// exercise titling need not implement it.
+    fn read_first_user_title(
+        &self,
+        _cwd: &str,
+        _sid: &str,
+        _max_chars: usize,
+    ) -> impl Future<Output = Option<String>> + Send {
+        async { None }
+    }
     /// The elapsed mtime seconds of each subagents/*.jsonl file (material for the count).
     fn subagent_ages(&self, cwd: &str, sid: &str) -> impl Future<Output = Vec<f64>> + Send;
     /// Raw `lsof -F pfn -a -d 1` output for resident background-shell detection (parsed by `crate::shells`).
