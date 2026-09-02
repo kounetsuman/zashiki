@@ -34,8 +34,8 @@ export interface ReposApi {
   setAlias(org: string, alias: string): Promise<void>;
   /** Persist the org display order (reorders repos.conf root lines). Reflected via state.sync. */
   setOrgOrder(orgs: string[]): Promise<void>;
-  /** Save the app-wide Memo. The updated text arrives via memo.sync. */
-  setMemo(text: string): Promise<void>;
+  /** Save the app-wide Memo. The updated text arrives via memo.sync. `signal` aborts a stalled request. */
+  setMemo(text: string, signal?: AbortSignal): Promise<void>;
 }
 
 /** Error thrown by {@link ReposApi.add}. `code` is the server's stable reason (localized by the UI). */
@@ -161,12 +161,13 @@ export function createReposApi(
         throw new ReposAddError(message, code);
       }
     },
-    async setMemo(text) {
+    async setMemo(text, signal) {
       const body: MemoRequest = { text };
       const res = await fetchFn(`${base}/api/memo`, {
         method: "POST",
         headers: { ...authHeaders(token), "content-type": "application/json" },
         body: JSON.stringify(body),
+        signal,
       });
       if (!res.ok) {
         const { message, code } = await errorOf(res);
