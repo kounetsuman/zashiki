@@ -82,6 +82,7 @@
     "openHint": "Double-click to open (or press Enter)",
     "subagentCountTitle": "Total running subagents (including nested)",
     "shellCountTitle": "Resident background shells",
+    "vitestCountTitle": "Running vitest processes in this session",
     "closeRow": "Close {{name}}",
     "closeRowConfirm": "Close {{name}} (confirm)",
     "cancelClose": "Cancel close",

@@ -446,7 +446,7 @@ textarea {
     0 0 2px #141414;
 }
 
-/* 併走アクティビティのチップ: agent / shell を状態グリフの隣に添える。 */
+/* 併走アクティビティのチップ: agent / shell / vitest を状態グリフの隣に添える。 */
 .session-activity {
   display: inline-flex;
   align-items: center;
@@ -454,6 +454,11 @@ textarea {
   font-size: 11px;
   color: #8b93a7;
   font-variant-numeric: tabular-nums;
+}
+
+/* vitest は CPU を食う持続シグナルなので、目に留まる暖色で他チップと差をつける。 */
+.session-activity-vitest {
+  color: #d9a441;
 }
 
 .session-activity-glyph {

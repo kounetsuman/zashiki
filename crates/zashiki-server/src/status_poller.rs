@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
+use zashiki_core::process_tree::{build_process_maps, count_vitest_in_tree, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
     apply_jsonl_fallback, apply_loop_pending, apply_startup_grace, count_running_subagents,
@@ -380,6 +380,13 @@ impl StatusPoller {
             }
         }
 
+        // Counted from the pane pid so claude's Bash-spawned test runs (deeper in the subtree) are
+        // included. Absent when zero, mirroring the other Background Activity counts.
+        let vitest_running = match count_vitest_in_tree(pid, maps) {
+            0 => None,
+            n => Some(n),
+        };
+
         let usage = match (&sid, state) {
             (
                 Some(sid),
@@ -417,6 +424,7 @@ impl StatusPoller {
             active: win.active,
             running_subagents: Some(running_subagents as u32),
             shells_running,
+            vitest_running,
             limited,
             menu_open,
             usage,
@@ -597,6 +605,47 @@ mod tests {
         let mut poller = StatusPoller::new();
         let (snap, _) = poller.evaluate(&ports, &config()).await;
         assert_eq!(snap.sessions[0].shells_running, None);
+    }
+
+    /// Two concurrent vitest runs under the session's claude are counted; an idle session omits the
+    /// field (None).
+    #[tokio::test]
+    async fn vitest_run_in_subtree_sets_vitest_running() {
+        let ps = format!(
+            "  100    1 -zsh\n  300 100 claude --session-id {SID}\n  \
+             400 300 node /repo/packages/a/node_modules/.bin/vitest run\n  \
+             410 300 node /repo/packages/b/node_modules/vitest/vitest.mjs run\n"
+        );
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps,
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].vitest_running, Some(2));
+    }
+
+    #[tokio::test]
+    async fn idle_session_omits_vitest_running() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].vitest_running, None);
     }
 
     /// A capture containing the limit banner puts limited=true on the wire. Orthogonal to the primary state (running).
@@ -1413,6 +1462,7 @@ mod tests {
             active: true,
             running_subagents: subagents,
             shells_running: shells,
+            vitest_running: None,
             limited: false,
             menu_open: false,
             usage: None,

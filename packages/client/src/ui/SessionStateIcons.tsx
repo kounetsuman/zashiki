@@ -24,6 +24,7 @@ const MENU_ICON = "settings";
 // Activity-chip glyphs. These sit beside the state glyph as chips, not overlaid on it.
 const BG_AGENT_GLYPH = "robot_2";
 const SHELL_GLYPH = "terminal";
+const VITEST_GLYPH = "science";
 
 // Reaching the usage limit overlays this top-right badge on the state glyph. Orthogonal to the state.
 const LIMIT_BADGE = "error";
@@ -68,12 +69,13 @@ export function StateIcon({
   );
 }
 
-/** Concurrent background activity as chips: agent follows runningSubagents, shell follows shellsRunning; both are orthogonal attributes, so a session that also reads as running does not hide either. */
+/** Concurrent background activity as chips: agent follows runningSubagents, shell follows shellsRunning, vitest follows vitestRunning; all are orthogonal attributes, so a session that also reads as running does not hide any. */
 export function ActivityChips({ session }: { session: CockpitTerminalInfo }) {
   const { t } = useTranslation();
   const agentCount = session.runningSubagents ?? 0;
   const showAgent = agentCount > 0;
   const shellCount = session.shellsRunning ?? 0;
+  const vitestCount = session.vitestRunning ?? 0;
   return (
     <>
       {showAgent && (
@@ -96,6 +98,17 @@ export function ActivityChips({ session }: { session: CockpitTerminalInfo }) {
             {SHELL_GLYPH}
           </span>
           {shellCount}
+        </span>
+      )}
+      {vitestCount > 0 && (
+        <span
+          className="session-activity session-activity-vitest"
+          title={t("sessionList.vitestCountTitle")}
+        >
+          <span className="material-symbols-outlined session-activity-glyph">
+            {VITEST_GLYPH}
+          </span>
+          {vitestCount}
         </span>
       )}
     </>

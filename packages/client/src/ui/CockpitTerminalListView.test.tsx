@@ -323,6 +323,35 @@ describe("CockpitTerminalListView: session rows", () => {
     expect(screen.queryByText("terminal")).toBeNull();
   });
 
+  it("shows a vitest activity chip with the count in any state", () => {
+    renderView({
+      cockpitTerminals: [
+        {
+          ...cockpitTerminals[0],
+          state: "running",
+          vitestRunning: 4,
+        } as CockpitTerminalInfo,
+      ],
+    });
+    const chip = screen.getByText("science").parentElement;
+    expect(chip?.className).toContain("session-activity-vitest");
+    expect(chip?.textContent).toContain("4");
+  });
+
+  it("shows no vitest chip when vitestRunning is 0/undefined", () => {
+    renderView({
+      cockpitTerminals: [
+        {
+          ...cockpitTerminals[0],
+          state: "running",
+          vitestRunning: 0,
+        } as CockpitTerminalInfo,
+        { ...cockpitTerminals[1] } as CockpitTerminalInfo,
+      ],
+    });
+    expect(screen.queryByText("science")).toBeNull();
+  });
+
   it("overlays an error badge at the top-right for a row that hit the usage limit", () => {
     renderView({
       cockpitTerminals: [

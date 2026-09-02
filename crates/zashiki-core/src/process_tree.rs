@@ -119,6 +119,8 @@ pub struct ProcessMaps {
     pub pid_to_sid: HashMap<i64, String>,
     /// ppid -> list of child pids (in order of appearance).
     pub children_of: HashMap<i64, Vec<i64>>,
+    /// pids of running vitest processes (classified by `is_vitest`).
+    pub vitest_pids: HashSet<i64>,
 }
 
 impl ProcessMaps {
@@ -130,10 +132,37 @@ impl ProcessMaps {
     }
 }
 
+/// Whether a ps `args` string is a running vitest *runner* process — the test-runner binary or its
+/// entry module, not a worker thread and not a mere mention. A bare `vitest` counts only as the
+/// command (the first token, e.g. a global install running `vitest run`); otherwise a token must be
+/// a path whose basename is the vitest binary/entry (`…/.bin/vitest`, `…/vitest.mjs`). This rejects a
+/// word argument (`rg vitest`), a config path (`vitest.config.ts`), and an editor/grep opening a file
+/// inside the vitest package (`nvim …/node_modules/vitest/dist/index.js`). Pool workers run under a
+/// generic `tinypool` entry indistinguishable from other uses, so they are not counted; the runner
+/// process is the durable per-invocation signal (one per concurrent `vitest run`).
+pub fn is_vitest(args: &str) -> bool {
+    let mut tokens = args.split_whitespace();
+    if let Some(first) = tokens.next() {
+        if first == "vitest" || is_vitest_path(first) {
+            return true;
+        }
+    }
+    tokens.any(is_vitest_path)
+}
+
+fn is_vitest_path(token: &str) -> bool {
+    if !token.contains('/') {
+        return false;
+    }
+    let base = token.rsplit('/').next().unwrap_or(token);
+    base == "vitest" || base == "vitest.mjs"
+}
+
 /// Build the sid map and the parent-child map from a ps snapshot (non-claude processes are not added to the sid map).
 pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
     let mut pid_to_sid = HashMap::new();
     let mut children_of: HashMap<i64, Vec<i64>> = HashMap::new();
+    let mut vitest_pids = HashSet::new();
     for e in entries {
         // case-insensitive match of `claude` in args
         if e.args.to_lowercase().contains("claude") {
@@ -141,35 +170,60 @@ pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
                 pid_to_sid.insert(e.pid, sid);
             }
         }
+        if is_vitest(&e.args) {
+            vitest_pids.insert(e.pid);
+        }
         children_of.entry(e.ppid).or_default().push(e.pid);
     }
     ProcessMaps {
         pid_to_sid,
         children_of,
+        vitest_pids,
     }
 }
 
-/// BFS the process tree and return the sid of the first claude found (None if absent).
+/// BFS iterator over the pids in the subtree rooted at `start` (inclusive), each yielded once.
 /// `visited` guards against anomalous ps data (cycles).
-pub fn find_sid_in_tree(start_pid: i64, maps: &ProcessMaps) -> Option<String> {
-    let mut queue: VecDeque<i64> = VecDeque::new();
-    queue.push_back(start_pid);
-    let mut visited: HashSet<i64> = HashSet::new();
-    while let Some(pid) = queue.pop_front() {
-        if visited.contains(&pid) {
-            continue;
-        }
-        visited.insert(pid);
-        if let Some(sid) = maps.pid_to_sid.get(&pid) {
-            return Some(sid.clone());
-        }
-        if let Some(kids) = maps.children_of.get(&pid) {
-            for &child in kids {
-                queue.push_back(child);
+struct Subtree<'a> {
+    queue: VecDeque<i64>,
+    visited: HashSet<i64>,
+    children_of: &'a HashMap<i64, Vec<i64>>,
+}
+
+impl Iterator for Subtree<'_> {
+    type Item = i64;
+    fn next(&mut self) -> Option<i64> {
+        while let Some(pid) = self.queue.pop_front() {
+            if !self.visited.insert(pid) {
+                continue;
             }
+            if let Some(kids) = self.children_of.get(&pid) {
+                self.queue.extend(kids.iter().copied());
+            }
+            return Some(pid);
         }
+        None
     }
-    None
+}
+
+fn subtree(start: i64, maps: &ProcessMaps) -> Subtree<'_> {
+    Subtree {
+        queue: VecDeque::from([start]),
+        visited: HashSet::new(),
+        children_of: &maps.children_of,
+    }
+}
+
+/// The sid of the first claude in the subtree rooted at `start_pid` (None if absent).
+pub fn find_sid_in_tree(start_pid: i64, maps: &ProcessMaps) -> Option<String> {
+    subtree(start_pid, maps).find_map(|pid| maps.pid_to_sid.get(&pid).cloned())
+}
+
+/// The number of vitest processes in the subtree rooted at `start_pid` (inclusive).
+pub fn count_vitest_in_tree(start_pid: i64, maps: &ProcessMaps) -> u32 {
+    subtree(start_pid, maps)
+        .filter(|pid| maps.vitest_pids.contains(pid))
+        .count() as u32
 }
 
 #[cfg(test)]
@@ -315,5 +369,61 @@ mod tests {
         let entries = parse_ps_snapshot("  100  200 -zsh\n  200  100 -zsh\n");
         let maps = build_process_maps(&entries);
         assert_eq!(find_sid_in_tree(100, &maps), None);
+    }
+
+    #[test]
+    fn is_vitest_matches_the_runner_binary_and_entry() {
+        // A global install invoked directly as the command.
+        assert!(is_vitest("vitest run"));
+        assert!(is_vitest("node /repo/node_modules/.bin/vitest run"));
+        assert!(is_vitest("node /repo/node_modules/vitest/vitest.mjs"));
+    }
+
+    #[test]
+    fn is_vitest_ignores_mere_mentions_and_package_file_reads() {
+        assert!(!is_vitest("nvim vitest.config.ts"));
+        assert!(!is_vitest("rg vitest"));
+        // An editor/grep opening a file inside the vitest package is not a running runner.
+        assert!(!is_vitest("nvim /repo/node_modules/vitest/dist/index.js"));
+        assert!(!is_vitest("rg foo /repo/node_modules/vitest/dist"));
+        // Pool workers run under a generic tinypool entry, not the vitest binary.
+        assert!(!is_vitest(
+            "node /repo/node_modules/tinypool/dist/entry/process.js"
+        ));
+        assert!(!is_vitest(""));
+    }
+
+    /// A session's subtree with two concurrent vitest runners under claude (e.g. `pnpm -r` fanning
+    /// out per package) counts both; the shell above and a git child are not vitest.
+    #[test]
+    fn count_vitest_walks_the_session_subtree() {
+        let maps = build_process_maps(&parse_ps_snapshot(
+            "  100    1 -zsh\n  \
+             200  100 claude --session-id 0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f\n  \
+             300  200 node /repo/packages/a/node_modules/.bin/vitest run\n  \
+             310  300 git rev-parse HEAD\n  \
+             320  200 node /repo/packages/b/node_modules/vitest/vitest.mjs run\n",
+        ));
+        assert_eq!(count_vitest_in_tree(100, &maps), 2);
+    }
+
+    #[test]
+    fn count_vitest_is_zero_for_an_idle_subtree() {
+        let maps = build_process_maps(&parse_ps_snapshot(
+            "  100    1 -zsh\n  200  100 nvim vitest.config.ts\n",
+        ));
+        assert_eq!(count_vitest_in_tree(100, &maps), 0);
+    }
+
+    /// vitest in a sibling subtree (another session) is not attributed to this pane's subtree.
+    #[test]
+    fn count_vitest_excludes_other_subtrees() {
+        let maps = build_process_maps(&parse_ps_snapshot(
+            "  100    1 -zsh\n  \
+             200    1 -zsh\n  \
+             210  200 node /repo/node_modules/.bin/vitest run\n",
+        ));
+        assert_eq!(count_vitest_in_tree(100, &maps), 0);
+        assert_eq!(count_vitest_in_tree(200, &maps), 1);
     }
 }
