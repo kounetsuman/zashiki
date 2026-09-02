@@ -1691,6 +1691,12 @@ textarea {
   min-width: 0;
 }
 
+/* A reading that has gone unrefreshed (window rolled over, or no reading within the freshness window):
+   dimmed so a possibly-behind value is not read as current. */
+.account-usage-stale {
+  opacity: 0.45;
+}
+
 .account-usage-value {
   position: relative;
   display: inline-block;

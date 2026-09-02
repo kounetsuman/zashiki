@@ -19,6 +19,10 @@ pub struct UsageLimit {
 /// Account usage limits Claude Code exposes to its statusLine (5-hour session window and weekly). These
 /// are global to the Claude account; the hub reconciles the per-session readings into one and delivers
 /// it via `state.sync`'s `account_limits`. Each window is absent until the bridge has reported it.
+///
+/// `captured_at` (epoch ms) is when the hub last received a statusLine reading, refreshed even when the
+/// reconciled value is unchanged, so the footer can flag a value that has gone unrefreshed as stale. It
+/// is stamped by the hub, not the statusLine payload, so it is absent on a freshly parsed reading.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageLimits {
@@ -26,6 +30,8 @@ pub struct UsageLimits {
     pub five_hour: Option<UsageLimit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub week: Option<UsageLimit>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captured_at: Option<u64>,
 }
 
 /// A colored band of a status-footer indicator: whether it paints and the value at or above which it
@@ -954,9 +960,10 @@ mod tests {
                     used_percent: 61,
                     resets_at: None,
                 }),
+                captured_at: Some(1_700_010_050_000),
             }),
         };
-        let json = r#"{"t":"state.sync","cockpitTerminals":[],"orgs":[],"orgColors":{},"orgAliases":{},"accountLimits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61}}}"#;
+        let json = r#"{"t":"state.sync","cockpitTerminals":[],"orgs":[],"orgColors":{},"orgAliases":{},"accountLimits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61},"capturedAt":1700010050000}}"#;
         assert_eq!(to_json(&msg), json);
         assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }

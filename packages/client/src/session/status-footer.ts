@@ -198,6 +198,31 @@ export function fmtResetClock(
   return `${clockPart(ms, locale, timeZone, "weekday")} ${time}`;
 }
 
+/** How long a reading may go unrefreshed before the footer treats it as possibly stale (ms). */
+export const USAGE_STALE_AFTER_MS = 90_000;
+
+/** Freshness of one usage cell; drives whether the footer dims the value and drops its countdown. */
+export type UsageFreshness = "live" | "stale" | "expired";
+
+/**
+ * How current a usage cell's reading is — it only advances when a hook-registered Claude Code session
+ * takes a turn, so it can lag reality (usage spent in the web app, or a terminal left idle). `expired`
+ * drops the now-meaningless countdown; `stale` dims a possibly-behind value. `capturedAt` is the
+ * reading's receipt time; an absent cell is `live` (it renders a dash).
+ */
+export function usageFreshness(
+  limit: UsageLimit | undefined,
+  capturedAt: number | undefined,
+  now: number,
+): UsageFreshness {
+  if (limit === undefined) return "live";
+  if (limit.resetsAt !== undefined && now >= limit.resetsAt) return "expired";
+  if (capturedAt !== undefined && now - capturedAt > USAGE_STALE_AFTER_MS) {
+    return "stale";
+  }
+  return "live";
+}
+
 /** Whether a limit has reached an enabled band's value — the gate for painting crit and raising the near-limit warning. */
 export function usageBandReached(
   limit: UsageLimit | undefined,

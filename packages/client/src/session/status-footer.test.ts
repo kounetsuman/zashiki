@@ -13,8 +13,10 @@ import {
   nextUsageTimeMode,
   saveUsageTimeMode,
   tokenSeverity,
+  USAGE_STALE_AFTER_MS,
   usageBandReached,
   usageDisplayMs,
+  usageFreshness,
   usageRemainingPercent,
   usageSeverity,
   WEEK_WINDOW_MS,
@@ -49,6 +51,61 @@ describe("fmtDuration", () => {
 
   it("clamps negatives to zero", () => {
     expect(fmtDuration(-1_000)).toBe("0s");
+  });
+});
+
+describe("usageFreshness", () => {
+  const now = 10_000_000;
+
+  it("is live for a recently-captured reading within its window", () => {
+    expect(
+      usageFreshness({ usedPercent: 40, resetsAt: now + 60_000 }, now, now),
+    ).toBe("live");
+  });
+
+  it("is expired once the window's reset time has passed", () => {
+    expect(usageFreshness({ usedPercent: 40, resetsAt: now }, now, now)).toBe(
+      "expired",
+    );
+    expect(
+      usageFreshness({ usedPercent: 40, resetsAt: now - 1 }, now, now),
+    ).toBe("expired");
+  });
+
+  it("is stale when no reading has arrived within the freshness window", () => {
+    const capturedAt = now - USAGE_STALE_AFTER_MS - 1;
+    expect(
+      usageFreshness(
+        { usedPercent: 40, resetsAt: now + 60_000 },
+        capturedAt,
+        now,
+      ),
+    ).toBe("stale");
+  });
+
+  it("prefers expired over stale when both apply", () => {
+    const capturedAt = now - USAGE_STALE_AFTER_MS - 1;
+    expect(
+      usageFreshness({ usedPercent: 40, resetsAt: now - 1 }, capturedAt, now),
+    ).toBe("expired");
+  });
+
+  it("falls back to age when a window carries no reset time", () => {
+    expect(usageFreshness({ usedPercent: 40 }, now, now)).toBe("live");
+    expect(
+      usageFreshness({ usedPercent: 40 }, now - USAGE_STALE_AFTER_MS - 1, now),
+    ).toBe("stale");
+  });
+
+  it("treats an absent cell and an unknown capture time as live", () => {
+    expect(usageFreshness(undefined, undefined, now)).toBe("live");
+    expect(
+      usageFreshness(
+        { usedPercent: 40, resetsAt: now + 60_000 },
+        undefined,
+        now,
+      ),
+    ).toBe("live");
   });
 });
 
