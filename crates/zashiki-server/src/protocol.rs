@@ -16,9 +16,9 @@ pub struct UsageLimit {
     pub resets_at: Option<u64>,
 }
 
-/// Account usage limits Claude Code exposes to its statusLine (5-hour session window and weekly).
-/// Each is absent until the bridge has reported it. `updated_at` (epoch ms this reading arrived) lets
-/// the client pick the freshest reading across sessions.
+/// Account usage limits Claude Code exposes to its statusLine (5-hour session window and weekly). These
+/// are global to the Claude account; the hub reconciles the per-session readings into one and delivers
+/// it via `state.sync`'s `account_limits`. Each window is absent until the bridge has reported it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageLimits {
@@ -26,8 +26,6 @@ pub struct UsageLimits {
     pub five_hour: Option<UsageLimit>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub week: Option<UsageLimit>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub updated_at: Option<u64>,
 }
 
 /// A colored band of a status-footer indicator: whether it paints and the value at or above which it
@@ -188,7 +186,8 @@ impl NotificationSettings {
 
 /// Session status-footer material: token totals plus the epoch-ms starting points for live elapsed.
 /// `turn` is measured from the most recent human prompt; `session` spans the whole transcript.
-/// Tokens/timestamps come from the transcript (no user setup); `limits` arrives via the statusLine bridge.
+/// Tokens/timestamps come from the transcript (no user setup). Account usage limits are global, not
+/// per session, so they ride on `state.sync`'s `account_limits` rather than here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionUsage {
@@ -196,8 +195,6 @@ pub struct SessionUsage {
     pub session_tokens: u64,
     pub turn_started_at: u64,
     pub session_started_at: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub limits: Option<UsageLimits>,
 }
 
 /// One window's snapshot distributed via state.sync.
@@ -487,6 +484,10 @@ pub enum ServerMessage {
         /// org name -> display alias. An empty map when omitted (tolerant of rolling updates).
         #[serde(default)]
         org_aliases: BTreeMap<String, String>,
+        /// Account-wide Claude Code usage, reconciled by the hub from every session's statusLine
+        /// reading into one account-global value. Absent until the bridge has reported any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        account_limits: Option<UsageLimits>,
     },
     #[serde(rename = "term.reconnect", rename_all = "camelCase")]
     TermReconnect { term_ids: Vec<String> },
@@ -706,6 +707,7 @@ mod tests {
             orgs: vec!["org1".into()],
             org_colors: BTreeMap::from([("org1".to_string(), "#7ec699".to_string())]),
             org_aliases: BTreeMap::from([("org1".to_string(), "Team One".to_string())]),
+            account_limits: None,
         };
         let json = r##"{"t":"state.sync","cockpitTerminals":[{"cockpitTerminalId":"@1","name":"repo","org":"org1","repo":"repo","state":"running","title":null,"active":true}],"orgs":["org1"],"orgColors":{"org1":"#7ec699"},"orgAliases":{"org1":"Team One"}}"##;
         assert_eq!(to_json(&msg), json);
@@ -724,6 +726,7 @@ mod tests {
                 orgs: vec![],
                 org_colors: BTreeMap::new(),
                 org_aliases: BTreeMap::new(),
+                account_limits: None,
             }
         );
     }
@@ -827,6 +830,7 @@ mod tests {
             orgs: vec![],
             org_colors: BTreeMap::new(),
             org_aliases: BTreeMap::new(),
+            account_limits: None,
         };
         let json = r#"{"t":"state.sync","cockpitTerminals":[{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running_bg_agent","title":null,"active":true,"runningSubagents":3}],"orgs":[],"orgColors":{},"orgAliases":{}}"#;
         assert_eq!(to_json(&msg), json);
@@ -901,45 +905,30 @@ mod tests {
     }
 
     #[test]
-    fn session_info_serializes_usage_with_limits() {
-        let info = CockpitTerminalInfo {
-            cockpit_terminal_id: "@1".into(),
-            name: "repo".into(),
-            org: "o".into(),
-            repo: "repo".into(),
-            state: "running".into(),
-            title: None,
-            sid: None,
-            active: true,
-            running_subagents: None,
-            shells_running: None,
-            limited: false,
-            menu_open: false,
-            usage: Some(SessionUsage {
-                turn_tokens: 1200,
-                session_tokens: 3_400_000,
-                turn_started_at: 1_700_000_000_000,
-                session_started_at: 1_699_999_000_000,
-                limits: Some(UsageLimits {
-                    five_hour: Some(UsageLimit {
-                        used_percent: 42,
-                        resets_at: Some(1_700_010_000_000),
-                    }),
-                    week: Some(UsageLimit {
-                        used_percent: 61,
-                        resets_at: None,
-                    }),
-                    updated_at: Some(1_700_009_000_000),
+    fn state_sync_serializes_account_limits() {
+        let msg = ServerMessage::StateSync {
+            cockpit_terminals: vec![],
+            orgs: vec![],
+            org_colors: BTreeMap::new(),
+            org_aliases: BTreeMap::new(),
+            account_limits: Some(UsageLimits {
+                five_hour: Some(UsageLimit {
+                    used_percent: 42,
+                    resets_at: Some(1_700_010_000_000),
+                }),
+                week: Some(UsageLimit {
+                    used_percent: 61,
+                    resets_at: None,
                 }),
             }),
         };
-        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"usage":{"turnTokens":1200,"sessionTokens":3400000,"turnStartedAt":1700000000000,"sessionStartedAt":1699999000000,"limits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61},"updatedAt":1700009000000}}}"#;
-        assert_eq!(to_json(&info), json);
-        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
+        let json = r#"{"t":"state.sync","cockpitTerminals":[],"orgs":[],"orgColors":{},"orgAliases":{},"accountLimits":{"fiveHour":{"usedPercent":42,"resetsAt":1700010000000},"week":{"usedPercent":61}}}"#;
+        assert_eq!(to_json(&msg), json);
+        assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
     }
 
     #[test]
-    fn session_info_usage_omits_limits_when_absent() {
+    fn session_info_serializes_transcript_usage() {
         let info = CockpitTerminalInfo {
             cockpit_terminal_id: "@1".into(),
             name: "repo".into(),
@@ -958,7 +947,6 @@ mod tests {
                 session_tokens: 500,
                 turn_started_at: 10,
                 session_started_at: 10,
-                limits: None,
             }),
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"turnStartedAt":10,"sessionStartedAt":10}}"#;

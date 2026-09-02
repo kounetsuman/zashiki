@@ -50,21 +50,4 @@ describe("SessionStatusFooter", () => {
     const footer = container.querySelector(".session-status") as HTMLElement;
     expect(footer.style.borderTopColor).toBe("");
   });
-
-  it("never renders account-wide rate-limit cells, even when the bridge reports them", () => {
-    render(
-      <SessionStatusFooter
-        usage={{
-          ...base,
-          limits: {
-            fiveHour: { usedPercent: 92 },
-            week: { usedPercent: 61 },
-          },
-        }}
-      />,
-    );
-    expect(screen.queryByText("speed")).toBeNull();
-    expect(screen.queryByText("92%")).toBeNull();
-    expect(screen.queryByText("61%")).toBeNull();
-  });
 });

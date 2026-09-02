@@ -29,7 +29,7 @@ pub(crate) async fn handle_client_message(
         ClientMessage::StateRefresh => {
             let snapshot = request_refresh(services).await;
             let reply = snapshot
-                .map(|s| state_sync_of(&s))
+                .map(|s| state_sync_of(&s, services.hub.account_limits()))
                 .unwrap_or_else(|| services.hub.current_state_sync());
             socket.send(to_text(&reply)).await.is_ok()
         }

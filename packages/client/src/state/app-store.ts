@@ -2,6 +2,7 @@ import type {
   CockpitTerminalInfo,
   Notification,
   ServerMessage,
+  UsageLimits,
 } from "@zashiki/shared";
 
 import i18n from "../i18n/index.js";
@@ -28,6 +29,11 @@ export interface AppState {
   orgColors: Record<string, string>;
   /** org name -> display alias (declared alongside repos.conf). Unspecified orgs are absent and rendered by their identity. */
   orgAliases: Record<string, string>;
+  /**
+   * Account-wide Claude Code usage, reconciled by the server into one account-global reading and
+   * delivered via state.sync. Null until the statusLine bridge has reported any.
+   */
+  accountLimits: UsageLimits | null;
   /** org name -> free-form Markdown note. Absent orgs have no note. Delivered via notes.sync. */
   orgNotes: Record<string, string>;
   /** The app-wide Memo buffer. Server text arrives via memo.sync; local edits set it dirty. */
@@ -145,6 +151,7 @@ const INITIAL_STATE: AppState = {
   orgs: [],
   orgColors: {},
   orgAliases: {},
+  accountLimits: null,
   orgNotes: {},
   memo: EMPTY_MEMO,
   notifications: [],
@@ -239,6 +246,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           orgs: m.orgs,
           orgColors: m.orgColors,
           orgAliases: m.orgAliases,
+          accountLimits: m.accountLimits ?? null,
           selectedCockpitTerminalId: added,
           focusNonce: state.focusNonce + 1,
           resizeNonce: state.resizeNonce + 1,
@@ -251,6 +259,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
           orgs: m.orgs,
           orgColors: m.orgColors,
           orgAliases: m.orgAliases,
+          accountLimits: m.accountLimits ?? null,
           sessionToasts,
         });
       }

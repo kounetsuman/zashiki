@@ -11,7 +11,6 @@ import {
   fmtWeekResetCountdown,
   loadUsageTimeMode,
   nextUsageTimeMode,
-  pickAccountLimits,
   saveUsageTimeMode,
   tokenSeverity,
   usageBandReached,
@@ -64,7 +63,7 @@ describe("durationSeverity", () => {
 describe("fmtResetCountdown", () => {
   it("renders at minute resolution with zero-padded minutes past an hour", () => {
     expect(fmtResetCountdown(23 * 60_000)).toBe("23m");
-    expect(fmtResetCountdown((60 + 3) * 60_000)).toBe("1h03m");
+    expect(fmtResetCountdown((60 + 3) * 60_000)).toBe("1h 03m");
   });
 
   it("shows a floor marker under a minute and clamps negatives", () => {
@@ -79,12 +78,12 @@ describe("fmtWeekResetCountdown", () => {
       fmtWeekResetCountdown(
         6 * 86_400_000 + 8 * 3_600_000 + 2 * 60_000 + 3_000,
       ),
-    ).toBe("6d08h02m03s");
-    expect(fmtWeekResetCountdown(9_000)).toBe("0d00h00m09s");
+    ).toBe("6d 08h 02m 03s");
+    expect(fmtWeekResetCountdown(9_000)).toBe("0d 00h 00m 09s");
   });
 
   it("clamps negatives to zero", () => {
-    expect(fmtWeekResetCountdown(-5_000)).toBe("0d00h00m00s");
+    expect(fmtWeekResetCountdown(-5_000)).toBe("0d 00h 00m 00s");
   });
 });
 
@@ -199,66 +198,6 @@ describe("usageRemainingPercent", () => {
     expect(usageRemainingPercent(91)).toBe(9);
     expect(usageRemainingPercent(0)).toBe(100);
     expect(usageRemainingPercent(120)).toBe(0);
-  });
-});
-
-describe("pickAccountLimits", () => {
-  it("returns null when no session carries limits", () => {
-    expect(pickAccountLimits([])).toBeNull();
-    expect(pickAccountLimits([{ usage: null }, { usage: {} }])).toBeNull();
-  });
-
-  it("collapses to the freshest reading per limit, not the highest usedPercent", () => {
-    const picked = pickAccountLimits([
-      {
-        usage: {
-          limits: {
-            fiveHour: { usedPercent: 55, resetsAt: 200 },
-            week: { usedPercent: 99, resetsAt: 900 },
-            updatedAt: 1_000,
-          },
-        },
-      },
-      {
-        usage: {
-          limits: {
-            fiveHour: { usedPercent: 3, resetsAt: 300 },
-            week: { usedPercent: 1, resetsAt: 950 },
-            updatedAt: 2_000,
-          },
-        },
-      },
-    ]);
-    expect(picked).toEqual({
-      fiveHour: { usedPercent: 3, resetsAt: 300 },
-      week: { usedPercent: 1, resetsAt: 950 },
-    });
-  });
-
-  it("falls back per limit to the freshest reading that carries it", () => {
-    const picked = pickAccountLimits([
-      {
-        usage: {
-          limits: {
-            fiveHour: { usedPercent: 40, resetsAt: 200 },
-            week: { usedPercent: 70, resetsAt: 900 },
-            updatedAt: 1_000,
-          },
-        },
-      },
-      {
-        usage: {
-          limits: {
-            fiveHour: { usedPercent: 5, resetsAt: 300 },
-            updatedAt: 2_000,
-          },
-        },
-      },
-    ]);
-    expect(picked).toEqual({
-      fiveHour: { usedPercent: 5, resetsAt: 300 },
-      week: { usedPercent: 70, resetsAt: 900 },
-    });
   });
 });
 

@@ -1621,26 +1621,6 @@ textarea {
   font: inherit;
 }
 
-.account-usage-mode-tag {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 12px;
-  height: 12px;
-  padding: 0 2px;
-  border: 1px solid #3a3d42;
-  border-radius: 3px;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
-  color: #8b9098;
-}
-
-.account-usage-mode:hover .account-usage-mode-tag {
-  border-color: #6b7078;
-  color: #d0d3d6;
-}
-
 .account-usage-cell {
   display: inline-flex;
   flex-direction: column;

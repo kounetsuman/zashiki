@@ -106,8 +106,8 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
 }
 
 /// `POST /api/hooks/statusline`. Receives Claude Code's statusLine payload (which carries
-/// `rate_limits`, unavailable from the transcript) and records the account usage limits per sid so
-/// the session footer can show them. Confluence, not replacement: never fails Claude Code.
+/// `rate_limits`, unavailable from the transcript) and folds the account usage limits into the single
+/// account-global reading the footer shows. Confluence, not replacement: never fails Claude Code.
 pub(crate) async fn hooks_statusline(
     State(state): State<AppState>,
     body: axum::body::Bytes,
@@ -120,8 +120,8 @@ pub(crate) async fn hooks_statusline(
         Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid json"),
     };
     let matched = match crate::hooks::parse_statusline_limits(&json) {
-        Some((sid, limits)) => {
-            control.hub.publish_rate_limits(&sid, limits, now_ms());
+        Some((_sid, limits)) => {
+            control.hub.publish_rate_limits(limits);
             true
         }
         None => false,

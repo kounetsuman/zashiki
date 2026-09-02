@@ -120,7 +120,7 @@ describe("cockpitTerminalInfoSchema", () => {
     ).toBe(false);
   });
   // Wire parity with the Rust server's CockpitTerminalInfo.usage (crates/zashiki-server/src/protocol.rs).
-  it("accepts the usage footer material with account limits", () => {
+  it("accepts the transcript-derived usage footer material", () => {
     const info = {
       cockpitTerminalId: "@1",
       name: "repo",
@@ -134,11 +134,6 @@ describe("cockpitTerminalInfoSchema", () => {
         sessionTokens: 3400000,
         turnStartedAt: 1700000000000,
         sessionStartedAt: 1699999000000,
-        limits: {
-          fiveHour: { usedPercent: 42, resetsAt: 1700010000000 },
-          week: { usedPercent: 61 },
-          updatedAt: 1700009000000,
-        },
       },
     };
     expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
@@ -259,6 +254,19 @@ describe("serverMessageSchema", () => {
         orgs: ["acme", "globex", "initech"],
         orgColors: {},
         orgAliases: {},
+      },
+    ],
+    [
+      {
+        t: "state.sync",
+        cockpitTerminals: [],
+        orgs: [],
+        orgColors: {},
+        orgAliases: {},
+        accountLimits: {
+          fiveHour: { usedPercent: 42, resetsAt: 1700010000000 },
+          week: { usedPercent: 61 },
+        },
       },
     ],
     [

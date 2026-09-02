@@ -31,8 +31,8 @@ function defaultStorage(): StoragePart | null {
 
 export interface AccountUsageFooterProps {
   /**
-   * Account-wide usage limits aggregated from the cockpit terminals (pre-corrected by
-   * clampFiveHourWhenLimited); null until the statusLine bridge reports any.
+   * The server-reconciled account-wide usage reading (pre-corrected by clampFiveHourWhenLimited);
+   * null until the statusLine bridge reports any.
    */
   limits: UsageLimits | null;
   /** Whether the account-usage bridge is opted in. When off, only the (clickable) icon is shown. */
@@ -51,7 +51,7 @@ const DASH = "–";
  * Claude Code account usage — the current 5-hour session and the current week — pinned to the left of
  * the global status-bar, independent of the active tab. While opted out, only the gauge icon shows,
  * clickable to open the opt-in modal. While opted in, clicking the gauge flips every cell between the
- * remaining (`−`) and elapsed (`+`) time; each cell's meter tracks that time as a fraction of the
+ * remaining and elapsed time; each cell's meter tracks that time as a fraction of the
  * window, so the bar fills in elapsed mode and drains in remaining mode.
  */
 export function AccountUsageFooter({
@@ -88,6 +88,11 @@ export function AccountUsageFooter({
       return next;
     });
 
+  const percentTimeKey =
+    mode === "elapsed"
+      ? "footer.status.percentElapsed"
+      : "footer.status.percentRemaining";
+
   const cell = (
     limit: UsageLimit | undefined,
     label: string,
@@ -106,7 +111,7 @@ export function AccountUsageFooter({
       limit === undefined
         ? DASH
         : displayMs !== undefined
-          ? t("footer.status.percentReset", {
+          ? t(percentTimeKey, {
               percent: limit.usedPercent,
               time: fmtCountdown(displayMs),
             })
@@ -115,7 +120,7 @@ export function AccountUsageFooter({
       displayMs !== undefined
         ? (displayMs / windowMs) * 100
         : (limit?.usedPercent ?? 0);
-    const widest = t("footer.status.percentReset", {
+    const widest = t(percentTimeKey, {
       percent: 100,
       time: fmtCountdown(windowMs),
     });
@@ -177,9 +182,6 @@ export function AccountUsageFooter({
       >
         <span className="material-symbols-outlined ss-icon" aria-hidden="true">
           speed
-        </span>
-        <span className="account-usage-mode-tag" aria-hidden="true">
-          {mode === "elapsed" ? "+" : "−"}
         </span>
       </button>
       {cell(
