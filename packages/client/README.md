@@ -35,6 +35,7 @@ Overlays — Notification Toast, Modal
 - **Claude Session** (`sid`) — the transient Claude Code run inside a Cockpit Terminal.
 - **Viewer** — read-only file viewer; zashiki is a vibe-coding-only cockpit, so there is no plan to grow it into an editor.
 - **Memo** — the single opt-in scratchpad editor, pinned to the front of the Cockpit Tabs when enabled in Settings. It is the one deliberate exception to the read-only rule (Viewer/Diff stay read-only); Cmd-S saves it to `<repos.conf dir>/memo.md`, which the server broadcasts (`memo.sync`) so every client stays in sync. An unsaved edit shows a dirty dot on the tab.
+- **Pinned tab** — any tab can be pinned from its right-click menu. Pinned tabs render in a fixed strip at the left that never scrolls, so they stay visible while the remaining tabs scroll horizontally. The Memo tab is pinned implicitly (front-most, no pin toggle). The canonical rules live in `src/tabs/tab-model.test.ts`.
 - **Organization** (`org`) — a Cockpit Terminal belongs to one; the list is grouped by it.
 
 ## Running (development)

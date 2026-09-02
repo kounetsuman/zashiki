@@ -12,7 +12,9 @@
     "duplicateSession": "Duplicate session",
     "cannotCopySessionId": "claude is not running, so there is no session ID to copy",
     "copySessionId": "Copy Claude Code session ID",
-    "moveToTrash": "Move to Trash"
+    "moveToTrash": "Move to Trash",
+    "pinTab": "Pin",
+    "unpinTab": "Unpin"
   },
   "boot": {
     "tokenMissing": "No token found. Reopen from the URL with <code>?token=…</code> shown when the server started.",
@@ -98,7 +100,8 @@
     "ariaLabel": "Open tabs",
     "editTitleLabel": "Edit tab title",
     "closeTab": "Close the {{label}} tab",
-    "closeTabTitle": "Close tab (the session keeps running)"
+    "closeTabTitle": "Close tab (the session keeps running)",
+    "unpinTab": "Unpin the {{label}} tab"
   },
   "notification": {
     "unread": "Unread",

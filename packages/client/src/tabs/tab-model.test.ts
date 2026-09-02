@@ -7,24 +7,31 @@ import {
   closeTab,
   EMPTY_TABS,
   hasTab,
+  isPinned,
   keyFor,
   MEMO_TAB,
   MEMO_TAB_KEY,
   moveTab,
   openTab,
+  pinTab,
   pruneSessions,
   setMemoVisible,
   type Tab,
   type TabsState,
   tabKey,
+  unpinTab,
 } from "./tab-model.js";
 
 const s = (id: string): Tab => ({ kind: "session", id });
 const e = (id: string): Tab => ({ kind: "viewer", id });
 
-/** Small helper that builds a state from a tabs array and the active key. */
-function state(tabs: Tab[], activeKey: string | null): TabsState {
-  return { tabs, activeKey };
+/** Small helper that builds a state from a tabs array, the active key, and pinned keys. */
+function state(
+  tabs: Tab[],
+  activeKey: string | null,
+  pinned: string[] = [],
+): TabsState {
+  return { tabs, activeKey, pinned: new Set(pinned) };
 }
 
 describe("keyFor / tabKey", () => {
@@ -104,7 +111,11 @@ describe("closeTab", () => {
 
   it("closing the only tab makes active null", () => {
     const base = state([s("@1")], "session:@1");
-    expect(closeTab(base, "session:@1")).toEqual({ tabs: [], activeKey: null });
+    expect(closeTab(base, "session:@1")).toEqual({
+      tabs: [],
+      activeKey: null,
+      pinned: new Set(),
+    });
   });
 
   it("closing a non-active tab leaves active unchanged", () => {
@@ -158,7 +169,11 @@ describe("pruneSessions", () => {
 
   it("makes active null when everything is gone", () => {
     const base = state([s("@1"), s("@2")], "session:@1");
-    expect(pruneSessions(base, [])).toEqual({ tabs: [], activeKey: null });
+    expect(pruneSessions(base, [])).toEqual({
+      tabs: [],
+      activeKey: null,
+      pinned: new Set(),
+    });
   });
 
   it("returns the same reference when nothing changed", () => {
@@ -281,5 +296,76 @@ describe("moveTab", () => {
   it("an unknown from/to is a no-op (returns the same reference)", () => {
     expect(moveTab(base, "session:@9", "session:@2")).toBe(base);
     expect(moveTab(base, "session:@2", "session:@9")).toBe(base);
+  });
+
+  it("keeps pinned tabs in front when a drop would place an unpinned tab before them", () => {
+    const base = state([s("@1"), s("@2"), s("@3")], "session:@2", [
+      "session:@1",
+    ]);
+    const r = moveTab(base, "session:@3", "session:@1");
+    expect(r.tabs).toEqual([s("@1"), s("@3"), s("@2")]);
+  });
+});
+
+describe("pinTab / unpinTab", () => {
+  it("pins a tab to the end of the pinned group, in front of unpinned tabs", () => {
+    const base = state([s("@1"), s("@2"), s("@3")], "session:@2");
+    const r = pinTab(base, "session:@3");
+    expect(r.tabs).toEqual([s("@3"), s("@1"), s("@2")]);
+    expect(isPinned(r, "session:@3")).toBe(true);
+    expect(r.activeKey).toBe("session:@2");
+  });
+
+  it("appends a second pin after the first (pinned group keeps insertion order)", () => {
+    let r = pinTab(
+      state([s("@1"), s("@2"), s("@3")], "session:@1"),
+      "session:@3",
+    );
+    r = pinTab(r, "session:@2");
+    expect(r.tabs).toEqual([s("@3"), s("@2"), s("@1")]);
+  });
+
+  it("keeps the Memo tab ahead of user-pinned tabs", () => {
+    const base = state([MEMO_TAB, s("@1"), s("@2")], "session:@1");
+    const r = pinTab(base, "session:@2");
+    expect(r.tabs).toEqual([MEMO_TAB, s("@2"), s("@1")]);
+  });
+
+  it("unpinning moves a tab to the front of the unpinned group", () => {
+    const base = state([s("@1"), s("@2"), s("@3")], "session:@1", [
+      "session:@1",
+      "session:@2",
+    ]);
+    const r = unpinTab(base, "session:@1");
+    expect(r.tabs).toEqual([s("@2"), s("@1"), s("@3")]);
+    expect(isPinned(r, "session:@1")).toBe(false);
+  });
+
+  it("the Memo tab is pinned implicitly and cannot be re-pinned (same reference)", () => {
+    const base = state([MEMO_TAB, s("@1")], "session:@1");
+    expect(isPinned(base, MEMO_TAB_KEY)).toBe(true);
+    expect(pinTab(base, MEMO_TAB_KEY)).toBe(base);
+    expect(unpinTab(base, MEMO_TAB_KEY)).toBe(base);
+  });
+
+  it("pinning an unknown or already-pinned key is a no-op (same reference)", () => {
+    const base = state([s("@1")], "session:@1", ["session:@1"]);
+    expect(pinTab(base, "session:@9")).toBe(base);
+    expect(pinTab(base, "session:@1")).toBe(base);
+    expect(unpinTab(base, "session:@2")).toBe(base);
+  });
+
+  it("closing a pinned tab drops it from the pinned set", () => {
+    const base = state([s("@1"), s("@2")], "session:@2", ["session:@1"]);
+    const r = closeTab(base, "session:@1");
+    expect(r.tabs).toEqual([s("@2")]);
+    expect(r.pinned.has("session:@1")).toBe(false);
+  });
+
+  it("pruning a pinned session tab drops it from the pinned set", () => {
+    const base = state([s("@1"), s("@2")], "session:@2", ["session:@1"]);
+    const r = pruneSessions(base, ["@2"]);
+    expect(r.tabs).toEqual([s("@2")]);
+    expect(r.pinned.has("session:@1")).toBe(false);
   });
 });

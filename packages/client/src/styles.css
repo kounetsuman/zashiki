@@ -725,13 +725,37 @@ textarea {
   align-items: stretch;
   flex: none;
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
   background: #171717;
   border-bottom: 2px solid #333;
+}
+
+/* Pinned tabs sit in a fixed strip that never scrolls; the rest scroll horizontally beside it. */
+.tab-strip {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+/* Capped so the pinned strip can never swallow the whole bar; scrolls within itself past the cap
+ * (its own scroll is independent, so the unpinned tabs scrolling never hides a pinned tab). */
+.tab-strip-pinned {
+  flex: 0 1 auto;
+  max-width: 66%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-right: 1px solid #333;
+}
+
+.tab-strip-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
   scrollbar-width: none;
 }
 
-.tab-bar::-webkit-scrollbar {
+.tab-strip-pinned::-webkit-scrollbar,
+.tab-strip-scroll::-webkit-scrollbar {
   display: none;
 }
 
@@ -842,6 +866,39 @@ textarea {
 .tab-close:hover {
   background: #444;
   color: #fff;
+}
+
+/* Pin indicator on a user-pinned tab (leading, before the org dot). Click to unpin. */
+.tab-pin {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #7f9cc9;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tab-pin:hover {
+  background: #444;
+  color: #fff;
+}
+
+.tab-pin .material-symbols-outlined {
+  font-size: 14px;
+  line-height: 1;
+  font-variation-settings:
+    "FILL" 1,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 20;
 }
 
 /* VSCode-style unsaved dot, shown where the close button would be on the pinned Memo tab. */

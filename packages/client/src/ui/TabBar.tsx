@@ -6,7 +6,7 @@ import {
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
-import { type Tab, tabKey } from "../tabs/tab-model.js";
+import { MEMO_TAB_KEY, type Tab, tabKey } from "../tabs/tab-model.js";
 import { TabContextMenu } from "./TabContextMenu.js";
 import { TabItem } from "./TabItem.js";
 import { tabLabel } from "./tab-bar-model.js";
@@ -28,10 +28,16 @@ export interface TabBarProps {
   orgAliases?: Record<string, string>;
   /** Whether the pinned Memo tab has unsaved edits (drives its dirty dot). */
   memoDirty?: boolean;
+  /** Keys of user-pinned tabs. Pinned tabs render in the fixed left strip. The Memo tab is always pinned. */
+  pinnedKeys?: ReadonlySet<string>;
   onActivate(key: string): void;
   onClose(key: string): void;
   /** Closes every open tab. The "close all" menu item is hidden when unspecified. */
   onCloseAll?(): void;
+  /** Pins a tab into the fixed left strip. The pin menu item is hidden when unspecified. */
+  onPin?(key: string): void;
+  /** Unpins a tab. Unpin is disabled when unspecified. */
+  onUnpin?(key: string): void;
   /** Commits a double-click rename on a session tab. Commits with cockpitTerminalId + name. Rename is disabled when unspecified. */
   onRename?(cockpitTerminalId: string, name: string, title: string): void;
   /** Reordering via drag & drop. Moves fromKey to the position of toKey. Reordering is disabled when unspecified. */
@@ -71,9 +77,12 @@ export function TabBar({
   orgColors = {},
   orgAliases = {},
   memoDirty = false,
+  pinnedKeys,
   onActivate,
   onClose,
   onCloseAll,
+  onPin,
+  onUnpin,
   onRename,
   onReorder,
   onDuplicate,
@@ -94,9 +103,11 @@ export function TabBar({
     (onCopyFilePath !== undefined ? 1 : 0) +
     (onCopyFileRelativePath !== undefined ? 1 : 0) +
     (onRenameFile !== undefined ? 1 : 0);
+  const pinMenuItems = onPin !== undefined || onUnpin !== undefined ? 1 : 0;
   const contextMenu = useTabContextMenu(
     1 +
       (onCloseAll !== undefined ? 1 : 0) +
+      pinMenuItems +
       Math.max(sessionMenuItems, viewerMenuItems),
   );
 
@@ -120,6 +131,57 @@ export function TabBar({
       ? resolveOrgColor(activeSession.org, orgColors)
       : undefined;
 
+  const isPinnedKey = (key: string): boolean =>
+    key === MEMO_TAB_KEY || pinnedKeys?.has(key) === true;
+
+  const renderTab = (tab: Tab) => {
+    const key = tabKey(tab);
+    const { label, title } = tabLabel(
+      tab,
+      cockpitTerminals,
+      conversationTitles,
+    );
+    const session =
+      tab.kind === "session"
+        ? cockpitTerminals.find((x) => x.cockpitTerminalId === tab.id)
+        : undefined;
+    const orgColor =
+      session !== undefined
+        ? resolveOrgColor(session.org, orgColors)
+        : undefined;
+    const orgName =
+      session !== undefined
+        ? resolveOrgName(session.org, orgAliases)
+        : undefined;
+    const isMemo = tab.kind === "memo";
+    return (
+      <TabItem
+        key={key}
+        rootRef={key === activeKey ? scrollActiveIntoView : undefined}
+        tab={tab}
+        active={key === activeKey}
+        label={label}
+        title={title}
+        session={session}
+        orgColor={orgColor}
+        orgName={orgName}
+        reorderable={onReorder !== undefined}
+        closeable={!isMemo}
+        pinned={!isMemo && isPinnedKey(key)}
+        onUnpin={onUnpin}
+        dirty={isMemo && memoDirty}
+        rename={rename}
+        drag={drag}
+        onActivate={onActivate}
+        onClose={onClose}
+        onContextMenu={(e) => contextMenu.openMenu(tab, e, isPinnedKey(key))}
+      />
+    );
+  };
+
+  const pinnedTabs = tabs.filter((tab) => isPinnedKey(tabKey(tab)));
+  const scrollTabs = tabs.filter((tab) => !isPinnedKey(tabKey(tab)));
+
   return (
     <div
       className="tab-bar"
@@ -131,48 +193,14 @@ export function TabBar({
           : undefined
       }
     >
-      {tabs.map((tab) => {
-        const key = tabKey(tab);
-        const { label, title } = tabLabel(
-          tab,
-          cockpitTerminals,
-          conversationTitles,
-        );
-        const session =
-          tab.kind === "session"
-            ? cockpitTerminals.find((x) => x.cockpitTerminalId === tab.id)
-            : undefined;
-        const orgColor =
-          session !== undefined
-            ? resolveOrgColor(session.org, orgColors)
-            : undefined;
-        const orgName =
-          session !== undefined
-            ? resolveOrgName(session.org, orgAliases)
-            : undefined;
-        const isMemo = tab.kind === "memo";
-        return (
-          <TabItem
-            key={key}
-            rootRef={key === activeKey ? scrollActiveIntoView : undefined}
-            tab={tab}
-            active={key === activeKey}
-            label={label}
-            title={title}
-            session={session}
-            orgColor={orgColor}
-            orgName={orgName}
-            reorderable={onReorder !== undefined}
-            closeable={!isMemo}
-            dirty={isMemo && memoDirty}
-            rename={rename}
-            drag={drag}
-            onActivate={onActivate}
-            onClose={onClose}
-            onContextMenu={(e) => contextMenu.openMenu(tab, e)}
-          />
-        );
-      })}
+      {pinnedTabs.length > 0 && (
+        <div className="tab-strip tab-strip-pinned">
+          {pinnedTabs.map(renderTab)}
+        </div>
+      )}
+      <div className="tab-strip tab-strip-scroll">
+        {scrollTabs.map(renderTab)}
+      </div>
       {contextMenu.menu !== null && (
         <TabContextMenu
           menu={contextMenu.menu}
@@ -180,6 +208,8 @@ export function TabBar({
           closeMenu={contextMenu.closeMenu}
           onClose={onClose}
           onCloseAll={onCloseAll}
+          onPin={onPin}
+          onUnpin={onUnpin}
           onDuplicate={onDuplicate}
           onCopySessionId={onCopySessionId}
           onReveal={

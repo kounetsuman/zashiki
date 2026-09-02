@@ -5,6 +5,9 @@
  * (session=cockpitTerminalId, viewer=fileKey) to avoid id collisions across kinds. When the
  * active tab drops out due to being closed or removed, the nearest surviving tab in
  * the original order is chosen deterministically (even when several vanish at once).
+ *
+ * Pinned tabs are kept in front of unpinned tabs so a fixed strip can render them
+ * without scrolling. The Memo tab is implicitly pinned (front-most, non-toggleable).
  */
 
 export type TabKind = "session" | "viewer" | "diff" | "memo";
@@ -23,9 +26,18 @@ export interface TabsState {
   readonly tabs: readonly Tab[];
   /** Composite key (`kind:id`) of the active tab. null when there are no tabs. */
   readonly activeKey: string | null;
+  /**
+   * Keys of user-pinned tabs. The Memo tab is pinned implicitly (see {@link isPinned}) and is
+   * never listed here. tabs is kept partitioned so every pinned tab precedes every unpinned one.
+   */
+  readonly pinned: ReadonlySet<string>;
 }
 
-export const EMPTY_TABS: TabsState = { tabs: [], activeKey: null };
+export const EMPTY_TABS: TabsState = {
+  tabs: [],
+  activeKey: null,
+  pinned: new Set(),
+};
 
 /** Composite key that prevents id collisions across kinds. */
 export function keyFor(kind: TabKind, id: string): string {
@@ -36,9 +48,49 @@ export function tabKey(tab: Tab): string {
   return keyFor(tab.kind, tab.id);
 }
 
+/** Whether the tab is pinned: the Memo tab always is, others when the user pinned them. */
+export function isPinned(state: TabsState, key: string): boolean {
+  return key === MEMO_TAB_KEY || state.pinned.has(key);
+}
+
 function indexOfKey(tabs: readonly Tab[], key: string | null): number {
   if (key === null) return -1;
   return tabs.findIndex((t) => tabKey(t) === key);
+}
+
+/**
+ * Stable partition placing pinned tabs before unpinned ones, keeping each group's relative order.
+ * A just-pinned tab therefore lands at the pinned group's end; a just-unpinned tab at the unpinned
+ * group's front.
+ */
+function partitionByPin(
+  tabs: readonly Tab[],
+  pinned: ReadonlySet<string>,
+): Tab[] {
+  const pin: Tab[] = [];
+  const rest: Tab[] = [];
+  for (const t of tabs) {
+    (isPinnedKey(tabKey(t), pinned) ? pin : rest).push(t);
+  }
+  return [...pin, ...rest];
+}
+
+function isPinnedKey(key: string, pinned: ReadonlySet<string>): boolean {
+  return key === MEMO_TAB_KEY || pinned.has(key);
+}
+
+/** Filters the pinned set by a keep predicate; returns the same set when nothing is dropped. */
+function retainPinned(
+  pinned: ReadonlySet<string>,
+  keep: (key: string) => boolean,
+): ReadonlySet<string> {
+  let changed = false;
+  const next = new Set<string>();
+  for (const k of pinned) {
+    if (keep(k)) next.add(k);
+    else changed = true;
+  }
+  return changed ? next : pinned;
 }
 
 /** The active tab (null if none). */
@@ -78,13 +130,16 @@ function neighborKey(
   return null;
 }
 
-/** Opens a tab. If it exists, keep its order; otherwise append it. Always make it active. */
+/**
+ * Opens a tab. If it exists, keep its order; otherwise append it after the unpinned tabs
+ * (a new tab is never pinned). Always make it active.
+ */
 export function openTab(state: TabsState, tab: Tab): TabsState {
   const key = tabKey(tab);
   if (indexOfKey(state.tabs, key) !== -1) {
     return state.activeKey === key ? state : { ...state, activeKey: key };
   }
-  return { tabs: [...state.tabs, tab], activeKey: key };
+  return { ...state, tabs: [...state.tabs, tab], activeKey: key };
 }
 
 /** Makes the given tab active. A nonexistent key is a no-op (state unchanged). */
@@ -108,13 +163,18 @@ export function closeTab(state: TabsState, key: string): TabsState {
     state.activeKey === key
       ? neighborKey(state.tabs, idx, (i) => i !== idx)
       : state.activeKey;
-  return { tabs, activeKey };
+  return {
+    tabs,
+    activeKey,
+    pinned: retainPinned(state.pinned, (k) => k !== key),
+  };
 }
 
 /**
  * Removes the fromKey tab and inserts it at toKey's position (just before the drop
- * target). activeKey is identity-based, so it stays put across reordering. An
- * identical key or a nonexistent key leaves state unchanged (returns the same reference).
+ * target), then re-partitions so pinned tabs stay in front. activeKey is identity-based, so
+ * it stays put across reordering. An identical key or a nonexistent key leaves state unchanged
+ * (returns the same reference).
  */
 export function moveTab(
   state: TabsState,
@@ -130,7 +190,31 @@ export function moveTab(
   const [moved] = tabs.splice(from, 1);
   const insertAt = tabs.findIndex((t) => tabKey(t) === toKey);
   tabs.splice(insertAt, 0, moved as Tab);
-  return { ...state, tabs };
+  return { ...state, tabs: partitionByPin(tabs, state.pinned) };
+}
+
+/**
+ * Pins a tab: it joins the end of the pinned group (in front of unpinned tabs) so it survives
+ * horizontal scrolling. The Memo tab is pinned implicitly and cannot be re-pinned. A nonexistent
+ * or already-pinned key is a no-op (same reference).
+ */
+export function pinTab(state: TabsState, key: string): TabsState {
+  if (key === MEMO_TAB_KEY) return state;
+  if (indexOfKey(state.tabs, key) === -1) return state;
+  if (state.pinned.has(key)) return state;
+  const pinned = new Set(state.pinned).add(key);
+  return { ...state, pinned, tabs: partitionByPin(state.tabs, pinned) };
+}
+
+/**
+ * Unpins a tab: it moves to the front of the unpinned group. The Memo tab has no user pin to
+ * remove. An unpinned key is a no-op (same reference).
+ */
+export function unpinTab(state: TabsState, key: string): TabsState {
+  if (!state.pinned.has(key)) return state;
+  const pinned = new Set(state.pinned);
+  pinned.delete(key);
+  return { ...state, pinned, tabs: partitionByPin(state.tabs, pinned) };
 }
 
 /**
@@ -152,7 +236,12 @@ export function pruneSessions(
   const activeKey = activeSurvives
     ? state.activeKey
     : neighborKey(state.tabs, activeIdx, (i) => survives(state.tabs[i] as Tab));
-  return { tabs, activeKey };
+  const liveKeys = new Set(tabs.map(tabKey));
+  return {
+    tabs,
+    activeKey,
+    pinned: retainPinned(state.pinned, (k) => liveKeys.has(k)),
+  };
 }
 
 /**
@@ -166,6 +255,7 @@ export function setMemoVisible(state: TabsState, visible: boolean): TabsState {
   if (visible) {
     if (idx !== -1) return state;
     return {
+      ...state,
       tabs: [MEMO_TAB, ...state.tabs],
       activeKey: state.activeKey ?? MEMO_TAB_KEY,
     };
@@ -176,5 +266,5 @@ export function setMemoVisible(state: TabsState, visible: boolean): TabsState {
     state.activeKey === MEMO_TAB_KEY
       ? neighborKey(state.tabs, idx, (i) => i !== idx)
       : state.activeKey;
-  return { tabs, activeKey };
+  return { ...state, tabs, activeKey };
 }

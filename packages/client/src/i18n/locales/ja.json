@@ -12,7 +12,9 @@
     "duplicateSession": "セッションを複製",
     "cannotCopySessionId": "claude 未起動のためコピーするセッションIDがありません",
     "copySessionId": "Claude Code セッションIDをコピー",
-    "moveToTrash": "ゴミ箱に移動"
+    "moveToTrash": "ゴミ箱に移動",
+    "pinTab": "ピン留め",
+    "unpinTab": "ピン留めを解除"
   },
   "boot": {
     "tokenMissing": "トークンがありません。サーバ起動時に表示される<code>?token=…</code> 付き URL から開き直してください。",
@@ -98,7 +100,8 @@
     "ariaLabel": "開いているタブ",
     "editTitleLabel": "タブのタイトルを編集",
     "closeTab": "{{label}} のタブを閉じる",
-    "closeTabTitle": "タブを閉じる（セッションは終了しません）"
+    "closeTabTitle": "タブを閉じる（セッションは終了しません）",
+    "unpinTab": "{{label}} のタブのピン留めを解除"
   },
   "notification": {
     "unread": "未読",

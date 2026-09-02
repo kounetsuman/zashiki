@@ -19,6 +19,10 @@ export interface TabItemProps {
   reorderable: boolean;
   /** Whether the tab shows a close button. false pins the tab (the Memo tab). */
   closeable?: boolean;
+  /** Whether to show the pin indicator (a user-pinned tab; never set for the implicitly-pinned Memo tab). */
+  pinned?: boolean;
+  /** Unpins the tab when its pin indicator is clicked. */
+  onUnpin?(key: string): void;
   /**
    * Shows the unsaved-changes dot (in place of the close button for a non-closeable tab). The dot's
    * slot is always laid out so the tab keeps a constant width; only its visibility follows this flag.
@@ -45,6 +49,8 @@ export function TabItem({
   orgName,
   reorderable,
   closeable = true,
+  pinned = false,
+  onUnpin,
   dirty = false,
   rename,
   drag,
@@ -88,6 +94,22 @@ export function TabItem({
       onDragEnd={draggable ? drag.endDrag : undefined}
       onContextMenu={onContextMenu}
     >
+      {pinned && (
+        <button
+          type="button"
+          className="tab-pin"
+          aria-label={t("tabBar.unpinTab", { label })}
+          title={t("common.unpinTab")}
+          onClick={(e) => {
+            e.stopPropagation();
+            onUnpin?.(key);
+          }}
+        >
+          <span className="material-symbols-outlined" aria-hidden="true">
+            keep
+          </span>
+        </button>
+      )}
       {session !== undefined && (
         <span
           className="tab-org-dot"

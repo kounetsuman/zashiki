@@ -327,6 +327,8 @@ export function App({
     activateTabByKey,
     closeTab,
     reorderTabByKey,
+    pinTabByKey,
+    unpinTabByKey,
     openViewerTab,
     openDiffTab,
   } = useAppTabs(
@@ -1042,9 +1044,12 @@ export function App({
             memoDirty={memoDirty(memo)}
             orgColors={orgColors}
             orgAliases={orgAliases}
+            pinnedKeys={tabsState.pinned}
             onActivate={activateTabByKey}
             onClose={closeTabByKey}
             onCloseAll={closeAllTabs}
+            onPin={pinTabByKey}
+            onUnpin={unpinTabByKey}
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
             onDuplicate={duplicateSession}

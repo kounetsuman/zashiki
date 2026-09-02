@@ -11,10 +11,14 @@ export interface TabContextMenuState {
     cockpitTerminalId: string | null;
     /** File the tab is showing, for a viewer tab; null for a session tab. */
     viewer: { repoPath: string; relPath: string } | null;
+    /** Whether the tab exposes a pin toggle (every tab except the implicitly-pinned Memo tab). */
+    pinnable: boolean;
+    /** Current pin state, deciding whether the toggle reads "Pin" or "Unpin". */
+    pinned: boolean;
     x: number;
     y: number;
   } | null;
-  openMenu(tab: Tab, e: React.MouseEvent): void;
+  openMenu(tab: Tab, e: React.MouseEvent, pinned: boolean): void;
   closeMenu(): void;
 }
 
@@ -34,13 +38,15 @@ export function useTabContextMenu(itemCount: number): TabContextMenuState {
     return () => window.removeEventListener("keydown", onKey);
   }, [menu]);
 
-  const openMenu = (tab: Tab, e: React.MouseEvent): void => {
+  const openMenu = (tab: Tab, e: React.MouseEvent, pinned: boolean): void => {
     e.preventDefault();
     const { x, y } = clampMenuPos(e.clientX, e.clientY, itemCount);
     setMenu({
       key: tabKey(tab),
       cockpitTerminalId: tab.kind === "session" ? tab.id : null,
       viewer: tab.kind === "viewer" ? splitViewerKey(tab.id) : null,
+      pinnable: tab.kind !== "memo",
+      pinned,
       x,
       y,
     });
