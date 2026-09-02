@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-02
+
+### Added
+
+- The Memo's search panel is replaced by a compact, VSCode-style find/replace widget pinned to the top-right (#335)
+
+### Fixed
+
+- The session list no longer shows the idle check (✓) for a running turn when a todo list is pinned below the spinner (#337)
+- The session-list title now resolves for image-started sessions instead of staying at the org name (#339)
+- A Cockpit Terminal no longer shows the no-Claude icon while its Claude session is still alive — the session id is recovered from `ps` when the pane-pid trace misses it (#341)
+
 ## [0.20.0] - 2026-08-31
 
 ### Fixed
