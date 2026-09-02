@@ -380,8 +380,8 @@ impl StatusPoller {
             }
         }
 
-        // Walk the picked pane's process subtree (the session's tree) for running vitest processes.
-        // Absent when zero, mirroring the other Background Activity counts.
+        // Counted from the pane pid so claude's Bash-spawned test runs (deeper in the subtree) are
+        // included. Absent when zero, mirroring the other Background Activity counts.
         let vitest_running = match count_vitest_in_tree(pid, maps) {
             0 => None,
             n => Some(n),
@@ -607,13 +607,14 @@ mod tests {
         assert_eq!(snap.sessions[0].shells_running, None);
     }
 
-    /// A vitest run under the session's claude is counted; an idle session omits the field (None).
+    /// Two concurrent vitest runs under the session's claude are counted; an idle session omits the
+    /// field (None).
     #[tokio::test]
     async fn vitest_run_in_subtree_sets_vitest_running() {
         let ps = format!(
             "  100    1 -zsh\n  300 100 claude --session-id {SID}\n  \
-             400 300 node /repo/node_modules/.bin/vitest run\n  \
-             410 400 node /repo/node_modules/vitest/dist/worker.js\n"
+             400 300 node /repo/packages/a/node_modules/.bin/vitest run\n  \
+             410 300 node /repo/packages/b/node_modules/vitest/vitest.mjs run\n"
         );
         let ports = FakePorts {
             windows: vec![window(

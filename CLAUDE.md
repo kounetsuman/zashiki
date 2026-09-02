@@ -46,7 +46,7 @@ Use the canonical domain terms below. Some code still carries legacy names (`win
 - **Area** — a layout region. **View** — the concept drawn into an Area; its contents vary per View. *"Panel" is retired* — name new surfaces `… View`.
 - **Cockpit Terminal** — the durable main-area unit (was `window` / `session`). Not "session": Ctrl+C ends the run but the terminal survives. `Terminal` alone collides with the xterm layer, so it is qualified.
 - **Claude Session** (`sid`) — the transient Claude run *inside* a Cockpit Terminal. "session" is scoped to `sid` only.
-- **Viewer** — read-only file viewer (vibe-coding cockpit; no editor planned). **Memo** — the single, opt-in scratchpad editor pinned to the front of the Cockpit Tabs; the *only* editable surface in the cockpit (the deliberate exception to Viewer/Diff being read-only), persisted to `<repos.conf dir>/memo.md`. **Organization** (`org`) — a Cockpit Terminal belongs to one. **Background Activity** — umbrella for `runningSubagents` / `shellsRunning` / `limited`.
+- **Viewer** — read-only file viewer (vibe-coding cockpit; no editor planned). **Memo** — the single, opt-in scratchpad editor pinned to the front of the Cockpit Tabs; the *only* editable surface in the cockpit (the deliberate exception to Viewer/Diff being read-only), persisted to `<repos.conf dir>/memo.md`. **Organization** (`org`) — a Cockpit Terminal belongs to one. **Background Activity** — umbrella for `runningSubagents` / `shellsRunning` / `vitestRunning` / `limited`.
 - **term / termId** — the xterm.js render slot; kept, and distinct from Cockpit Terminal.
 
 **Casing**
