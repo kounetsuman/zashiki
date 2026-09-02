@@ -32,7 +32,6 @@ pub const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 /// Number of trailing stderr lines to retain for diagnostics when the server dies.
 const STDERR_TAIL_LINES: usize = 20;
 
-
 /// Progress log for the startup sequence. If the accident of stderr not being retained on crash
 /// recurs, this lets the terminal side trace which stage took how many seconds.
 pub struct StepLog {
@@ -310,7 +309,10 @@ fn reclaim_stale_server(port: u16, healthz_body: &str, log: &StepLog) -> bool {
 }
 
 pub fn ensure_server(cfg: &Config, log: &StepLog) -> Result<ServerHandle, String> {
-    log.log(&format!("healthz 確認: http://127.0.0.1:{}/healthz", cfg.port));
+    log.log(&format!(
+        "healthz 確認: http://127.0.0.1:{}/healthz",
+        cfg.port
+    ));
     if let Ok((status, body)) = http_get(cfg.port, "/healthz", &[]) {
         if is_healthy_response(status, &body) {
             match classify_reuse(cfg!(debug_assertions), EXPECTED_GIT_SHA, &body) {
@@ -348,7 +350,10 @@ pub fn ensure_server(cfg: &Config, log: &StepLog) -> Result<ServerHandle, String
     // determines the UI display. To avoid a silent 404 (blank screen), record whether serving is
     // available in the diagnostic log (following the progress-log policy).
     if cfg.client_dist.is_dir() {
-        log.log(&format!("client dist を配信させる: {}", cfg.client_dist.display()));
+        log.log(&format!(
+            "client dist を配信させる: {}",
+            cfg.client_dist.display()
+        ));
     } else {
         log.log(&format!(
             "client dist 未配信: {} が無い（dev は Vite:5173 が配信。配布 .app でこれが出るなら UI が 404 になる）",
@@ -395,7 +400,9 @@ pub fn ensure_server(cfg: &Config, log: &StepLog) -> Result<ServerHandle, String
                     Ok(ServerHandle::External)
                 }
                 _ => {
-                    log.log("spawn した server が healthz 応答 → 所有（終了時に graceful shutdown）");
+                    log.log(
+                        "spawn した server が healthz 応答 → 所有（終了時に graceful shutdown）",
+                    );
                     Ok(ServerHandle::Owned(child))
                 }
             };
@@ -513,7 +520,11 @@ pub fn start(cfg: &Config, base_url: &str) -> Result<(String, Option<Child>), St
     // missing, produce an error with remediation (the pages error screen) rather than a blank screen.
     if ui_served_from_server(base_url, cfg.port) && !serves_client_ui(cfg.port) {
         cleanup_owned(&mut owned);
-        return Err(client_ui_unavailable_message(cfg.port, rode_along, &cfg.client_dist));
+        return Err(client_ui_unavailable_message(
+            cfg.port,
+            rode_along,
+            &cfg.client_dist,
+        ));
     }
 
     log.log(&format!("起動完了: {base_url}/?token=<{}桁>", token.len()));
@@ -624,10 +635,8 @@ mod tests {
 
     #[test]
     fn parse_activity_reads_camelcase_counts() {
-        let a = parse_activity(
-            r#"{"activeSessions":2,"runningSubagents":1,"backgroundShells":3}"#,
-        )
-        .unwrap();
+        let a = parse_activity(r#"{"activeSessions":2,"runningSubagents":1,"backgroundShells":3}"#)
+            .unwrap();
         assert_eq!(a.active_sessions, 2);
         assert_eq!(a.running_subagents, 1);
         assert_eq!(a.background_shells, 3);
@@ -636,10 +645,8 @@ mod tests {
 
     #[test]
     fn parse_activity_all_zero_is_not_busy() {
-        let a = parse_activity(
-            r#"{"activeSessions":0,"runningSubagents":0,"backgroundShells":0}"#,
-        )
-        .unwrap();
+        let a = parse_activity(r#"{"activeSessions":0,"runningSubagents":0,"backgroundShells":0}"#)
+            .unwrap();
         assert!(!a.is_busy());
     }
 
@@ -652,11 +659,21 @@ mod tests {
     #[test]
     fn activity_summary_lists_only_nonzero_parts_with_plurals() {
         assert_eq!(
-            Activity { active_sessions: 2, running_subagents: 1, background_shells: 0 }.summary(),
+            Activity {
+                active_sessions: 2,
+                running_subagents: 1,
+                background_shells: 0
+            }
+            .summary(),
             "2 sessions, 1 background agent still running"
         );
         assert_eq!(
-            Activity { active_sessions: 0, running_subagents: 0, background_shells: 1 }.summary(),
+            Activity {
+                active_sessions: 0,
+                running_subagents: 0,
+                background_shells: 1
+            }
+            .summary(),
             "1 background shell still running"
         );
     }
@@ -807,7 +824,10 @@ mod tests {
     fn ensure_server_は即死する子プロセスのstderr末尾をエラーに含める() {
         let dir = tempfile::tempdir().unwrap();
         let entry = dir.path().join("boom");
-        write_exec(&entry, "#!/bin/sh\necho 'BOOM: 依存が壊れています' >&2\nexit 1\n");
+        write_exec(
+            &entry,
+            "#!/bin/sh\necho 'BOOM: 依存が壊れています' >&2\nexit 1\n",
+        );
         let cfg = Config {
             port: closed_port(),
             token_path: dir.path().join("token"),
@@ -836,7 +856,9 @@ mod tests {
         let env = spawn_env(&cfg);
         assert!(env.iter().any(|(k, v)| *k == "ZK_PORT" && v == "8790"));
         assert!(env.iter().any(|(k, _)| *k == "ZK_TOKEN_FILE"));
-        assert!(env.iter().any(|(k, v)| *k == "ZK_APP_VERSION" && v == "1.2.3"));
+        assert!(env
+            .iter()
+            .any(|(k, v)| *k == "ZK_APP_VERSION" && v == "1.2.3"));
     }
 
     #[test]
@@ -884,7 +906,9 @@ mod tests {
             hooks_dir: dir.path().join("no-such-hooks"),
             app_version: String::new(),
         };
-        assert!(!spawn_env(&cfg_missing).iter().any(|(k, _)| *k == "ZK_HOOKS_DIR"));
+        assert!(!spawn_env(&cfg_missing)
+            .iter()
+            .any(|(k, _)| *k == "ZK_HOOKS_DIR"));
 
         let hooks = dir.path().join("hooks");
         std::fs::create_dir(&hooks).unwrap();
@@ -917,12 +941,21 @@ mod tests {
     fn client_ui_unavailable_message_は原因別に対処を出し分ける() {
         let dist = Path::new("/Applications/Zashiki.app/Contents/Resources/client-dist");
         let rode = client_ui_unavailable_message(8790, true, dist);
-        assert!(rode.contains("相乗り") || rode.contains("既に稼働中"), "msg = {rode}");
+        assert!(
+            rode.contains("相乗り") || rode.contains("既に稼働中"),
+            "msg = {rode}"
+        );
         assert!(rode.contains("tauri dev"), "対処を含むべき: msg = {rode}");
-        assert!(rode.contains("lsof"), "占有確認手順を含むべき: msg = {rode}");
+        assert!(
+            rode.contains("lsof"),
+            "占有確認手順を含むべき: msg = {rode}"
+        );
 
         let broken = client_ui_unavailable_message(8790, false, dist);
-        assert!(broken.contains("build:app"), "再ビルド手順を含むべき: msg = {broken}");
+        assert!(
+            broken.contains("build:app"),
+            "再ビルド手順を含むべき: msg = {broken}"
+        );
         assert!(
             broken.contains("client-dist"),
             "期待パスを含むべき: msg = {broken}"

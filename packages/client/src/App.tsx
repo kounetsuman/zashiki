@@ -103,6 +103,7 @@ import { useCrashReport } from "./ui/useCrashReport.js";
 import { useDiff } from "./ui/useDiff.js";
 import { useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
+import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
@@ -472,6 +473,10 @@ export function App({
   );
   const selfUpdate = useSelfUpdate(control, flashCopyToast, t, memoSaver.flush);
   useBeforeUnloadGuard(memoEnabled && memoDirty(memo));
+  useQuitGuard(
+    () => memoEnabled && memoDirty(store.getSnapshot().memo),
+    memoSaver.flush,
+  );
 
   // Delete (dismiss) notifications from the read tab; shared by the ACTIVITY and NOTIFICATION views.
   const deleteNotifications = useCallback(
