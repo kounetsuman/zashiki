@@ -226,6 +226,11 @@ pub struct CockpitTerminalInfo {
     /// or unfetched (older servers).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shells_running: Option<u32>,
+    /// Number of running vitest processes in this session's process subtree — the sustained signal for
+    /// which worktree's tests are eating the CPU. Orthogonal to the primary state (meaningful in any
+    /// state). Absent when zero or unfetched (older servers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vitest_running: Option<u32>,
     /// Flag indicating the Claude Code usage limit has been reached. Detected from the limit banner
     /// text at the bottom of the screen. Orthogonal to the primary state (meaningful in any state).
     /// For backward compatibility with older servers, false is not sent (not sent = treated as false).
@@ -700,6 +705,7 @@ mod tests {
                 active: true,
                 running_subagents: None,
                 shells_running: None,
+                vitest_running: None,
                 limited: false,
                 menu_open: false,
                 usage: None,
@@ -823,6 +829,7 @@ mod tests {
                 active: true,
                 running_subagents: Some(3),
                 shells_running: None,
+                vitest_running: None,
                 limited: false,
                 menu_open: false,
                 usage: None,
@@ -850,12 +857,37 @@ mod tests {
             active: false,
             running_subagents: None,
             shells_running: Some(2),
+            vitest_running: None,
             limited: false,
             menu_open: false,
             usage: None,
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
         assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_info_serializes_vitest_running_when_present() {
+        let info = CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "running".into(),
+            title: None,
+            sid: None,
+            active: true,
+            running_subagents: None,
+            shells_running: None,
+            vitest_running: Some(4),
+            limited: false,
+            menu_open: false,
+            usage: None,
+        };
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"vitestRunning":4}"#;
+        assert_eq!(to_json(&info), json);
+        // Backward compatibility with older servers: a missing vitestRunning collapses to None.
         assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
     }
 
@@ -872,6 +904,7 @@ mod tests {
             active: false,
             running_subagents: None,
             shells_running: None,
+            vitest_running: None,
             limited: false,
             menu_open: false,
             usage: None,
@@ -895,6 +928,7 @@ mod tests {
             active: true,
             running_subagents: None,
             shells_running: None,
+            vitest_running: None,
             limited: false,
             menu_open: false,
             usage: None,
@@ -940,6 +974,7 @@ mod tests {
             active: false,
             running_subagents: None,
             shells_running: None,
+            vitest_running: None,
             limited: false,
             menu_open: false,
             usage: Some(SessionUsage {

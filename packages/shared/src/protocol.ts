@@ -138,6 +138,12 @@ export const cockpitTerminalInfoSchema = z.object({
    */
   shellsRunning: z.number().int().min(0).optional(),
   /**
+   * Number of running vitest processes in this session's process subtree — the sustained signal for
+   * which worktree's tests are eating the CPU. Orthogonal to the main state (meaningful in any state).
+   * optional for old-server compatibility (absent means zero or unfetched).
+   */
+  vitestRunning: z.number().int().min(0).optional(),
+  /**
    * Whether Claude Code's usage limit has been reached. Detected via the limit
    * banner text at the bottom of the screen (isLimitReached in shared/session-state.ts).
    * Orthogonal to the main state (meaningful in any state). optional for old-server compatibility (not sent is treated as false).

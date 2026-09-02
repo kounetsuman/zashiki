@@ -82,6 +82,7 @@
     "openHint": "ダブルクリックで開く（Enter でも可）",
     "subagentCountTitle": "実行中サブエージェント総数（入れ子含む）",
     "shellCountTitle": "常駐バックグラウンドシェル数",
+    "vitestCountTitle": "このセッションで実行中の vitest プロセス数",
     "closeRow": "{{name}} を閉じる",
     "closeRowConfirm": "{{name}} を閉じる（確定）",
     "cancelClose": "クローズを取消",
