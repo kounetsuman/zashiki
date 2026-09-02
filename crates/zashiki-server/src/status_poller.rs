@@ -393,7 +393,6 @@ impl StatusPoller {
                 session_tokens: d.session_tokens,
                 turn_started_at: d.turn_started_at_ms,
                 session_started_at: d.session_started_at_ms,
-                limits: None,
             }),
             _ => None,
         };

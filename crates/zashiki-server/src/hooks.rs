@@ -40,11 +40,7 @@ pub fn parse_statusline_limits(json: &Value) -> Option<(String, UsageLimits)> {
     }
     Some((
         sid.to_string(),
-        UsageLimits {
-            five_hour,
-            week,
-            updated_at: None,
-        },
+        UsageLimits { five_hour, week },
     ))
 }
 

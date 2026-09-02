@@ -44,20 +44,20 @@ export function durationSeverity(
   return t.crit.enabled && ms >= t.crit.value ? "crit" : "";
 }
 
-/** Reset countdown, minute resolution: `23m`, `1h23m`. Under a minute reads `<1m`. Negative clamps to 0. */
+/** Reset countdown, minute resolution: `23m`, `1h 03m`. Under a minute reads `<1m`. Negative clamps to 0. */
 export function fmtResetCountdown(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1_000));
   const h = Math.floor(total / 3_600);
   const m = Math.floor((total % 3_600) / 60);
-  if (h > 0) return `${h}h${String(m).padStart(2, "0")}m`;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
   if (m > 0) return `${m}m`;
   return "<1m";
 }
 
 /**
- * Reset countdown at full day-to-second precision, non-leading units zero-padded: `6d08h02m03s`.
- * The weekly window spans days, so its cell always carries days and live-ticking seconds rather than
- * the coarse minute resolution of {@link fmtResetCountdown}. Negative clamps to 0.
+ * Reset countdown at full day-to-second precision, non-leading units zero-padded and space-separated:
+ * `6d 08h 02m 03s`. The weekly window spans days, so its cell always carries days and live-ticking
+ * seconds rather than the coarse minute resolution of {@link fmtResetCountdown}. Negative clamps to 0.
  */
 export function fmtWeekResetCountdown(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1_000));
@@ -66,7 +66,7 @@ export function fmtWeekResetCountdown(ms: number): string {
   const m = Math.floor((total % 3_600) / 60);
   const s = total % 60;
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d}d${pad(h)}h${pad(m)}m${pad(s)}s`;
+  return `${d}d ${pad(h)}h ${pad(m)}m ${pad(s)}s`;
 }
 
 /** Which time an account-usage cell shows: how long until the window resets, or how long since it opened. */
@@ -138,38 +138,6 @@ export function tokenSeverity(
   if (t.crit.enabled && n >= t.crit.value) return "crit";
   if (t.warn.enabled && n >= t.warn.value) return "warn";
   return "";
-}
-
-/**
- * Account usage is global to the Claude account, yet each session reports it independently via the
- * statusLine bridge. Collapse the cockpit terminals to one reading per limit by taking the freshest
- * `updatedAt` seen, so the reading from whichever session most recently did something wins. Returns
- * null when no session carries limits yet, so the global footer indicator stays hidden.
- */
-export function pickAccountLimits(
-  cockpitTerminals: readonly {
-    usage?: { limits?: UsageLimits } | null | undefined;
-  }[],
-): UsageLimits | null {
-  let fiveHour: UsageLimit | undefined;
-  let fiveHourAt = Number.NEGATIVE_INFINITY;
-  let week: UsageLimit | undefined;
-  let weekAt = Number.NEGATIVE_INFINITY;
-  for (const session of cockpitTerminals) {
-    const limits = session.usage?.limits;
-    if (!limits) continue;
-    const at = limits.updatedAt ?? 0;
-    if (limits.fiveHour && at >= fiveHourAt) {
-      fiveHour = limits.fiveHour;
-      fiveHourAt = at;
-    }
-    if (limits.week && at >= weekAt) {
-      week = limits.week;
-      weekAt = at;
-    }
-  }
-  if (!fiveHour && !week) return null;
-  return { fiveHour, week };
 }
 
 /**

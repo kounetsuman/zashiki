@@ -101,8 +101,8 @@ describe("AccountUsageFooter", () => {
     );
     const sizers = container.querySelectorAll(".account-usage-value-sizer");
     expect([...sizers].map((s) => s.textContent)).toEqual([
-      "100% · 5h00m",
-      "100% · 7d00h00m00s",
+      "100% · 残り5h 00m",
+      "100% · 残り7d 00h 00m 00s",
     ]);
   });
 
@@ -141,18 +141,14 @@ describe("AccountUsageFooter", () => {
     );
     const toggle = screen.getByRole("button");
     const value = () => container.querySelector(".ss-val")?.textContent ?? "";
-    const tag = () =>
-      toggle.querySelector(".account-usage-mode-tag")?.textContent;
 
-    // ~1h30m remaining of the 5-hour window.
-    expect(value()).toContain("1h");
-    expect(tag()).toBe("−");
+    // ~1h30m remaining of the 5-hour window, prefixed with 残り.
+    expect(value()).toContain("残り1h");
 
     fireEvent.click(toggle);
 
-    // Elapsed = 5h window − ~1h30m ≈ 3h30m.
-    expect(value()).toContain("3h");
-    expect(tag()).toBe("+");
+    // Elapsed = 5h window − ~1h30m ≈ 3h30m, prefixed with 経過.
+    expect(value()).toContain("経過3h");
     expect(storage.read()).toBe("elapsed");
   });
 
@@ -166,7 +162,7 @@ describe("AccountUsageFooter", () => {
       />,
     );
     expect(
-      container.querySelector(".account-usage-mode-tag")?.textContent,
-    ).toBe("+");
+      container.querySelector(".account-usage-value-sizer")?.textContent,
+    ).toContain("経過");
   });
 });

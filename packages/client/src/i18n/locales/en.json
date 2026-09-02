@@ -224,7 +224,8 @@
     "status": {
       "turn": "turn",
       "session": "session",
-      "percentReset": "{{percent}}% · {{time}}",
+      "percentRemaining": "{{percent}}% · {{time}} left",
+      "percentElapsed": "{{percent}}% · {{time}} elapsed",
       "tokensTitle": "Tokens the API touched — this turn / this session",
       "elapsedTitle": "Elapsed — this turn / this session"
     },

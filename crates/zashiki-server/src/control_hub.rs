@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
 use tokio::sync::broadcast;
@@ -7,7 +7,7 @@ use crate::account_status::AccountStatus;
 use crate::claude_settings::RegistrationStatus;
 use crate::control::ConfigView;
 use crate::hooks::{notify_delivery, MacNotification, MacNotify, NotifyEvent, NotifyMode};
-use crate::protocol::{Notification, ServerMessage, CockpitTerminalInfo, UsageLimits};
+use crate::protocol::{Notification, ServerMessage, CockpitTerminalInfo, UsageLimit, UsageLimits};
 use crate::status_poller::StateSnapshot;
 
 struct HubState {
@@ -31,35 +31,51 @@ struct HubState {
     /// The createdAt of the last enqueued notification. Kept monotonically increasing so
     /// occurrence order is preserved even for bursts within the same millisecond.
     last_notification_at: u64,
-    /// Account usage limits reported by the statusLine bridge, keyed by sid. Merged into each
-    /// snapshot's matching session before broadcast (the transcript can't carry rate_limits).
-    rate_limits: HashMap<String, RateLimitEntry>,
+    /// The single account-global usage reading, reconciled from every session's statusLine reports
+    /// (see `reconcile_account_limits`). Delivered on `state.sync` as `account_limits`. None until the
+    /// bridge has reported any.
+    account_limits: Option<UsageLimits>,
 }
 
-/// A bridge-reported usage-limit reading with its arrival time (for TTL pruning).
-struct RateLimitEntry {
-    limits: UsageLimits,
-    updated_at_ms: u64,
-}
+/// Epoch-ms slack that absorbs tiny reset-time jitter between sessions reporting the same window, so
+/// only a genuine window rollover (hours/days later) counts as a newer window.
+const RESET_EPSILON_MS: u64 = 5 * 60 * 1000;
 
-/// Drop bridge readings older than this so a long-idle sid's stale percentages don't linger.
-const RATE_LIMIT_TTL_MS: u64 = 30 * 60 * 1000;
-
-/// Attaches each session's bridge-reported limits (matched by sid) onto its footer usage, stamping the
-/// reading's arrival time so the client can pick the freshest across sessions. Sessions without
-/// transcript usage yet, or without a stored reading, are left untouched.
-fn merge_rate_limits(sessions: &mut [CockpitTerminalInfo], store: &HashMap<String, RateLimitEntry>) {
-    for session in sessions.iter_mut() {
-        let Some(sid) = session.sid.as_deref() else {
-            continue;
-        };
-        if let (Some(entry), Some(usage)) = (store.get(sid), session.usage.as_mut()) {
-            usage.limits = Some(UsageLimits {
-                updated_at: Some(entry.updated_at_ms),
-                ..entry.limits
-            });
-        }
+/// Whether `incoming` is a fresher reading of one usage window than `stored`. Account usage percent is
+/// monotonic within a window and drops when the window rolls over, so with both reset times known the
+/// fresher reading is the one from the later window, or — within the same window — the strictly higher
+/// percent. This keeps a stale idle-session reading from regressing the display when its statusLine
+/// fires on a tab switch. When a reset time is missing (window undecidable) the latest reading wins, so
+/// a rollover can never leave the value stuck at a stale high percent.
+fn incoming_is_fresher(stored: UsageLimit, incoming: UsageLimit) -> bool {
+    match (stored.resets_at, incoming.resets_at) {
+        (Some(s), Some(i)) if i > s.saturating_add(RESET_EPSILON_MS) => true,
+        (Some(s), Some(i)) if s > i.saturating_add(RESET_EPSILON_MS) => false,
+        (Some(_), Some(_)) => incoming.used_percent > stored.used_percent,
+        _ => true,
     }
+}
+
+/// Merges one window's incoming reading into the stored one, keeping whichever is fresher. A missing
+/// side yields the other.
+fn merge_window(stored: Option<UsageLimit>, incoming: Option<UsageLimit>) -> Option<UsageLimit> {
+    match (stored, incoming) {
+        (Some(s), Some(i)) => Some(if incoming_is_fresher(s, i) { i } else { s }),
+        (stored, incoming) => incoming.or(stored),
+    }
+}
+
+/// Folds an incoming statusLine reading into the stored account-global reading, keeping the fresher of
+/// each window. Returns None when neither side carries any window (so the footer stays hidden until a
+/// real reading arrives).
+fn reconcile_account_limits(
+    stored: Option<UsageLimits>,
+    incoming: UsageLimits,
+) -> Option<UsageLimits> {
+    let (stored_five, stored_week) = stored.map_or((None, None), |s| (s.five_hour, s.week));
+    let five_hour = merge_window(stored_five, incoming.five_hour);
+    let week = merge_window(stored_week, incoming.week);
+    (five_hour.is_some() || week.is_some()).then_some(UsageLimits { five_hour, week })
 }
 
 /// The shared state + broadcast that all control connections refer to. When the poller
@@ -78,12 +94,16 @@ pub(crate) fn hooks_status_message(status: RegistrationStatus) -> ServerMessage 
     }
 }
 
-pub(crate) fn state_sync_of(snapshot: &StateSnapshot) -> ServerMessage {
+pub(crate) fn state_sync_of(
+    snapshot: &StateSnapshot,
+    account_limits: Option<UsageLimits>,
+) -> ServerMessage {
     ServerMessage::StateSync {
         cockpit_terminals: snapshot.sessions.clone(),
         orgs: snapshot.orgs.clone(),
         org_colors: snapshot.org_colors.clone(),
         org_aliases: snapshot.org_aliases.clone(),
+        account_limits,
     }
 }
 
@@ -133,7 +153,7 @@ impl ControlHub {
                 notes: BTreeMap::new(),
                 memo: String::new(),
                 last_notification_at: 0,
-                rate_limits: HashMap::new(),
+                account_limits: None,
                 hooks_status: RegistrationStatus::default(),
                 account_status: AccountStatus::default(),
             }),
@@ -206,7 +226,7 @@ impl ControlHub {
             ServerMessage::NotificationsSync {
                 items: state.notifications.clone(),
             },
-            state_sync_of(&state.snapshot),
+            state_sync_of(&state.snapshot, state.account_limits),
             hooks_status_message(state.hooks_status),
             ServerMessage::NotesSync {
                 notes: state.notes.clone(),
@@ -220,7 +240,14 @@ impl ControlHub {
 
     /// The state.sync for the currently held snapshot (a response guarantee for when the refresh path is unavailable).
     pub(crate) fn current_state_sync(&self) -> ServerMessage {
-        state_sync_of(&self.inner.read().unwrap().snapshot)
+        let state = self.inner.read().unwrap();
+        state_sync_of(&state.snapshot, state.account_limits)
+    }
+
+    /// The current reconciled account-global usage reading (for building a state.sync from a snapshot
+    /// obtained outside the hub, e.g. a manual refresh reply).
+    pub(crate) fn account_limits(&self) -> Option<UsageLimits> {
+        self.inner.read().unwrap().account_limits
     }
 
     /// A count of in-flight work (active sessions / running subagents / resident background shells)
@@ -245,41 +272,32 @@ impl ControlHub {
         }
     }
 
-    /// Stores the latest snapshot and broadcasts state.sync to all connections (called by the poller
-    /// driver). Bridge-reported usage limits are merged in first so a fresh poll keeps them.
-    pub fn publish_snapshot(&self, mut snapshot: StateSnapshot) {
+    /// Stores the latest snapshot and broadcasts state.sync (with the current account-global usage) to
+    /// all connections. Called by the poller driver.
+    pub fn publish_snapshot(&self, snapshot: StateSnapshot) {
         let sync = {
             let mut state = self.inner.write().unwrap();
-            merge_rate_limits(&mut snapshot.sessions, &state.rate_limits);
             state.snapshot = snapshot;
-            state_sync_of(&state.snapshot)
+            state_sync_of(&state.snapshot, state.account_limits)
         };
         let _ = self.tx.send(sync);
     }
 
-    /// Records a statusLine-bridge usage-limit reading for a sid. Re-broadcasts the current snapshot
-    /// (with the reading merged in) only when the value actually changed — the statusLine fires on
-    /// every render, so an unconditional broadcast would storm the clients.
-    pub fn publish_rate_limits(&self, sid: &str, limits: UsageLimits, now_ms: u64) {
+    /// Folds a statusLine-bridge reading into the single account-global usage reading and re-broadcasts
+    /// state.sync — but only when the reconciled value actually changed. Account usage is global, so a
+    /// stale reading from an idle session (older window or lower percent) is discarded rather than
+    /// overwriting a fresher one, keeping the footer steady across tab switches. The statusLine fires
+    /// on every render, so an unconditional broadcast would storm the clients.
+    pub fn publish_rate_limits(&self, incoming: UsageLimits) {
         let sync = {
             let mut guard = self.inner.write().unwrap();
             let state = &mut *guard;
-            state
-                .rate_limits
-                .retain(|_, e| now_ms.saturating_sub(e.updated_at_ms) < RATE_LIMIT_TTL_MS);
-            let changed = state.rate_limits.get(sid).map(|e| e.limits) != Some(limits);
-            state.rate_limits.insert(
-                sid.to_string(),
-                RateLimitEntry {
-                    limits,
-                    updated_at_ms: now_ms,
-                },
-            );
-            if !changed {
+            let reconciled = reconcile_account_limits(state.account_limits, incoming);
+            if reconciled.is_none() || state.account_limits == reconciled {
                 return;
             }
-            merge_rate_limits(&mut state.snapshot.sessions, &state.rate_limits);
-            state_sync_of(&state.snapshot)
+            state.account_limits = reconciled;
+            state_sync_of(&state.snapshot, state.account_limits)
         };
         let _ = self.tx.send(sync);
     }
@@ -693,92 +711,139 @@ mod tests {
         ));
     }
 
-    fn snapshot_with_usage(sid: &str) -> StateSnapshot {
-        let mut snap = snapshot_with("@1");
-        snap.sessions[0].sid = Some(sid.to_string());
-        snap.sessions[0].usage = Some(crate::protocol::SessionUsage {
-            turn_tokens: 1,
-            session_tokens: 2,
-            turn_started_at: 0,
-            session_started_at: 0,
-            limits: None,
-        });
-        snap
+    fn five_hour_at(used_percent: u32, resets_at: Option<u64>) -> UsageLimits {
+        UsageLimits {
+            five_hour: Some(UsageLimit {
+                used_percent,
+                resets_at,
+            }),
+            week: None,
+        }
     }
 
     fn five_hour(used_percent: u32) -> UsageLimits {
-        UsageLimits {
-            five_hour: Some(crate::protocol::UsageLimit {
-                used_percent,
-                resets_at: None,
-            }),
-            week: None,
-            updated_at: None,
-        }
+        five_hour_at(used_percent, None)
     }
 
-    fn recv_five_hour_percent(msg: ServerMessage) -> Option<u32> {
+    fn recv_account_five_hour(msg: ServerMessage) -> Option<u32> {
         match msg {
-            ServerMessage::StateSync { cockpit_terminals: sessions, .. } => Some(
-                sessions[0]
-                    .usage
-                    .as_ref()?
-                    .limits
-                    .as_ref()?
-                    .five_hour?
-                    .used_percent,
-            ),
-            _ => None,
-        }
-    }
-
-    #[tokio::test]
-    async fn publish_rate_limits_merges_into_matching_session_and_survives_next_poll() {
-        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with_usage("sid-1"));
-        let mut rx = hub.subscribe();
-
-        hub.publish_rate_limits("sid-1", five_hour(80), 1_000);
-        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(80));
-
-        // A subsequent poll (fresh transcript usage, no limits) keeps the bridge reading merged in.
-        hub.publish_snapshot(snapshot_with_usage("sid-1"));
-        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(80));
-    }
-
-    #[tokio::test]
-    async fn publish_rate_limits_stamps_reading_arrival_time_for_freshest_selection() {
-        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with_usage("sid-1"));
-        let mut rx = hub.subscribe();
-        hub.publish_rate_limits("sid-1", five_hour(80), 4_200);
-        let updated_at = match rx.recv().await.unwrap() {
-            ServerMessage::StateSync { cockpit_terminals, .. } => {
-                cockpit_terminals[0].usage.as_ref().unwrap().limits.unwrap().updated_at
+            ServerMessage::StateSync { account_limits, .. } => {
+                Some(account_limits?.five_hour?.used_percent)
             }
             _ => None,
-        };
-        assert_eq!(updated_at, Some(4_200));
+        }
+    }
+
+    #[test]
+    fn incoming_is_fresher_prefers_higher_percent_in_same_window() {
+        let base = Some(1_000_000);
+        assert!(incoming_is_fresher(
+            UsageLimit { used_percent: 50, resets_at: base },
+            UsageLimit { used_percent: 60, resets_at: base },
+        ));
+        assert!(!incoming_is_fresher(
+            UsageLimit { used_percent: 60, resets_at: base },
+            UsageLimit { used_percent: 50, resets_at: base },
+        ));
+    }
+
+    #[test]
+    fn incoming_is_fresher_takes_a_later_window_even_when_percent_drops() {
+        let now = 1_000_000;
+        // A genuine rollover (well past the jitter epsilon) resets the percent to a lower value.
+        assert!(incoming_is_fresher(
+            UsageLimit { used_percent: 95, resets_at: Some(now) },
+            UsageLimit { used_percent: 3, resets_at: Some(now + 6 * 3_600_000) },
+        ));
+        // An older window never wins, however high its percent.
+        assert!(!incoming_is_fresher(
+            UsageLimit { used_percent: 3, resets_at: Some(now + 6 * 3_600_000) },
+            UsageLimit { used_percent: 95, resets_at: Some(now) },
+        ));
+    }
+
+    #[test]
+    fn incoming_is_fresher_takes_the_latest_when_a_reset_time_is_missing() {
+        // Without a reset time the window is undecidable, so a rollover (percent drop) must still be
+        // taken — otherwise the value would stick at the stale high percent forever.
+        assert!(incoming_is_fresher(
+            UsageLimit { used_percent: 95, resets_at: None },
+            UsageLimit { used_percent: 2, resets_at: None },
+        ));
+    }
+
+    #[test]
+    fn reconcile_account_limits_is_none_when_nothing_reported() {
+        let empty = UsageLimits { five_hour: None, week: None };
+        assert_eq!(reconcile_account_limits(None, empty), None);
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_sets_account_limits_and_survives_next_poll() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+
+        hub.publish_rate_limits(five_hour(80));
+        assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(80));
+
+        // A subsequent poll carries the account-global reading unchanged (it's not per session).
+        hub.publish_snapshot(snapshot_with("@2"));
+        assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(80));
     }
 
     #[tokio::test]
     async fn publish_rate_limits_skips_rebroadcast_when_value_unchanged() {
-        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with_usage("sid-1"));
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
         let mut rx = hub.subscribe();
 
-        hub.publish_rate_limits("sid-1", five_hour(80), 1_000);
-        hub.publish_rate_limits("sid-1", five_hour(80), 2_000);
-        hub.publish_rate_limits("sid-1", five_hour(90), 3_000);
+        hub.publish_rate_limits(five_hour(80));
+        hub.publish_rate_limits(five_hour(80));
+        hub.publish_rate_limits(five_hour(90));
 
         // The unchanged reading is skipped, so the second delivery is the 90 update, not another 80.
-        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(80));
-        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), Some(90));
+        assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(80));
+        assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(90));
     }
 
     #[tokio::test]
-    async fn publish_rate_limits_leaves_non_matching_sid_untouched() {
-        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with_usage("sid-1"));
+    async fn publish_rate_limits_discards_a_stale_lower_reading_within_the_window() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
         let mut rx = hub.subscribe();
-        hub.publish_rate_limits("other-sid", five_hour(80), 1_000);
-        assert_eq!(recv_five_hour_percent(rx.recv().await.unwrap()), None);
+        let window = Some(9_000_000);
+
+        // A high reading, then a stale idle-session reading (same window, lower) that must not regress
+        // the display, then a genuinely higher one.
+        hub.publish_rate_limits(five_hour_at(90, window));
+        hub.publish_rate_limits(five_hour_at(30, window));
+        hub.publish_rate_limits(five_hour_at(95, window));
+
+        // The stale 30 is discarded (no rebroadcast), so the deliveries are 90 then 95.
+        assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(90));
+        assert_eq!(recv_account_five_hour(rx.recv().await.unwrap()), Some(95));
+    }
+
+    #[tokio::test]
+    async fn publish_rate_limits_accepts_a_weekly_rollover_to_a_lower_percent() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let mut rx = hub.subscribe();
+        let week = |used_percent, resets_at| UsageLimits {
+            five_hour: None,
+            week: Some(UsageLimit { used_percent, resets_at: Some(resets_at) }),
+        };
+        let recv_week = |msg| match msg {
+            ServerMessage::StateSync { account_limits, .. } => {
+                account_limits.and_then(|l| l.week).map(|w| w.used_percent)
+            }
+            _ => None,
+        };
+        let base = 9_000_000;
+
+        hub.publish_rate_limits(week(61, base));
+        // The weekly window rolls over (a week later): the lower percent must be taken, not stuck at 61.
+        hub.publish_rate_limits(week(2, base + 7 * 86_400_000));
+
+        assert_eq!(recv_week(rx.recv().await.unwrap()), Some(61));
+        assert_eq!(recv_week(rx.recv().await.unwrap()), Some(2));
     }
 
     #[tokio::test]

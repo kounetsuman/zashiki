@@ -59,7 +59,6 @@ import { createMemoSaver } from "./memo/memo-saver.js";
 import {
   clampFiveHourWhenLimited,
   fmtResetClock,
-  pickAccountLimits,
   usageRemainingPercent,
 } from "./session/status-footer.js";
 import type { TermAttachStatus } from "./session/terminal-session.js";
@@ -254,6 +253,7 @@ export function App({
     orgs,
     orgColors,
     orgAliases,
+    accountLimits: rawAccountLimits,
     orgNotes,
     memo,
     notifications,
@@ -292,7 +292,7 @@ export function App({
   // Account-wide Claude Code usage (null until a session reports limits), corrected by the
   // on-screen limit signal so the footer and the warning dialog read the same number.
   const accountLimits = clampFiveHourWhenLimited(
-    pickAccountLimits(cockpitTerminals),
+    rawAccountLimits,
     limitedCount > 0,
   );
   const usageWarning = useUsageLimitWarning({

@@ -224,7 +224,8 @@
     "status": {
       "turn": "ターン",
       "session": "セッション",
-      "percentReset": "{{percent}}% · {{time}}",
+      "percentRemaining": "{{percent}}% · 残り{{time}}",
+      "percentElapsed": "{{percent}}% · 経過{{time}}",
       "tokensTitle": "API が扱ったトークン — 今ターン / セッション累計",
       "elapsedTitle": "経過時間 — 今ターン / セッション累計"
     },

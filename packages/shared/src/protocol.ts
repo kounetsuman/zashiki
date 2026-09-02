@@ -80,13 +80,13 @@ export const usageLimitSchema = z.object({
 export type UsageLimit = z.infer<typeof usageLimitSchema>;
 
 /**
- * Account usage limits Claude Code exposes to its statusLine (5-hour window and weekly). `updatedAt`
- * (epoch ms this reading arrived) lets the footer pick the freshest reading across sessions.
+ * Account usage limits Claude Code exposes to its statusLine (5-hour window and weekly). These are
+ * global to the Claude account; the server reconciles the per-session readings into one and delivers
+ * it via `state.sync`'s `accountLimits`. Each window is absent until the bridge has reported it.
  */
 export const usageLimitsSchema = z.object({
   fiveHour: usageLimitSchema.optional(),
   week: usageLimitSchema.optional(),
-  updatedAt: z.number().int().optional(),
 });
 
 export type UsageLimits = z.infer<typeof usageLimitsSchema>;
@@ -94,14 +94,14 @@ export type UsageLimits = z.infer<typeof usageLimitsSchema>;
 /**
  * Session status-footer material. `turn*` counts from the most recent human prompt; `session*` spans
  * the whole transcript. `*StartedAt` are epoch ms — the client renders live elapsed as `now - start`.
- * Tokens/timestamps derive from the transcript (no user setup); `limits` arrives via the statusLine bridge.
+ * Tokens/timestamps derive from the transcript (no user setup). Account usage limits are global, not
+ * per session, so they ride on `state.sync`'s `accountLimits` rather than here.
  */
 export const sessionUsageSchema = z.object({
   turnTokens: z.number().int().min(0),
   sessionTokens: z.number().int().min(0),
   turnStartedAt: z.number().int(),
   sessionStartedAt: z.number().int(),
-  limits: usageLimitsSchema.optional(),
 });
 
 export type SessionUsage = z.infer<typeof sessionUsageSchema>;
@@ -411,6 +411,11 @@ export const stateSyncSchema = z.object({
    * Defaults to an empty map when omitted, for old-server compatibility (so state.sync is not dropped during rolling updates).
    */
   orgAliases: z.record(z.string(), z.string()).default({}),
+  /**
+   * Account-wide Claude Code usage, reconciled by the server from every session's statusLine reading
+   * into one account-global value. Absent until the bridge has reported any (and on old servers).
+   */
+  accountLimits: usageLimitsSchema.optional(),
 });
 
 export const termReconnectSchema = z.object({
