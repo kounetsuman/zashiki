@@ -11,6 +11,8 @@ export interface TabContextMenuProps {
     key: string;
     cockpitTerminalId: string | null;
     viewer: ViewerMenuFile | null;
+    pinnable: boolean;
+    pinned: boolean;
     x: number;
     y: number;
   };
@@ -18,6 +20,10 @@ export interface TabContextMenuProps {
   closeMenu(): void;
   onClose(key: string): void;
   onCloseAll?(): void;
+  /** Pins the tab so it stays in the fixed left strip. Hidden when unspecified or for the Memo tab. */
+  onPin?(key: string): void;
+  /** Unpins the tab. Hidden when unspecified or for the Memo tab. */
+  onUnpin?(key: string): void;
   onDuplicate?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
   onReveal?(file: ViewerMenuFile): void;
@@ -27,8 +33,8 @@ export interface TabContextMenuProps {
 }
 
 /**
- * Right-click menu overlay for a tab. Duplicate / copy session id render only for session tabs;
- * reveal / copy paths / rename render only for viewer (file) tabs.
+ * Right-click menu overlay for a tab. Pin/Unpin renders for any pinnable tab; duplicate / copy
+ * session id render only for session tabs; reveal / copy paths / rename render only for viewer tabs.
  */
 export function TabContextMenu({
   menu,
@@ -36,6 +42,8 @@ export function TabContextMenu({
   closeMenu,
   onClose,
   onCloseAll,
+  onPin,
+  onUnpin,
   onDuplicate,
   onCopySessionId,
   onReveal,
@@ -104,6 +112,32 @@ export function TabContextMenu({
             }}
           >
             {t("common.closeAllTabs")}
+          </button>
+        )}
+        {menu.pinnable && menu.pinned && onUnpin !== undefined && (
+          <button
+            type="button"
+            role="menuitem"
+            className="session-context-item"
+            onClick={() => {
+              onUnpin(menu.key);
+              closeMenu();
+            }}
+          >
+            {t("common.unpinTab")}
+          </button>
+        )}
+        {menu.pinnable && !menu.pinned && onPin !== undefined && (
+          <button
+            type="button"
+            role="menuitem"
+            className="session-context-item"
+            onClick={() => {
+              onPin(menu.key);
+              closeMenu();
+            }}
+          >
+            {t("common.pinTab")}
           </button>
         )}
         {cockpitTerminalId !== null && onDuplicate !== undefined && (

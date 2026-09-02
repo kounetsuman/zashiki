@@ -10,10 +10,12 @@ import {
   MEMO_TAB_KEY,
   moveTab,
   openTab,
+  pinTab,
   pruneSessions,
   setMemoVisible,
   type TabsState,
   tabKey,
+  unpinTab,
 } from "../tabs/tab-model.js";
 
 export interface AppTabs {
@@ -30,6 +32,8 @@ export interface AppTabs {
   /** Removes the tab only; the session (or viewer/diff buffer) is closed by the caller. */
   closeTab(key: string): void;
   reorderTabByKey(fromKey: string, toKey: string): void;
+  pinTabByKey(key: string): void;
+  unpinTabByKey(key: string): void;
   openViewerTab(key: string): void;
   openDiffTab(key: string): void;
 }
@@ -118,6 +122,14 @@ export function useAppTabs(
     [],
   );
 
+  const pinTabByKey = useCallback((key: string): void => {
+    setTabsState((prev) => pinTab(prev, key));
+  }, []);
+
+  const unpinTabByKey = useCallback((key: string): void => {
+    setTabsState((prev) => unpinTab(prev, key));
+  }, []);
+
   const openViewerTab = useCallback((key: string): void => {
     setTabsState((prev) => openTab(prev, { kind: "viewer", id: key }));
   }, []);
@@ -135,6 +147,8 @@ export function useAppTabs(
     activateTabByKey,
     closeTab,
     reorderTabByKey,
+    pinTabByKey,
+    unpinTabByKey,
     openViewerTab,
     openDiffTab,
   };

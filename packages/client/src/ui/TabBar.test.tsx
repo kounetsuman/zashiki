@@ -831,3 +831,99 @@ describe("TabBar", () => {
     expect(onDuplicate).toHaveBeenCalledWith(SID2);
   });
 });
+
+describe("TabBar pinning", () => {
+  const memoTab: Tab = { kind: "memo", id: "memo" };
+
+  it("offers 'Pin' for an unpinned tab and calls onPin with its key", () => {
+    const onPin = vi.fn();
+    render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        cockpitTerminals={[session]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={onPin}
+        onUnpin={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "ピン留め" }));
+    expect(onPin).toHaveBeenCalledWith(KEY);
+  });
+
+  it("offers 'Unpin' (not 'Pin') for an already-pinned tab", () => {
+    render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        cockpitTerminals={[session]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={vi.fn()}
+        onUnpin={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    expect(
+      screen.getByRole("menuitem", { name: "ピン留めを解除" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("menuitem", { name: "ピン留め" })).toBeNull();
+  });
+
+  it("renders a pinned tab in the fixed strip with a pin button that unpins on click", () => {
+    const onUnpin = vi.fn();
+    const { container } = render(
+      <TabBar
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        cockpitTerminals={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={vi.fn()}
+        onUnpin={onUnpin}
+      />,
+    );
+    const pinnedStrip = container.querySelector(
+      ".tab-strip-pinned",
+    ) as HTMLElement;
+    expect(pinnedStrip.querySelector(".tab")).not.toBeNull();
+    expect(pinnedStrip.textContent).toContain("最初のプロンプト");
+    fireEvent.click(pinnedStrip.querySelector(".tab-pin") as HTMLElement);
+    expect(onUnpin).toHaveBeenCalledWith(KEY);
+  });
+
+  it("does not offer a pin toggle or a pin icon for the Memo tab", () => {
+    const { container } = render(
+      <TabBar
+        tabs={[memoTab, s(SID)]}
+        activeKey={KEY}
+        cockpitTerminals={[session]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={vi.fn()}
+        onUnpin={vi.fn()}
+      />,
+    );
+    const pinnedStrip = container.querySelector(
+      ".tab-strip-pinned",
+    ) as HTMLElement;
+    expect(pinnedStrip.textContent).toContain("Memo");
+    expect(pinnedStrip.querySelector(".tab-pin")).toBeNull();
+    fireEvent.contextMenu(screen.getByText("Memo").closest(".tab") as Element);
+    expect(screen.queryByRole("menuitem", { name: "ピン留め" })).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: "ピン留めを解除" }),
+    ).toBeNull();
+  });
+});
