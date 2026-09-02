@@ -58,8 +58,7 @@ mod tests {
 
     const CURRENT_BUILD: &str =
         r#"{"status":"ok","version":"0.0.0","git_sha":"abc123","pid":4242}"#;
-    const OTHER_BUILD: &str =
-        r#"{"status":"ok","version":"0.0.0","git_sha":"def456","pid":4242}"#;
+    const OTHER_BUILD: &str = r#"{"status":"ok","version":"0.0.0","git_sha":"def456","pid":4242}"#;
     const LEGACY_BUILD: &str = r#"{"status":"ok"}"#; // an old server that doesn't support the build ID
 
     #[test]

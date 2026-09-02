@@ -191,7 +191,10 @@ mod tests {
         let real = cargo.join("debug/zashiki-server");
         std::fs::write(&real, "REAL").unwrap();
         let got = resolve_server_bin(false, Some(&exe_dir), &cargo);
-        assert_eq!(got, real, "dev は兄弟スタブではなく cargo debug 出力を使うべき");
+        assert_eq!(
+            got, real,
+            "dev は兄弟スタブではなく cargo debug 出力を使うべき"
+        );
         assert_ne!(got, stub);
     }
 

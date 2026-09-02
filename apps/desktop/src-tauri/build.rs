@@ -5,9 +5,8 @@ fn main() {
     // Autogenerate the ACL permission for the open_devtools app command so a capability can grant the
     // remote-loaded frontend access to it (a plain tauri_build::build() would not emit it).
     tauri_build::try_build(
-        tauri_build::Attributes::new().app_manifest(
-            tauri_build::AppManifest::new().commands(&["open_devtools"]),
-        ),
+        tauri_build::Attributes::new()
+            .app_manifest(tauri_build::AppManifest::new().commands(&["open_devtools"])),
     )
     .expect("failed to run tauri-build");
 }
@@ -59,7 +58,10 @@ fn git_sha() -> Option<String> {
             return Some(sha);
         }
     }
-    let out = Command::new("git").args(["rev-parse", "HEAD"]).output().ok()?;
+    let out = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }

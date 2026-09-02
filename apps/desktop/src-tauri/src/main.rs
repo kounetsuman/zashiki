@@ -6,10 +6,11 @@ mod sidecar;
 use std::path::PathBuf;
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::Duration;
 
 use sidecar::Config;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Even in Tauri mode, the shell opens the server's URL directly (it does not use tauri://).
 /// This keeps the page Origin as an http://127.0.0.1-style origin, so the server's Origin validation doesn't need to change.
@@ -58,7 +59,9 @@ async fn pick_and_read_file(
     let Some(file_path) = picked else {
         return Ok(None);
     };
-    let path = file_path.into_path().map_err(|_| "readFailed".to_string())?;
+    let path = file_path
+        .into_path()
+        .map_err(|_| "readFailed".to_string())?;
     let meta = std::fs::metadata(&path).map_err(|_| "readFailed".to_string())?;
     if meta.len() > max_bytes {
         return Err("tooLarge".to_string());
@@ -69,6 +72,31 @@ async fn pick_and_read_file(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
     Ok(Some(PickedFile { name, content }))
+}
+
+/// One-shot reply channels the quit thread hands to the WebView. The quit gesture runs off the main
+/// thread and asks the WebView two things (Is the Memo dirty? Did the save finish?); `deciding`
+/// already serializes quit decisions, so only one request is ever outstanding per slot.
+#[derive(Default)]
+struct QuitBridge {
+    dirty_tx: Mutex<Option<mpsc::Sender<bool>>>,
+    saved_tx: Mutex<Option<mpsc::Sender<bool>>>,
+}
+
+/// The WebView's answer to `zashiki:memo-check`: whether the Memo has unsaved edits.
+#[tauri::command]
+fn report_memo_status(bridge: tauri::State<'_, QuitBridge>, dirty: bool) {
+    if let Some(tx) = bridge.dirty_tx.lock().unwrap().as_ref() {
+        let _ = tx.send(dirty);
+    }
+}
+
+/// The WebView's answer to `zashiki:memo-save`: whether the flush actually landed (`ok`).
+#[tauri::command]
+fn report_memo_saved(bridge: tauri::State<'_, QuitBridge>, ok: bool) {
+    if let Some(tx) = bridge.saved_tx.lock().unwrap().as_ref() {
+        let _ = tx.send(ok);
+    }
 }
 
 fn main() {
@@ -94,7 +122,13 @@ fn main() {
     let owned_in_setup = Arc::clone(&owned_server);
     let build_result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![open_devtools, pick_and_read_file])
+        .manage(QuitBridge::default())
+        .invoke_handler(tauri::generate_handler![
+            open_devtools,
+            pick_and_read_file,
+            report_memo_status,
+            report_memo_saved
+        ])
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if win_quitting.load(Ordering::SeqCst) {
@@ -119,18 +153,15 @@ fn main() {
             let loading: tauri::Url = pages::data_url(&pages::loading_html())
                 .parse()
                 .expect("data URL は常にパース可能");
-            let builder = tauri::WebviewWindowBuilder::new(
-                app,
-                "main",
-                tauri::WebviewUrl::External(loading),
-            )
-            .title("Zashiki")
-            .inner_size(1280.0, 840.0)
-            // Always inspectable so the in-app Developer mode can open the inspector in release too.
-            .devtools(true)
-            // WKWebView's OS-level drag-drop handler swallows HTML5 dragover/drop events,
-            // which breaks in-page tab reordering. Disable it so DOM drag-and-drop works.
-            .disable_drag_drop_handler();
+            let builder =
+                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(loading))
+                    .title("Zashiki")
+                    .inner_size(1280.0, 840.0)
+                    // Always inspectable so the in-app Developer mode can open the inspector in release too.
+                    .devtools(true)
+                    // WKWebView's OS-level drag-drop handler swallows HTML5 dragover/drop events,
+                    // which breaks in-page tab reordering. Disable it so DOM drag-and-drop works.
+                    .disable_drag_drop_handler();
             // Overlay the title bar so the webview reaches into it; the account indicator sits there,
             // right of the native traffic lights. macOS-only builder method.
             #[cfg(target_os = "macos")]
@@ -261,6 +292,16 @@ fn request_guarded_quit(
     }
     std::thread::spawn(move || {
         let _clear = ClearOnDrop(deciding);
+        // Memo guard first: unsaved edits are the data loss the user cares about most, and a Cancel
+        // here aborts the whole quit before we even look at running sessions.
+        if ask_memo_dirty(&app) {
+            match confirm_memo_save(&app) {
+                MemoQuitAction::Cancel => return,
+                // A failed or timed-out save keeps the app open so the edits aren't lost on the way out.
+                MemoQuitAction::Save if !flush_memo(&app) => return,
+                MemoQuitAction::Save | MemoQuitAction::DontSave => {}
+            }
+        }
         let activity = sidecar::read_token(&token_path)
             .ok()
             .and_then(|token| sidecar::fetch_activity(port, &token));
@@ -273,6 +314,74 @@ fn request_guarded_quit(
             app.exit(0);
         }
     });
+}
+
+/// How long to wait for the WebView to answer the dirty check before we stop waiting.
+const MEMO_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
+/// A flush writes one small file; bound it so a wedged save can't hold the quit open forever.
+const MEMO_FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Asks the WebView whether the Memo has unsaved edits, waiting (bounded) for its reply. A WebView
+/// that doesn't answer in time is treated as dirty, so we prompt rather than exit past a Memo we
+/// couldn't confirm was clean. An `emit` failure means there is no WebView to save, so it reads false.
+fn ask_memo_dirty(app: &tauri::AppHandle) -> bool {
+    let (tx, rx) = mpsc::channel();
+    *app.state::<QuitBridge>().dirty_tx.lock().unwrap() = Some(tx);
+    let dirty = match app.emit("zashiki:memo-check", ()) {
+        Ok(()) => rx.recv_timeout(MEMO_CHECK_TIMEOUT).unwrap_or(true),
+        Err(_) => false,
+    };
+    *app.state::<QuitBridge>().dirty_tx.lock().unwrap() = None;
+    dirty
+}
+
+/// Asks the WebView to persist the Memo, waiting (bounded) for it to confirm. Returns whether the
+/// save landed; a timeout or an unreachable WebView reads as false.
+fn flush_memo(app: &tauri::AppHandle) -> bool {
+    let (tx, rx) = mpsc::channel();
+    *app.state::<QuitBridge>().saved_tx.lock().unwrap() = Some(tx);
+    let saved = match app.emit("zashiki:memo-save", ()) {
+        Ok(()) => rx.recv_timeout(MEMO_FLUSH_TIMEOUT).unwrap_or(false),
+        Err(_) => false,
+    };
+    *app.state::<QuitBridge>().saved_tx.lock().unwrap() = None;
+    saved
+}
+
+/// The user's choice in the unsaved-Memo dialog.
+enum MemoQuitAction {
+    Save,
+    DontSave,
+    Cancel,
+}
+
+/// Maps the native dialog's result to an action. Unknown results (e.g. a dismissed dialog) fall back
+/// to Cancel so an ambiguous outcome never discards unsaved work. Pure for unit testing.
+fn memo_quit_action(result: &tauri_plugin_dialog::MessageDialogResult) -> MemoQuitAction {
+    use tauri_plugin_dialog::MessageDialogResult as R;
+    match result {
+        R::Yes => MemoQuitAction::Save,
+        R::Custom(label) if label == "Save" => MemoQuitAction::Save,
+        R::No => MemoQuitAction::DontSave,
+        R::Custom(label) if label == "Don't Save" => MemoQuitAction::DontSave,
+        _ => MemoQuitAction::Cancel,
+    }
+}
+
+fn confirm_memo_save(app: &tauri::AppHandle) -> MemoQuitAction {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let result = app
+        .dialog()
+        .message("Your changes will be lost if you don't save them.")
+        .title("Save the changes you made to the Memo?")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::YesNoCancelCustom(
+            "Save".to_string(),
+            "Don't Save".to_string(),
+            "Cancel".to_string(),
+        ))
+        .blocking_show_with_result();
+    memo_quit_action(&result)
 }
 
 struct ClearOnDrop(Arc<AtomicBool>);
@@ -329,6 +438,41 @@ mod tests {
             }
             QuitDecision::Proceed => panic!("busy activity should confirm"),
         }
+    }
+
+    #[test]
+    fn memo_quit_action_saves_on_the_save_button() {
+        use tauri_plugin_dialog::MessageDialogResult as R;
+        assert!(matches!(
+            memo_quit_action(&R::Custom("Save".to_string())),
+            MemoQuitAction::Save
+        ));
+        assert!(matches!(memo_quit_action(&R::Yes), MemoQuitAction::Save));
+    }
+
+    #[test]
+    fn memo_quit_action_discards_on_dont_save() {
+        use tauri_plugin_dialog::MessageDialogResult as R;
+        assert!(matches!(
+            memo_quit_action(&R::Custom("Don't Save".to_string())),
+            MemoQuitAction::DontSave
+        ));
+        assert!(matches!(memo_quit_action(&R::No), MemoQuitAction::DontSave));
+    }
+
+    #[test]
+    fn memo_quit_action_cancels_on_cancel_or_dismissal() {
+        use tauri_plugin_dialog::MessageDialogResult as R;
+        assert!(matches!(
+            memo_quit_action(&R::Custom("Cancel".to_string())),
+            MemoQuitAction::Cancel
+        ));
+        assert!(matches!(
+            memo_quit_action(&R::Cancel),
+            MemoQuitAction::Cancel
+        ));
+        // An unexpected result must not silently discard unsaved edits.
+        assert!(matches!(memo_quit_action(&R::Ok), MemoQuitAction::Cancel));
     }
 }
 
