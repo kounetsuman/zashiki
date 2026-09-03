@@ -767,6 +767,7 @@ textarea {
 .tab {
   display: flex;
   align-items: center;
+  flex: none;
   max-width: 220px;
   border-right: 1px solid #2a2a2a;
   border-top: 2px solid transparent;
