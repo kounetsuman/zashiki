@@ -892,17 +892,22 @@ export function App({
     [control],
   );
 
-  // Refetch trigger for the git view (the hook is emitted server-side).
+  // Refetch trigger for the git view (the hook is emitted server-side). The cwd, when present, names
+  // the repo that changed so the hook can scope its refetch.
   const onGitDirty = useCallback(
-    (fn: () => void) =>
+    (fn: (cwd?: string) => void) =>
       control.onMessage((m) => {
-        if (m.t === "git.dirty") fn();
+        if (m.t === "git.dirty") fn(m.cwd);
       }),
     [control],
   );
 
   // Owned above the conditionally-mounted SourceControlView so status survives left-view switches.
-  const gitStatus = useGitStatus(gitApi, onGitDirty);
+  const gitStatus = useGitStatus(
+    gitApi,
+    onGitDirty,
+    selectedView === "sourceControl",
+  );
 
   // On-demand "Check for updates" (SETTINGS): send update.check and resolve with the server's
   // update.check.result. Not connected (send=false) / no response (timeout) rejects so the view

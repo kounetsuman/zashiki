@@ -10,6 +10,7 @@ import type {
   GitStatusResponse,
   GitStatusResult,
   RepoStatus,
+  SkippedRepo,
 } from "@zashiki/shared";
 import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -20,7 +21,9 @@ import { useGitStatus } from "./useGitStatus.js";
 
 interface StatusHostProps {
   api: GitApi;
-  onGitDirty(fn: () => void): () => void;
+  onGitDirty(fn: (cwd?: string) => void): () => void;
+  /** Whether the source-control panel is shown; the app derives this from the selected view. */
+  active?: boolean;
   copyText?: (text: string) => Promise<void>;
   onOpenDiff?: (
     repoPath: string,
@@ -34,10 +37,11 @@ interface StatusHostProps {
 function StatusHost({
   api,
   onGitDirty,
+  active = true,
   copyText,
   onOpenDiff,
 }: StatusHostProps) {
-  const gitStatus = useGitStatus(api, onGitDirty);
+  const gitStatus = useGitStatus(api, onGitDirty, active);
   return (
     <SourceControlView
       api={api}
@@ -62,8 +66,12 @@ function repo(partial: Partial<RepoStatus>): RepoStatus {
 
 interface FakeGitApi extends GitApi {
   statusCalls: number;
+  /** The repoPath argument of each status() call (undefined = a full scan), in call order. */
+  readonly statusArgs: (string | undefined)[];
   readonly calls: string[][];
   repos: RepoStatus[];
+  /** Repos the server drops from `repos` and reports as skipped; filtered by repoPath when scoped. */
+  skipped: SkippedRepo[];
 }
 
 function createFakeGitApi(repos: RepoStatus[] = []): FakeGitApi {
@@ -75,11 +83,20 @@ function createFakeGitApi(repos: RepoStatus[] = []): FakeGitApi {
     };
   const api: FakeGitApi = {
     statusCalls: 0,
+    statusArgs: [],
     calls: [],
     repos,
-    status(): Promise<GitStatusResponse> {
+    skipped: [],
+    status(repoPath?: string): Promise<GitStatusResult> {
       api.statusCalls += 1;
-      return Promise.resolve({ repos: api.repos });
+      api.statusArgs.push(repoPath);
+      const repos = repoPath
+        ? api.repos.filter((r) => r.path === repoPath)
+        : api.repos;
+      const skipped = repoPath
+        ? api.skipped.filter((s) => s.path === repoPath)
+        : api.skipped;
+      return Promise.resolve({ repos, skipped });
     },
     stage: record("stage"),
     unstage: record("unstage"),
@@ -893,11 +910,11 @@ describe("SourceControlView", () => {
     expect(row?.querySelector(".git-branch")).not.toBeNull();
   });
 
-  it("reopening after the view was closed shows repos immediately with no loading UI or refetch (state lives above the view)", async () => {
+  it("reopening after the view was closed shows repos immediately with no loading UI, and refreshes in the background (state lives above the view)", async () => {
     const api = createFakeGitApi(twoRepoFixture());
     function Host() {
-      const gitStatus = useGitStatus(api, () => () => {});
       const [open, setOpen] = useState(true);
+      const gitStatus = useGitStatus(api, () => () => {}, open);
       return (
         <>
           <button type="button" onClick={() => setOpen((v) => !v)}>
@@ -919,10 +936,141 @@ describe("SourceControlView", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "toggle" }));
     expect(screen.queryByRole("button", { name: /org1 \(2\)/ })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "toggle" }));
+    });
 
+    // Repos are shown from state kept above the view (no loading flicker); reactivation refreshes them.
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getByRole("button", { name: /org1 \(2\)/ })).toBeTruthy();
+    expect(api.statusCalls).toBe(2);
+  });
+
+  it("does not scan git on git.dirty while the panel is inactive", async () => {
+    const api = createFakeGitApi(twoRepoFixture());
+    let fire: ((cwd?: string) => void) | undefined;
+    render(
+      <StatusHost
+        api={api}
+        active={false}
+        onGitDirty={(fn) => {
+          fire = fn;
+          return () => {};
+        }}
+      />,
+    );
+    expect(api.statusCalls).toBe(0);
+    await act(async () => {
+      fire?.("/ws/org1/repo-a");
+    });
+    expect(api.statusCalls).toBe(0);
+  });
+
+  it("refetches only the repo named by the git.dirty cwd", async () => {
+    const api = createFakeGitApi(twoRepoFixture());
+    let fire: ((cwd?: string) => void) | undefined;
+    render(
+      <StatusHost
+        api={api}
+        onGitDirty={(fn) => {
+          fire = fn;
+          return () => {};
+        }}
+      />,
+    );
+    await screen.findByRole("button", { name: /org1 \(2\)/ });
+    expect(api.statusArgs).toEqual([undefined]);
+
+    // A cwd inside repo-a's worktree maps to repo-a and scopes the scan to it.
+    await act(async () => {
+      fire?.("/ws/org1/repo-a/src");
+    });
+    expect(api.statusArgs).toEqual([undefined, "/ws/org1/repo-a"]);
+  });
+
+  it("refetches every repo when git.dirty carries no cwd", async () => {
+    const api = createFakeGitApi(twoRepoFixture());
+    let fire: ((cwd?: string) => void) | undefined;
+    render(
+      <StatusHost
+        api={api}
+        onGitDirty={(fn) => {
+          fire = fn;
+          return () => {};
+        }}
+      />,
+    );
+    await screen.findByRole("button", { name: /org1 \(2\)/ });
+    await act(async () => {
+      fire?.(undefined);
+    });
+    expect(api.statusArgs).toEqual([undefined, undefined]);
+  });
+
+  it("ignores git.dirty for a cwd outside every registered repo", async () => {
+    const api = createFakeGitApi(twoRepoFixture());
+    let fire: ((cwd?: string) => void) | undefined;
+    render(
+      <StatusHost
+        api={api}
+        onGitDirty={(fn) => {
+          fire = fn;
+          return () => {};
+        }}
+      />,
+    );
+    await screen.findByRole("button", { name: /org1 \(2\)/ });
     expect(api.statusCalls).toBe(1);
+    await act(async () => {
+      fire?.("/somewhere/unregistered");
+    });
+    expect(api.statusCalls).toBe(1);
+  });
+
+  it("keeps a repo when its scoped refetch returns empty (a full refetch reconciles removals)", async () => {
+    const api = createFakeGitApi(twoRepoFixture());
+    let fire: ((cwd?: string) => void) | undefined;
+    render(
+      <StatusHost
+        api={api}
+        onGitDirty={(fn) => {
+          fire = fn;
+          return () => {};
+        }}
+      />,
+    );
+    await screen.findByRole("button", { name: /org1 \(2\)/ });
+
+    // Scoped scan finds no repo-a (path mismatch or mid-removal); the row is kept, not dropped.
+    api.repos = api.repos.filter((r) => r.path !== "/ws/org1/repo-a");
+    await act(async () => {
+      fire?.("/ws/org1/repo-a");
+    });
+    expect(screen.getByRole("button", { name: /org1 \(2\)/ })).toBeTruthy();
+  });
+
+  it("moves a now-malformed repo into the skipped notice on a scoped refetch", async () => {
+    const api = createFakeGitApi(twoRepoFixture());
+    let fire: ((cwd?: string) => void) | undefined;
+    render(
+      <StatusHost
+        api={api}
+        onGitDirty={(fn) => {
+          fire = fn;
+          return () => {};
+        }}
+      />,
+    );
+    await screen.findByRole("button", { name: /org1 \(2\)/ });
+    expect(document.querySelector(".git-warning")).toBeNull();
+
+    // repo-a fails per-repo validation on the scoped scan: it leaves the list and is surfaced as skipped.
+    api.repos = api.repos.filter((r) => r.path !== "/ws/org1/repo-a");
+    api.skipped = [{ index: 0, path: "/ws/org1/repo-a", repo: "repo-a" }];
+    await act(async () => {
+      fire?.("/ws/org1/repo-a");
+    });
+    expect(screen.getByRole("button", { name: /org1 \(1\)/ })).toBeTruthy();
+    expect(document.querySelector(".git-warning")).not.toBeNull();
   });
 });
