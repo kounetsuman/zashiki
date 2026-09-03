@@ -81,7 +81,11 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
     );
 
     if actions.git_dirty {
-        control.hub.broadcast(crate::protocol::ServerMessage::GitDirty);
+        control
+            .hub
+            .broadcast(crate::protocol::ServerMessage::GitDirty {
+                cwd: req.cwd.clone(),
+            });
     }
     if let Some((kind, cockpit_terminal_id, name)) = actions.record {
         if control.hub.notification_settings().delivers(kind) {
@@ -272,8 +276,27 @@ mod hooks_rest_tests {
         .await;
         assert_eq!(s, StatusCode::OK);
         assert!(b.contains(r#""matched":false"#), "body: {b}");
-        // The git.dirty that triggers a git-panel refetch flows to all connections.
-        assert!(matches!(rx.try_recv(), Ok(ServerMessage::GitDirty)));
+        // The git.dirty that triggers a git-panel refetch flows to all connections; no cwd here.
+        assert!(matches!(rx.try_recv(), Ok(ServerMessage::GitDirty { cwd: None })));
+    }
+
+    /// A tool hook carrying a cwd forwards it on git.dirty so a client can scope its refetch to the
+    /// owning repo.
+    #[tokio::test]
+    async fn tool_forwards_cwd_on_git_dirty() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+        let mut rx = hub.subscribe();
+        let (s, _) = send(
+            app(services(hub.clone(), NotifyMode::Web, Arc::new(Mutex::new(vec![])))),
+            "POST",
+            r#"{"kind":"tool","cwd":"/repos/repo-a"}"#,
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(ServerMessage::GitDirty { cwd }) if cwd.as_deref() == Some("/repos/repo-a")
+        ));
     }
 
     /// Every hook event carrying a sid is recorded into the shared store (the poller's event source),

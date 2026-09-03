@@ -1,4 +1,10 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, response::Response, Json};
+use axum::{
+    extract::{Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    response::Response,
+    Json,
+};
 use serde::Deserialize;
 
 use crate::app_state::{invalidate_scan_cache, resolve_editor, scan, spawn_editor, AppState};
@@ -8,9 +14,23 @@ use crate::wire_support::{
     parse_json_body,
 };
 
-/// git status for each repo (branch + staged/changed).
-pub(crate) async fn git_status(State(state): State<AppState>) -> Json<git::GitStatusResponse> {
-    let repos = git::git_status(scan(&state).await).await;
+#[derive(Deserialize)]
+pub(crate) struct GitStatusQuery {
+    #[serde(rename = "repoPath")]
+    repo_path: Option<String>,
+}
+
+/// git status for each repo (branch + staged/changed). A `repoPath` query scopes the scan to that
+/// one registered repo; a path not in the scan yields an empty list rather than an error.
+pub(crate) async fn git_status(
+    State(state): State<AppState>,
+    Query(query): Query<GitStatusQuery>,
+) -> Json<git::GitStatusResponse> {
+    let mut scanned = scan(&state).await;
+    if let Some(repo_path) = query.repo_path.as_deref() {
+        scanned.retain(|r| r.path == repo_path);
+    }
+    let repos = git::git_status(scanned).await;
     Json(git::GitStatusResponse { repos })
 }
 
@@ -319,6 +339,49 @@ mod git_file_rest_tests {
         let status = resp.status();
         let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
         (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    async fn get(app: axum::Router, uri: &str) -> (StatusCode, String) {
+        let req = HttpRequest::builder()
+            .method("GET")
+            .uri(uri)
+            .header("host", OK_HOST)
+            .header("x-zashiki-token", "t")
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    /// The full scan lists every registered repo; a `repoPath` query scopes it to that one repo so a
+    /// tool hook in one repo does not rescan the rest.
+    #[tokio::test]
+    async fn status_scopes_to_repo_path() {
+        let fx = fixture();
+
+        let (s, all) = get(app(&fx), "/api/git/status?token=t").await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(all.contains(&fx.repo_a) && all.contains(&fx.repo_b), "body: {all}");
+
+        let (s, scoped) = get(
+            app(&fx),
+            &format!("/api/git/status?token=t&repoPath={}", fx.repo_a),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(scoped.contains(&fx.repo_a), "body: {scoped}");
+        assert!(!scoped.contains(&fx.repo_b), "scoped scan leaked repo-b: {scoped}");
+
+        // A path not in the scan yields an empty list rather than an error.
+        let (s, none) = get(
+            app(&fx),
+            &format!("/api/git/status?token=t&repoPath={}", fx.outside),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(none, r#"{"repos":[]}"#);
     }
 
     /// Gets the (staged, changed) path lists by classifying git status --porcelain in core.

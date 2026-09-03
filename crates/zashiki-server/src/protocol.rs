@@ -502,8 +502,13 @@ pub enum ServerMessage {
     },
     #[serde(rename = "term.reconnect", rename_all = "camelCase")]
     TermReconnect { term_ids: Vec<String> },
-    #[serde(rename = "git.dirty")]
-    GitDirty,
+    #[serde(rename = "git.dirty", rename_all = "camelCase")]
+    GitDirty {
+        /// Working directory of the tool hook that dirtied a repo; lets a client scope its refetch to
+        /// the owning repo. Absent when the origin is unknown.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cwd: Option<String>,
+    },
     #[serde(rename = "notify", rename_all = "camelCase")]
     Notify {
         kind: NotifyKind,
@@ -752,7 +757,13 @@ mod tests {
                     term_ids: vec!["a".into(), "b".into()],
                 },
             ),
-            (r#"{"t":"git.dirty"}"#, ServerMessage::GitDirty),
+            (r#"{"t":"git.dirty"}"#, ServerMessage::GitDirty { cwd: None }),
+            (
+                r#"{"t":"git.dirty","cwd":"/repos/repo-a"}"#,
+                ServerMessage::GitDirty {
+                    cwd: Some("/repos/repo-a".into()),
+                },
+            ),
             (
                 r#"{"t":"notify","kind":"waiting","cockpitTerminalId":"@1","title":"hi"}"#,
                 ServerMessage::Notify {
