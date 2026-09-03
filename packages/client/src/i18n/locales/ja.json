@@ -183,6 +183,10 @@
     "editorLabel": "メモエディタ",
     "title": "メモ",
     "save": "保存",
+    "status": {
+      "cursor": "行 {{line}}, 列 {{col}}",
+      "selection": "{{lines}} 行 / {{chars}} 文字"
+    },
     "find": {
       "placeholder": "検索",
       "replacePlaceholder": "置換",
