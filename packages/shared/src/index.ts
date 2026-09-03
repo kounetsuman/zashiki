@@ -157,6 +157,7 @@ export {
   orgColorRequestSchema,
   orgOrderRequestSchema,
 } from "./org-style.js";
+export { stripTrailingSlashes } from "./path-slash.js";
 export {
   buildProcessMaps,
   findSidInTree,

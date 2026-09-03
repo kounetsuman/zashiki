@@ -9,7 +9,8 @@ import { authHeaders } from "../lib/token.js";
 
 /** The REST the git view calls. Tests inject a fake. */
 export interface GitApi {
-  status(): Promise<GitStatusResult>;
+  /** A repoPath scopes the scan to that one repo; omitted scans every registered repo. */
+  status(repoPath?: string): Promise<GitStatusResult>;
   stage(repoPath: string, file: string): Promise<void>;
   unstage(repoPath: string, file: string): Promise<void>;
   stageAll(repoPath: string): Promise<void>;
@@ -51,8 +52,9 @@ export function createGitApi(
     if (!res.ok) throw new Error(`${path}: ${await errorOf(res)}`);
   };
   return {
-    async status() {
-      const res = await fetchFn(`${base}/api/git/status`, {
+    async status(repoPath) {
+      const query = repoPath ? `?repoPath=${encodeURIComponent(repoPath)}` : "";
+      const res = await fetchFn(`${base}/api/git/status${query}`, {
         headers: authHeaders(token),
       });
       if (!res.ok) throw new Error(`/api/git/status: ${await errorOf(res)}`);

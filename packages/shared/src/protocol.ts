@@ -436,6 +436,9 @@ export const termReconnectSchema = z.object({
 
 export const gitDirtySchema = z.object({
   t: z.literal("git.dirty"),
+  /** Working dir of the tool hook that dirtied a repo; lets a client scope its refetch to the
+   * owning repo. Absent when the origin is unknown. */
+  cwd: z.string().optional(),
 });
 
 export const notifyKindSchema = z.enum([
