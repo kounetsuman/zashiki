@@ -82,6 +82,9 @@ async fn main() {
         Some(PathBuf::from(home).join("Library/Logs/zashiki/server.log"))
     });
     let _log_guard = zashiki_server::logging::init(log_path, Some(&token));
+    // Record panics in server.log (the one sink written in every launch mode); the sidecar discards
+    // stderr, so without this a panic leaves no trace of why the process died (#359).
+    zashiki_server::logging::install_panic_logger();
 
     // Read the stderr tail before this boot appends its own lines. ZK_SERVER_ERR_LOG overrides the path.
     let err_log = std::env::var_os("ZK_SERVER_ERR_LOG")
@@ -260,14 +263,18 @@ async fn shutdown_signal(
     {
         use tokio::signal::unix::{signal, SignalKind};
         let mut term = signal(SignalKind::terminate()).expect("install SIGTERM handler");
+        // Log which signal ended the run so the next incident is classifiable from server.log: a
+        // "received SIG…" line means a clean external termination (app closed), its absence before the
+        // next startup means a hard kill (SIGKILL / OOM) that ran no shutdown code (#359).
         tokio::select! {
-            _ = term.recv() => {}
-            _ = tokio::signal::ctrl_c() => {}
+            _ = term.recv() => tracing::info!("zashiki-server: received SIGTERM, shutting down"),
+            _ = tokio::signal::ctrl_c() => tracing::info!("zashiki-server: received SIGINT, shutting down"),
         }
     }
     #[cfg(not(unix))]
     {
         let _ = tokio::signal::ctrl_c().await;
+        tracing::info!("zashiki-server: received Ctrl-C, shutting down");
     }
     // Stop the periodic autosave and wait for it to fully terminate before the graceful save, so no late tick can
     // land a stale last.tsv after it (#372). abort cancels at the task's next await; awaiting the handle guarantees

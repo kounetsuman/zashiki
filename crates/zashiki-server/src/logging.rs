@@ -167,6 +167,35 @@ pub fn init(log_path: Option<PathBuf>, token: Option<&SecretString>) -> Option<W
     guard
 }
 
+/// Reads a panic payload as text, covering the `&str` and `String` shapes that `panic!`/`unwrap`
+/// produce; anything else is reported as non-string rather than dropped.
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "<non-string panic payload>".to_string()
+    }
+}
+
+/// Routes panics through `tracing::error!` so the cause lands in the redacted server log, then chains
+/// to the previous hook (default: print to stderr). Without this a panic prints only to stderr, which
+/// the sidecar discards — leaving `server.log` with no record of why the process died. Install after
+/// [`init`] so the subscriber is already in place.
+pub fn install_panic_logger() {
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "<unknown location>".to_string());
+        // "panicked at" keeps the crash line greppable in server.log.
+        tracing::error!("zashiki-server panicked at {location}: {}", panic_payload_message(info.payload()));
+        prev(info);
+    }));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,5 +413,16 @@ mod tests {
             !buf.lock().unwrap().contains(&0x1b),
             "no ESC byte may reach a sink that feeds a public issue"
         );
+    }
+
+    #[test]
+    fn panic_payload_reads_str_and_string_shapes() {
+        assert_eq!(panic_payload_message(&"boom"), "boom");
+        assert_eq!(panic_payload_message(&"boom".to_string()), "boom");
+    }
+
+    #[test]
+    fn panic_payload_falls_back_for_non_string() {
+        assert_eq!(panic_payload_message(&42_u8), "<non-string panic payload>");
     }
 }
