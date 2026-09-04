@@ -185,7 +185,11 @@
     "save": "保存",
     "status": {
       "cursor": "行 {{line}}, 列 {{col}}",
-      "selection": "{{lines}} 行 / {{chars}} 文字"
+      "selection": "{{lines}} / {{chars}}",
+      "lines_one": "{{count}} 行",
+      "lines_other": "{{count}} 行",
+      "chars_one": "{{count}} 文字",
+      "chars_other": "{{count}} 文字"
     },
     "find": {
       "placeholder": "検索",

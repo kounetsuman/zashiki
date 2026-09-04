@@ -187,8 +187,8 @@ export function MemoEditor({
             {status.kind === "cursor"
               ? t("memo.status.cursor", { line: status.line, col: status.col })
               : t("memo.status.selection", {
-                  lines: status.lines,
-                  chars: status.chars,
+                  lines: t("memo.status.lines", { count: status.lines }),
+                  chars: t("memo.status.chars", { count: status.chars }),
                 })}
           </span>
         )}
