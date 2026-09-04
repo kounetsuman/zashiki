@@ -5,8 +5,10 @@ import {
   commitTitle,
   effectiveCustomTitle,
   loadConversationTitles,
+  nextDuplicateTitle,
   resolveTitle,
   saveConversationTitles,
+  splitDuplicateMarker,
 } from "./conversation-title.js";
 
 const WID_A = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
@@ -220,6 +222,49 @@ describe("resolveTitle", () => {
   it("uses name when there is no edit and the auto title is null", () => {
     expect(resolveTitle(undefined, { title: null, name: "myrepo" })).toBe(
       "myrepo",
+    );
+  });
+});
+
+describe("splitDuplicateMarker", () => {
+  it("treats an unmarked label as the original (number 1)", () => {
+    expect(splitDuplicateMarker("hello")).toEqual({ index: 1, base: "hello" });
+  });
+  it("splits a leading (N) marker off the base", () => {
+    expect(splitDuplicateMarker("(2) hello")).toEqual({
+      index: 2,
+      base: "hello",
+    });
+    expect(splitDuplicateMarker("(13) hello")).toEqual({
+      index: 13,
+      base: "hello",
+    });
+  });
+  it("only strips a marker at the very start", () => {
+    expect(splitDuplicateMarker("hello (2)")).toEqual({
+      index: 1,
+      base: "hello (2)",
+    });
+  });
+});
+
+describe("nextDuplicateTitle", () => {
+  it("marks the first copy as (2)", () => {
+    expect(nextDuplicateTitle("hello", ["hello"])).toBe("(2) hello");
+  });
+  it("continues the sequence past existing copies", () => {
+    expect(
+      nextDuplicateTitle("hello", ["hello", "(2) hello", "(3) hello"]),
+    ).toBe("(4) hello");
+  });
+  it("numbers off the base when duplicating a copy (no marker stacking)", () => {
+    expect(nextDuplicateTitle("(2) hello", ["hello", "(2) hello"])).toBe(
+      "(3) hello",
+    );
+  });
+  it("ignores copies of a different base", () => {
+    expect(nextDuplicateTitle("hello", ["hello", "(2) world"])).toBe(
+      "(2) hello",
     );
   });
 });
