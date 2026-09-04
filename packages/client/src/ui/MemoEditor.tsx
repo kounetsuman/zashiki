@@ -4,11 +4,32 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap, scrollPastEnd } from "@codemirror/view";
 import { basicSetup } from "codemirror";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { type MemoStatus, memoStatus } from "../lib/memo-status.js";
 import { type MemoBuffer, memoDirty } from "../memo/memo-model.js";
 import { memoSearch } from "./memo-search-panel.js";
+
+/** Resolve CodeMirror's selection offsets into the line/column primitives {@link memoStatus} needs. */
+function readMemoStatus(state: EditorState): MemoStatus {
+  const { doc } = state;
+  const head = state.selection.main.head;
+  const headLine = doc.lineAt(head);
+  const ranges = state.selection.ranges.map((range) => {
+    const toLine = doc.lineAt(range.to);
+    return {
+      length: range.to - range.from,
+      fromLine: doc.lineAt(range.from).number,
+      toLine: toLine.number,
+      endsAtLineStart: !range.empty && range.to === toLine.from,
+    };
+  });
+  return memoStatus(
+    { line: headLine.number, col: head - headLine.from + 1 },
+    ranges,
+  );
+}
 
 export interface MemoEditorProps {
   buffer: MemoBuffer;
@@ -20,6 +41,12 @@ export interface MemoEditorProps {
   focusNonce?: number;
 }
 
+interface CodeMirrorHostProps
+  extends Pick<MemoEditorProps, "buffer" | "onChange" | "onSave"> {
+  /** Reports the caret/selection readout on load and whenever the doc or selection changes. */
+  onStatusChange(status: MemoStatus): void;
+}
+
 /**
  * The editable CodeMirror instance for the Memo. Unlike the read-only Viewer, edits flow back out via
  * onChange, and Cmd-S saves. External updates (another client or an on-disk edit) swap the doc only
@@ -29,7 +56,8 @@ function CodeMirrorHost({
   buffer,
   onChange,
   onSave,
-}: Pick<MemoEditorProps, "buffer" | "onChange" | "onSave">) {
+  onStatusChange,
+}: CodeMirrorHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const contentRef = useRef(buffer.text);
@@ -38,6 +66,8 @@ function CodeMirrorHost({
   onChangeRef.current = onChange;
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -65,6 +95,8 @@ function CodeMirrorHost({
           language.of([]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) onChangeRef.current(u.state.doc.toString());
+            if (u.docChanged || u.selectionSet)
+              onStatusChangeRef.current(readMemoStatus(u.state));
           }),
           EditorView.theme({
             "&": { height: "100%" },
@@ -74,6 +106,7 @@ function CodeMirrorHost({
       }),
     });
     viewRef.current = view;
+    onStatusChangeRef.current(readMemoStatus(view.state));
     const desc = LanguageDescription.matchFilename(languages, "memo.md");
     let cancelled = false;
     if (desc !== null) {
@@ -114,6 +147,7 @@ export function MemoEditor({
 }: MemoEditorProps) {
   const { t } = useTranslation();
   const sectionRef = useRef<HTMLElement | null>(null);
+  const [status, setStatus] = useState<MemoStatus | null>(null);
   const dirty = memoDirty(buffer);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce is a re-run trigger, not read in the body.
@@ -140,7 +174,24 @@ export function MemoEditor({
         </button>
       </div>
       <div className="memo-body">
-        <CodeMirrorHost buffer={buffer} onChange={onChange} onSave={onSave} />
+        <CodeMirrorHost
+          buffer={buffer}
+          onChange={onChange}
+          onSave={onSave}
+          onStatusChange={setStatus}
+        />
+      </div>
+      <div className="memo-footer">
+        {status !== null && (
+          <span className="memo-status">
+            {status.kind === "cursor"
+              ? t("memo.status.cursor", { line: status.line, col: status.col })
+              : t("memo.status.selection", {
+                  lines: t("memo.status.lines", { count: status.lines }),
+                  chars: t("memo.status.chars", { count: status.chars }),
+                })}
+          </span>
+        )}
       </div>
     </section>
   );

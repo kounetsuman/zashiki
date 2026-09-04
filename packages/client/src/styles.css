@@ -1078,6 +1078,24 @@ textarea {
   cursor: default;
 }
 
+.memo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: none;
+  height: 22px;
+  padding: 0 10px;
+  border-top: 1px solid #333;
+  background: #181818;
+  color: #9a9a9a;
+  font-size: 12px;
+}
+
+.memo-status {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .memo-body {
   flex: 1;
   min-width: 0;

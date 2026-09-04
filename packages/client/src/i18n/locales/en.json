@@ -183,6 +183,14 @@
     "editorLabel": "Memo editor",
     "title": "Memo",
     "save": "Save",
+    "status": {
+      "cursor": "Ln {{line}}, Col {{col}}",
+      "selection": "{{lines}}, {{chars}}",
+      "lines_one": "{{count}} line",
+      "lines_other": "{{count}} lines",
+      "chars_one": "{{count}} char",
+      "chars_other": "{{count}} chars"
+    },
     "find": {
       "placeholder": "Find",
       "replacePlaceholder": "Replace",
