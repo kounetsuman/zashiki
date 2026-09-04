@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 
 import { type MemoStatus, memoStatus } from "../lib/memo-status.js";
 import { type MemoBuffer, memoDirty } from "../memo/memo-model.js";
-import { memoSearch } from "./memo-search-panel.js";
+import { editorSearch } from "./editor-search-panel.js";
 
 /** Resolve CodeMirror's selection offsets into the line/column primitives {@link memoStatus} needs. */
 function readMemoStatus(state: EditorState): MemoStatus {
@@ -88,7 +88,7 @@ function CodeMirrorHost({
               },
             },
           ]),
-          memoSearch(),
+          editorSearch(),
           basicSetup,
           scrollPastEnd(),
           oneDark,

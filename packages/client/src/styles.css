@@ -1124,7 +1124,7 @@ textarea {
   background: transparent;
 }
 
-.memo-find {
+.cm-find {
   display: flex;
   align-items: flex-start;
   gap: 4px;
@@ -1137,7 +1137,7 @@ textarea {
   font-size: 12px;
 }
 
-.memo-find-expand {
+.cm-find-expand {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1150,41 +1150,41 @@ textarea {
   cursor: pointer;
 }
 
-.memo-find-expand:hover {
+.cm-find-expand:hover {
   background: #2f2f2f;
   color: #ddd;
 }
 
-.memo-find-expand .material-symbols-outlined {
+.cm-find-expand .material-symbols-outlined {
   font-size: 18px;
   transition: transform 0.1s ease;
 }
 
-.memo-find.is-replace-open .memo-find-expand .material-symbols-outlined {
+.cm-find.is-replace-open .cm-find-expand .material-symbols-outlined {
   transform: rotate(90deg);
 }
 
-.memo-find-rows {
+.cm-find-rows {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.memo-find-row {
+.cm-find-row {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.memo-find-replace-row {
+.cm-find-replace-row {
   display: none;
 }
 
-.memo-find.is-replace-open .memo-find-replace-row {
+.cm-find.is-replace-open .cm-find-replace-row {
   display: flex;
 }
 
-.memo-find-field {
+.cm-find-field {
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1195,11 +1195,11 @@ textarea {
   border-radius: 3px;
 }
 
-.memo-find-field:focus-within {
+.cm-find-field:focus-within {
   border-color: #4a7;
 }
 
-.memo-find-input {
+.cm-find-input {
   flex: 1;
   min-width: 0;
   background: transparent;
@@ -1209,18 +1209,18 @@ textarea {
   padding: 3px 4px;
 }
 
-.memo-find-input:focus {
+.cm-find-input:focus {
   outline: none;
 }
 
-.memo-find-toggles {
+.cm-find-toggles {
   display: flex;
   align-items: center;
   gap: 2px;
   flex: none;
 }
 
-.memo-find-toggle {
+.cm-find-toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1233,22 +1233,22 @@ textarea {
   cursor: pointer;
 }
 
-.memo-find-toggle:hover {
+.cm-find-toggle:hover {
   background: #2f2f2f;
   color: #ddd;
 }
 
-.memo-find-toggle.is-active {
+.cm-find-toggle.is-active {
   background: #163b52;
   border-color: #2b6a94;
   color: #cfe6ff;
 }
 
-.memo-find-toggle .material-symbols-outlined {
+.cm-find-toggle .material-symbols-outlined {
   font-size: 16px;
 }
 
-.memo-find-count {
+.cm-find-count {
   min-width: 4.5em;
   padding: 0 2px;
   text-align: right;
@@ -1256,11 +1256,11 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
-.memo-find-count.is-empty {
+.cm-find-count.is-empty {
   color: #c66;
 }
 
-.memo-find-btn {
+.cm-find-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1273,12 +1273,12 @@ textarea {
   cursor: pointer;
 }
 
-.memo-find-btn:hover {
+.cm-find-btn:hover {
   background: #2f2f2f;
   color: #ddd;
 }
 
-.memo-find-btn .material-symbols-outlined {
+.cm-find-btn .material-symbols-outlined {
   font-size: 18px;
 }
 

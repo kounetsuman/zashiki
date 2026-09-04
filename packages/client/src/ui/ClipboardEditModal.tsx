@@ -1,13 +1,20 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { EditorState, Prec } from "@codemirror/state";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { EditorView, keymap } from "@codemirror/view";
+import { basicSetup } from "codemirror";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
+  type IndentSetting,
   indentSelection,
   MAX_SPACE_COUNT,
   MIN_SPACE_COUNT,
   outdentSelection,
+  type TextSelection,
 } from "../lib/clipboard-edit-indent.js";
 import { trimLineEndWhitespace } from "../lib/clipboard-edit-modal.js";
+import { editorSearch } from "./editor-search-panel.js";
 import { useClipboardIndentSetting } from "./useClipboardIndentSetting.js";
 import "./ClipboardEditModal.css";
 
@@ -17,12 +24,87 @@ const SPACE_COUNT_OPTIONS = Array.from(
 );
 
 export interface ClipboardEditModalProps {
-  /** The just-copied selection, prefilled into the editable textarea. */
+  /** The just-copied selection, prefilled into the editable editor. */
   text: string;
   /** Current setting; the in-modal switch reflects and flips it (checked = "don't show again"). */
   enabled: boolean;
   onSetEnabled(enabled: boolean): void;
   onClose(): void;
+}
+
+/** Re-indent the primary selection with a clipboard-edit pure transform, replacing the whole doc. */
+function applyIndent(
+  view: EditorView,
+  transform: (sel: TextSelection, setting: IndentSetting) => TextSelection,
+  setting: IndentSetting,
+): boolean {
+  const { from, to } = view.state.selection.main;
+  const next = transform(
+    { value: view.state.doc.toString(), start: from, end: to },
+    setting,
+  );
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: next.value },
+    selection: { anchor: next.start, head: next.end },
+  });
+  return true;
+}
+
+/**
+ * The CodeMirror editor inside the modal. It reuses the shared find/replace panel ({@link editorSearch})
+ * so Ctrl+F searches here too, and drives Tab / Shift+Tab through the clipboard-edit indent helpers.
+ * The live indent unit is read through a ref so flipping the radios takes effect without rebuilding
+ * the editor.
+ */
+function ClipboardCodeMirror({
+  initialDoc,
+  setting,
+}: {
+  initialDoc: string;
+  setting: IndentSetting;
+}) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const settingRef = useRef(setting);
+  settingRef.current = setting;
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (host === null) return;
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({
+        doc: initialDoc,
+        extensions: [
+          Prec.high(
+            keymap.of([
+              {
+                key: "Tab",
+                preventDefault: true,
+                run: (v) => applyIndent(v, indentSelection, settingRef.current),
+              },
+              {
+                key: "Shift-Tab",
+                preventDefault: true,
+                run: (v) =>
+                  applyIndent(v, outdentSelection, settingRef.current),
+              },
+            ]),
+          ),
+          editorSearch(),
+          basicSetup,
+          oneDark,
+          EditorView.theme({
+            "&": { height: "100%" },
+            ".cm-scroller": { overflow: "auto" },
+          }),
+        ],
+      }),
+    });
+    view.focus();
+    return () => view.destroy();
+  }, [initialDoc]);
+
+  return <div className="clip-edit-cm" ref={hostRef} />;
 }
 
 /**
@@ -38,39 +120,7 @@ export function ClipboardEditModal({
 }: ClipboardEditModalProps) {
   const { t } = useTranslation();
   const { setting, setSetting } = useClipboardIndentSetting();
-  const [value, setValue] = useState(() => trimLineEndWhitespace(text));
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const gutterRef = useRef<HTMLDivElement | null>(null);
-  const pendingSelection = useRef<[number, number] | null>(null);
-
-  useEffect(() => textareaRef.current?.focus(), []);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: value is the re-run trigger — restore the caret once the controlled textarea has rendered the re-indented text
-  useLayoutEffect(() => {
-    const pending = pendingSelection.current;
-    if (pending && textareaRef.current) {
-      textareaRef.current.setSelectionRange(pending[0], pending[1]);
-      pendingSelection.current = null;
-    }
-  }, [value]);
-
-  const handleIndentKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key !== "Tab") return;
-    e.preventDefault();
-    const { selectionStart, selectionEnd } = e.currentTarget;
-    const reindent = e.shiftKey ? outdentSelection : indentSelection;
-    const next = reindent(
-      { value, start: selectionStart, end: selectionEnd },
-      setting,
-    );
-    pendingSelection.current = [next.start, next.end];
-    setValue(next.value);
-  };
-
-  const lineNumbers = value
-    .split("\n")
-    .map((_, i) => i + 1)
-    .join("\n");
+  const [initialDoc] = useState(() => trimLineEndWhitespace(text));
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: overlay only captures outside clicks (Escape is handled by the dialog onKeyDown)
@@ -83,29 +133,16 @@ export function ClipboardEditModal({
         aria-label={t("clipboardEdit.title")}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          if (e.key === "Escape") onClose();
+          // Skip when the editor already consumed Escape (e.g. closing the open search panel), so the
+          // first Escape only dismisses the panel and a second one closes the modal.
+          if (e.key === "Escape" && !e.defaultPrevented) onClose();
           e.stopPropagation();
         }}
       >
         <h2 className="clip-edit-title">{t("clipboardEdit.title")}</h2>
         <p className="clip-edit-desc">{t("clipboardEdit.description")}</p>
         <div className="clip-edit-editor">
-          <div className="clip-edit-gutter" ref={gutterRef} aria-hidden="true">
-            {lineNumbers}
-          </div>
-          <textarea
-            ref={textareaRef}
-            className="clip-edit-textarea"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={handleIndentKey}
-            onScroll={(e) => {
-              if (gutterRef.current)
-                gutterRef.current.scrollTop = e.currentTarget.scrollTop;
-            }}
-            spellCheck={false}
-            wrap="off"
-          />
+          <ClipboardCodeMirror initialDoc={initialDoc} setting={setting} />
         </div>
         <div className="clip-edit-indent">
           <span className="clip-edit-indent-label">

@@ -179,6 +179,20 @@
     "dropTooLarge": "{{name}} is too large to preview (max 2 MB)",
     "dropReadFailed": "Could not read {{name}}"
   },
+  "find": {
+    "placeholder": "Find",
+    "replacePlaceholder": "Replace",
+    "matchCase": "Match case",
+    "wholeWord": "Match whole word",
+    "regexp": "Use regular expression",
+    "previous": "Previous match (Shift+Enter)",
+    "next": "Next match (Enter)",
+    "close": "Close (Esc)",
+    "replace": "Replace",
+    "replaceAll": "Replace all",
+    "toggleReplace": "Toggle replace",
+    "noMatches": "No results"
+  },
   "memo": {
     "editorLabel": "Memo editor",
     "title": "Memo",
@@ -190,20 +204,6 @@
       "lines_other": "{{count}} lines",
       "chars_one": "{{count}} char",
       "chars_other": "{{count}} chars"
-    },
-    "find": {
-      "placeholder": "Find",
-      "replacePlaceholder": "Replace",
-      "matchCase": "Match case",
-      "wholeWord": "Match whole word",
-      "regexp": "Use regular expression",
-      "previous": "Previous match (Shift+Enter)",
-      "next": "Next match (Enter)",
-      "close": "Close (Esc)",
-      "replace": "Replace",
-      "replaceAll": "Replace all",
-      "toggleReplace": "Toggle replace",
-      "noMatches": "No results"
     }
   },
   "explorer": {

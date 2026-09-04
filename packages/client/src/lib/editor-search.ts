@@ -1,10 +1,10 @@
 /**
- * Pure helpers for the Memo find/replace widget. The searching itself is done by
- * @codemirror/search (SearchQuery); the counting logic that surrounds it lives here so it can be
- * unit-tested without an editor (canonical spec: memo-search.test.ts).
+ * Pure helpers for the CodeMirror find/replace widget shared by the Memo and clipboard editors. The
+ * searching itself is done by @codemirror/search (SearchQuery); the counting logic that surrounds it
+ * lives here so it can be unit-tested without an editor (canonical spec: editor-search.test.ts).
  */
 
-export interface MemoMatchStats {
+export interface MatchStats {
   /** 1-based index of the match that equals the primary selection, or 0 when none is selected. */
   current: number;
   /** Total number of matches in the document. */
@@ -16,10 +16,10 @@ export interface MemoMatchStats {
  * in document order; `selection` is the primary selection. A match "under the selection" is one whose
  * range equals it exactly — which is what findNext / findPrevious leave selected.
  */
-export function memoMatchStats(
+export function matchStats(
   matches: Iterable<{ from: number; to: number }>,
   selection: { from: number; to: number },
-): MemoMatchStats {
+): MatchStats {
   let total = 0;
   let current = 0;
   for (const match of matches) {
@@ -34,9 +34,9 @@ export function memoMatchStats(
  * The `n / m` counter text shown in the widget. Empty while the query is blank (nothing to count),
  * `noMatches` when the query finds nothing, otherwise `current / total`.
  */
-export function memoMatchLabel(
+export function matchLabel(
   query: string,
-  stats: MemoMatchStats,
+  stats: MatchStats,
   noMatches: string,
 ): string {
   if (query.length === 0) return "";
