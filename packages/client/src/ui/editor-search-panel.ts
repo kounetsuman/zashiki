@@ -13,7 +13,7 @@ import { Prec } from "@codemirror/state";
 import type { EditorView, Panel } from "@codemirror/view";
 
 import i18n from "../i18n/index.js";
-import { memoMatchLabel, memoMatchStats } from "../lib/memo-search.js";
+import { matchLabel, matchStats } from "../lib/editor-search.js";
 
 /** All query hit ranges in document order for the current search query (empty when the query is invalid). */
 function matchRanges(view: EditorView): { from: number; to: number }[] {
@@ -46,12 +46,12 @@ function iconButton(
 }
 
 /**
- * A compact, VSCode-style find/replace panel for the Memo editor, floated top-right. All state reads
- * and writes go through @codemirror/search, so the panel stays in sync with the Cmd+F / Enter / Escape
- * keymap rather than tracking its own copy of the query.
+ * A compact, VSCode-style find/replace panel for CodeMirror editors, floated top-right. Shared by the
+ * Memo and clipboard editors. All state reads and writes go through @codemirror/search, so the panel
+ * stays in sync with the Cmd+F / Enter / Escape keymap rather than tracking its own copy of the query.
  */
-function createMemoSearchPanel(view: EditorView): Panel {
-  const t = (key: string) => i18n.t(`memo.find.${key}`);
+function createEditorSearchPanel(view: EditorView): Panel {
+  const t = (key: string) => i18n.t(`find.${key}`);
   const initial = getSearchQuery(view.state);
   const flags = {
     caseSensitive: initial.caseSensitive,
@@ -60,10 +60,13 @@ function createMemoSearchPanel(view: EditorView): Panel {
   };
 
   const dom = document.createElement("div");
-  dom.className = "memo-find";
+  dom.className = "cm-find";
   dom.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       event.preventDefault();
+      // Closing the panel is the whole intent of Escape here; don't let it also bubble to an outer
+      // dismiss handler (e.g. the clipboard-edit dialog closing on Escape).
+      event.stopPropagation();
       closeSearchPanel(view);
       view.focus();
     }
@@ -72,82 +75,74 @@ function createMemoSearchPanel(view: EditorView): Panel {
   const toggleReplace = iconButton(
     "chevron_right",
     t("toggleReplace"),
-    "memo-find-expand",
+    "cm-find-expand",
   );
   toggleReplace.setAttribute("aria-expanded", "false");
 
   const rows = document.createElement("div");
-  rows.className = "memo-find-rows";
+  rows.className = "cm-find-rows";
 
   const findRow = document.createElement("div");
-  findRow.className = "memo-find-row";
+  findRow.className = "cm-find-row";
 
   const findField = document.createElement("div");
-  findField.className = "memo-find-field";
+  findField.className = "cm-find-field";
 
   const findInput = document.createElement("input");
   findInput.type = "text";
-  findInput.className = "memo-find-input";
+  findInput.className = "cm-find-input";
   findInput.placeholder = t("placeholder");
   findInput.setAttribute("aria-label", t("placeholder"));
   findInput.setAttribute("main-field", "true");
   findInput.value = initial.search;
 
   const toggles = document.createElement("div");
-  toggles.className = "memo-find-toggles";
+  toggles.className = "cm-find-toggles";
 
-  const caseToggle = iconButton(
-    "match_case",
-    t("matchCase"),
-    "memo-find-toggle",
-  );
-  const wordToggle = iconButton(
-    "match_word",
-    t("wholeWord"),
-    "memo-find-toggle",
-  );
+  const caseToggle = iconButton("match_case", t("matchCase"), "cm-find-toggle");
+  const wordToggle = iconButton("match_word", t("wholeWord"), "cm-find-toggle");
   const regexpToggle = iconButton(
     "regular_expression",
     t("regexp"),
-    "memo-find-toggle",
+    "cm-find-toggle",
   );
   toggles.append(caseToggle, wordToggle, regexpToggle);
 
   findField.append(findInput, toggles);
 
   const count = document.createElement("span");
-  count.className = "memo-find-count";
+  count.className = "cm-find-count";
   count.setAttribute("aria-live", "polite");
 
   const previous = iconButton(
     "keyboard_arrow_up",
     t("previous"),
-    "memo-find-btn",
+    "cm-find-btn",
   );
-  const next = iconButton("keyboard_arrow_down", t("next"), "memo-find-btn");
-  const close = iconButton("close", t("close"), "memo-find-btn");
+  const next = iconButton("keyboard_arrow_down", t("next"), "cm-find-btn");
+  const close = iconButton("close", t("close"), "cm-find-btn");
 
   findRow.append(findField, count, previous, next, close);
 
   const replaceRow = document.createElement("div");
-  replaceRow.className = "memo-find-row memo-find-replace-row";
+  replaceRow.className = "cm-find-row cm-find-replace-row";
 
   const replaceInput = document.createElement("input");
   replaceInput.type = "text";
-  replaceInput.className = "memo-find-input";
+  replaceInput.className = "cm-find-input";
   replaceInput.placeholder = t("replacePlaceholder");
   replaceInput.setAttribute("aria-label", t("replacePlaceholder"));
   replaceInput.value = initial.replace;
 
   const replaceField = document.createElement("div");
-  replaceField.className = "memo-find-field";
+  replaceField.className = "cm-find-field";
   replaceField.append(replaceInput);
 
-  const replaceOne = iconButton("find_replace", t("replace"), "memo-find-btn");
+  const replaceOne = iconButton("find_replace", t("replace"), "cm-find-btn");
   const replaceEvery = iconButton(
     "published_with_changes",
     t("replaceAll"),
-    "memo-find-btn",
+    "cm-find-btn",
   );
 
   replaceRow.append(replaceField, replaceOne, replaceEvery);
@@ -250,11 +245,11 @@ function createMemoSearchPanel(view: EditorView): Panel {
   function refreshCount(): void {
     const query = getSearchQuery(view.state);
     const main = view.state.selection.main;
-    const stats = memoMatchStats(matchRanges(view), {
+    const stats = matchStats(matchRanges(view), {
       from: main.from,
       to: main.to,
     });
-    count.textContent = memoMatchLabel(query.search, stats, t("noMatches"));
+    count.textContent = matchLabel(query.search, stats, t("noMatches"));
     count.classList.toggle(
       "is-empty",
       query.search.length > 0 && stats.total === 0,
@@ -283,7 +278,7 @@ function createMemoSearchPanel(view: EditorView): Panel {
   };
 }
 
-/** The Memo search extension: replaces CodeMirror's default panel with the compact top-right widget. */
-export function memoSearch() {
-  return Prec.high(search({ top: true, createPanel: createMemoSearchPanel }));
+/** The find/replace extension: replaces CodeMirror's default panel with the compact top-right widget. */
+export function editorSearch() {
+  return Prec.high(search({ top: true, createPanel: createEditorSearchPanel }));
 }

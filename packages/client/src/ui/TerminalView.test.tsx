@@ -420,9 +420,8 @@ describe("TerminalView", () => {
       handled = term.emitKey({ key: "c", metaKey: true });
     });
     expect(handled).toBe(false);
-    expect((screen.getByRole("textbox") as HTMLTextAreaElement).value).toBe(
-      "claude \\\n  --flag",
-    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(document.querySelector(".clip-edit-cm .cm-editor")).toBeTruthy();
   });
 
   it("Cmd+C on a single-line selection does not open the modal", () => {
