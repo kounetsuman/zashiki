@@ -42,7 +42,10 @@ import type { Locale } from "./i18n/detect.js";
 import i18n from "./i18n/index.js";
 import {
   commitTitle,
+  effectiveCustomTitle,
   loadConversationTitles,
+  nextDuplicateTitle,
+  resolveTitle,
   saveConversationTitles,
 } from "./lib/conversation-title.js";
 import {
@@ -62,7 +65,10 @@ import {
   usageRemainingPercent,
 } from "./session/status-footer.js";
 import type { TermAttachStatus } from "./session/terminal-session.js";
-import { createAppStore } from "./state/app-store.js";
+import {
+  createAppStore,
+  newestAddedCockpitTerminalId,
+} from "./state/app-store.js";
 import { isPinned, tabKey } from "./tabs/tab-model.js";
 import { AccountIndicator } from "./ui/AccountIndicator.js";
 import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
@@ -669,10 +675,16 @@ export function App({
     [viewStorage],
   );
 
+  // Copy label to stamp on the next added cockpit terminal, set by a duplicate and consumed by the
+  // effect below when the fork appears. A plain new session clears it so a never-fulfilled duplicate
+  // can't leak its label onto an unrelated later window.
+  const pendingDuplicateLabelRef = useRef<string | null>(null);
+
   // Create a new session and, on the immediately following state.sync, auto-switch the
   // main area to the new window (markNewRequested). Shared by both the Cmd+N and list onNew paths.
   const newSession = useCallback(
     (org: string): void => {
+      pendingDuplicateLabelRef.current = null;
       store.markNewRequested();
       control.send({ t: "cockpitTerminal.new", org });
     },
@@ -680,7 +692,8 @@ export function App({
   );
 
   // Launch a new independent cockpit terminal that forks the source session. No-op for sessions without a
-  // sid (claude not started); the caller disables the menu.
+  // sid (claude not started); the caller disables the menu. A fork copies the transcript, so the new
+  // window would inherit the source's list label verbatim; stamp a `(N) ` copy marker to tell them apart.
   const duplicateSession = useCallback(
     (cockpitTerminalId: string): void => {
       const source = cockpitTerminals.find(
@@ -688,6 +701,12 @@ export function App({
       );
       const sid = source == null ? null : claudeSessionId(source);
       if (source == null || sid === null) return;
+      const label = (s: (typeof cockpitTerminals)[number]): string =>
+        resolveTitle(effectiveCustomTitle(conversationTitles, s), s);
+      pendingDuplicateLabelRef.current = nextDuplicateTitle(
+        label(source),
+        cockpitTerminals.map(label),
+      );
       store.markNewRequested();
       control.send({
         t: "cockpitTerminal.new",
@@ -695,8 +714,25 @@ export function App({
         resumeSid: sid,
       });
     },
-    [cockpitTerminals, store, control],
+    [cockpitTerminals, conversationTitles, store, control],
   );
+
+  // Stamp the pending copy label onto the forked window once it lands in state.sync. The added id is
+  // detected the same way the store auto-selects it, and the label is persisted like a manual rename.
+  const prevCockpitTerminalsRef = useRef<typeof cockpitTerminals>([]);
+  useEffect(() => {
+    const prev = prevCockpitTerminalsRef.current;
+    prevCockpitTerminalsRef.current = cockpitTerminals;
+    const label = pendingDuplicateLabelRef.current;
+    if (label === null) return;
+    const addedId = newestAddedCockpitTerminalId(prev, cockpitTerminals);
+    if (addedId === null) return;
+    pendingDuplicateLabelRef.current = null;
+    const added = cockpitTerminals.find((s) => s.cockpitTerminalId === addedId);
+    if (added !== undefined) {
+      handleCommitConversationTitle(addedId, added.name, label);
+    }
+  }, [cockpitTerminals, handleCommitConversationTitle]);
 
   const onChangeMemo = useCallback(
     (text: string): void => {

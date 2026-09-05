@@ -127,3 +127,39 @@ export function resolveTitle(
   if (custom !== undefined && custom !== "") return custom;
   return session.title ?? session.name;
 }
+
+const DUPLICATE_MARKER = /^\((\d+)\) ([\s\S]+)$/;
+
+/**
+ * Splits a leading copy marker `(N) ` off a label into its base and number; an
+ * unmarked label is the original (number 1). Numbering off the base keeps a
+ * copy of a copy sequential instead of stacking markers (`(2) (2) x`).
+ */
+export function splitDuplicateMarker(label: string): {
+  index: number;
+  base: string;
+} {
+  const m = DUPLICATE_MARKER.exec(label);
+  if (m === null) return { index: 1, base: label };
+  const [, indexText = "1", base = label] = m;
+  return { index: Number(indexText), base };
+}
+
+/**
+ * Copy-marked label for a freshly duplicated session: `(N) <base>`, where the
+ * base is the source label with any existing marker stripped and N is one past
+ * the highest copy number already in use among labels sharing that base (the
+ * original counts as 1). Keeps repeated duplicates sequential (`(2)`, `(3)`, …).
+ */
+export function nextDuplicateTitle(
+  sourceLabel: string,
+  existingLabels: readonly string[],
+): string {
+  const { base } = splitDuplicateMarker(sourceLabel);
+  let highest = 1;
+  for (const label of existingLabels) {
+    const split = splitDuplicateMarker(label);
+    if (split.base === base && split.index > highest) highest = split.index;
+  }
+  return `(${highest + 1}) ${base}`;
+}

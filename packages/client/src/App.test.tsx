@@ -866,6 +866,68 @@ describe("App", () => {
     });
   });
 
+  it("stamps a copy marker on the duplicated (forked) terminal's list label", () => {
+    const control = createFakeAppControl();
+    const { session } = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
+        reposApi={fakeReposApi}
+      />,
+    );
+    const SRC = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
+    const source: CockpitTerminalInfo = {
+      cockpitTerminalId: SRC,
+      name: "zashiki",
+      org: "kilo",
+      repo: "zashiki",
+      state: "idle",
+      title: "hello world",
+      sid: SRC,
+      active: true,
+    };
+    act(() =>
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals: [source],
+        orgs: ["kilo"],
+        orgColors: {},
+        orgAliases: {},
+      }),
+    );
+    fireEvent.contextMenu(
+      inList().getByRole("button", { name: /hello world/ }),
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "セッションを複製" }));
+    expect(control.sent).toContainEqual({
+      t: "cockpitTerminal.new",
+      org: "kilo",
+      resumeSid: SRC,
+    });
+    // The fork copies the transcript, so it arrives with the same auto title under a new id.
+    const FORK = "11111111-2222-4333-8444-555566667777";
+    act(() =>
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals: [
+          { ...source, active: false },
+          { ...source, cockpitTerminalId: FORK, sid: FORK, active: true },
+        ],
+        orgs: ["kilo"],
+        orgColors: {},
+        orgAliases: {},
+      }),
+    );
+    expect(inList().getByText("(2) hello world")).toBeTruthy();
+    expect(inList().getByText("hello world")).toBeTruthy();
+  });
+
   it("Cmd+R does not duplicate for an active session without a sid but still suppresses reload", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();

@@ -32,46 +32,30 @@
 }
 
 .clip-edit-editor {
-  display: flex;
+  position: relative;
   box-sizing: border-box;
   height: 40vh;
-  background: #141414;
   border: 1px solid #333;
   border-radius: 4px;
   overflow: hidden;
   resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.5;
 }
 
-.clip-edit-gutter {
-  flex: 0 0 auto;
-  padding: 8px 8px 8px 10px;
-  overflow: hidden;
-  color: #555;
-  text-align: right;
-  white-space: pre;
-  user-select: none;
+.clip-edit-cm {
+  position: absolute;
+  inset: 0;
 }
 
-.clip-edit-textarea {
-  flex: 1 1 auto;
-  box-sizing: border-box;
-  min-width: 0;
-  padding: 8px 10px;
-  background: transparent;
+/* Float the find/replace panel top-right as a card (VSCode-style) instead of CodeMirror's default
+   full-width bar, so it never reflows the document. */
+.clip-edit-editor .cm-panels.cm-panels-top {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: auto;
+  z-index: 6;
   border: none;
-  color: #cbd;
-  font: inherit;
-  line-height: inherit;
-  white-space: pre;
-  overflow: auto;
-  resize: none;
-}
-
-.clip-edit-textarea:focus {
-  outline: none;
+  background: transparent;
 }
 
 .clip-edit-indent {

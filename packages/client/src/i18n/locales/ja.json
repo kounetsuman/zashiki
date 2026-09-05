@@ -179,6 +179,20 @@
     "dropTooLarge": "{{name}} はプレビューするには大きすぎます（最大 2 MB）",
     "dropReadFailed": "{{name}} を読み込めませんでした"
   },
+  "find": {
+    "placeholder": "検索",
+    "replacePlaceholder": "置換",
+    "matchCase": "大文字と小文字を区別",
+    "wholeWord": "単語単位で一致",
+    "regexp": "正規表現を使用",
+    "previous": "前の一致（Shift+Enter）",
+    "next": "次の一致（Enter）",
+    "close": "閉じる（Esc）",
+    "replace": "置換",
+    "replaceAll": "すべて置換",
+    "toggleReplace": "置換欄の表示切り替え",
+    "noMatches": "一致なし"
+  },
   "memo": {
     "editorLabel": "メモエディタ",
     "title": "メモ",
@@ -190,20 +204,6 @@
       "lines_other": "{{count}} 行",
       "chars_one": "{{count}} 文字",
       "chars_other": "{{count}} 文字"
-    },
-    "find": {
-      "placeholder": "検索",
-      "replacePlaceholder": "置換",
-      "matchCase": "大文字と小文字を区別",
-      "wholeWord": "単語単位で一致",
-      "regexp": "正規表現を使用",
-      "previous": "前の一致（Shift+Enter）",
-      "next": "次の一致（Enter）",
-      "close": "閉じる（Esc）",
-      "replace": "置換",
-      "replaceAll": "すべて置換",
-      "toggleReplace": "置換欄の表示切り替え",
-      "noMatches": "一致なし"
     }
   },
   "explorer": {
