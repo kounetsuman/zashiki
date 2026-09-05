@@ -69,7 +69,7 @@ import {
   createAppStore,
   newestAddedCockpitTerminalId,
 } from "./state/app-store.js";
-import { tabKey } from "./tabs/tab-model.js";
+import { isPinned, tabKey } from "./tabs/tab-model.js";
 import { AccountIndicator } from "./ui/AccountIndicator.js";
 import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
 import { AccountUsageModal } from "./ui/AccountUsageModal.js";
@@ -467,9 +467,13 @@ export function App({
     },
     [closeTab, closeViewerBuffer, closeDiff],
   );
+  // "Close all" spares pinned tabs (the point of pinning), matching the VS Code convention.
   const closeAllTabs = useCallback((): void => {
-    for (const tab of tabsState.tabs) closeTabByKey(tabKey(tab));
-  }, [tabsState.tabs, closeTabByKey]);
+    for (const tab of tabsState.tabs) {
+      const key = tabKey(tab);
+      if (!isPinned(tabsState, key)) closeTabByKey(key);
+    }
+  }, [tabsState, closeTabByKey]);
 
   const { copyToast, flashCopyToast } = useCopyToast();
   const [memoSaver] = useState(() =>
