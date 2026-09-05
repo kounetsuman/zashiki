@@ -711,7 +711,7 @@ describe("App", () => {
     );
   });
 
-  it("the tab context menu 'Close all' removes every tab without killing the sessions", () => {
+  it("the tab context menu 'Close all' removes every unpinned tab without killing the sessions", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();
     render(
@@ -747,6 +747,49 @@ describe("App", () => {
     expect(screen.queryByLabelText("zashiki のタブを閉じる")).toBeNull();
     expect(screen.queryByLabelText("tango のタブを閉じる")).toBeNull();
     // Closing tabs never kills the sessions.
+    expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
+      false,
+    );
+  });
+
+  it("'Close all' keeps pinned tabs open and closes only the unpinned ones", () => {
+    const control = createFakeAppControl();
+    const f = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={f.session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
+        reposApi={fakeReposApi}
+      />,
+    );
+    act(() =>
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals,
+        orgs: [],
+        orgColors: {},
+        orgAliases: {},
+      }),
+    );
+    // bootstrap opens @1 (zashiki); double-clicking tango opens @2 -> two tabs.
+    fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
+    expect(screen.getByLabelText("zashiki のタブを閉じる")).toBeTruthy();
+    expect(screen.getByLabelText("tango のタブを閉じる")).toBeTruthy();
+
+    // Pin the zashiki tab, then run "Close all" from the tango tab's menu.
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0] as HTMLElement);
+    fireEvent.click(screen.getByRole("menuitem", { name: "ピン留め" }));
+    fireEvent.contextMenu(screen.getAllByRole("tab")[1] as HTMLElement);
+    fireEvent.click(screen.getByRole("menuitem", { name: "全て閉じる" }));
+
+    // The pinned zashiki tab survives; the unpinned tango tab is closed.
+    expect(screen.getByLabelText("zashiki のタブを閉じる")).toBeTruthy();
+    expect(screen.queryByLabelText("tango のタブを閉じる")).toBeNull();
     expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
       false,
     );
