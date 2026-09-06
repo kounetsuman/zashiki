@@ -13,6 +13,7 @@ import {
   type MediaSource,
   type ViewerBuffer,
 } from "../viewer/viewer-model.js";
+import { editorSearch } from "./editor-search-panel.js";
 import { Loading } from "./Loading.js";
 
 export interface ViewerProps {
@@ -63,6 +64,7 @@ function CodeMirrorHost({
       state: EditorState.create({
         doc: contentRef.current ?? "",
         extensions: [
+          editorSearch({ findOnly: true }),
           basicSetup,
           oneDark,
           EditorState.readOnly.of(true),

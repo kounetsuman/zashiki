@@ -49,8 +49,11 @@ function iconButton(
  * A compact, VSCode-style find/replace panel for CodeMirror editors, floated top-right. Shared by the
  * Memo and clipboard editors. All state reads and writes go through @codemirror/search, so the panel
  * stays in sync with the Cmd+F / Enter / Escape keymap rather than tracking its own copy of the query.
+ *
+ * When findOnly is set the replace row and its expander are omitted, for read-only surfaces like the
+ * Viewer where replacing makes no sense; find, flags, and the match counter are unchanged.
  */
-function createEditorSearchPanel(view: EditorView): Panel {
+function createEditorSearchPanel(view: EditorView, findOnly: boolean): Panel {
   const t = (key: string) => i18n.t(`find.${key}`);
   const initial = getSearchQuery(view.state);
   const flags = {
@@ -71,13 +74,6 @@ function createEditorSearchPanel(view: EditorView): Panel {
       view.focus();
     }
   });
-
-  const toggleReplace = iconButton(
-    "chevron_right",
-    t("toggleReplace"),
-    "cm-find-expand",
-  );
-  toggleReplace.setAttribute("aria-expanded", "false");
 
   const rows = document.createElement("div");
   rows.className = "cm-find-rows";
@@ -123,37 +119,65 @@ function createEditorSearchPanel(view: EditorView): Panel {
   const close = iconButton("close", t("close"), "cm-find-btn");
 
   findRow.append(findField, count, previous, next, close);
+  rows.append(findRow);
 
-  const replaceRow = document.createElement("div");
-  replaceRow.className = "cm-find-row cm-find-replace-row";
+  // Null in find-only mode (read-only surfaces): no replace field to read from.
+  let replaceInput: HTMLInputElement | null = null;
+  if (!findOnly) {
+    const toggleReplace = iconButton(
+      "chevron_right",
+      t("toggleReplace"),
+      "cm-find-expand",
+    );
+    toggleReplace.setAttribute("aria-expanded", "false");
 
-  const replaceInput = document.createElement("input");
-  replaceInput.type = "text";
-  replaceInput.className = "cm-find-input";
-  replaceInput.placeholder = t("replacePlaceholder");
-  replaceInput.setAttribute("aria-label", t("replacePlaceholder"));
-  replaceInput.value = initial.replace;
+    const replaceRow = document.createElement("div");
+    replaceRow.className = "cm-find-row cm-find-replace-row";
 
-  const replaceField = document.createElement("div");
-  replaceField.className = "cm-find-field";
-  replaceField.append(replaceInput);
+    replaceInput = document.createElement("input");
+    replaceInput.type = "text";
+    replaceInput.className = "cm-find-input";
+    replaceInput.placeholder = t("replacePlaceholder");
+    replaceInput.setAttribute("aria-label", t("replacePlaceholder"));
+    replaceInput.value = initial.replace;
 
-  const replaceOne = iconButton("find_replace", t("replace"), "cm-find-btn");
-  const replaceEvery = iconButton(
-    "published_with_changes",
-    t("replaceAll"),
-    "cm-find-btn",
-  );
+    const replaceField = document.createElement("div");
+    replaceField.className = "cm-find-field";
+    replaceField.append(replaceInput);
 
-  replaceRow.append(replaceField, replaceOne, replaceEvery);
+    const replaceOne = iconButton("find_replace", t("replace"), "cm-find-btn");
+    const replaceEvery = iconButton(
+      "published_with_changes",
+      t("replaceAll"),
+      "cm-find-btn",
+    );
 
-  rows.append(findRow, replaceRow);
-  dom.append(toggleReplace, rows);
+    replaceRow.append(replaceField, replaceOne, replaceEvery);
+    rows.append(replaceRow);
+    dom.append(toggleReplace, rows);
+
+    replaceInput.addEventListener("input", commit);
+    replaceInput.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      replaceNext(view);
+    });
+    replaceOne.addEventListener("click", () => replaceNext(view));
+    replaceEvery.addEventListener("click", () => replaceAll(view));
+    toggleReplace.addEventListener("click", () => {
+      const expanded = dom.classList.toggle("is-replace-open");
+      toggleReplace.setAttribute("aria-expanded", String(expanded));
+      if (expanded) replaceInput?.focus();
+      else findInput.focus();
+    });
+  } else {
+    dom.append(rows);
+  }
 
   function buildQuery(): SearchQuery {
     return new SearchQuery({
       search: findInput.value,
-      replace: replaceInput.value,
+      replace: replaceInput?.value ?? "",
       caseSensitive: flags.caseSensitive,
       wholeWord: flags.wholeWord,
       regexp: flags.regexp,
@@ -219,27 +243,11 @@ function createEditorSearchPanel(view: EditorView): Panel {
     else findNext(view);
   });
 
-  replaceInput.addEventListener("input", commit);
-  replaceInput.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    replaceNext(view);
-  });
-
   previous.addEventListener("click", () => findPrevious(view));
   next.addEventListener("click", () => findNext(view));
   close.addEventListener("click", () => {
     closeSearchPanel(view);
     view.focus();
-  });
-  replaceOne.addEventListener("click", () => replaceNext(view));
-  replaceEvery.addEventListener("click", () => replaceAll(view));
-
-  toggleReplace.addEventListener("click", () => {
-    const expanded = dom.classList.toggle("is-replace-open");
-    toggleReplace.setAttribute("aria-expanded", String(expanded));
-    if (expanded) replaceInput.focus();
-    else findInput.focus();
   });
 
   function refreshCount(): void {
@@ -278,7 +286,19 @@ function createEditorSearchPanel(view: EditorView): Panel {
   };
 }
 
-/** The find/replace extension: replaces CodeMirror's default panel with the compact top-right widget. */
-export function editorSearch() {
-  return Prec.high(search({ top: true, createPanel: createEditorSearchPanel }));
+/**
+ * The find/replace extension: replaces CodeMirror's default panel with the compact top-right widget.
+ * Pass findOnly for read-only surfaces (the Viewer) to drop the replace row.
+ */
+export function editorSearch({
+  findOnly = false,
+}: {
+  findOnly?: boolean;
+} = {}) {
+  return Prec.high(
+    search({
+      top: true,
+      createPanel: (view) => createEditorSearchPanel(view, findOnly),
+    }),
+  );
 }
