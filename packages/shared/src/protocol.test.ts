@@ -12,6 +12,7 @@ import {
   focusRequestSchema,
   focusResponseSchema,
   serverMessageSchema,
+  sessionUsageSchema,
   termIdSchema,
 } from "./protocol.js";
 
@@ -134,9 +135,20 @@ describe("cockpitTerminalInfoSchema", () => {
         sessionTokens: 3400000,
         turnStartedAt: 1700000000000,
         sessionStartedAt: 1699999000000,
+        model: "claude-opus-4-8",
       },
     };
     expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
+  });
+
+  it("accepts usage without a model (old server or pre-first-reply)", () => {
+    const usage = {
+      turnTokens: 0,
+      sessionTokens: 0,
+      turnStartedAt: 1700000000000,
+      sessionStartedAt: 1700000000000,
+    };
+    expect(sessionUsageSchema.parse(usage)).toEqual(usage);
   });
 });
 

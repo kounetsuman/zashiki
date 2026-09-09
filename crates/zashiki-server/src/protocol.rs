@@ -194,13 +194,17 @@ impl NotificationSettings {
 /// `turn` is measured from the most recent human prompt; `session` spans the whole transcript.
 /// Tokens/timestamps come from the transcript (no user setup). Account usage limits are global, not
 /// per session, so they ride on `state.sync`'s `account_limits` rather than here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionUsage {
     pub turn_tokens: u64,
     pub session_tokens: u64,
     pub turn_started_at: u64,
     pub session_started_at: u64,
+    /// Model id of the model currently answering (e.g. `claude-opus-4-8`). Absent for old servers or
+    /// before the session's first assistant reply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 }
 
 /// One window's snapshot distributed via state.sync.
@@ -1000,11 +1004,26 @@ mod tests {
                 session_tokens: 500,
                 turn_started_at: 10,
                 session_started_at: 10,
+                model: None,
             }),
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"turnStartedAt":10,"sessionStartedAt":10}}"#;
         assert_eq!(to_json(&info), json);
         assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_usage_round_trips_the_model() {
+        let usage = SessionUsage {
+            turn_tokens: 1,
+            session_tokens: 2,
+            turn_started_at: 3,
+            session_started_at: 4,
+            model: Some("claude-opus-4-8".into()),
+        };
+        let json = r#"{"turnTokens":1,"sessionTokens":2,"turnStartedAt":3,"sessionStartedAt":4,"model":"claude-opus-4-8"}"#;
+        assert_eq!(to_json(&usage), json);
+        assert_eq!(serde_json::from_str::<SessionUsage>(json).unwrap(), usage);
     }
 
     #[test]

@@ -12,6 +12,7 @@ const base: SessionUsage = {
   sessionTokens: 3_400_000,
   turnStartedAt: 0,
   sessionStartedAt: 0,
+  model: "claude-opus-4-8",
 };
 
 describe("SessionStatusFooter", () => {
@@ -19,6 +20,16 @@ describe("SessionStatusFooter", () => {
     render(<SessionStatusFooter usage={base} />);
     expect(screen.getByText("1.2k")).toBeTruthy();
     expect(screen.getByText("3.4M").className).toContain("ss-crit");
+  });
+
+  it("renders the current model label", () => {
+    render(<SessionStatusFooter usage={base} />);
+    expect(screen.getByText("Opus 4.8")).toBeTruthy();
+  });
+
+  it("dashes the model cell when the model is unknown", () => {
+    render(<SessionStatusFooter usage={{ ...base, model: undefined }} />);
+    expect(screen.getAllByText("–").length).toBe(1);
   });
 
   it("renders live elapsed from the epoch anchors", () => {
@@ -34,7 +45,7 @@ describe("SessionStatusFooter", () => {
 
   it("shows dashes for every cell before a transcript is readable", () => {
     render(<SessionStatusFooter usage={null} />);
-    expect(screen.getAllByText("–").length).toBe(4);
+    expect(screen.getAllByText("–").length).toBe(5);
   });
 
   it("tints the top border with the org accent color", () => {
