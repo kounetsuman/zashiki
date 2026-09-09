@@ -66,7 +66,20 @@ fn empty_snapshot() -> StateSnapshot {
 /// Passing this to `ServerConfig.control` makes `/ws/control` distribute state.sync and enables
 /// immediate re-evaluation via state.refresh.
 pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
-    let hub = ControlHub::new(config.config, Vec::new(), empty_snapshot());
+    // Seed from the notifications persisted beside repos.conf and enable persistence for later changes,
+    // so the list survives a restart. Absent repos.conf (tests / standalone) keeps the list RAM-only.
+    let notifications_store = config
+        .repos_conf
+        .as_deref()
+        .map(crate::notifications_store::notifications_path_for_conf);
+    let notifications_seed = notifications_store
+        .as_deref()
+        .map(crate::notifications_store::read_notifications)
+        .unwrap_or_default();
+    let hub = ControlHub::new(config.config, notifications_seed, empty_snapshot());
+    if let Some(path) = notifications_store {
+        hub.set_notifications_store(path);
+    }
     hub.set_notifier(config.notify_mode, config.mac_notify.clone());
     let claude_settings = crate::claude_settings_io::ClaudeSettingsPaths::resolve();
     let (hooks_status, settings_unreadable) =

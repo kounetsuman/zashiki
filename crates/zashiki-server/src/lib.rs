@@ -22,6 +22,7 @@ pub mod logging;
 pub mod lsof;
 pub mod mac_notifier;
 pub mod notifications;
+pub mod notifications_store;
 pub mod orphan_detector;
 pub mod poller_driver;
 pub mod poller_ports_pty;
