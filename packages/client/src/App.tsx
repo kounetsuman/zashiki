@@ -468,6 +468,15 @@ export function App({
     },
     [closeTab, closeViewerBuffer, closeDiff],
   );
+  // A user's close intent spares pinned tabs; lifecycle closes (file deleted/renamed) keep using
+  // closeTabByKey directly to bypass this guard.
+  const requestCloseTab = useCallback(
+    (key: string): void => {
+      if (isPinned(tabsState, key)) return;
+      closeTabByKey(key);
+    },
+    [tabsState, closeTabByKey],
+  );
   // "Close all" spares pinned tabs (the point of pinning), matching the VS Code convention.
   const closeAllTabs = useCallback((): void => {
     for (const tab of tabsState.tabs) {
@@ -752,7 +761,7 @@ export function App({
     toggleSettings,
     newSession,
     duplicateSession,
-    closeTabByKey,
+    closeTabByKey: requestCloseTab,
     openQuickOpen,
     openFile: openFileFromDialog,
   });
@@ -1096,7 +1105,7 @@ export function App({
             orgAliases={orgAliases}
             pinnedKeys={tabsState.pinned}
             onActivate={activateTabByKey}
-            onClose={closeTabByKey}
+            onClose={requestCloseTab}
             onCloseAll={closeAllTabs}
             onPin={pinTabByKey}
             onUnpin={unpinTabByKey}

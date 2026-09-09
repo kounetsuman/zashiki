@@ -902,6 +902,60 @@ describe("TabBar pinning", () => {
     expect(onUnpin).toHaveBeenCalledWith(KEY);
   });
 
+  it("renders no close button for a pinned tab (it must be unpinned before closing)", () => {
+    const { container } = render(
+      <TabBar
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        cockpitTerminals={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={vi.fn()}
+        onUnpin={vi.fn()}
+      />,
+    );
+    const pinnedTab = container
+      .querySelector(".tab-strip-pinned")
+      ?.querySelector(".tab") as HTMLElement;
+    expect(pinnedTab.querySelector(".tab-close")).toBeNull();
+    const scrollTab = container
+      .querySelector(".tab-strip-scroll")
+      ?.querySelector(".tab") as HTMLElement;
+    expect(scrollTab.querySelector(".tab-close")).not.toBeNull();
+  });
+
+  it("hides the context-menu 'Close' for a pinned tab (unpin first)", () => {
+    render(
+      <TabBar
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        cockpitTerminals={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onCloseAll={vi.fn()}
+        onPin={vi.fn()}
+        onUnpin={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(
+      screen.getByText("最初のプロンプト").closest(".tab") as Element,
+    );
+    expect(screen.queryByRole("menuitem", { name: "閉じる" })).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: "ピン留めを解除" }),
+    ).toBeTruthy();
+  });
+
   it("does not offer a pin toggle or a pin icon for the Memo tab", () => {
     const { container } = render(
       <TabBar

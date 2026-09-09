@@ -19,7 +19,10 @@ export interface TabItemProps {
   reorderable: boolean;
   /** Whether the tab shows a close button. false pins the tab (the Memo tab). */
   closeable?: boolean;
-  /** Whether to show the pin indicator (a user-pinned tab; never set for the implicitly-pinned Memo tab). */
+  /**
+   * Whether the tab is user-pinned (never set for the implicitly-pinned Memo tab). Shows the pin
+   * indicator and hides the close button, so a pinned tab must be unpinned before it can be closed.
+   */
   pinned?: boolean;
   /** Unpins the tab when its pin indicator is clicked. */
   onUnpin?(key: string): void;
@@ -154,7 +157,7 @@ export function TabItem({
           <span className="tab-label">{label}</span>
         </button>
       )}
-      {closeable ? (
+      {closeable && !pinned ? (
         <button
           type="button"
           className="tab-close"

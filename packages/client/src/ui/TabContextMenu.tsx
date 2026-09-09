@@ -33,8 +33,9 @@ export interface TabContextMenuProps {
 }
 
 /**
- * Right-click menu overlay for a tab. Pin/Unpin renders for any pinnable tab; duplicate / copy
- * session id render only for session tabs; reveal / copy paths / rename render only for viewer tabs.
+ * Right-click menu overlay for a tab. Close is hidden for a pinned tab (it must be unpinned first);
+ * Pin/Unpin renders for any pinnable tab; duplicate / copy session id render only for session tabs;
+ * reveal / copy paths / rename render only for viewer tabs.
  */
 export function TabContextMenu({
   menu,
@@ -90,17 +91,19 @@ export function TabContextMenu({
         role="menu"
         style={{ top: menu.y, left: menu.x }}
       >
-        <button
-          type="button"
-          role="menuitem"
-          className="session-context-item"
-          onClick={() => {
-            onClose(menu.key);
-            closeMenu();
-          }}
-        >
-          {t("common.close")}
-        </button>
+        {!menu.pinned && (
+          <button
+            type="button"
+            role="menuitem"
+            className="session-context-item"
+            onClick={() => {
+              onClose(menu.key);
+              closeMenu();
+            }}
+          >
+            {t("common.close")}
+          </button>
+        )}
         {onCloseAll !== undefined && (
           <button
             type="button"
