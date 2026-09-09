@@ -84,10 +84,55 @@ describe("Viewer", () => {
     );
   });
 
-  it("focuses its main-area section when the focus nonce changes", () => {
+  it("focuses the editor content when the focus nonce changes (so Cmd+F reaches it)", () => {
     const { container, rerender } = render(
       <Viewer
         buffer={base}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={0}
+      />,
+    );
+
+    rerender(
+      <Viewer
+        buffer={base}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={1}
+      />,
+    );
+    expect(document.activeElement).toBe(container.querySelector(".cm-content"));
+  });
+
+  it("focuses the editor once content becomes ready after a first (uncached) open", () => {
+    const { container, rerender } = render(
+      <Viewer
+        buffer={{ ...base, status: "loading", content: null }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={1}
+      />,
+    );
+    // The editor is not mounted while loading, so there is nothing to focus yet.
+    expect(container.querySelector(".cm-content")).toBeNull();
+
+    // Same nonce: the refocus must be driven by the ready transition, not the nonce.
+    rerender(
+      <Viewer
+        buffer={base}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={1}
+      />,
+    );
+    expect(document.activeElement).toBe(container.querySelector(".cm-content"));
+  });
+
+  it("falls back to focusing the section when there is no editor (preview)", () => {
+    const { container, rerender } = render(
+      <Viewer
+        buffer={{ ...base, relPath: "README.md", preview: true }}
         onTogglePreview={noop}
         onCopyPath={noop}
         focusNonce={0}
@@ -98,7 +143,7 @@ describe("Viewer", () => {
 
     rerender(
       <Viewer
-        buffer={base}
+        buffer={{ ...base, relPath: "README.md", preview: true }}
         onTogglePreview={noop}
         onCopyPath={noop}
         focusNonce={1}

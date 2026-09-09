@@ -52,4 +52,9 @@ describe("editorSearch", () => {
     expect(panel.querySelector(".cm-find-replace-row")).toBeNull();
     expect(panel.querySelector(".cm-find-expand")).toBeNull();
   });
+
+  it("focuses the find field when the panel opens", () => {
+    const panel = mountPanel();
+    expect(document.activeElement).toBe(panel.querySelector(".cm-find-input"));
+  });
 });

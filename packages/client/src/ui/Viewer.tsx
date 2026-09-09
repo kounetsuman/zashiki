@@ -1,9 +1,7 @@
 import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { Compartment, EditorState } from "@codemirror/state";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
-import { basicSetup } from "codemirror";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -13,8 +11,8 @@ import {
   type MediaSource,
   type ViewerBuffer,
 } from "../viewer/viewer-model.js";
-import { editorSearch } from "./editor-search-panel.js";
 import { Loading } from "./Loading.js";
+import { viewerEditorExtensions } from "./viewer-editor.js";
 
 export interface ViewerProps {
   buffer: ViewerBuffer;
@@ -63,21 +61,7 @@ function CodeMirrorHost({
       parent: host,
       state: EditorState.create({
         doc: contentRef.current ?? "",
-        extensions: [
-          editorSearch({ findOnly: true }),
-          basicSetup,
-          oneDark,
-          EditorState.readOnly.of(true),
-          EditorView.editable.of(false),
-          language.of([]),
-          // The base theme pins .cm-editor to position:relative !important, so
-          // sizing it from CSS is impossible; bound the height here instead and
-          // let .cm-scroller own the scroll.
-          EditorView.theme({
-            "&": { height: "100%" },
-            ".cm-scroller": { overflow: "auto" },
-          }),
-        ],
+        extensions: viewerEditorExtensions(language),
       }),
     });
     viewRef.current = view;
@@ -174,10 +158,17 @@ export function Viewer({
     [showPreview, buffer.content],
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce is a re-run trigger, not read in the body.
+  // Focus the editor content (not the section) so the find keymap (Cmd+F) reaches
+  // it. Also re-run on status: a first (uncached) open mounts the editor only once
+  // the read resolves, after the nonce bump, so focus must land then too. Preview
+  // and media fall back to the section (no editor). preventScroll avoids fighting
+  // a pending reveal-line scroll.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce / buffer.status are re-run triggers, not read in the body.
   useEffect(() => {
-    sectionRef.current?.focus();
-  }, [focusNonce]);
+    const content =
+      sectionRef.current?.querySelector<HTMLElement>(".cm-content");
+    (content ?? sectionRef.current)?.focus({ preventScroll: true });
+  }, [focusNonce, buffer.status]);
 
   return (
     <section
