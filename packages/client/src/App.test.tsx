@@ -787,9 +787,53 @@ describe("App", () => {
     fireEvent.contextMenu(screen.getAllByRole("tab")[1] as HTMLElement);
     fireEvent.click(screen.getByRole("menuitem", { name: "全て閉じる" }));
 
-    // The pinned zashiki tab survives; the unpinned tango tab is closed.
-    expect(screen.getByLabelText("zashiki のタブを閉じる")).toBeTruthy();
+    // The pinned zashiki tab survives (a pinned tab hides its close button); the tango tab is closed.
+    expect(screen.getByRole("tab", { name: "zashiki" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "tango" })).toBeNull();
+    expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
+      false,
+    );
+  });
+
+  it("Cmd+W does not close a pinned tab; unpinning it first restores the close", () => {
+    const control = createFakeAppControl();
+    const f = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={f.session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
+        reposApi={fakeReposApi}
+      />,
+    );
+    act(() =>
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals,
+        orgs: [],
+        orgColors: {},
+        orgAliases: {},
+      }),
+    );
+    // bootstrap opens @1 (zashiki); double-clicking tango opens @2 and makes it the active tab.
+    fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
+
+    // Pin the active tango tab, then Cmd+W: it must survive (and lose its close button).
+    fireEvent.contextMenu(screen.getByRole("tab", { name: "tango" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "ピン留め" }));
     expect(screen.queryByLabelText("tango のタブを閉じる")).toBeNull();
+    pressCmdW();
+    expect(screen.getByRole("tab", { name: "tango" })).toBeTruthy();
+
+    // Unpin, and Cmd+W closes it as usual.
+    fireEvent.contextMenu(screen.getByRole("tab", { name: "tango" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "ピン留めを解除" }));
+    pressCmdW();
+    expect(screen.queryByRole("tab", { name: "tango" })).toBeNull();
     expect(control.sent.some((m) => m.t === "cockpitTerminal.close")).toBe(
       false,
     );
