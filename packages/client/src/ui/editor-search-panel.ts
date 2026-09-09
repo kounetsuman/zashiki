@@ -270,6 +270,10 @@ function createEditorSearchPanel(view: EditorView, findOnly: boolean): Panel {
     dom,
     top: true,
     mount() {
+      // Focus the find field on open so typing goes straight to the query. The
+      // Mod-f keymap only opens the panel; it does not focus the field itself.
+      findInput.focus();
+      findInput.select();
       refreshCount();
     },
     update(update) {
