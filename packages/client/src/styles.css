@@ -2073,6 +2073,12 @@ textarea {
   word-break: break-all;
 }
 
+.git-warning-paths {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 0.9em;
+}
+
 /* 取得中の共通ロード中UI（VIEWER #320 / SOURCE CONTROL #138 で共用）。 */
 .loading {
   display: flex;

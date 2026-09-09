@@ -152,6 +152,7 @@
     "unstageAll": "Unstage all (git reset .)",
     "noChanges": "No changes",
     "skipped": "Skipped {{count}} repo(s) with an unreadable status",
+    "skippedUnknownPath": "(path unknown)",
     "worktree": "Worktree",
     "repository": "Repository",
     "lastCommit": "Last commit {{date}}",

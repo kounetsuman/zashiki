@@ -141,6 +141,15 @@ export function SourceControlView({
       {error === null && !loading && skipped.length > 0 && (
         <div className="git-warning" role="status">
           {t("git.skipped", { count: skipped.length })}
+          {skipped.some((s) => s.path) && (
+            <ul className="git-warning-paths">
+              {skipped.map((s, i) => (
+                <li key={s.path ?? i}>
+                  {s.path ?? t("git.skippedUnknownPath")}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       {error === null &&

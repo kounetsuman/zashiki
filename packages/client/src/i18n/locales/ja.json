@@ -152,6 +152,7 @@
     "unstageAll": "すべてアンステージ（git reset .）",
     "noChanges": "変更なし",
     "skipped": "状態を読み取れないリポジトリを {{count}} 件スキップしました",
+    "skippedUnknownPath": "（パス不明）",
     "worktree": "ワークツリー",
     "repository": "リポジトリ",
     "lastCommit": "最終コミット {{date}}",
