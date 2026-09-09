@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, RwLock};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, RwLock};
 
 use tokio::sync::broadcast;
 
@@ -108,6 +109,12 @@ fn reconcile_account_limits(
 pub struct ControlHub {
     inner: RwLock<HubState>,
     tx: broadcast::Sender<ServerMessage>,
+    /// Where the notification list is persisted (`<repos.conf dir>/notifications.json`). `None` keeps the
+    /// list in RAM only (tests / standalone with no repos.conf).
+    notifications_path: RwLock<Option<PathBuf>>,
+    /// Serializes notification disk writes so concurrent record_* calls neither collide on the shared
+    /// temp file nor let a stale snapshot win the last write.
+    notifications_persist: Mutex<()>,
 }
 
 pub(crate) fn hooks_status_message(status: RegistrationStatus) -> ServerMessage {
@@ -182,7 +189,36 @@ impl ControlHub {
                 account_status: AccountStatus::default(),
             }),
             tx,
+            notifications_path: RwLock::new(None),
+            notifications_persist: Mutex::new(()),
         })
+    }
+
+    /// Enables disk persistence of the notification list at `path` (`<repos.conf dir>/notifications.json`).
+    /// Wired at startup once the repos.conf location is known; unset hubs keep the list in RAM only.
+    pub fn set_notifications_store(&self, path: PathBuf) {
+        *self.notifications_path.write().unwrap() = Some(path);
+    }
+
+    /// Persists the list to disk and broadcasts notifications.sync. Every notification-list mutation
+    /// funnels through here so the on-disk store survives a restart and stays in step with the broadcast.
+    fn store_and_broadcast(&self, items: Vec<Notification>) {
+        self.persist_notifications();
+        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+    }
+
+    /// Best-effort disk persistence (a write failure is logged, not fatal). Serialized and always
+    /// writing the freshest RAM snapshot, so concurrent mutations converge on the current list on disk.
+    fn persist_notifications(&self) {
+        let path = self.notifications_path.read().unwrap();
+        let Some(path) = path.as_ref() else {
+            return;
+        };
+        let _serialized = self.notifications_persist.lock().unwrap();
+        let current = self.inner.read().unwrap().notifications.clone();
+        if let Err(e) = crate::notifications_store::write_notifications(path, &current) {
+            tracing::warn!("failed to persist notifications to {}: {e}", path.display());
+        }
     }
 
     /// Wires the notification delivery channel + macOS executor. Defaults to web + a no-op executor.
@@ -292,7 +328,7 @@ impl ControlHub {
             (state.notifications.len() != before).then(|| state.notifications.clone())
         };
         if let Some(items) = changed {
-            let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+            self.store_and_broadcast(items);
         }
     }
 
@@ -414,11 +450,8 @@ impl ControlHub {
 
     /// Stores the notification list and broadcasts notifications.sync to all connections.
     pub fn publish_notifications(&self, notifications: Vec<Notification>) {
-        let msg = ServerMessage::NotificationsSync {
-            items: notifications.clone(),
-        };
-        self.inner.write().unwrap().notifications = notifications;
-        let _ = self.tx.send(msg);
+        self.inner.write().unwrap().notifications = notifications.clone();
+        self.store_and_broadcast(notifications);
     }
 
     /// Stores the per-org notes and broadcasts notes.sync. Called with the freshly read store on the
@@ -490,7 +523,7 @@ impl ControlHub {
             state.notifications = next.clone();
             next
         };
-        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+        self.store_and_broadcast(items);
     }
 
     /// Enqueues orphan/zombie process detection into NOTIFICATION and broadcasts notifications.sync
@@ -510,7 +543,7 @@ impl ControlHub {
             state.notifications = next.clone();
             next
         };
-        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+        self.store_and_broadcast(items);
     }
 
     /// Surfaces an external-dependency boundary failure (missing binary / unreadable settings) as a Warn
@@ -533,7 +566,7 @@ impl ControlHub {
             state.notifications = next.clone();
             next
         };
-        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+        self.store_and_broadcast(items);
     }
 
     /// Enqueues an "update available" announcement into NOTIFICATION and broadcasts notifications.sync (#26).
@@ -553,7 +586,7 @@ impl ControlHub {
             state.notifications = next.clone();
             next
         };
-        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+        self.store_and_broadcast(items);
     }
 
     /// Enqueues a server error into NOTIFICATION and broadcasts notifications.sync to all
@@ -573,7 +606,7 @@ impl ControlHub {
             state.notifications = next.clone();
             next
         };
-        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+        self.store_and_broadcast(items);
     }
 
     /// Enqueues a creation failure due to PTY exhaustion into NOTIFICATION and broadcasts
@@ -593,7 +626,7 @@ impl ControlHub {
             state.notifications = next.clone();
             next
         };
-        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+        self.store_and_broadcast(items);
     }
 
     /// Enqueues a scrollback-memory pressure warning into NOTIFICATION and broadcasts
@@ -613,7 +646,7 @@ impl ControlHub {
             state.notifications = next.clone();
             next
         };
-        let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+        self.store_and_broadcast(items);
     }
 
     /// Withdraws the scrollback-memory pressure warning once aggregate usage drops back below the
@@ -629,7 +662,7 @@ impl ControlHub {
             (state.notifications.len() != before).then(|| state.notifications.clone())
         };
         if let Some(items) = changed {
-            let _ = self.tx.send(ServerMessage::NotificationsSync { items });
+            self.store_and_broadcast(items);
         }
     }
 }
@@ -1043,6 +1076,60 @@ mod tests {
                 return items;
             }
         }
+    }
+
+    #[test]
+    fn recorded_notifications_persist_and_reseed_a_restarted_hub() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        hub.set_notifications_store(path.clone());
+        hub.record_activity(
+            "id1".to_string(),
+            crate::protocol::NotifyKind::Done,
+            "@1".to_string(),
+            "repo",
+            1000,
+        );
+        // The list is written to disk on the mutation...
+        let persisted = crate::notifications_store::read_notifications(&path);
+        assert_eq!(persisted.len(), 1);
+        assert_eq!(persisted[0].id, "id1");
+        // ...and seeding a fresh hub with it (a restart) delivers it on connect (index 1).
+        let restarted = ControlHub::new(ConfigView::default(), persisted, snapshot_with("@1"));
+        match &restarted.connect_messages()[1] {
+            ServerMessage::NotificationsSync { items } => {
+                assert_eq!(
+                    items.iter().map(|n| n.id.as_str()).collect::<Vec<_>>(),
+                    ["id1"]
+                );
+            }
+            other => panic!("expected notifications.sync, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn dismiss_persists_the_removal_so_a_restart_starts_clean() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notifications.json");
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        hub.set_notifications_store(path.clone());
+        hub.record_error("e1".to_string(), "internal", "boom", 1000);
+        assert_eq!(
+            crate::notifications_store::read_notifications(&path).len(),
+            1
+        );
+        hub.dismiss_notification("e1");
+        // The now-empty list removes the file (absent = empty), so a restart reseeds nothing.
+        assert!(crate::notifications_store::read_notifications(&path).is_empty());
+    }
+
+    #[test]
+    fn without_a_store_notifications_stay_ram_only() {
+        // A hub with no store path set (tests / standalone) must not touch the filesystem.
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        hub.record_error("e1".to_string(), "internal", "boom", 1000);
+        assert!(hub.notifications_path.read().unwrap().is_none());
     }
 
     #[tokio::test]
