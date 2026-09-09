@@ -212,4 +212,62 @@ describe("ControlClient", () => {
       },
     ]);
   });
+
+  it("a memo.sync that arrives before subscription is replayed to a later-registered onMessage (keeps the saved Memo after a relaunch)", () => {
+    const factory = fakeWebSocketFactory();
+    const client = new ControlClient({
+      url: "ws://127.0.0.1:8790/ws/control?token=t",
+      createWebSocket: factory.create,
+    });
+    client.connect();
+    const ws = factory.instances[0];
+    if (!ws) throw new Error("ws missing");
+    ws.emitOpen();
+    // memo.sync arrives in the connect burst while there are zero subscribers (the open race)
+    ws.emitMessage(JSON.stringify({ t: "memo.sync", text: "saved memo" }));
+    const late: ServerMessage[] = [];
+    client.onMessage((m) => late.push(m));
+    expect(late).toEqual([{ t: "memo.sync", text: "saved memo" }]);
+  });
+
+  it("replays the whole connect burst to a later subscriber, in arrival order", () => {
+    const factory = fakeWebSocketFactory();
+    const client = new ControlClient({
+      url: "ws://127.0.0.1:8790/ws/control?token=t",
+      createWebSocket: factory.create,
+    });
+    client.connect();
+    const ws = factory.instances[0];
+    if (!ws) throw new Error("ws missing");
+    ws.emitOpen();
+    ws.emitMessage(JSON.stringify({ t: "config.sync", notifySound: false }));
+    ws.emitMessage(JSON.stringify({ t: "memo.sync", text: "saved memo" }));
+    const late: ServerMessage[] = [];
+    client.onMessage((m) => late.push(m));
+    expect(late.map((m) => m.t)).toEqual(["config.sync", "memo.sync"]);
+  });
+
+  it("does not replay state.sync (its delta side effects must run on a live message only)", () => {
+    const factory = fakeWebSocketFactory();
+    const client = new ControlClient({
+      url: "ws://127.0.0.1:8790/ws/control?token=t",
+      createWebSocket: factory.create,
+    });
+    client.connect();
+    const ws = factory.instances[0];
+    if (!ws) throw new Error("ws missing");
+    ws.emitOpen();
+    ws.emitMessage(
+      JSON.stringify({
+        t: "state.sync",
+        cockpitTerminals: [],
+        orgs: [],
+        orgColors: {},
+        orgAliases: {},
+      }),
+    );
+    const late: ServerMessage[] = [];
+    client.onMessage((m) => late.push(m));
+    expect(late).toEqual([]);
+  });
 });

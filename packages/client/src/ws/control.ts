@@ -11,6 +11,26 @@ import {
 
 export type ControlStatus = "connecting" | "open" | "closed";
 
+/**
+ * The pure-snapshot messages the server sends once on connect and afterwards only when their data
+ * changes. A subscriber that registers after the socket opened would otherwise miss them — e.g. the
+ * Memo would open blank after a relaunch even though the server holds its saved text — so the client
+ * retains the latest of each and replays them to later subscribers.
+ *
+ * state.sync (also in the connect burst) is deliberately excluded: it drives delta side effects
+ * (auto-selecting a newly added Cockpit Terminal) that must run only on a live message, not a
+ * replayed snapshot, and it is re-broadcast on every session change, so a missed one refreshes
+ * without replay.
+ */
+const RETAINED_SYNC_TYPES: ReadonlySet<ServerMessage["t"]> = new Set([
+  "config.sync",
+  "notifications.sync",
+  "hooks.status",
+  "notes.sync",
+  "memo.sync",
+  "account.status",
+] satisfies ServerMessage["t"][]);
+
 /** Minimal control-plane interface that TerminalSession and others depend on. */
 export interface ControlLike {
   getStatus(): ControlStatus;
@@ -46,11 +66,10 @@ export class ControlClient implements ControlLike {
   private readonly tapListeners = new Set<
     (dir: "send" | "recv", t: string) => void
   >();
-  // The most recent config.sync. config.sync is not resent unless it changes,
-  // and it arrives only once right after connecting, so if a subscription is not
-  // registered in time for open, it is missed. We retain it and immediately replay it
-  // when a new onMessage is registered, so the initial sync is never lost.
-  private lastConfigSync: ServerMessage | null = null;
+  // Latest of each connect-burst snapshot (see RETAINED_SYNC_TYPES), replayed to a subscriber that
+  // registers after the burst so it is never missed. Keyed by `t`; Map iteration is first-seen order
+  // (≈ the connect order), so replay preserves the burst sequence.
+  private readonly retainedSyncs = new Map<ServerMessage["t"], ServerMessage>();
 
   constructor(options: ControlClientOptions) {
     this.options = options;
@@ -84,8 +103,9 @@ export class ControlClient implements ControlLike {
 
   onMessage(fn: (m: ServerMessage) => void): () => void {
     this.messageListeners.add(fn);
-    // Do not miss the initial config.sync that arrived before registration (guards against the subscribe/open race)
-    if (this.lastConfigSync) fn(this.lastConfigSync);
+    // Replay the connect burst that may have arrived before this subscriber registered (guards
+    // against the subscribe/open race), so no connect-only sync is missed.
+    for (const m of this.retainedSyncs.values()) fn(m);
     return () => this.messageListeners.delete(fn);
   }
 
@@ -109,8 +129,8 @@ export class ControlClient implements ControlLike {
       if (ws !== this.ws) return;
       const msg = decodeServerMessage((ev as { data: unknown }).data);
       if (!msg) return; // drop invalid messages (keep the connection alive)
-      // Retain the latest config.sync and replay it to future onMessage registrations (prevents missing the initial sync)
-      if (msg.t === "config.sync") this.lastConfigSync = msg;
+      // Retain each connect-burst snapshot so a later onMessage registration can replay it
+      if (RETAINED_SYNC_TYPES.has(msg.t)) this.retainedSyncs.set(msg.t, msg);
       for (const fn of this.tapListeners) fn("recv", msg.t);
       for (const fn of this.messageListeners) fn(msg);
     });
