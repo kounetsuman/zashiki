@@ -646,6 +646,23 @@ describe("createAppStore", () => {
     expect(t.store.getSnapshot().focusNonce).toBe(0);
   });
 
+  it("marks an account action in flight and clears it when account.status arrives", () => {
+    const t = setup();
+    expect(t.store.getSnapshot().accountRefreshing).toBe(false);
+
+    t.store.beginAccountAction();
+    expect(t.store.getSnapshot().accountRefreshing).toBe(true);
+
+    t.control.emit({
+      t: "account.status",
+      loggedIn: true,
+      email: "new@example.com",
+    });
+    const snap = t.store.getSnapshot();
+    expect(snap.accountRefreshing).toBe(false);
+    expect(snap.account).toEqual({ loggedIn: true, email: "new@example.com" });
+  });
+
   it("attaches the real subscription to control on the first subscribe and detaches it on the last unsubscribe", () => {
     const control = fakeControl();
     const { notifier } = fakeNotifier();

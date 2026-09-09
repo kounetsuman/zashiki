@@ -266,6 +266,7 @@ export function App({
     notifications,
     sessionToasts,
     account,
+    accountRefreshing,
     lastError,
     selectedCockpitTerminalId,
     focusNonce,
@@ -802,18 +803,21 @@ export function App({
 
   const refreshAccount = useCallback(
     (restartSessions: boolean): void => {
+      store.beginAccountAction();
       control.send({ t: "account.refresh", restartSessions });
     },
-    [control],
+    [control, store],
   );
 
   const loginAccount = useCallback((): void => {
+    store.beginAccountAction();
     control.send({ t: "account.login" });
-  }, [control]);
+  }, [control, store]);
 
   const logoutAccount = useCallback((): void => {
+    store.beginAccountAction();
     control.send({ t: "account.logout" });
-  }, [control]);
+  }, [control, store]);
 
   const saveEditor = useCallback(
     (command: string): void => {
@@ -1003,6 +1007,7 @@ export function App({
         <AccountIndicator
           email={account.email}
           runningCount={cockpitTerminals.length}
+          refreshing={accountRefreshing}
           onRefresh={refreshAccount}
           onLogin={loginAccount}
           onLogout={logoutAccount}

@@ -10,6 +10,7 @@ function renderIndicator(
   overrides: Partial<{
     email: string | null;
     runningCount: number;
+    refreshing: boolean;
     onRefresh: (restartSessions: boolean) => void;
     onLogin: () => void;
     onLogout: () => void;
@@ -18,13 +19,18 @@ function renderIndicator(
   const props = {
     email: "user@example.com",
     runningCount: 0,
+    refreshing: false,
     onRefresh: vi.fn(),
     onLogin: vi.fn(),
     onLogout: vi.fn(),
     ...overrides,
   };
-  render(<AccountIndicator {...props} />);
-  return props;
+  const { rerender } = render(<AccountIndicator {...props} />);
+  return {
+    ...props,
+    rerender: (next: Partial<typeof props>) =>
+      rerender(<AccountIndicator {...props} {...next} />),
+  };
 }
 
 /** Opens the account menu by clicking the email button. */
@@ -38,6 +44,7 @@ describe("AccountIndicator", () => {
       <AccountIndicator
         email="user@example.com"
         runningCount={0}
+        refreshing={false}
         onRefresh={() => undefined}
         onLogin={() => undefined}
         onLogout={() => undefined}
@@ -49,12 +56,20 @@ describe("AccountIndicator", () => {
       <AccountIndicator
         email={null}
         runningCount={0}
+        refreshing={false}
         onRefresh={() => undefined}
         onLogin={() => undefined}
         onLogout={() => undefined}
       />,
     );
     expect(screen.getByText("未ログイン")).toBeTruthy();
+  });
+
+  it("shows a spinner only while refreshing", () => {
+    const { rerender } = renderIndicator({ refreshing: false });
+    expect(screen.queryByRole("status")).toBeNull();
+    rerender({ refreshing: true });
+    expect(screen.getByRole("status")).toBeTruthy();
   });
 
   it("opens the menu only after clicking the email", () => {

@@ -385,6 +385,7 @@
     "reload": "Reload account",
     "signInOther": "Sign in with a different account",
     "signOut": "Sign out",
+    "refreshing": "Updating account…",
     "refreshTooltip": "Switching accounts? Reload to apply it to all sessions.",
     "confirmTitle": "Apply account to all sessions?",
     "confirmBody": "{{count}} running session(s) will be restarted to apply the switched account. Their conversations are kept.",
