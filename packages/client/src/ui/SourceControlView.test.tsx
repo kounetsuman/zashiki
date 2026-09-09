@@ -729,6 +729,46 @@ describe("SourceControlView", () => {
     expect(document.querySelector(".git-error")).toBeNull();
   });
 
+  it("names the skipped repo's path in the notice so it is actionable", async () => {
+    const resolvers: ((r: GitStatusResult) => void)[] = [];
+    const api: GitApi = {
+      status: () => new Promise((resolve) => resolvers.push(resolve)),
+      stage: () => Promise.resolve(),
+      unstage: () => Promise.resolve(),
+      stageAll: () => Promise.resolve(),
+      unstageAll: () => Promise.resolve(),
+      removeWorktree: () => Promise.resolve(),
+      open: () => Promise.resolve(),
+      commit: () => Promise.resolve(),
+      diff: () =>
+        Promise.resolve({
+          oldText: "",
+          newText: "",
+          binary: false,
+          tooLarge: false,
+          added: 0,
+          removed: 0,
+        }),
+    };
+    render(
+      <StatusHost
+        api={api}
+        onGitDirty={() => () => {}}
+        copyText={() => Promise.resolve()}
+      />,
+    );
+    await act(async () => {
+      resolvers[0]?.({
+        repos: [],
+        skipped: [
+          { index: 0, path: "/ws/org1/repo-broken", repo: "repo-broken" },
+        ],
+      });
+    });
+    const warning = document.querySelector(".git-warning");
+    expect(warning?.textContent).toContain("/ws/org1/repo-broken");
+  });
+
   it("does not show the empty state when every repo was skipped", async () => {
     const resolvers: ((r: GitStatusResult) => void)[] = [];
     const api: GitApi = {
