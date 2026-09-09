@@ -241,7 +241,9 @@
       "percentElapsed": "{{percent}}% · 経過{{time}}",
       "percentStale": "{{percent}}% · 更新待ち",
       "tokensTitle": "API が扱ったトークン — 今ターン / セッション累計",
-      "elapsedTitle": "経過時間 — 今ターン / セッション累計"
+      "elapsedTitle": "経過時間 — 今ターン / セッション累計",
+      "model": "モデル",
+      "modelTitle": "現在応答しているモデル"
     },
     "account": {
       "session": "現在のセッション",

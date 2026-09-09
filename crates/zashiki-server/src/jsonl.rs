@@ -182,6 +182,24 @@ pub struct SessionUsageData {
     pub session_tokens: u64,
     pub turn_started_at_ms: u64,
     pub session_started_at_ms: u64,
+    /// Model id of the newest main-session assistant reply (the model now answering); None until one
+    /// exists. See [`main_session_model`] for why sidechain and synthetic replies are excluded.
+    pub model: Option<String>,
+}
+
+const SYNTHETIC_MODEL: &str = "<synthetic>";
+
+/// The `message.model` of a main-session assistant reply, or None for sidechain replies, the
+/// `<synthetic>` sentinel, or a missing/blank id.
+fn main_session_model(event: &Value) -> Option<String> {
+    if event.get("isSidechain").and_then(Value::as_bool) == Some(true) {
+        return None;
+    }
+    let model = event.get("message")?.get("model")?.as_str()?;
+    if model.is_empty() || model == SYNTHETIC_MODEL {
+        return None;
+    }
+    Some(model.to_string())
 }
 
 /// Sum of the tokens the API touched for one assistant response
@@ -284,6 +302,7 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
     let mut turn_tokens: u64 = 0;
     let mut session_started_at_ms: Option<u64> = None;
     let mut turn_started_at_ms: Option<u64> = None;
+    let mut model: Option<String> = None;
 
     for line in content.split('\n') {
         if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
@@ -316,6 +335,9 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
                 session_tokens += t;
                 turn_tokens += t;
             }
+            if let Some(m) = main_session_model(&event) {
+                model = Some(m);
+            }
         }
     }
 
@@ -325,6 +347,7 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
         session_tokens,
         turn_started_at_ms: turn_started_at_ms.unwrap_or(session_started_at_ms),
         session_started_at_ms,
+        model,
     })
 }
 
@@ -792,5 +815,66 @@ mod tests {
         .join("\n");
         let u = session_usage(&jsonl).unwrap();
         assert_eq!(u.session_tokens, 5);
+    }
+
+    fn assistant_model(ts: &str, model: &str) -> String {
+        json!({
+            "type": "assistant",
+            "timestamp": ts,
+            "message": {"model": model, "content": [{"type": "text", "text": "ok"}]},
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn usage_model_is_the_newest_assistant_reply() {
+        let jsonl = [
+            assistant_model("2000-01-01T00:00:05Z", "claude-sonnet-5"),
+            assistant_model("2000-01-01T00:00:10Z", "claude-opus-4-8"),
+        ]
+        .join("\n");
+        assert_eq!(
+            session_usage(&jsonl).unwrap().model.as_deref(),
+            Some("claude-opus-4-8")
+        );
+    }
+
+    #[test]
+    fn usage_model_ignores_synthetic_and_keeps_last_real() {
+        let jsonl = [
+            assistant_model("2000-01-01T00:00:05Z", "claude-opus-4-8"),
+            assistant_model("2000-01-01T00:00:10Z", "<synthetic>"),
+        ]
+        .join("\n");
+        assert_eq!(
+            session_usage(&jsonl).unwrap().model.as_deref(),
+            Some("claude-opus-4-8")
+        );
+    }
+
+    #[test]
+    fn usage_model_ignores_sidechain_replies() {
+        let sidechain = json!({
+            "type": "assistant",
+            "timestamp": "2000-01-01T00:00:10Z",
+            "isSidechain": true,
+            "message": {"model": "claude-haiku-4-5", "content": [{"type": "text", "text": "sub"}]},
+        })
+        .to_string();
+        let jsonl = [
+            assistant_model("2000-01-01T00:00:05Z", "claude-opus-4-8"),
+            sidechain,
+        ]
+        .join("\n");
+        assert_eq!(
+            session_usage(&jsonl).unwrap().model.as_deref(),
+            Some("claude-opus-4-8")
+        );
+    }
+
+    #[test]
+    fn usage_model_none_without_assistant_reply() {
+        let jsonl = user_at("2000-01-01T00:00:00Z", json!("依頼"));
+        assert_eq!(session_usage(&jsonl).unwrap().model, None);
     }
 }

@@ -107,6 +107,8 @@ export const sessionUsageSchema = z.object({
   sessionTokens: z.number().int().min(0),
   turnStartedAt: z.number().int(),
   sessionStartedAt: z.number().int(),
+  /** Model id currently answering (e.g. `claude-opus-4-8`); absent for old servers or before the first assistant reply. */
+  model: z.string().optional(),
 });
 
 export type SessionUsage = z.infer<typeof sessionUsageSchema>;

@@ -5,6 +5,7 @@ import {
   durationSeverity,
   FIVE_HOUR_WINDOW_MS,
   fmtDuration,
+  fmtModel,
   fmtResetClock,
   fmtResetCountdown,
   fmtTokens,
@@ -32,6 +33,32 @@ describe("fmtTokens", () => {
   it("uses one decimal with a suffix past a thousand and a million", () => {
     expect(fmtTokens(12_300)).toBe("12.3k");
     expect(fmtTokens(1_900_000)).toBe("1.9M");
+  });
+});
+
+describe("fmtModel", () => {
+  it("capitalizes the family and dots the version segments", () => {
+    expect(fmtModel("claude-opus-4-8")).toBe("Opus 4.8");
+    expect(fmtModel("claude-sonnet-5")).toBe("Sonnet 5");
+    expect(fmtModel("claude-fable-5")).toBe("Fable 5");
+  });
+
+  it("drops a trailing date build suffix", () => {
+    expect(fmtModel("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+  });
+
+  it("handles the legacy family-last id order", () => {
+    expect(fmtModel("claude-3-5-sonnet-20241022")).toBe("Sonnet 3.5");
+    expect(fmtModel("claude-3-opus-20240229")).toBe("Opus 3");
+  });
+
+  it("strips a region/provider prefix", () => {
+    expect(fmtModel("us.anthropic.claude-opus-4-8")).toBe("Opus 4.8");
+  });
+
+  it("passes ids without a claude segment through unchanged", () => {
+    expect(fmtModel("<synthetic>")).toBe("<synthetic>");
+    expect(fmtModel("custom-model")).toBe("custom-model");
   });
 });
 

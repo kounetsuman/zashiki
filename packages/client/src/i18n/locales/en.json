@@ -241,7 +241,9 @@
       "percentElapsed": "{{percent}}% · {{time}} elapsed",
       "percentStale": "{{percent}}% · stale",
       "tokensTitle": "Tokens the API touched — this turn / this session",
-      "elapsedTitle": "Elapsed — this turn / this session"
+      "elapsedTitle": "Elapsed — this turn / this session",
+      "model": "model",
+      "modelTitle": "Model currently answering"
     },
     "account": {
       "session": "Current session",

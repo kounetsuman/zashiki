@@ -21,6 +21,25 @@ export function fmtTokens(n: number): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
+/**
+ * Compact label for a Claude model id, order-independent so both the family-first
+ * (`claude-opus-4-8` → `Opus 4.8`) and legacy family-last (`claude-3-5-sonnet-20241022` →
+ * `Sonnet 3.5`) shapes work, and any region/provider prefix is stripped
+ * (`us.anthropic.claude-opus-4-8` → `Opus 4.8`). The family is the alphabetic segment; version
+ * segments are the one-to-two-digit numbers, so trailing date builds (`20251001`) drop out. Ids
+ * without a `claude-` segment pass through unchanged.
+ */
+export function fmtModel(model: string): string {
+  const claudeAt = model.indexOf("claude-");
+  if (claudeAt < 0) return model;
+  const segments = model.slice(claudeAt + "claude-".length).split("-");
+  const family = segments.find((s) => /^[a-z]+$/i.test(s));
+  if (!family) return model;
+  const version = segments.filter((s) => /^\d{1,2}$/.test(s));
+  const name = family.charAt(0).toUpperCase() + family.slice(1);
+  return version.length > 0 ? `${name} ${version.join(".")}` : name;
+}
+
 /** Elapsed duration, leading zero units dropped: `12s`, `3m 12s`, `1h 24m 5s`, `2d 3h 4m 5s`. Negative clamps to 0. */
 export function fmtDuration(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1_000));

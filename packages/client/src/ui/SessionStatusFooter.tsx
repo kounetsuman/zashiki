@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import {
   durationSeverity,
   fmtDuration,
+  fmtModel,
   fmtTokens,
   tokenSeverity,
 } from "../session/status-footer.js";
@@ -43,6 +44,16 @@ export function SessionStatusFooter({
       className="session-status"
       style={accentColor ? { borderTopColor: accentColor } : undefined}
     >
+      <Tooltip className="ss-group" label={t("footer.status.modelTitle")}>
+        <span className="material-symbols-outlined ss-icon" aria-hidden="true">
+          neurology
+        </span>
+        <StatusCell
+          value={usage?.model ? fmtModel(usage.model) : DASH}
+          caption={t("footer.status.model")}
+        />
+      </Tooltip>
+
       <Tooltip className="ss-group" label={t("footer.status.tokensTitle")}>
         <span className="material-symbols-outlined ss-icon" aria-hidden="true">
           generating_tokens
