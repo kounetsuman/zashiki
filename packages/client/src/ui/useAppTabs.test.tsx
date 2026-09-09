@@ -21,6 +21,7 @@ function fakeStore(): AppStore {
     clearError: vi.fn(),
     setMemoText: vi.fn(),
     markMemoSaved: vi.fn(),
+    beginAccountAction: vi.fn(),
   };
 }
 

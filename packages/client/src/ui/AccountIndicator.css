@@ -61,3 +61,15 @@
 .account-indicator-item .material-symbols-outlined {
   font-size: 16px;
 }
+
+.account-indicator-spin {
+  margin-right: 2px;
+  font-size: 16px;
+  animation: git-spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-indicator-spin {
+    animation: none;
+  }
+}

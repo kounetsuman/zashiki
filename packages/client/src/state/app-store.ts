@@ -44,6 +44,11 @@ export interface AppState {
   sessionToasts: SessionToast[];
   /** The signed-in Claude account (auth is global per OS user). Delivered via account.status. */
   account: { loggedIn: boolean; email: string | null };
+  /**
+   * True from the moment a reload / sign-in / sign-out is requested until the account.status reply
+   * lands, driving the account indicator's spinner so the action has visible feedback.
+   */
+  accountRefreshing: boolean;
   lastError: string | null;
   selectedCockpitTerminalId: string | null;
   /**
@@ -112,6 +117,11 @@ export interface AppStore {
   setMemoText(text: string): void;
   /** Re-bases the saved baseline after a confirmed save, without waiting for memo.sync. */
   markMemoSaved(text: string): void;
+  /**
+   * Marks an account action (reload / sign-in / sign-out) as in flight so the indicator shows a
+   * spinner. Cleared when the resulting account.status arrives.
+   */
+  beginAccountAction(): void;
 }
 
 /**
@@ -157,6 +167,7 @@ const INITIAL_STATE: AppState = {
   notifications: [],
   sessionToasts: [],
   account: { loggedIn: false, email: null },
+  accountRefreshing: false,
   lastError: null,
   selectedCockpitTerminalId: null,
   focusNonce: 0,
@@ -272,7 +283,11 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     } else if (m.t === "memo.sync") {
       setState({ memo: syncMemo(state.memo, m.text) });
     } else if (m.t === "account.status") {
-      setState({ account: { loggedIn: m.loggedIn, email: m.email } });
+      // The reply that ends any in-flight account action, so the spinner stops here.
+      setState({
+        account: { loggedIn: m.loggedIn, email: m.email },
+        accountRefreshing: false,
+      });
     } else if (m.t === "term.reconnect") {
       // zk-* was recreated during restore, so reattach the pty.
       deps.session.reconnect();
@@ -357,5 +372,8 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
     clearError,
     setMemoText,
     markMemoSaved,
+    beginAccountAction() {
+      if (!state.accountRefreshing) setState({ accountRefreshing: true });
+    },
   };
 }

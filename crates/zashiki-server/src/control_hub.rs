@@ -81,6 +81,13 @@ fn window_confirms(stored: Option<UsageLimit>, incoming: Option<UsageLimit>) -> 
     }
 }
 
+/// Whether switching from `prev` to `next` account invalidates the account-global usage reading. The
+/// account identity is its email, so a different (or absent) email means the stored usage belonged to
+/// someone else and must be dropped; the same email is a plain reload and keeps it.
+fn account_switch_clears_usage(prev: &AccountStatus, next: &AccountStatus) -> bool {
+    prev.email != next.email
+}
+
 /// Folds an incoming statusLine reading into the stored account-global reading, keeping the fresher of
 /// each window. Returns None when neither side carries any window (so the footer stays hidden until a
 /// real reading arrives). `captured_at` is left absent here and stamped by [`ControlHub::publish_rate_limits`].
@@ -382,12 +389,27 @@ impl ControlHub {
         let _ = self.tx.send(hooks_status_message(status));
     }
 
-    /// Stores the signed-in account and broadcasts account.status to all connections (startup probe
-    /// and after each account.refresh).
+    /// Stores the signed-in account and broadcasts account.status to all connections (startup probe,
+    /// login/logout, and each account.refresh). A switched account invalidates the account-global usage
+    /// reading (it belonged to the previous account), so it is dropped and a fresh state.sync is
+    /// broadcast: the footer stops showing the old account's numbers at once, then refills from the next
+    /// usage report. A same-account reload keeps the reading (no needless clear/rebroadcast).
     pub fn publish_account_status(&self, status: AccountStatus) {
         let msg = status.to_message();
-        self.inner.write().unwrap().account_status = status;
+        let cleared_sync = {
+            let mut state = self.inner.write().unwrap();
+            let clear = account_switch_clears_usage(&state.account_status, &status)
+                && state.account_limits.is_some();
+            state.account_status = status;
+            clear.then(|| {
+                state.account_limits = None;
+                state_sync_of(&state.snapshot, None)
+            })
+        };
         let _ = self.tx.send(msg);
+        if let Some(sync) = cleared_sync {
+            let _ = self.tx.send(sync);
+        }
     }
 
     /// Stores the notification list and broadcasts notifications.sync to all connections.
@@ -1241,5 +1263,58 @@ mod tests {
         let macs = macs.lock().unwrap();
         assert_eq!(macs.len(), 1);
         assert!(!macs[0].sound);
+    }
+
+    fn account(email: &str) -> AccountStatus {
+        AccountStatus { logged_in: true, email: Some(email.to_string()) }
+    }
+
+    #[test]
+    fn account_switch_clears_usage_only_on_a_different_email() {
+        assert!(account_switch_clears_usage(&account("a@x.com"), &account("b@x.com")));
+        assert!(!account_switch_clears_usage(&account("a@x.com"), &account("a@x.com")));
+        // Signing out (email -> none) is a switch away from the account.
+        assert!(account_switch_clears_usage(&account("a@x.com"), &AccountStatus::default()));
+    }
+
+    #[tokio::test]
+    async fn publish_account_status_drops_usage_when_the_account_changes() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        // The current account reports its usage; then a different account signs in.
+        hub.publish_account_status(account("old@example.com"));
+        hub.publish_rate_limits(five_hour(80), Some(1_000));
+        let mut rx = hub.subscribe();
+
+        hub.publish_account_status(account("new@example.com"));
+        assert!(matches!(
+            rx.recv().await.unwrap(),
+            ServerMessage::AccountStatus { email: Some(e), .. } if e == "new@example.com"
+        ));
+        // The stale old-account reading is dropped in the same breath.
+        match rx.recv().await.unwrap() {
+            ServerMessage::StateSync { account_limits, .. } => assert!(account_limits.is_none()),
+            other => panic!("expected state.sync clearing usage, got {other:?}"),
+        }
+        assert!(hub.account_limits().is_none());
+    }
+
+    #[tokio::test]
+    async fn publish_account_status_keeps_usage_on_a_same_account_reload() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        hub.publish_account_status(account("me@example.com"));
+        hub.publish_rate_limits(five_hour(80), Some(1_000));
+        let mut rx = hub.subscribe();
+
+        hub.publish_account_status(account("me@example.com"));
+        assert!(matches!(
+            rx.recv().await.unwrap(),
+            ServerMessage::AccountStatus { .. }
+        ));
+        // A same-account reload broadcasts nothing more: the reading is still valid.
+        assert!(rx.try_recv().is_err());
+        assert_eq!(
+            hub.account_limits().and_then(|l| l.five_hour).map(|w| w.used_percent),
+            Some(80)
+        );
     }
 }

@@ -9,6 +9,8 @@ export interface AccountIndicatorProps {
   email: string | null;
   /** Number of running cockpit terminals, which are restarted to adopt a switched account. */
   runningCount: number;
+  /** True while a reload / sign-in / sign-out is in flight; shows a spinner until the status resolves. */
+  refreshing: boolean;
   /** Re-read the account; when `restartSessions` is true the server also restarts the running ones. */
   onRefresh(restartSessions: boolean): void;
   /** Start the interactive browser login (switches the account when a different one is chosen). */
@@ -25,6 +27,7 @@ export interface AccountIndicatorProps {
 export function AccountIndicator({
   email,
   runningCount,
+  refreshing,
   onRefresh,
   onLogin,
   onLogout,
@@ -58,6 +61,16 @@ export function AccountIndicator({
 
   return (
     <div className="account-indicator" ref={rootRef}>
+      {refreshing && (
+        <span
+          className="material-symbols-outlined account-indicator-spin"
+          role="status"
+          aria-label={t("account.refreshing")}
+          title={t("account.refreshing")}
+        >
+          progress_activity
+        </span>
+      )}
       <button
         type="button"
         className="account-indicator-email"
