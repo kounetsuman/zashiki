@@ -97,13 +97,14 @@ pub(crate) fn to_text(msg: &ServerMessage) -> Message {
 /// Handles a single control connection. After the three-stage delivery on connect, it runs
 /// broadcast forwarding and inbound message processing concurrently.
 pub async fn handle_control(mut socket: WebSocket, services: ControlServices) {
+    // Subscribe before the snapshot so a broadcast during the handshake is buffered, not lost.
+    let mut rx = services.hub.subscribe();
     for msg in services.hub.connect_messages() {
         if socket.send(to_text(&msg)).await.is_err() {
             return;
         }
     }
 
-    let mut rx = services.hub.subscribe();
     // The first ping is one interval after connecting, not immediately.
     let mut heartbeat = tokio::time::interval_at(
         tokio::time::Instant::now() + services.heartbeat,
@@ -234,8 +235,8 @@ mod tests {
         async fn connect(port: u16) -> Ws {
             let url = format!("ws://127.0.0.1:{port}/ws/control");
             let mut ws = tokio_tungstenite::connect_async(&url).await.unwrap().0;
-            // Skip the config.sync / notifications.sync / state.sync / hooks.status / notes.sync / memo.sync / account.status sent right after connecting.
-            for _ in 0..7 {
+            // Skip the config.sync / notifications.sync / state.sync / hooks.status / notes.sync / memo.sync / account.status / runtime.info sent right after connecting.
+            for _ in 0..8 {
                 let _ = next_json(&mut ws).await;
             }
             ws

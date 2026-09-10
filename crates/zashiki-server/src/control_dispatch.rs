@@ -218,6 +218,20 @@ pub(crate) async fn handle_client_message(
             tokio::spawn(async move { crate::control_account::run_account_logout(hub).await });
             true
         }
+        // Re-scan the machine for Claude Code CLI installs and broadcast a fresh runtime.info. Runs off
+        // the WS loop since it spawns `claude --version` per candidate.
+        ClientMessage::RuntimeQuery => {
+            let hub = services.hub.clone();
+            tokio::spawn(async move { hub.publish_runtime_info(crate::runtime_info::gather().await) });
+            true
+        }
+        // Update the active native install via `claude update`, reporting progress via
+        // runtime.update.status and re-scanning on completion.
+        ClientMessage::RuntimeUpdate => {
+            let hub = services.hub.clone();
+            tokio::spawn(async move { crate::runtime_update::run_runtime_update(hub).await });
+            true
+        }
         ClientMessage::CockpitTerminalNew { org, resume_sid } => {
             handle_session_new(socket, services, &org, resume_sid.as_deref()).await
         }

@@ -290,6 +290,7 @@
     "tabGeneral": "General",
     "tabOrganizations": "Organizations",
     "tabNotifications": "Activity",
+    "tabClaudeCode": "Claude Code",
     "tabDeveloper": "Development mode",
     "fontSize": "Terminal font size",
     "fontSizeDecrease": "Decrease font size",
@@ -379,6 +380,32 @@
     "rendererDom": "DOM",
     "openDevtools": "Open DevTools",
     "openDebugPanel": "Open debug panel"
+  },
+  "runtime": {
+    "section": "Claude Code CLI",
+    "sectionHint": "Every Claude Code CLI found on this machine. The active one launches Cockpit Terminals; the rest are leftovers.",
+    "empty": "Scanning for Claude Code installations…",
+    "active": "Active",
+    "leftover": "Leftover",
+    "versionUnknown": "version unavailable",
+    "refresh": "Rescan",
+    "update": "Update",
+    "updateRunning": "Updating…",
+    "updateDone": "Updated. Rescan to see the new version.",
+    "updateFailed": "Update failed. {{detail}}",
+    "updateUnsupported": "In-app update supports the native install only.",
+    "method": {
+      "native": "Native installer",
+      "npm_global": "npm global",
+      "volta": "npm global (volta)",
+      "homebrew": "Homebrew",
+      "unknown": "Unknown"
+    },
+    "manualUpdate": {
+      "npm_global": "Update with: npm update -g @anthropic-ai/claude-code",
+      "homebrew": "Update with: brew upgrade",
+      "unknown": "Update using the tool that installed this binary."
+    }
   },
   "account": {
     "notSignedIn": "Not signed in",

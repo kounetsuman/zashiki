@@ -153,7 +153,7 @@ pub(crate) fn resolve_cwd_with(cwd: &str, home: &str) -> String {
 
 /// PATH plus the typical install locations a thin GUI/launchd PATH tends to omit
 /// (`/opt/homebrew/bin`, `~/.local/bin`, …), searched in that order.
-fn program_search_dirs() -> Vec<String> {
+pub(crate) fn program_search_dirs() -> Vec<String> {
     let mut dirs: Vec<String> = std::env::var("PATH")
         .unwrap_or_default()
         .split(':')
@@ -199,7 +199,7 @@ pub(crate) fn find_program_in(dirs: &[String], name: &str) -> Option<String> {
 }
 
 #[cfg(unix)]
-fn is_executable_file(path: &std::path::Path) -> bool {
+pub(crate) fn is_executable_file(path: &std::path::Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)
         .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
@@ -207,7 +207,7 @@ fn is_executable_file(path: &std::path::Path) -> bool {
 }
 
 #[cfg(not(unix))]
-fn is_executable_file(path: &std::path::Path) -> bool {
+pub(crate) fn is_executable_file(path: &std::path::Path) -> bool {
     path.is_file()
 }
 

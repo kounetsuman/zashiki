@@ -106,6 +106,13 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
             hub.publish_account_status(crate::account_status::read_account_status(&claude).await);
         });
     }
+    // Scan for Claude Code CLI installs off the boot path so the first connect carries runtime.info.
+    {
+        let hub = hub.clone();
+        tokio::spawn(async move {
+            hub.publish_runtime_info(crate::runtime_info::gather().await);
+        });
+    }
     let config_path = config.config_path;
     if let Some(path) = config_path.clone() {
         spawn_config_watch(path, hub.clone(), CONFIG_POLL);

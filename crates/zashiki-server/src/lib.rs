@@ -37,6 +37,8 @@ pub mod notes_watch;
 pub mod repos;
 pub mod repos_watch;
 pub mod runtime;
+pub mod runtime_info;
+pub mod runtime_update;
 pub mod scrollback_monitor;
 pub mod search;
 pub mod self_update;

@@ -197,6 +197,8 @@ describe("clientMessageSchema", () => {
     [{ t: "account.refresh", restartSessions: false }],
     [{ t: "account.login" }],
     [{ t: "account.logout" }],
+    [{ t: "runtime.query" }],
+    [{ t: "runtime.update" }],
   ])("accepts: %j", (msg) => {
     expect(clientMessageSchema.parse(msg)).toEqual(msg);
   });
@@ -373,8 +375,38 @@ describe("serverMessageSchema", () => {
     [{ t: "memo.sync", text: "# Memo\n- todo\n" }],
     [{ t: "account.status", loggedIn: true, email: "user@example.com" }],
     [{ t: "account.status", loggedIn: false, email: null }],
+    [
+      {
+        t: "runtime.info",
+        installs: [
+          {
+            method: "native",
+            path: "/Users/x/.local/share/claude/versions/2.1.236",
+            version: "2.1.236",
+            isActive: true,
+          },
+          {
+            method: "npm_global",
+            path: "/opt/node/bin/claude",
+            version: null,
+            isActive: false,
+          },
+        ],
+      },
+    ],
+    [{ t: "runtime.update.status", state: "running", detail: null }],
+    [{ t: "runtime.update.status", state: "done", detail: null }],
+    [{ t: "runtime.update.status", state: "unsupported", detail: null }],
+    [{ t: "runtime.update.status", state: "failed", detail: "boom" }],
   ])("accepts: %j", (msg) => {
     expect(serverMessageSchema.parse(msg)).toEqual(msg);
+  });
+
+  it("defaults omitted runtime.info installs to empty (compatible with old servers)", () => {
+    expect(serverMessageSchema.parse({ t: "runtime.info" })).toEqual({
+      t: "runtime.info",
+      installs: [],
+    });
   });
 
   it("defaults omitted account.status loggedIn/email off (compatible with old servers)", () => {
