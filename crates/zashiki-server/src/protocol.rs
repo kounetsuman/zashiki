@@ -360,6 +360,15 @@ pub enum ClientMessage {
     /// Sign out via `claude auth logout`, then re-read and broadcast `account.status`.
     #[serde(rename = "account.logout")]
     AccountLogout,
+    /// Re-scan the machine for Claude Code CLI installations and broadcast a fresh `runtime.info`
+    /// (the SETTINGS "Claude Code" tab refresh).
+    #[serde(rename = "runtime.query")]
+    RuntimeQuery,
+    /// Update the active Claude Code CLI. Offered only when the active install is the native
+    /// installer (runs `claude update`); progress is broadcast via `runtime.update.status` and a
+    /// fresh `runtime.info` follows on success.
+    #[serde(rename = "runtime.update")]
+    RuntimeUpdate,
 }
 
 /// Result of an on-demand update check, sent only to the requester so SETTINGS can show feedback.
@@ -384,6 +393,41 @@ pub enum UpdateStatusState {
     Relaunching,
     Opened,
     Failed,
+}
+
+/// How a detected `claude` CLI is managed on disk. The client maps each to a display label.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstallMethod {
+    Native,
+    NpmGlobal,
+    Volta,
+    Homebrew,
+    Unknown,
+}
+
+/// One detected Claude Code CLI installation (an element of `runtime.info`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeInstall {
+    pub method: InstallMethod,
+    /// Absolute, symlink-resolved path to the binary.
+    pub path: String,
+    /// Version reported by `<path> --version`; null when it could not be read.
+    pub version: Option<String>,
+    /// True for the single install resolved first on `$PATH` — the one that launches sessions.
+    pub is_active: bool,
+}
+
+/// Progress of a `runtime.update`, broadcast to all connections. `unsupported` means the active
+/// install is not the native installer, so in-app update is not offered for it (yet).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RuntimeUpdateState {
+    Running,
+    Done,
+    Failed,
+    Unsupported,
 }
 
 /// The kind of notify. `waiting` / `done` are Claude Code hook events; the rest are Background
@@ -581,6 +625,18 @@ pub enum ServerMessage {
     AccountStatus {
         logged_in: bool,
         email: Option<String>,
+    },
+    /// The Claude Code CLI installations detected on this machine (sent right after connecting and in
+    /// reply to each `runtime.query` / after a `runtime.update`). Exactly one is `isActive` when any
+    /// resolve on `$PATH`.
+    #[serde(rename = "runtime.info", rename_all = "camelCase")]
+    RuntimeInfo { installs: Vec<ClaudeInstall> },
+    /// Progress of a `runtime.update`, broadcast to all connections. `detail` carries the command
+    /// output tail on `failed`.
+    #[serde(rename = "runtime.update.status", rename_all = "camelCase")]
+    RuntimeUpdateStatus {
+        state: RuntimeUpdateState,
+        detail: Option<String>,
     },
 }
 
@@ -1204,6 +1260,62 @@ mod tests {
         assert_eq!(
             to_json(&up_to_date),
             r#"{"t":"update.check.result","status":"upToDate","version":null}"#
+        );
+    }
+
+    #[test]
+    fn runtime_info_matches_wire() {
+        let msg = ServerMessage::RuntimeInfo {
+            installs: vec![
+                ClaudeInstall {
+                    method: InstallMethod::Native,
+                    path: "/Users/x/.local/share/claude/versions/2.1.236".into(),
+                    version: Some("2.1.236".into()),
+                    is_active: true,
+                },
+                ClaudeInstall {
+                    method: InstallMethod::NpmGlobal,
+                    path: "/opt/node/bin/claude".into(),
+                    version: None,
+                    is_active: false,
+                },
+            ],
+        };
+        assert_eq!(
+            to_json(&msg),
+            r#"{"t":"runtime.info","installs":[{"method":"native","path":"/Users/x/.local/share/claude/versions/2.1.236","version":"2.1.236","isActive":true},{"method":"npm_global","path":"/opt/node/bin/claude","version":null,"isActive":false}]}"#
+        );
+    }
+
+    #[test]
+    fn runtime_update_status_matches_wire() {
+        let running = ServerMessage::RuntimeUpdateStatus {
+            state: RuntimeUpdateState::Running,
+            detail: None,
+        };
+        assert_eq!(
+            to_json(&running),
+            r#"{"t":"runtime.update.status","state":"running","detail":null}"#
+        );
+        let unsupported = ServerMessage::RuntimeUpdateStatus {
+            state: RuntimeUpdateState::Unsupported,
+            detail: None,
+        };
+        assert_eq!(
+            to_json(&unsupported),
+            r#"{"t":"runtime.update.status","state":"unsupported","detail":null}"#
+        );
+    }
+
+    #[test]
+    fn runtime_query_and_update_roundtrip() {
+        assert_eq!(
+            serde_json::from_str::<ClientMessage>(r#"{"t":"runtime.query"}"#).unwrap(),
+            ClientMessage::RuntimeQuery
+        );
+        assert_eq!(
+            serde_json::from_str::<ClientMessage>(r#"{"t":"runtime.update"}"#).unwrap(),
+            ClientMessage::RuntimeUpdate
         );
     }
 

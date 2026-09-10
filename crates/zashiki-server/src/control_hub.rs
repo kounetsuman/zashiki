@@ -8,7 +8,7 @@ use crate::account_status::AccountStatus;
 use crate::claude_settings::RegistrationStatus;
 use crate::control::ConfigView;
 use crate::hooks::{notify_delivery, MacNotification, MacNotify, NotifyEvent, NotifyMode};
-use crate::protocol::{Notification, ServerMessage, CockpitTerminalInfo, UsageLimit, UsageLimits};
+use crate::protocol::{ClaudeInstall, Notification, RuntimeUpdateState, ServerMessage, CockpitTerminalInfo, UsageLimit, UsageLimits};
 use crate::status_poller::StateSnapshot;
 
 struct HubState {
@@ -29,6 +29,10 @@ struct HubState {
     /// The signed-in Claude account, delivered on connect and re-read on each account.refresh. Defaults
     /// to logged-out until the startup probe (runtime) sets it.
     account_status: AccountStatus,
+    /// The Claude Code CLI installations detected on this machine (active + leftovers), delivered on
+    /// connect and re-scanned on each runtime.query / after a runtime.update. Empty until the startup
+    /// scan (runtime) fills it.
+    runtime_info: Vec<ClaudeInstall>,
     /// The createdAt of the last enqueued notification. Kept monotonically increasing so
     /// occurrence order is preserved even for bursts within the same millisecond.
     last_notification_at: u64,
@@ -187,6 +191,7 @@ impl ControlHub {
                 account_limits: None,
                 hooks_status: RegistrationStatus::default(),
                 account_status: AccountStatus::default(),
+                runtime_info: Vec::new(),
             }),
             tx,
             notifications_path: RwLock::new(None),
@@ -269,8 +274,8 @@ impl ControlHub {
         self.tx.subscribe()
     }
 
-    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status -> notes.sync -> memo.sync -> account.status).
-    pub(crate) fn connect_messages(&self) -> [ServerMessage; 7] {
+    /// The messages sent right after connecting (config.sync -> notifications.sync -> state.sync -> hooks.status -> notes.sync -> memo.sync -> account.status -> runtime.info).
+    pub(crate) fn connect_messages(&self) -> [ServerMessage; 8] {
         let state = self.inner.read().unwrap();
         [
             ServerMessage::ConfigSync {
@@ -295,6 +300,9 @@ impl ControlHub {
                 text: state.memo.clone(),
             },
             state.account_status.to_message(),
+            ServerMessage::RuntimeInfo {
+                installs: state.runtime_info.clone(),
+            },
         ]
     }
 
@@ -446,6 +454,18 @@ impl ControlHub {
         if let Some(sync) = cleared_sync {
             let _ = self.tx.send(sync);
         }
+    }
+
+    /// Stores the detected Claude Code CLI installations and broadcasts runtime.info to all
+    /// connections. Called by the startup scan and after each runtime.query / runtime.update.
+    pub fn publish_runtime_info(&self, installs: Vec<ClaudeInstall>) {
+        self.inner.write().unwrap().runtime_info = installs.clone();
+        let _ = self.tx.send(ServerMessage::RuntimeInfo { installs });
+    }
+
+    /// Broadcasts the progress of a runtime.update (native `claude update`) to all connections.
+    pub fn publish_runtime_update_status(&self, state: RuntimeUpdateState, detail: Option<String>) {
+        let _ = self.tx.send(ServerMessage::RuntimeUpdateStatus { state, detail });
     }
 
     /// Stores the notification list and broadcasts notifications.sync to all connections.
@@ -760,6 +780,8 @@ mod tests {
         assert!(matches!(msgs[3], ServerMessage::HooksStatus { .. }));
         assert!(matches!(msgs[4], ServerMessage::NotesSync { .. }));
         assert!(matches!(msgs[5], ServerMessage::MemoSync { .. }));
+        assert!(matches!(msgs[6], ServerMessage::AccountStatus { .. }));
+        assert!(matches!(msgs[7], ServerMessage::RuntimeInfo { .. }));
     }
 
     #[tokio::test]

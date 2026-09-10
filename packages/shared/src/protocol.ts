@@ -372,6 +372,22 @@ export const accountLogoutSchema = z.object({
   t: z.literal("account.logout"),
 });
 
+/**
+ * Re-scan the machine for Claude Code CLI installations; the server broadcasts a fresh `runtime.info`
+ * (the SETTINGS "Claude Code" tab refresh).
+ */
+export const runtimeQuerySchema = z.object({
+  t: z.literal("runtime.query"),
+});
+
+/**
+ * Update the active Claude Code CLI. Offered only when the active install is the native installer
+ * (`claude update`); progress arrives via `runtime.update.status` and a fresh `runtime.info` follows.
+ */
+export const runtimeUpdateSchema = z.object({
+  t: z.literal("runtime.update"),
+});
+
 export const clientMessageSchema = z.discriminatedUnion("t", [
   termOpenSchema,
   termResizeSchema,
@@ -396,6 +412,8 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   accountRefreshSchema,
   accountLoginSchema,
   accountLogoutSchema,
+  runtimeQuerySchema,
+  runtimeUpdateSchema,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -580,6 +598,47 @@ export const accountStatusSchema = z.object({
   email: z.string().nullable().catch(null).default(null),
 });
 
+/** How a detected `claude` CLI is managed on disk (the client maps each to a display label). */
+export const installMethodSchema = z.enum([
+  "native",
+  "npm_global",
+  "volta",
+  "homebrew",
+  "unknown",
+]);
+
+/** One detected Claude Code CLI installation (an element of `runtime.info`). */
+export const claudeInstallSchema = z.object({
+  method: installMethodSchema,
+  /** Absolute, symlink-resolved path to the binary. */
+  path: z.string(),
+  /** Version reported by `<path> --version`; null when it could not be read. */
+  version: z.string().nullable(),
+  /** True for the single install resolved first on `$PATH` — the one that launches sessions. */
+  isActive: z.boolean(),
+});
+
+/**
+ * The Claude Code CLI installations detected on this machine (active + leftovers). Sent right after
+ * connecting and in reply to each `runtime.query` / after a `runtime.update`. Exactly one is `isActive`
+ * when any resolve on `$PATH`.
+ */
+export const runtimeInfoSchema = z.object({
+  t: z.literal("runtime.info"),
+  installs: z.array(claudeInstallSchema).default([]),
+});
+
+/**
+ * Progress of a `runtime.update`, broadcast to all connections. `unsupported` means the active install
+ * is not the native installer, so in-app update is not offered for it. `detail` carries the command
+ * output tail on `failed`; null otherwise.
+ */
+export const runtimeUpdateStatusSchema = z.object({
+  t: z.literal("runtime.update.status"),
+  state: z.enum(["running", "done", "failed", "unsupported"]),
+  detail: z.string().nullable(),
+});
+
 export const serverMessageSchema = z.discriminatedUnion("t", [
   stateSyncSchema,
   termReconnectSchema,
@@ -595,6 +654,8 @@ export const serverMessageSchema = z.discriminatedUnion("t", [
   updateCheckResultSchema,
   updateStatusSchema,
   accountStatusSchema,
+  runtimeInfoSchema,
+  runtimeUpdateStatusSchema,
 ]);
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
@@ -611,6 +672,13 @@ export type MemoSyncMessage = z.infer<typeof memoSyncSchema>;
 export type UpdateCheckResultMessage = z.infer<typeof updateCheckResultSchema>;
 export type UpdateStatusMessage = z.infer<typeof updateStatusSchema>;
 export type UpdateStatusState = UpdateStatusMessage["state"];
+export type ClaudeInstall = z.infer<typeof claudeInstallSchema>;
+export type InstallMethod = z.infer<typeof installMethodSchema>;
+export type RuntimeInfoMessage = z.infer<typeof runtimeInfoSchema>;
+export type RuntimeUpdateStatusMessage = z.infer<
+  typeof runtimeUpdateStatusSchema
+>;
+export type RuntimeUpdateState = RuntimeUpdateStatusMessage["state"];
 
 // ---- Claude Code hooks → server（POST /api/hooks/event）----
 

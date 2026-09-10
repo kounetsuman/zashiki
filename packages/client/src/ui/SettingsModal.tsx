@@ -1,7 +1,9 @@
 import type {
+  ClaudeInstall,
   FooterThresholds,
   HooksStatusMessage,
   NotificationSettings,
+  RuntimeUpdateStatusMessage,
   UpdateCheckResultMessage,
 } from "@zashiki/shared";
 import { useEffect, useState } from "react";
@@ -13,6 +15,7 @@ import { Modal } from "./Modal.js";
 import { NotificationSettingsField } from "./NotificationSettingsField.js";
 import { OrgAppearanceEditor } from "./OrgAppearanceEditor.js";
 import { OrgNotesEditor } from "./OrgNotesEditor.js";
+import { RuntimeInfoView } from "./RuntimeInfoView.js";
 import "./SettingsModal.css";
 import {
   UnsavedChangesBar,
@@ -31,7 +34,12 @@ type UpdateCheckState =
   | { phase: "upToDate" }
   | { phase: "error" };
 
-type SettingsTab = "general" | "organizations" | "notifications" | "developer";
+type SettingsTab =
+  | "general"
+  | "organizations"
+  | "notifications"
+  | "claudeCode"
+  | "developer";
 
 export interface SettingsModalProps {
   /** Current display language (i18n.language). */
@@ -101,6 +109,14 @@ export interface SettingsModalProps {
   hooksStatus?: Omit<HooksStatusMessage, "t">;
   /** Install (true) or remove (false) the integration (hooks.register / hooks.unregister). */
   onSetHooksRegistered?(register: boolean): void;
+  /** Detected Claude Code CLI installations (from runtime.info). Omit (with the handlers) to hide the tab. */
+  runtimeInstalls?: ClaudeInstall[];
+  /** Latest runtime.update progress (from runtime.update.status); null before any update. */
+  runtimeUpdateStatus?: Omit<RuntimeUpdateStatusMessage, "t"> | null;
+  /** Rescan for Claude Code installations (runtime.query). Omit (with `onUpdateRuntime`) to hide the tab. */
+  onRefreshRuntime?(): void;
+  /** Update the active native install (runtime.update). */
+  onUpdateRuntime?(): void;
   /** Current xterm renderer. Omit to hide the renderer field (e.g. in isolated tests). */
   renderer?: XtermRenderer;
   onSetRenderer?(renderer: XtermRenderer): void;
@@ -159,6 +175,10 @@ export function SettingsModal({
   onSetNotifications,
   hooksStatus,
   onSetHooksRegistered,
+  runtimeInstalls,
+  runtimeUpdateStatus,
+  onRefreshRuntime,
+  onUpdateRuntime,
   renderer,
   onSetRenderer,
   onOpenDevtools,
@@ -241,6 +261,20 @@ export function SettingsModal({
             >
               {t("settings.tabNotifications")}
             </button>
+            {onRefreshRuntime !== undefined &&
+              onUpdateRuntime !== undefined && (
+                <button
+                  type="button"
+                  role="tab"
+                  id="settings-tab-claude-code"
+                  aria-selected={tab === "claudeCode"}
+                  aria-controls="settings-panel-claude-code"
+                  className={`modal-nav-item${tab === "claudeCode" ? " is-active" : ""}`}
+                  onClick={() => setTab("claudeCode")}
+                >
+                  {t("settings.tabClaudeCode")}
+                </button>
+              )}
             <button
               type="button"
               role="tab"
@@ -537,6 +571,22 @@ export function SettingsModal({
                 />
               )}
           </div>
+          {onRefreshRuntime !== undefined && onUpdateRuntime !== undefined && (
+            <div
+              className="modal-body scrollbar-persistent"
+              role="tabpanel"
+              id="settings-panel-claude-code"
+              aria-labelledby="settings-tab-claude-code"
+              hidden={tab !== "claudeCode"}
+            >
+              <RuntimeInfoView
+                installs={runtimeInstalls ?? []}
+                updateStatus={runtimeUpdateStatus ?? null}
+                onRefresh={onRefreshRuntime}
+                onUpdate={onUpdateRuntime}
+              />
+            </div>
+          )}
           <div
             className="modal-body scrollbar-persistent"
             role="tabpanel"

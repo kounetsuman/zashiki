@@ -1,5 +1,6 @@
 import {
   activityIdsForCockpitTerminal,
+  type ClaudeInstall,
   type ClientMessage,
   claudeSessionId,
   DEFAULT_FOOTER_THRESHOLDS,
@@ -10,6 +11,7 @@ import {
   isSinglePathSegment,
   type NotificationSettings,
   partitionNotifications,
+  type RuntimeUpdateStatusMessage,
   resolveOrgColor,
   type ServerMessage,
   type UpdateCheckResultMessage,
@@ -214,6 +216,11 @@ export function App({
   const [hooksStatus, setHooksStatus] = useState<HooksStatusMessage | null>(
     null,
   );
+  const [runtimeInstalls, setRuntimeInstalls] = useState<ClaudeInstall[]>([]);
+  const [runtimeUpdateStatus, setRuntimeUpdateStatus] = useState<Omit<
+    RuntimeUpdateStatusMessage,
+    "t"
+  > | null>(null);
   const { crashLog, dismissCrash } = useCrashReport(crashApi);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
   const [viewStorage] = useState(() =>
@@ -891,6 +898,25 @@ export function App({
     });
   }, [control]);
 
+  // Track the detected Claude Code CLI installations and update progress the server pushes (on connect,
+  // and after each runtime.query / runtime.update).
+  useEffect(() => {
+    return control.onMessage((m) => {
+      if (m.t === "runtime.info") setRuntimeInstalls(m.installs);
+      if (m.t === "runtime.update.status")
+        setRuntimeUpdateStatus({ state: m.state, detail: m.detail });
+    });
+  }, [control]);
+
+  const refreshRuntime = useCallback((): void => {
+    control.send({ t: "runtime.query" });
+  }, [control]);
+
+  const updateRuntime = useCallback((): void => {
+    setRuntimeUpdateStatus({ state: "running", detail: null });
+    control.send({ t: "runtime.update" });
+  }, [control]);
+
   const setHooksRegistered = useCallback(
     (register: boolean): void => {
       control.send({ t: register ? "hooks.register" : "hooks.unregister" });
@@ -1296,6 +1322,10 @@ export function App({
           onSetNotifications={saveNotifications}
           hooksStatus={hooksStatus ?? undefined}
           onSetHooksRegistered={setHooksRegistered}
+          runtimeInstalls={runtimeInstalls}
+          runtimeUpdateStatus={runtimeUpdateStatus}
+          onRefreshRuntime={refreshRuntime}
+          onUpdateRuntime={updateRuntime}
           renderer={terminalRenderer.renderer}
           onSetRenderer={terminalRenderer.setRenderer}
           onOpenDevtools={canOpenDevtools() ? openDevtools : undefined}

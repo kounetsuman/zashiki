@@ -290,6 +290,7 @@
     "tabGeneral": "一般",
     "tabOrganizations": "組織",
     "tabNotifications": "アクティビティ",
+    "tabClaudeCode": "Claude Code",
     "tabDeveloper": "開発モード",
     "fontSize": "ターミナルの文字サイズ",
     "fontSizeDecrease": "文字を小さく",
@@ -379,6 +380,32 @@
     "rendererDom": "DOM",
     "openDevtools": "DevTools を開く",
     "openDebugPanel": "デバッグパネルを開く"
+  },
+  "runtime": {
+    "section": "Claude Code CLI",
+    "sectionHint": "この PC で見つかった Claude Code CLI の一覧です。現役のものが Cockpit Terminal を起動します。残りは残骸です。",
+    "empty": "Claude Code のインストールを検出中…",
+    "active": "現役",
+    "leftover": "残骸",
+    "versionUnknown": "バージョン不明",
+    "refresh": "再スキャン",
+    "update": "更新",
+    "updateRunning": "更新中…",
+    "updateDone": "更新しました。再スキャンで新しいバージョンを確認できます。",
+    "updateFailed": "更新に失敗しました。{{detail}}",
+    "updateUnsupported": "アプリ内更新はネイティブ版のみ対応しています。",
+    "method": {
+      "native": "ネイティブインストーラ",
+      "npm_global": "npm グローバル",
+      "volta": "npm グローバル (volta)",
+      "homebrew": "Homebrew",
+      "unknown": "不明"
+    },
+    "manualUpdate": {
+      "npm_global": "更新コマンド: npm update -g @anthropic-ai/claude-code",
+      "homebrew": "更新コマンド: brew upgrade",
+      "unknown": "このバイナリを入れたツールで更新してください。"
+    }
   },
   "account": {
     "notSignedIn": "未ログイン",

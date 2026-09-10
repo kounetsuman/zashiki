@@ -282,3 +282,65 @@
 .notifications-preview-button:hover {
   background: var(--modal-control-bg-hover);
 }
+
+.runtime-install-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.runtime-install {
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  padding: 8px 12px;
+  background: var(--modal-surface);
+}
+
+.runtime-install.is-active {
+  border-color: var(--modal-accent);
+}
+
+.runtime-install-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.runtime-method {
+  font-weight: 600;
+}
+
+.runtime-badge {
+  font-size: 0.75em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--modal-border-strong);
+  color: var(--modal-text-muted);
+}
+
+.runtime-badge-active {
+  background: var(--modal-accent);
+  border-color: var(--modal-accent);
+  color: var(--modal-surface);
+}
+
+.runtime-version {
+  margin-left: auto;
+  color: var(--modal-text-dim);
+}
+
+.runtime-path {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--org-notes-mono);
+  color: var(--modal-text-muted);
+  word-break: break-all;
+}
+
+.runtime-actions {
+  display: flex;
+  gap: 8px;
+}
