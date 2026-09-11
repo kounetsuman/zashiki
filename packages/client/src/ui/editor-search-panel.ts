@@ -3,17 +3,36 @@ import {
   findNext,
   findPrevious,
   getSearchQuery,
+  openSearchPanel,
   replaceAll,
   replaceNext,
   SearchQuery,
   search,
+  searchPanelOpen,
   setSearchQuery,
 } from "@codemirror/search";
 import { Prec } from "@codemirror/state";
-import type { EditorView, Panel } from "@codemirror/view";
+import type { Command, EditorView, KeyBinding, Panel } from "@codemirror/view";
+import { keymap, runScopeHandlers } from "@codemirror/view";
 
 import i18n from "../i18n/index.js";
 import { matchLabel, matchStats } from "../lib/editor-search.js";
+
+/**
+ * CodeMirror delivers keymaps to focused editor content only, so the panel re-runs the binding under
+ * this scope to answer the shortcut while one of its own fields has focus.
+ */
+const FIND_PANEL_SCOPE = "find-panel";
+
+/** Toggles the panel; CodeMirror's own Mod-f binding only ever opens it and re-selects the field. */
+const toggleSearchPanel: Command = (view) => {
+  if (searchPanelOpen(view.state)) return closeSearchPanel(view);
+  return openSearchPanel(view);
+};
+
+const findKeymap: KeyBinding[] = [
+  { key: "Mod-f", run: toggleSearchPanel, scope: `editor ${FIND_PANEL_SCOPE}` },
+];
 
 /** All query hit ranges in document order for the current search query (empty when the query is invalid). */
 function matchRanges(view: EditorView): { from: number; to: number }[] {
@@ -65,6 +84,11 @@ function createEditorSearchPanel(view: EditorView, findOnly: boolean): Panel {
   const dom = document.createElement("div");
   dom.className = "cm-find";
   dom.addEventListener("keydown", (event) => {
+    if (runScopeHandlers(view, event, FIND_PANEL_SCOPE)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       // Closing the panel is the whole intent of Escape here; don't let it also bubble to an outer
@@ -270,8 +294,8 @@ function createEditorSearchPanel(view: EditorView, findOnly: boolean): Panel {
     dom,
     top: true,
     mount() {
-      // Focus the find field on open so typing goes straight to the query. The
-      // Mod-f keymap only opens the panel; it does not focus the field itself.
+      // Focus the find field on open so typing goes straight to the query;
+      // opening the panel does not focus the field on its own.
       findInput.focus();
       findInput.select();
       refreshCount();
@@ -291,18 +315,22 @@ function createEditorSearchPanel(view: EditorView, findOnly: boolean): Panel {
 }
 
 /**
- * The find/replace extension: replaces CodeMirror's default panel with the compact top-right widget.
- * Pass findOnly for read-only surfaces (the Viewer) to drop the replace row.
+ * The find/replace extension: replaces CodeMirror's default panel with the compact top-right widget
+ * and makes Mod-f toggle it. Pass findOnly for read-only surfaces (the Viewer) to drop the replace
+ * row.
  */
 export function editorSearch({
   findOnly = false,
 }: {
   findOnly?: boolean;
 } = {}) {
-  return Prec.high(
-    search({
-      top: true,
-      createPanel: (view) => createEditorSearchPanel(view, findOnly),
-    }),
-  );
+  return [
+    Prec.high(keymap.of(findKeymap)),
+    Prec.high(
+      search({
+        top: true,
+        createPanel: (view) => createEditorSearchPanel(view, findOnly),
+      }),
+    ),
+  ];
 }
