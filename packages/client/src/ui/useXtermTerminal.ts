@@ -31,7 +31,7 @@ export interface XtermTerminalDeps {
   focusNonce: number;
   resizeNonce: number;
   clipboardEditEnabled: boolean;
-  openFind(): void;
+  toggleFind(): void;
   openClipboardEdit(text: string): void;
   resetFind(): void;
   setFindResults(results: SearchResults): void;
@@ -52,7 +52,7 @@ export function useXtermTerminal({
   focusNonce,
   resizeNonce,
   clipboardEditEnabled,
-  openFind,
+  toggleFind,
   openClipboardEdit,
   resetFind,
   setFindResults,
@@ -178,7 +178,7 @@ export function useXtermTerminal({
         getSelection: () => term.getSelection(),
         input: (data) => session.input(data),
         clipboardEditEnabled: clipboardEditEnabledRef.current,
-        openFind,
+        toggleFind,
         openClipboardEdit,
       }),
     );
@@ -274,7 +274,7 @@ export function useXtermTerminal({
     termRef,
     searchRef,
     enableWebgl,
-    openFind,
+    toggleFind,
     openClipboardEdit,
     resetFind,
     setFindResults,

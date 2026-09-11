@@ -1,6 +1,12 @@
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal } from "@xterm/xterm";
-import { type RefObject, useCallback, useEffect, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   buildSearchOptions,
   centerScrollTop,
@@ -12,13 +18,12 @@ export interface TerminalFind {
   open: boolean;
   query: string;
   results: SearchResults;
-  /** Bumped when the bar opens, so the find input can steal focus. */
-  focusSignal: number;
   runSearch(
     query: string,
     direction: "next" | "previous" | "incremental",
   ): void;
-  openFind(): void;
+  /** Open the bar, or close it when it is already open. Stable, so it can key the terminal effect. */
+  toggleFind(): void;
   closeFind(): void;
   onQueryChange(query: string): void;
   setResults(results: SearchResults): void;
@@ -36,7 +41,8 @@ export function useTerminalFind(
 ): TerminalFind {
   const [find, setFind] = useState({ open: false, query: "" });
   const [results, setResults] = useState<SearchResults>(EMPTY_SEARCH_RESULTS);
-  const [focusSignal, setFocusSignal] = useState(0);
+  const openRef = useRef(find.open);
+  openRef.current = find.open;
 
   const runSearch = useCallback(
     (query: string, direction: "next" | "previous" | "incremental"): void => {
@@ -67,7 +73,6 @@ export function useTerminalFind(
     // so a query containing a newline can never match.
     const selection = (termRef.current?.getSelection() ?? "").split("\n")[0];
     setFind((prev) => ({ open: true, query: selection || prev.query }));
-    setFocusSignal((n) => n + 1);
   }, [termRef]);
 
   const closeFind = useCallback((): void => {
@@ -75,6 +80,11 @@ export function useTerminalFind(
     setFind((prev) => ({ ...prev, open: false }));
     termRef.current?.focus();
   }, [searchRef, termRef]);
+
+  const toggleFind = useCallback((): void => {
+    if (openRef.current) closeFind();
+    else openFind();
+  }, [closeFind, openFind]);
 
   const onQueryChange = useCallback((query: string): void => {
     setFind((prev) => ({ ...prev, query }));
@@ -95,9 +105,8 @@ export function useTerminalFind(
     open: find.open,
     query: find.query,
     results,
-    focusSignal,
     runSearch,
-    openFind,
+    toggleFind,
     closeFind,
     onQueryChange,
     setResults,

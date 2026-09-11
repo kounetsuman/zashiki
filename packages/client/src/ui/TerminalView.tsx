@@ -92,7 +92,7 @@ export function TerminalView({
     focusNonce,
     resizeNonce,
     clipboardEditEnabled,
-    openFind: find.openFind,
+    toggleFind: find.toggleFind,
     openClipboardEdit,
     resetFind: find.reset,
     setFindResults: find.setResults,
@@ -104,7 +104,6 @@ export function TerminalView({
         <TerminalFindBar
           query={find.query}
           results={find.results}
-          focusSignal={find.focusSignal}
           onQueryChange={find.onQueryChange}
           onNext={() => find.runSearch(find.query, "next")}
           onPrevious={() => find.runSearch(find.query, "previous")}
