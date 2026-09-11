@@ -2,15 +2,11 @@ import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { matchCounter, type SearchResults } from "../lib/terminal-search.js";
+import { isFindShortcut } from "./terminal-key-handler.js";
 
 export interface TerminalFindBarProps {
   query: string;
   results: SearchResults;
-  /**
-   * Incremented each time openFind runs (Cmd+F from the terminal). On change the input is refocused
-   * and its text selected, so re-opening from the terminal re-targets the field.
-   */
-  focusSignal: number;
   onQueryChange(query: string): void;
   onNext(): void;
   onPrevious(): void;
@@ -20,12 +16,11 @@ export interface TerminalFindBarProps {
 /**
  * Browser-style find bar overlaid at the top of the session terminal (issue #35). Presentational:
  * the SearchAddon wiring, highlighting and centering live in TerminalView. Enter / Shift+Enter move
- * between matches, Escape closes.
+ * between matches, Escape and the find shortcut close.
  */
 export function TerminalFindBar({
   query,
   results,
-  focusSignal,
   onQueryChange,
   onNext,
   onPrevious,
@@ -34,17 +29,11 @@ export function TerminalFindBar({
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Focus + select on mount (the bar just appeared) and each time focusSignal changes (the open
-  // shortcut pressed again). Starting the ref at null makes the first render count as a change.
-  const prevFocusSignal = useRef<number | null>(null);
+  // The bar is mounted only while it is open, so opening it is the moment to take the field.
   useEffect(() => {
-    if (focusSignal === prevFocusSignal.current) return;
-    prevFocusSignal.current = focusSignal;
-    const input = inputRef.current;
-    if (!input) return;
-    input.focus();
-    input.select();
-  }, [focusSignal]);
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
 
   const counter = matchCounter(query, results);
   const noMatches = counter !== null && counter.total === 0;
@@ -56,7 +45,17 @@ export function TerminalFindBar({
         : `${counter.current} / ${counter.total}`;
 
   return (
-    <search className="terminal-find">
+    <search
+      className="terminal-find"
+      onKeyDown={(e) => {
+        // On the wrapper, not the input: the match buttons take focus when clicked, and dismissing
+        // the bar has to keep working from there. The terminal's own handler never sees these keys.
+        if (e.nativeEvent.isComposing) return;
+        if (!isFindShortcut(e) && e.key !== "Escape") return;
+        e.preventDefault();
+        onClose();
+      }}
+    >
       <input
         ref={inputRef}
         type="text"
@@ -66,16 +65,10 @@ export function TerminalFindBar({
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            onClose();
-            return;
-          }
-          if (e.key === "Enter") {
-            e.preventDefault();
-            if (e.shiftKey) onPrevious();
-            else onNext();
-          }
+          if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
+          e.preventDefault();
+          if (e.shiftKey) onPrevious();
+          else onNext();
         }}
       />
       <span

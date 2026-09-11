@@ -4,8 +4,21 @@ export interface TerminalKeyDeps {
   getSelection(): string;
   input(data: string): void;
   clipboardEditEnabled: boolean;
-  openFind(): void;
+  toggleFind(): void;
   openClipboardEdit(text: string): void;
+}
+
+/** Cmd+F on its own: the terminal's find shortcut, shared with the find bar's own key handling. */
+export function isFindShortcut(
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
+): boolean {
+  return (
+    (e.key === "f" || e.key === "F") &&
+    e.metaKey &&
+    !e.ctrlKey &&
+    !e.altKey &&
+    !e.shiftKey
+  );
 }
 
 /** Custom xterm keydown policy: returns false to intercept (skip xterm's default), true to pass through. */
@@ -15,15 +28,9 @@ export function handleTerminalKey(
 ): boolean {
   if (e.type !== "keydown") return true;
   if (e.isComposing || e.keyCode === 229) return true;
-  if (
-    (e.key === "f" || e.key === "F") &&
-    e.metaKey &&
-    !e.ctrlKey &&
-    !e.altKey &&
-    !e.shiftKey
-  ) {
+  if (isFindShortcut(e)) {
     e.preventDefault();
-    deps.openFind();
+    deps.toggleFind();
     return false;
   }
   if (

@@ -9,7 +9,7 @@ function deps(overrides: Partial<TerminalKeyDeps> = {}): TerminalKeyDeps {
     getSelection: () => "",
     input: vi.fn(),
     clipboardEditEnabled: true,
-    openFind: vi.fn(),
+    toggleFind: vi.fn(),
     openClipboardEdit: vi.fn(),
     ...overrides,
   };
@@ -39,11 +39,11 @@ describe("handleTerminalKey", () => {
     expect(handleTerminalKey(key({ keyCode: 229 }), deps())).toBe(true);
   });
 
-  it("opens the find bar on Cmd+F and intercepts", () => {
+  it("toggles the find bar on Cmd+F and intercepts", () => {
     const d = deps();
     const e = key({ key: "f", metaKey: true });
     expect(handleTerminalKey(e, d)).toBe(false);
-    expect(d.openFind).toHaveBeenCalledOnce();
+    expect(d.toggleFind).toHaveBeenCalledOnce();
     expect(e.preventDefault).toHaveBeenCalledOnce();
   });
 

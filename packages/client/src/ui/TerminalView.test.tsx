@@ -804,6 +804,82 @@ describe("TerminalView", () => {
       ).toBe("foo");
     });
 
+    it("closes again on Cmd+F from the terminal", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      expect(screen.queryByPlaceholderText(PLACEHOLDER)).toBeNull();
+    });
+
+    it("keeps the same terminal across a toggle (scrollback is not rebuilt)", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      expect(MockTerminal.instances).toHaveLength(1);
+    });
+
+    it("closes on Cmd+F pressed in the find field", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      const focusedBefore = term.focusCount;
+      fireEvent.keyDown(screen.getByPlaceholderText(PLACEHOLDER), {
+        key: "f",
+        metaKey: true,
+      });
+      expect(screen.queryByPlaceholderText(PLACEHOLDER)).toBeNull();
+      expect(term.focusCount).toBeGreaterThan(focusedBefore);
+    });
+
+    it("leaves the bar open on Cmd+Shift+F in the find field", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      fireEvent.keyDown(screen.getByPlaceholderText(PLACEHOLDER), {
+        key: "F",
+        metaKey: true,
+        shiftKey: true,
+      });
+      expect(screen.queryByPlaceholderText(PLACEHOLDER)).not.toBeNull();
+    });
+
+    it("focuses the find field when the bar opens", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      expect(document.activeElement).toBe(
+        screen.getByPlaceholderText(PLACEHOLDER),
+      );
+    });
+
+    it("closes on Cmd+F once a match button holds focus", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      const [previous] = screen.getAllByRole("button");
+      if (!previous) throw new Error("find bar buttons not rendered");
+      fireEvent.keyDown(previous, { key: "f", metaKey: true });
+      expect(screen.queryByPlaceholderText(PLACEHOLDER)).toBeNull();
+    });
+
+    it("does not close on the IME-cancelling Escape (isComposing)", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      fireEvent.keyDown(screen.getByPlaceholderText(PLACEHOLDER), {
+        key: "Escape",
+        isComposing: true,
+      });
+      expect(screen.queryByPlaceholderText(PLACEHOLDER)).not.toBeNull();
+    });
+
+    it("does not navigate on the IME composition-confirming Enter (isComposing)", () => {
+      const { term } = renderStarted();
+      act(() => term.emitKey({ key: "f", metaKey: true }));
+      const search = MockSearchAddon.instances[0];
+      if (!search) throw new Error("search addon not loaded");
+      const input = screen.getByPlaceholderText(PLACEHOLDER);
+      fireEvent.change(input, { target: { value: "foo" } });
+      const before = search.findNextCalls.length;
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+      expect(search.findNextCalls).toHaveLength(before);
+    });
+
     it("does not open on Ctrl+F (left to the shell's forward-char)", () => {
       const { term } = renderStarted();
       let forwarded = false;
