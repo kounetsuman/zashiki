@@ -42,6 +42,15 @@ pub struct HookEventAge {
     pub age_sec: f64,
 }
 
+/// One reading of a session's model with when it was established (epoch-ms), so the poller can take
+/// the newer of its two sources without needing a clock of its own. `at_ms` is None when the source
+/// gave no timestamp.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelReading {
+    pub model: String,
+    pub at_ms: Option<u64>,
+}
+
 /// The infra boundary the poller depends on (onion port). Implementations are the real-I/O adapter and test stubs.
 /// It requires `Send` on the returned futures so tasks can be spawned onto a timer-driven task (the impl side can
 /// still satisfy this as a plain `async fn`; RPITIT).
@@ -76,6 +85,13 @@ pub trait PollerPorts {
         _cwd: &str,
         _sid: &str,
     ) -> impl Future<Output = Option<SessionUsageData>> + Send {
+        async { None }
+    }
+    /// The model Claude Code last reported for `sid` through its statusLine, with when it reported it
+    /// (None when the statusLine bridge is not in place, or nothing was reported). Reported from a
+    /// session's first render, so it covers a terminal whose transcript has no assistant reply yet.
+    /// Defaulted to None so stubs that do not exercise the footer need not implement it.
+    fn active_model(&self, _sid: &str) -> impl Future<Output = Option<ModelReading>> + Send {
         async { None }
     }
     /// The last recorded Claude Code hook event for `sid` (None if hooks are unconfigured or nothing

@@ -120,7 +120,7 @@ describe("cockpitTerminalInfoSchema", () => {
       }).success,
     ).toBe(false);
   });
-  // Wire parity with the Rust server's CockpitTerminalInfo.usage (crates/zashiki-server/src/protocol.rs).
+  // Wire parity with the Rust server's CockpitTerminalInfo (crates/zashiki-server/src/protocol.rs).
   it("accepts the transcript-derived usage footer material", () => {
     const info = {
       cockpitTerminalId: "@1",
@@ -130,18 +130,32 @@ describe("cockpitTerminalInfoSchema", () => {
       state: "running",
       title: null,
       active: true,
+      model: "claude-opus-4-8",
       usage: {
         turnTokens: 1200,
         sessionTokens: 3400000,
         turnStartedAt: 1700000000000,
         sessionStartedAt: 1699999000000,
-        model: "claude-opus-4-8",
       },
     };
     expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
   });
 
-  it("accepts usage without a model (old server or pre-first-reply)", () => {
+  it("accepts a model with no usage (a terminal before its first reply)", () => {
+    const info = {
+      cockpitTerminalId: "@1",
+      name: "repo",
+      org: "o",
+      repo: "repo",
+      state: "idle",
+      title: null,
+      active: true,
+      model: "claude-opus-5[1m]",
+    };
+    expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
+  });
+
+  it("accepts usage with no model (old server, or neither source knows it)", () => {
     const usage = {
       turnTokens: 0,
       sessionTokens: 0,

@@ -358,6 +358,7 @@ export function App({
       ? cockpitTerminals.find((s) => s.cockpitTerminalId === activeSess)
       : undefined;
   const activeSessionUsage = activeSession?.usage ?? null;
+  const activeSessionModel = activeSession?.model;
   const activeSessionAccent =
     activeSession !== undefined
       ? resolveOrgColor(activeSession.org, orgColors)
@@ -1242,6 +1243,7 @@ export function App({
           {activeSess !== null && (
             <SessionStatusFooter
               usage={activeSessionUsage}
+              model={activeSessionModel}
               accentColor={activeSessionAccent}
               thresholds={footerThresholds}
             />

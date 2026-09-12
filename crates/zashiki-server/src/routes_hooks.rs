@@ -109,9 +109,10 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
     .into_response()
 }
 
-/// `POST /api/hooks/statusline`. Receives Claude Code's statusLine payload (which carries
-/// `rate_limits`, unavailable from the transcript) and folds the account usage limits into the single
-/// account-global reading the footer shows. Confluence, not replacement: never fails Claude Code.
+/// `POST /api/hooks/statusline`. Receives Claude Code's statusLine payload, which carries two things
+/// the transcript cannot give: `rate_limits`, folded into the single account-global reading the footer
+/// shows, and the session's model, known from its first render rather than from its first reply.
+/// Confluence, not replacement: never fails Claude Code.
 pub(crate) async fn hooks_statusline(
     State(state): State<AppState>,
     body: axum::body::Bytes,
@@ -123,6 +124,9 @@ pub(crate) async fn hooks_statusline(
         Ok(v) => v,
         Err(_) => return json_error(StatusCode::BAD_REQUEST, "invalid json"),
     };
+    if let Some((sid, model)) = crate::hooks::parse_statusline_model(&json) {
+        control.session_models.record(&sid, &model, now_ms());
+    }
     let matched = match crate::hooks::parse_statusline_limits(&json) {
         Some((_sid, limits)) => {
             let captured_at = std::time::SystemTime::now()
@@ -219,6 +223,7 @@ mod hooks_rest_tests {
             terms: Arc::new(std::sync::Mutex::new(TermRegistry::new())),
             sessions,
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
+            session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: mode,
             notify_history: true,
@@ -238,9 +243,18 @@ mod hooks_rest_tests {
     }
 
     async fn send(app: axum::Router, method: &str, body: &str) -> (StatusCode, String) {
+        send_to(app, method, "/api/hooks/event?token=t", body).await
+    }
+
+    async fn send_to(
+        app: axum::Router,
+        method: &str,
+        uri: &str,
+        body: &str,
+    ) -> (StatusCode, String) {
         let req = HttpRequest::builder()
             .method(method)
-            .uri("/api/hooks/event?token=t")
+            .uri(uri)
             .header("host", OK_HOST)
             .header("x-zashiki-token", "t")
             .header("content-type", "application/json")
@@ -311,6 +325,27 @@ mod hooks_rest_tests {
         assert_eq!(s, StatusCode::OK);
         let got = store.get(sid, crate::app_state::now_ms()).expect("event recorded");
         assert_eq!(got.event, zashiki_core::session_state::HookEvent::Tool);
+    }
+
+    /// The statusLine payload's model is recorded into the shared store (the poller's model source)
+    /// even when the payload carries no rate limits yet, which is how it arrives on a session's first
+    /// renders.
+    #[tokio::test]
+    async fn statusline_model_is_recorded_into_store() {
+        let sid = "579FA8CF-4901-45CB-B9EC-17E229231A37";
+        let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+        let services = services(hub, NotifyMode::Web, Arc::new(Mutex::new(vec![])));
+        let store = services.session_models.clone();
+        let (s, _) = send_to(
+            app(services),
+            "POST",
+            "/api/hooks/statusline?token=t",
+            &format!(r#"{{"session_id":"{sid}","model":{{"id":"claude-opus-5[1m]"}}}}"#),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        let got = store.get(sid, crate::app_state::now_ms()).expect("model recorded");
+        assert_eq!(got.model, "claude-opus-5[1m]");
     }
 
     #[tokio::test]

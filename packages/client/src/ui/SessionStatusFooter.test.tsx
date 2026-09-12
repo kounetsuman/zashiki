@@ -12,7 +12,6 @@ const base: SessionUsage = {
   sessionTokens: 3_400_000,
   turnStartedAt: 0,
   sessionStartedAt: 0,
-  model: "claude-opus-4-8",
 };
 
 describe("SessionStatusFooter", () => {
@@ -23,12 +22,17 @@ describe("SessionStatusFooter", () => {
   });
 
   it("renders the current model label", () => {
-    render(<SessionStatusFooter usage={base} />);
+    render(<SessionStatusFooter usage={base} model="claude-opus-4-8" />);
     expect(screen.getByText("Opus 4.8")).toBeTruthy();
   });
 
+  it("renders the model of a terminal that has no usage yet", () => {
+    render(<SessionStatusFooter usage={null} model="claude-opus-5[1m]" />);
+    expect(screen.getByText("Opus 5")).toBeTruthy();
+  });
+
   it("dashes the model cell when the model is unknown", () => {
-    render(<SessionStatusFooter usage={{ ...base, model: undefined }} />);
+    render(<SessionStatusFooter usage={base} />);
     expect(screen.getAllByText("–").length).toBe(1);
   });
 

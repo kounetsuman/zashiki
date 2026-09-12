@@ -44,6 +44,21 @@ pub fn parse_statusline_limits(json: &Value) -> Option<(String, UsageLimits)> {
     ))
 }
 
+/// Extracts the sid and the model id from a Claude Code statusLine payload
+/// (`POST /api/hooks/statusline`). Claude Code fills it from the session's first render, so unlike the
+/// transcript it already knows the model before the first assistant reply. None when either field is
+/// missing, blank, or past `WIRE_STRING_MAX_LEN` — the store keeps what it is given for the server's
+/// lifetime, so an implausible report is refused rather than retained.
+pub fn parse_statusline_model(json: &Value) -> Option<(String, String)> {
+    let sid = json.get("session_id").and_then(Value::as_str)?;
+    let model = json.get("model")?.get("id").and_then(Value::as_str)?;
+    let usable = !sid.is_empty()
+        && !model.is_empty()
+        && sid.len() <= crate::protocol::WIRE_STRING_MAX_LEN
+        && model.len() <= crate::protocol::WIRE_STRING_MAX_LEN;
+    usable.then(|| (sid.to_string(), model.to_string()))
+}
+
 /// Notification destination (ZK_NOTIFY; defaults to web).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum NotifyMode {
@@ -238,6 +253,54 @@ mod tests {
     use super::*;
     use crate::status_poller::CockpitTerminalPane;
     use serde_json::json;
+
+    #[test]
+    fn statusline_parses_sid_and_model() {
+        let payload = json!({
+            "session_id": "abc",
+            "model": {"id": "claude-opus-5[1m]", "display_name": "Opus 5 (1M context)"},
+        });
+        assert_eq!(
+            parse_statusline_model(&payload),
+            Some(("abc".to_string(), "claude-opus-5[1m]".to_string()))
+        );
+    }
+
+    #[test]
+    fn statusline_model_none_without_a_sid_or_model() {
+        assert_eq!(parse_statusline_model(&json!({})), None);
+        assert_eq!(
+            parse_statusline_model(&json!({"model": {"id": "claude-opus-5"}})),
+            None
+        );
+        assert_eq!(
+            parse_statusline_model(&json!({"session_id": "abc", "model": {}})),
+            None
+        );
+        assert_eq!(
+            parse_statusline_model(&json!({"session_id": "abc", "model": {"id": ""}})),
+            None
+        );
+        let overlong = "c".repeat(crate::protocol::WIRE_STRING_MAX_LEN + 1);
+        assert_eq!(
+            parse_statusline_model(&json!({"session_id": "abc", "model": {"id": overlong}})),
+            None
+        );
+        assert_eq!(
+            parse_statusline_model(&json!({"session_id": overlong, "model": {"id": "claude-opus-5"}})),
+            None
+        );
+    }
+
+    #[test]
+    fn statusline_model_is_read_even_without_rate_limits() {
+        let payload = json!({"session_id": "abc", "model": {"id": "claude-opus-5"}});
+        assert!(parse_statusline_limits(&payload).is_none());
+        assert_eq!(
+            parse_statusline_model(&payload).map(|(_, m)| m),
+            Some("claude-opus-5".to_string())
+        );
+    }
 
     #[test]
     fn statusline_parses_sid_and_both_limits() {

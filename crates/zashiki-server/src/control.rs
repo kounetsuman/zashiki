@@ -72,6 +72,9 @@ pub struct ControlServices {
     /// The shared last-hook-event store. The hook route writes it; the poller reads it via
     /// `PollerPorts::last_hook_event` for event-authoritative state.
     pub hook_events: Arc<crate::hook_event_store::HookEventStore>,
+    /// The shared model store. The statusLine route writes it; the poller reads it via
+    /// `PollerPorts::active_model` for the footer's model cell.
+    pub session_models: Arc<crate::session_model_store::SessionModelStore>,
     /// The ping interval for WS liveness monitoring (default `HEARTBEAT_INTERVAL`; tests shorten it).
     pub heartbeat: Duration,
     /// The destination for hooks notifications (ZK_NOTIFY; default web).
@@ -197,6 +200,7 @@ mod tests {
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions,
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
+                session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 notify_history: true,
@@ -277,6 +281,7 @@ mod tests {
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
+                session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 notify_history: true,
@@ -298,6 +303,7 @@ mod tests {
                 terms: Arc::new(Mutex::new(TermRegistry::new())),
                 sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
+                session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 notify_history: true,

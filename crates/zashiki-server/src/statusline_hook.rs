@@ -1,6 +1,7 @@
 //! `zashiki-server statusline-hook`: the launch-injected statusLine command. Relays claude's statusLine
-//! payload (which alone carries rate_limits) to the running server, and passes the user's own statusLine
-//! output through so their status line is preserved. The source of truth for behavior is the `tests` below.
+//! payload — the only place rate_limits appears, and the earliest place the session's model does — to
+//! the running server, and passes the user's own statusLine output through so their status line is
+//! preserved. The source of truth for behavior is the `tests` below.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};

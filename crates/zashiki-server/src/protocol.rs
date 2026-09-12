@@ -5,6 +5,11 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Longest `sid` / `model` string sent or stored. It matches the client's Zod bounds, which reject the
+/// whole `state.sync` when exceeded, so an implausible value is dropped at the source instead of
+/// stalling every terminal's state.
+pub(crate) const WIRE_STRING_MAX_LEN: usize = 256;
+
 /// One account usage limit: the rounded used percentage and, when known, the epoch-ms reset time.
 /// Populated from the statusLine bridge (`POST /api/hooks/statusline`); the client renders a live
 /// reset countdown from `resets_at`.
@@ -201,10 +206,6 @@ pub struct SessionUsage {
     pub session_tokens: u64,
     pub turn_started_at: u64,
     pub session_started_at: u64,
-    /// Model id of the model currently answering (e.g. `claude-opus-4-8`). Absent for old servers or
-    /// before the session's first assistant reply.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
 }
 
 /// One window's snapshot distributed via state.sync.
@@ -252,9 +253,15 @@ pub struct CockpitTerminalInfo {
     /// false is not sent (not sent = treated as false).
     #[serde(default, skip_serializing_if = "is_false")]
     pub menu_open: bool,
+    /// Model id of the model answering in this terminal (e.g. `claude-opus-5`), for the session status
+    /// footer. Read from Claude Code's statusLine while that bridge is in place (known from the
+    /// session's first render, and following an in-session `/model` switch), otherwise from the newest
+    /// assistant reply in the transcript. Absent for old servers and while no source knows it. It does
+    /// not ride on `usage`, which a terminal without a readable transcript does not have.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
     /// Token totals and elapsed anchors for the session status footer (absent for old servers, or
-    /// while there is no readable transcript). `limits` inside is filled only when the statusLine
-    /// bridge is configured.
+    /// while there is no readable transcript).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<SessionUsage>,
 }
@@ -779,6 +786,7 @@ mod tests {
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
+                model: None,
                 usage: None,
             }],
             orgs: vec!["org1".into()],
@@ -909,6 +917,7 @@ mod tests {
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
+                model: None,
                 usage: None,
             }],
             orgs: vec![],
@@ -937,6 +946,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            model: None,
             usage: None,
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
@@ -960,6 +970,7 @@ mod tests {
             vitest_running: Some(4),
             limited: false,
             menu_open: false,
+            model: None,
             usage: None,
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":true,"vitestRunning":4}"#;
@@ -984,6 +995,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            model: None,
             usage: None,
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"active":false}"#;
@@ -1008,6 +1020,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            model: None,
             usage: None,
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"running","title":null,"sid":"0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f","active":true}"#;
@@ -1055,12 +1068,12 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            model: None,
             usage: Some(SessionUsage {
                 turn_tokens: 0,
                 session_tokens: 500,
                 turn_started_at: 10,
                 session_started_at: 10,
-                model: None,
             }),
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"turnStartedAt":10,"sessionStartedAt":10}}"#;
@@ -1069,17 +1082,27 @@ mod tests {
     }
 
     #[test]
-    fn session_usage_round_trips_the_model() {
-        let usage = SessionUsage {
-            turn_tokens: 1,
-            session_tokens: 2,
-            turn_started_at: 3,
-            session_started_at: 4,
-            model: Some("claude-opus-4-8".into()),
+    fn session_info_round_trips_the_model_without_any_usage() {
+        let info = CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "repo".into(),
+            state: "idle".into(),
+            title: None,
+            sid: None,
+            active: false,
+            running_subagents: None,
+            shells_running: None,
+            vitest_running: None,
+            limited: false,
+            menu_open: false,
+            model: Some("claude-opus-5".into()),
+            usage: None,
         };
-        let json = r#"{"turnTokens":1,"sessionTokens":2,"turnStartedAt":3,"sessionStartedAt":4,"model":"claude-opus-4-8"}"#;
-        assert_eq!(to_json(&usage), json);
-        assert_eq!(serde_json::from_str::<SessionUsage>(json).unwrap(), usage);
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"model":"claude-opus-5"}"#;
+        assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
     }
 
     #[test]

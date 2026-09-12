@@ -74,6 +74,7 @@ mod ws_control_tests {
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
+                model: None,
                 usage: None,
             }],
             orgs: vec!["org".to_string()],
@@ -94,6 +95,7 @@ mod ws_control_tests {
             terms: Arc::new(std::sync::Mutex::new(TermRegistry::new())),
             sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
+            session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             notify_history: true,
@@ -178,6 +180,7 @@ mod ws_control_tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            model: None,
             usage: None,
         }
     }

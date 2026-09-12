@@ -436,6 +436,7 @@ mod tests {
             terms,
             sessions,
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
+            session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
             heartbeat: HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             notify_history: true,

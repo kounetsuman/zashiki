@@ -19,6 +19,8 @@ import { useNow } from "./useNow.js";
 export interface SessionStatusFooterProps {
   /** Transcript-derived tokens/elapsed. null before the session has a readable transcript (shows dashes). */
   usage: SessionUsage | null;
+  /** Model id answering in this terminal. Independent of `usage`, so it shows before the first reply. */
+  model?: string;
   /** org accent applied to the top border, matching the active session tab. */
   accentColor?: string;
   /** Configured severity thresholds driving each cell's color. Defaults to the built-in bands (isolated tests). */
@@ -33,6 +35,7 @@ const DASH = "–";
  */
 export function SessionStatusFooter({
   usage,
+  model,
   accentColor,
   thresholds = DEFAULT_FOOTER_THRESHOLDS,
 }: SessionStatusFooterProps) {
@@ -49,7 +52,7 @@ export function SessionStatusFooter({
           neurology
         </span>
         <StatusCell
-          value={usage?.model ? fmtModel(usage.model) : DASH}
+          value={model ? fmtModel(model) : DASH}
           caption={t("footer.status.model")}
         />
       </Tooltip>

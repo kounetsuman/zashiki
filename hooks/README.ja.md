@@ -6,7 +6,7 @@
 
 `Notification` を `waiting` として転送するのは、その `notification_type` が画面にウィザード／入力ダイアログを出すもの（`permission_prompt`・`elicitation_dialog`）のときだけ。他の型（`idle_prompt`・`auth_success`・elicitation の完了系）は落とし、アイドルで完了済みのセッションが応答待ちにならないようにする。`notification_type` を持たないペイロード（旧 Claude Code）は従来どおり転送する。
 
-`statusline.sh` は Claude Code の `statusLine` 用の相棒で、そのペイロードを `POST /api/hooks/statusline` へ転送し、セッション状態フッタが使用率を表示できるようにする（`rate_limits` は statusLine コマンドにのみ渡され transcript には載らない）。任意設定であり、フッタのトークン・経過時間は無しでも動く。使用率のセグメントだけがこれを必要とする。
+`statusline.sh` は Claude Code の `statusLine` 用の相棒で、そのペイロードを `POST /api/hooks/statusline` へ転送し、セッション状態フッタが使用率とモデルを表示できるようにする。どちらも statusLine コマンドにのみ渡るもので、`rate_limits` は transcript に載らず、モデルも transcript には最初の応答以降しか現れない。任意設定であり、フッタのトークン・経過時間は無しでも動く。使用率のセグメントはこれを必要とし、無い場合はモデルの表示が最初の応答まで「–」のままになる。
 
 ## 設計上の約束
 
@@ -65,19 +65,21 @@ hooks/statusLine を保持する（既存 statusLine は `ZK_LEGACY_STATUSLINE` 
 
 ## セッション状態フッタ（statusLine 橋渡し）
 
-`statusline.sh` を Claude Code の statusLine コマンドとして登録すると、フッタに 5時間・週間の使用率が出る:
+`statusline.sh` を Claude Code の statusLine コマンドとして登録すると、フッタに 5時間・週間の使用率と、まだ応答していないセッションのモデルが出る:
 
 ```json
 {
-  "statusLine": { "type": "command", "command": "/path/to/zashiki/hooks/statusline.sh" }
+  "statusLine": { "type": "command", "command": "/path/to/zashiki/hooks/statusline.sh", "refreshInterval": 10 }
 }
 ```
+
+`refreshInterval` は Claude Code のイベント駆動の描画に加えてタイマーでも statusLine を再実行させる指定で、上限に達したまま放置したセッションでも使用率が更新され続ける。アプリのセットアップウィザードはこれも含めて登録する。
 
 既存の statusLine も残す場合は `ZK_LEGACY_STATUSLINE` に指定する。POST の後に stdin をそのまま渡して呼び、その stdout が状態行として描画される（置換でなく合流）:
 
 ```json
 {
-  "statusLine": { "type": "command", "command": "ZK_LEGACY_STATUSLINE=/path/to/legacy/statusline.sh /path/to/zashiki/hooks/statusline.sh" }
+  "statusLine": { "type": "command", "command": "ZK_LEGACY_STATUSLINE=/path/to/legacy/statusline.sh /path/to/zashiki/hooks/statusline.sh", "refreshInterval": 10 }
 }
 ```
 
