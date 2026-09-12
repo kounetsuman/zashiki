@@ -244,7 +244,7 @@
       "tokensTitle": "Tokens the API touched — this turn / this session",
       "elapsedTitle": "Elapsed — this turn / this session",
       "model": "model",
-      "modelTitle": "Model currently answering"
+      "modelTitle": "The model this terminal answers with"
     },
     "account": {
       "session": "Current session",
@@ -421,7 +421,7 @@
   },
   "accountUsage": {
     "title": "Show Claude Code account usage",
-    "body": "Relay Claude Code's 5-hour and weekly account usage to the footer. zashiki wires it up per launch without editing your ~/.claude settings.",
+    "body": "Relay Claude Code's 5-hour and weekly account usage to the footer, and let it show a terminal's model before that terminal's first response. zashiki wires it up per launch without editing your ~/.claude settings.",
     "subscriptionNote": "Usage appears only for Claude.ai Pro/Max sessions, after the first response.",
     "resumeNote": "{{count}} running cockpit terminal(s) will show usage only after you resume them.",
     "enable": "Enable",

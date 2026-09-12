@@ -6,7 +6,7 @@
 
 A `Notification` is forwarded as `waiting` only when its `notification_type` puts a wizard / input dialog on screen (`permission_prompt`, `elicitation_dialog`); other types (`idle_prompt`, `auth_success`, elicitation completions) are dropped so an idle-but-finished session isn't marked waiting. A payload without `notification_type` (older Claude Code) is forwarded as before.
 
-`statusline.sh` is the companion for Claude Code's `statusLine`: it forwards the payload to `POST /api/hooks/statusline` so the session status footer can show account usage limits (`rate_limits` reaches the statusLine command only, never the transcript). It is optional — the footer's tokens and elapsed time work without it; only the usage-limit segments need it.
+`statusline.sh` is the companion for Claude Code's `statusLine`: it forwards the payload to `POST /api/hooks/statusline` so the session status footer can show account usage limits and the model. Both reach the statusLine command only: `rate_limits` never appears in the transcript, and the model appears there no earlier than the session's first reply. It is optional — the footer's tokens and elapsed time work without it; the usage-limit segments need it, and without it the model cell stays a dash until the first reply.
 
 ## Design guarantees
 
@@ -65,19 +65,21 @@ To avoid duplicate notifications, consolidate onto one side using `ZK_NOTIFY` (s
 
 ## Session status footer (statusLine bridge)
 
-Register `statusline.sh` as Claude Code's statusLine command so the footer can show 5-hour and weekly usage:
+Register `statusline.sh` as Claude Code's statusLine command so the footer can show 5-hour and weekly usage, plus the model of a session that has not replied yet:
 
 ```json
 {
-  "statusLine": { "type": "command", "command": "/path/to/zashiki/hooks/statusline.sh" }
+  "statusLine": { "type": "command", "command": "/path/to/zashiki/hooks/statusline.sh", "refreshInterval": 10 }
 }
 ```
+
+`refreshInterval` re-runs the statusLine on a timer on top of Claude Code's event-driven renders, so usage keeps refreshing while a session idles at a reached limit. The app's own setup wizard registers it for you.
 
 To keep an existing statusLine as well, point `ZK_LEGACY_STATUSLINE` at it — after the POST, it is run with stdin passed through and its stdout becomes the rendered status line (confluence, not replacement):
 
 ```json
 {
-  "statusLine": { "type": "command", "command": "ZK_LEGACY_STATUSLINE=/path/to/legacy/statusline.sh /path/to/zashiki/hooks/statusline.sh" }
+  "statusLine": { "type": "command", "command": "ZK_LEGACY_STATUSLINE=/path/to/legacy/statusline.sh /path/to/zashiki/hooks/statusline.sh", "refreshInterval": 10 }
 }
 ```
 

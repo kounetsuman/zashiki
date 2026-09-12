@@ -18,8 +18,9 @@ use crate::app_state::now_ms;
 use crate::claude_projects::ClaudeProjectsAdapter;
 use crate::hook_event_store::HookEventStore;
 use crate::lsof::LsofAdapter;
-use crate::poller_types::HookEventAge;
+use crate::poller_types::{HookEventAge, ModelReading};
 use crate::ps::PsAdapter;
+use crate::session_model_store::SessionModelStore;
 use crate::session_registry::SessionRegistry;
 use crate::status_poller::{PollerPorts, Slices, CockpitTerminal, CockpitTerminalPane};
 
@@ -31,6 +32,7 @@ pub struct PtyPollerPorts {
     lsof: LsofAdapter,
     projects: ClaudeProjectsAdapter,
     hook_events: Arc<HookEventStore>,
+    session_models: Arc<SessionModelStore>,
 }
 
 impl PtyPollerPorts {
@@ -38,6 +40,7 @@ impl PtyPollerPorts {
         registry: Arc<SessionRegistry>,
         projects: ClaudeProjectsAdapter,
         hook_events: Arc<HookEventStore>,
+        session_models: Arc<SessionModelStore>,
     ) -> Self {
         Self {
             registry,
@@ -45,6 +48,7 @@ impl PtyPollerPorts {
             lsof: LsofAdapter,
             projects,
             hook_events,
+            session_models,
         }
     }
 }
@@ -127,6 +131,10 @@ impl PollerPorts for PtyPollerPorts {
     async fn last_hook_event(&self, sid: &str) -> Option<HookEventAge> {
         self.hook_events.get(sid, now_ms())
     }
+
+    async fn active_model(&self, sid: &str) -> Option<ModelReading> {
+        self.session_models.get(sid, now_ms())
+    }
 }
 
 #[cfg(test)]
@@ -208,6 +216,7 @@ mod tests {
             Arc::new(registry),
             throwaway_projects(),
             Arc::new(HookEventStore::new()),
+            Arc::new(SessionModelStore::new()),
         );
 
         let cap = wait_capture_contains(&ports, "%run", "esc to interrupt", 2000).await;
@@ -233,6 +242,7 @@ mod tests {
             Arc::new(registry),
             throwaway_projects(),
             Arc::new(HookEventStore::new()),
+            Arc::new(SessionModelStore::new()),
         );
 
         let cap = wait_capture_contains(&ports, "%wiz", "2. no", 2000).await;
@@ -252,6 +262,7 @@ mod tests {
             Arc::new(registry),
             throwaway_projects(),
             Arc::new(HookEventStore::new()),
+            Arc::new(SessionModelStore::new()),
         );
 
         let cap = wait_capture_contains(&ports, "%idle", "ready>", 2000).await;
@@ -273,6 +284,7 @@ mod tests {
             Arc::new(registry),
             throwaway_projects(),
             Arc::new(HookEventStore::new()),
+            Arc::new(SessionModelStore::new()),
         );
 
         let windows = ports.list_work_windows().await;
@@ -305,6 +317,7 @@ mod tests {
             Arc::new(registry),
             throwaway_projects(),
             Arc::new(HookEventStore::new()),
+            Arc::new(SessionModelStore::new()),
         );
 
         let ids: Vec<String> = ports
@@ -328,6 +341,7 @@ mod tests {
             Arc::new(registry),
             throwaway_projects(),
             Arc::new(HookEventStore::new()),
+            Arc::new(SessionModelStore::new()),
         );
         assert_eq!(ports.capture_pane("%missing").await, "");
         assert!(ports.list_work_windows().await.is_empty());
@@ -357,6 +371,7 @@ mod tests {
             Arc::new(registry),
             ClaudeProjectsAdapter::new(tmp.path().to_path_buf()),
             Arc::new(HookEventStore::new()),
+            Arc::new(SessionModelStore::new()),
         );
 
         assert!(!ports.ps_snapshot().await.is_empty());

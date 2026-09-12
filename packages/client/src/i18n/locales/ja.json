@@ -244,7 +244,7 @@
       "tokensTitle": "API が扱ったトークン — 今ターン / セッション累計",
       "elapsedTitle": "経過時間 — 今ターン / セッション累計",
       "model": "モデル",
-      "modelTitle": "現在応答しているモデル"
+      "modelTitle": "このターミナルが応答に使うモデル"
     },
     "account": {
       "session": "現在のセッション",
@@ -421,7 +421,7 @@
   },
   "accountUsage": {
     "title": "Claude Code のアカウント使用率を表示",
-    "body": "Claude Code の5時間・週間のアカウント使用率をフッタに中継します。~/.claude の設定を書き換えず、zashiki が起動ごとに自動で配線します。",
+    "body": "Claude Code の5時間・週間のアカウント使用率をフッタに中継し、最初の応答より前でもそのターミナルのモデルを表示できるようにします。~/.claude の設定を書き換えず、zashiki が起動ごとに自動で配線します。",
     "subscriptionNote": "使用率は Claude.ai Pro/Max のセッションで、最初の応答以降にのみ表示されます。",
     "resumeNote": "起動中の cockpit ターミナル {{count}} 件は、resume するまで使用率が表示されません。",
     "enable": "有効化",

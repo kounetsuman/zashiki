@@ -26,13 +26,18 @@ export function fmtTokens(n: number): string {
  * (`claude-opus-4-8` → `Opus 4.8`) and legacy family-last (`claude-3-5-sonnet-20241022` →
  * `Sonnet 3.5`) shapes work, and any region/provider prefix is stripped
  * (`us.anthropic.claude-opus-4-8` → `Opus 4.8`). The family is the alphabetic segment; version
- * segments are the one-to-two-digit numbers, so trailing date builds (`20251001`) drop out. Ids
- * without a `claude-` segment pass through unchanged.
+ * segments are the one-to-two-digit numbers, so trailing date builds (`20251001`) drop out. A
+ * bracketed context variant (`claude-opus-5[1m]`) is ignored, because only Claude Code's statusLine
+ * carries it and the transcript does not — one terminal would otherwise change label after its first
+ * reply. Ids without a `claude-` segment pass through unchanged.
  */
 export function fmtModel(model: string): string {
   const claudeAt = model.indexOf("claude-");
   if (claudeAt < 0) return model;
-  const segments = model.slice(claudeAt + "claude-".length).split("-");
+  const segments = model
+    .slice(claudeAt + "claude-".length)
+    .replace(/\[[^\]]*\]$/, "")
+    .split("-");
   const family = segments.find((s) => /^[a-z]+$/i.test(s));
   if (!family) return model;
   const version = segments.filter((s) => /^\d{1,2}$/.test(s));

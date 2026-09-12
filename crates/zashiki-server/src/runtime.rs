@@ -132,6 +132,9 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     let sessions = Arc::new(SessionRegistry::new());
     // The hook route (write) and the poller (read) share the same store: the seam for event-authoritative state.
     let hook_events = Arc::new(crate::hook_event_store::HookEventStore::new());
+    // The statusLine route (write) and the poller (read) share the same store: the seam that lets a
+    // terminal show its model before its transcript holds a reply.
+    let session_models = Arc::new(crate::session_model_store::SessionModelStore::new());
     // The live repos set shared by the poller, session.new validation, and the repos watcher.
     let repos =
         crate::repos::shared_repos(config.repos_roots, config.org_colors, config.org_aliases);
@@ -151,6 +154,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         sessions.clone(),
         ClaudeProjectsAdapter::new(config.projects_root),
         hook_events.clone(),
+        session_models.clone(),
     );
     spawn_poller(ports, poll_config, repos.clone(), hub.clone(), refresh_rx);
     if let Some(path) = config.repos_conf {
@@ -187,6 +191,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         )),
         sessions,
         hook_events,
+        session_models,
         heartbeat: crate::control::HEARTBEAT_INTERVAL,
         notify_mode: config.notify_mode,
         notify_history: config.notify_history,

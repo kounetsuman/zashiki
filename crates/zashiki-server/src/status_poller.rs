@@ -72,12 +72,14 @@ pub fn detect_activity_transitions(prev: &StateSnapshot, cur: &StateSnapshot) ->
 }
 
 pub use crate::poller_types::{
-    CockpitTerminal, CockpitTerminalPane, HookEventAge, PollConfig, PollerPorts, Slices, StateSnapshot,
+    CockpitTerminal, CockpitTerminalPane, HookEventAge, ModelReading, PollConfig, PollerPorts,
+    Slices, StateSnapshot,
 };
 
 use crate::poller_eval_helpers::{
-    build_orgs, is_pane_in_mode, last_path_segment, pick_pane, resolve_bg_agent_marker,
-    resolve_limit_markers, resolve_menu_markers, roots_ref, state_wire,
+    build_orgs, claude_is_alive, is_pane_in_mode, last_path_segment, pick_pane,
+    resolve_bg_agent_marker, resolve_limit_markers, resolve_menu_markers, resolve_model, roots_ref,
+    state_wire,
 };
 
 /// The server-side state poller (the core evaluation logic). It holds the previous state for pane_in_mode skips
@@ -387,23 +389,29 @@ impl StatusPoller {
             n => Some(n),
         };
 
-        let usage = match (&sid, state) {
-            (
-                Some(sid),
-                CockpitTerminalState::Running
-                | CockpitTerminalState::RunningBgAgent
-                | CockpitTerminalState::WaitingInput
-                | CockpitTerminalState::Idle
-                | CockpitTerminalState::Watching,
-            ) => ports.session_usage(&cwd, sid).await.map(|d| SessionUsage {
-                turn_tokens: d.turn_tokens,
-                session_tokens: d.session_tokens,
-                turn_started_at: d.turn_started_at_ms,
-                session_started_at: d.session_started_at_ms,
-                model: d.model,
-            }),
-            _ => None,
+        let footer_sid = sid.as_deref().filter(|_| claude_is_alive(state));
+        let usage_data = match footer_sid {
+            Some(sid) => ports.session_usage(&cwd, sid).await,
+            None => None,
         };
+        // Claude Code's statusLine knows the model from a session's first render and follows an
+        // in-session `/model` switch, while the transcript only learns it from an assistant reply.
+        // A resolved sid already means claude is in the ps table, so the report is read even in the
+        // states that keep the transcript unread (a pane scrolled back into copy-mode reads Unknown).
+        let reported_model = match &sid {
+            Some(sid) => ports.active_model(sid).await,
+            None => None,
+        };
+        let transcript_model = usage_data.as_ref().and_then(|d| {
+            d.model.clone().map(|model| ModelReading { model, at_ms: d.model_at_ms })
+        });
+        let model = resolve_model(reported_model, transcript_model);
+        let usage = usage_data.map(|d| SessionUsage {
+            turn_tokens: d.turn_tokens,
+            session_tokens: d.session_tokens,
+            turn_started_at: d.turn_started_at_ms,
+            session_started_at: d.session_started_at_ms,
+        });
 
         self.prev_states
             .insert(win.cockpit_terminal_id.clone(), scrape_state);
@@ -428,6 +436,7 @@ impl StatusPoller {
             vitest_running,
             limited,
             menu_open,
+            model,
             usage,
         })
     }
@@ -471,6 +480,8 @@ mod tests {
         lsof: String,
         bg_task_ids: HashMap<String, HashSet<String>>,
         hook_events: HashMap<String, HookEventAge>,
+        session_usages: HashMap<String, crate::jsonl::SessionUsageData>,
+        active_models: HashMap<String, ModelReading>,
     }
 
     impl PollerPorts for FakePorts {
@@ -520,6 +531,16 @@ mod tests {
         async fn last_hook_event(&self, sid: &str) -> Option<HookEventAge> {
             self.hook_events.get(sid).copied()
         }
+        async fn session_usage(
+            &self,
+            cwd: &str,
+            sid: &str,
+        ) -> Option<crate::jsonl::SessionUsageData> {
+            self.session_usages.get(&format!("{cwd}\u{0}{sid}")).cloned()
+        }
+        async fn active_model(&self, sid: &str) -> Option<ModelReading> {
+            self.active_models.get(sid).cloned()
+        }
     }
 
     fn config() -> PollConfig {
@@ -567,6 +588,144 @@ mod tests {
         assert_eq!(s.sid.as_deref(), Some(SID));
         assert_eq!(s.running_subagents, Some(0));
         assert!(!s.limited);
+    }
+
+    fn reported(model: &str, at_ms: u64) -> ModelReading {
+        ModelReading { model: model.to_string(), at_ms: Some(at_ms) }
+    }
+
+    fn transcript_usage(model: Option<&str>, model_at_ms: u64) -> crate::jsonl::SessionUsageData {
+        crate::jsonl::SessionUsageData {
+            turn_tokens: 10,
+            session_tokens: 20,
+            turn_started_at_ms: 1000,
+            session_started_at_ms: 500,
+            model: model.map(str::to_string),
+            model_at_ms: model.map(|_| model_at_ms),
+        }
+    }
+
+    /// A session whose transcript has no assistant reply yet still reports the model Claude Code
+    /// published through its statusLine (the new-terminal case).
+    #[tokio::test]
+    async fn statusline_model_reaches_the_wire_without_a_transcript() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            active_models: HashMap::from([(SID.to_string(), reported("claude-opus-5[1m]", 1_000))]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].model.as_deref(), Some("claude-opus-5[1m]"));
+        assert!(snap.sessions[0].usage.is_none());
+    }
+
+    /// A report newer than the last reply outranks the transcript: the user switched model and the
+    /// transcript still names what answered before the switch.
+    #[tokio::test]
+    async fn newer_statusline_report_outranks_the_transcript_model() {
+        let cwd = "/repos/charlie/app";
+        let ports = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            session_usages: HashMap::from([(
+                format!("{cwd}\u{0}{SID}"),
+                transcript_usage(Some("claude-sonnet-5"), 1_000),
+            )]),
+            active_models: HashMap::from([(SID.to_string(), reported("claude-opus-5", 2_000))]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].model.as_deref(), Some("claude-opus-5"));
+    }
+
+    /// Without a statusLine reading (no bridge in place) the transcript model still shows.
+    #[tokio::test]
+    async fn transcript_model_is_the_fallback() {
+        let cwd = "/repos/charlie/app";
+        let ports = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            session_usages: HashMap::from([(
+                format!("{cwd}\u{0}{SID}"),
+                transcript_usage(Some("claude-sonnet-5"), 1_000),
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].model.as_deref(), Some("claude-sonnet-5"));
+        assert_eq!(snap.sessions[0].usage.as_ref().unwrap().session_tokens, 20);
+    }
+
+    /// A reply that landed after the last report wins: the bridge stopped reporting and the transcript
+    /// is the source that kept up.
+    #[tokio::test]
+    async fn a_reply_newer_than_the_report_wins() {
+        let cwd = "/repos/charlie/app";
+        let ports = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            session_usages: HashMap::from([(
+                format!("{cwd}\u{0}{SID}"),
+                transcript_usage(Some("claude-sonnet-5"), 9_000),
+            )]),
+            active_models: HashMap::from([(SID.to_string(), reported("claude-opus-5", 1_000))]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].model.as_deref(), Some("claude-sonnet-5"));
+    }
+
+    /// A pane scrolled back into copy-mode has no decidable state on the first evaluation, yet its
+    /// claude is running and reporting, so the model still shows (only the transcript-read material
+    /// waits for a decidable state).
+    #[tokio::test]
+    async fn copy_mode_terminal_still_reports_the_model() {
+        let mut scrolled = pane("%1", 100, 0, "/repos/charlie/app");
+        scrolled.in_mode = true;
+        let ports = FakePorts {
+            windows: vec![window("@1", "work", vec![scrolled])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            active_models: HashMap::from([(SID.to_string(), reported("claude-opus-5", 1_000))]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "unknown");
+        assert_eq!(snap.sessions[0].model.as_deref(), Some("claude-opus-5"));
+    }
+
+    /// A terminal with no claude running reports no model, even with a stale statusLine reading for
+    /// its sid.
+    #[tokio::test]
+    async fn no_claude_terminal_reports_no_model() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: "  100    1 -zsh\n".to_string(),
+            captures: HashMap::from([("%1".to_string(), "$ ".to_string())]),
+            active_models: HashMap::from([(SID.to_string(), reported("claude-opus-5", 1_000))]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].model, None);
     }
 
     /// A live fd1 output whose task id is a transcript backgroundTaskId is counted as a resident shell.
@@ -1466,6 +1625,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            model: None,
             usage: None,
         }
     }

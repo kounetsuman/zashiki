@@ -182,9 +182,12 @@ pub struct SessionUsageData {
     pub session_tokens: u64,
     pub turn_started_at_ms: u64,
     pub session_started_at_ms: u64,
-    /// Model id of the newest main-session assistant reply (the model now answering); None until one
+    /// Model id of the newest main-session assistant reply (the model that answered); None until one
     /// exists. See [`main_session_model`] for why sidechain and synthetic replies are excluded.
     pub model: Option<String>,
+    /// Epoch-ms of that reply, so the reading can be weighed against Claude Code's statusLine report.
+    /// None when the reply carried no parseable timestamp.
+    pub model_at_ms: Option<u64>,
 }
 
 const SYNTHETIC_MODEL: &str = "<synthetic>";
@@ -303,6 +306,7 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
     let mut session_started_at_ms: Option<u64> = None;
     let mut turn_started_at_ms: Option<u64> = None;
     let mut model: Option<String> = None;
+    let mut model_at_ms: Option<u64> = None;
 
     for line in content.split('\n') {
         if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
@@ -337,6 +341,7 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
             }
             if let Some(m) = main_session_model(&event) {
                 model = Some(m);
+                model_at_ms = ts;
             }
         }
     }
@@ -348,6 +353,7 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
         turn_started_at_ms: turn_started_at_ms.unwrap_or(session_started_at_ms),
         session_started_at_ms,
         model,
+        model_at_ms,
     })
 }
 
@@ -870,6 +876,18 @@ mod tests {
             session_usage(&jsonl).unwrap().model.as_deref(),
             Some("claude-opus-4-8")
         );
+    }
+
+    #[test]
+    fn usage_model_carries_the_timestamp_of_the_reply_it_came_from() {
+        let jsonl = [
+            assistant_model("2000-01-01T00:00:05Z", "claude-sonnet-5"),
+            assistant_model("2000-01-01T00:00:10Z", "claude-opus-5"),
+        ]
+        .join("\n");
+        let usage = session_usage(&jsonl).unwrap();
+        assert_eq!(usage.model.as_deref(), Some("claude-opus-5"));
+        assert_eq!(usage.model_at_ms, parse_iso8601_ms("2000-01-01T00:00:10Z"));
     }
 
     #[test]

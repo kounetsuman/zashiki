@@ -709,6 +709,7 @@ mod tests {
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
+                model: None,
                 usage: None,
             }],
             orgs: vec!["org".to_string()],
@@ -732,6 +733,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            model: None,
             usage: None,
         }
     }

@@ -7,6 +7,7 @@ use zashiki_core::session_state::{
 
 use zashiki_core::process_tree::find_sid_in_tree;
 
+use crate::poller_types::ModelReading;
 use crate::protocol::CockpitTerminalInfo;
 use crate::status_poller::{CockpitTerminal, CockpitTerminalPane, PollConfig};
 
@@ -22,6 +23,47 @@ pub(crate) fn state_wire(state: CockpitTerminalState) -> &'static str {
         CockpitTerminalState::Starting => "starting",
         CockpitTerminalState::Unknown => "unknown",
     }
+}
+
+/// Whether a claude is alive in the terminal in this state — the gate for reading the transcript for
+/// the session status footer's tokens and elapsed time. The model is not gated on it: a resolved sid
+/// already proves claude is running, and a scraped screen can be undecidable (copy-mode) while it is.
+pub(crate) fn claude_is_alive(state: CockpitTerminalState) -> bool {
+    matches!(
+        state,
+        CockpitTerminalState::Running
+            | CockpitTerminalState::RunningBgAgent
+            | CockpitTerminalState::WaitingInput
+            | CockpitTerminalState::Idle
+            | CockpitTerminalState::Watching
+    )
+}
+
+/// The model to show for a terminal, from the two sources that know one: Claude Code's statusLine
+/// reports the model that will answer and re-reports it after a `/model` switch, while the transcript
+/// records the model that did answer. Either can hold the newer fact — the statusLine stops reporting
+/// once its bridge is gone, and the transcript stands still while a session idles — so the reading
+/// established later wins, and an untimed reading only wins for lack of a rival. A reading whose id is
+/// past `WIRE_STRING_MAX_LEN` is discarded before the comparison, so a corrupt one loses to its rival
+/// instead of emptying the cell — the client rejects a whole `state.sync` over one out-of-bound
+/// string, and this is the one point both sources pass through.
+pub(crate) fn resolve_model(
+    reported: Option<ModelReading>,
+    from_transcript: Option<ModelReading>,
+) -> Option<String> {
+    let within_bounds = |reading: ModelReading| {
+        (reading.model.len() <= crate::protocol::WIRE_STRING_MAX_LEN).then_some(reading)
+    };
+    let newer = match (
+        reported.and_then(within_bounds),
+        from_transcript.and_then(within_bounds),
+    ) {
+        (Some(report), Some(transcript)) => {
+            Some(if transcript.at_ms > report.at_ms { transcript } else { report })
+        }
+        (report, transcript) => report.or(transcript),
+    };
+    newer.map(|reading| reading.model)
 }
 
 /// Splits a comma-separated marker override (trimmed, empties dropped); an unset or all-empty
@@ -136,6 +178,84 @@ mod tests {
     use zashiki_core::process_tree::{build_process_maps, parse_ps_snapshot};
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
+
+    fn reading(model: &str, at_ms: u64) -> Option<ModelReading> {
+        Some(ModelReading { model: model.to_string(), at_ms: Some(at_ms) })
+    }
+
+    #[test]
+    fn the_newer_reading_wins_whichever_source_it_is() {
+        assert_eq!(
+            resolve_model(reading("claude-opus-5", 2000), reading("claude-sonnet-5", 1000)).as_deref(),
+            Some("claude-opus-5")
+        );
+        assert_eq!(
+            resolve_model(reading("claude-opus-5", 1000), reading("claude-sonnet-5", 2000)).as_deref(),
+            Some("claude-sonnet-5")
+        );
+    }
+
+    /// A session that switched model and then went quiet keeps the switched-to model: nothing has
+    /// answered since, so the report stays the newer fact however long ago it arrived.
+    #[test]
+    fn a_report_that_stopped_arriving_still_beats_an_older_reply() {
+        assert_eq!(
+            resolve_model(reading("claude-opus-5", 10_000), reading("claude-sonnet-5", 9_000))
+                .as_deref(),
+            Some("claude-opus-5")
+        );
+    }
+
+    /// Same instant (a reply and a report from the same render) resolves to the report, which names
+    /// the model about to answer rather than the one that just did.
+    #[test]
+    fn a_tie_goes_to_the_statusline_report() {
+        assert_eq!(
+            resolve_model(reading("claude-opus-5", 1000), reading("claude-sonnet-5", 1000)).as_deref(),
+            Some("claude-opus-5")
+        );
+    }
+
+    #[test]
+    fn an_untimed_reading_wins_only_when_it_is_the_only_one() {
+        let untimed = Some(ModelReading { model: "claude-sonnet-5".to_string(), at_ms: None });
+        assert_eq!(resolve_model(None, untimed.clone()).as_deref(), Some("claude-sonnet-5"));
+        assert_eq!(
+            resolve_model(reading("claude-opus-5", 1), untimed).as_deref(),
+            Some("claude-opus-5")
+        );
+    }
+
+    #[test]
+    fn an_implausibly_long_id_is_dropped_from_either_source() {
+        let long = "c".repeat(crate::protocol::WIRE_STRING_MAX_LEN + 1);
+        assert_eq!(resolve_model(reading(&long, 1000), None), None);
+        assert_eq!(resolve_model(None, reading(&long, 1000)), None);
+    }
+
+    /// Dropping the out-of-bound reading must not drop the resolution: the surviving source shows,
+    /// even when the corrupt one was the newer of the two.
+    #[test]
+    fn an_out_of_bound_reading_loses_to_its_rival_rather_than_emptying_the_cell() {
+        let long = "c".repeat(crate::protocol::WIRE_STRING_MAX_LEN + 1);
+        assert_eq!(
+            resolve_model(reading("claude-opus-5", 1000), reading(&long, 2000)).as_deref(),
+            Some("claude-opus-5")
+        );
+        assert_eq!(
+            resolve_model(reading(&long, 2000), reading("claude-sonnet-5", 1000)).as_deref(),
+            Some("claude-sonnet-5")
+        );
+    }
+
+    #[test]
+    fn without_a_report_the_transcript_decides() {
+        assert_eq!(
+            resolve_model(None, reading("claude-sonnet-5", 1000)).as_deref(),
+            Some("claude-sonnet-5")
+        );
+        assert_eq!(resolve_model(None, None), None);
+    }
 
     fn pane(pane_id: &str, pid: i64, left: i64, cwd: &str) -> CockpitTerminalPane {
         CockpitTerminalPane {

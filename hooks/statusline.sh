@@ -2,10 +2,12 @@
 # Claude Code statusLine → zashiki サーバへの薄い合流点（詳細は hooks/README.md）。
 #
 # 使い方（~/.claude/settings.json の statusLine.command に登録）:
-#   { "statusLine": { "type": "command", "command": "/path/to/zashiki/hooks/statusline.sh" } }
+#   { "statusLine": { "type": "command", "command": "/path/to/zashiki/hooks/statusline.sh",
+#                      "refreshInterval": 10 } }
 #
-# 目的: statusLine の stdin JSON にだけ載る rate_limits（transcript には無い）をサーバへ渡し、
-#       セッションフッタの使用率表示に使う。
+# 目的: statusLine の stdin JSON にしか無い情報をサーバへ渡し、セッションフッタで使う。
+#       rate_limits（transcript には無い）＝使用率表示、model（transcript には最初の応答以降しか
+#       現れない）＝まだ応答していないセッションのモデル表示。
 #
 # 鉄則: サーバ停止中でも Claude Code を絶対にブロック・失敗させない。
 # - curl は --max-time 1 + `|| true`（接続不可は即失敗して抜ける）

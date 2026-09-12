@@ -107,8 +107,6 @@ export const sessionUsageSchema = z.object({
   sessionTokens: z.number().int().min(0),
   turnStartedAt: z.number().int(),
   sessionStartedAt: z.number().int(),
-  /** Model id currently answering (e.g. `claude-opus-4-8`); absent for old servers or before the first assistant reply. */
-  model: z.string().optional(),
 });
 
 export type SessionUsage = z.infer<typeof sessionUsageSchema>;
@@ -164,8 +162,15 @@ export const cockpitTerminalInfoSchema = z.object({
    */
   menuOpen: z.boolean().optional(),
   /**
+   * Model id answering in this terminal (e.g. `claude-opus-5`), for the status footer. The server reads
+   * it from Claude Code's statusLine, falling back to the newest assistant reply in the transcript.
+   * Absent for old servers, and while neither source knows it. Kept out of `usage`, which a terminal
+   * with no readable transcript does not have at all.
+   */
+  model: z.string().max(256).optional(),
+  /**
    * Token totals and elapsed anchors for the session status footer. Absent for old servers or when
-   * the transcript can't be read; `limits` inside is present only when the statusLine bridge is set up.
+   * the transcript can't be read.
    */
   usage: sessionUsageSchema.optional(),
 });

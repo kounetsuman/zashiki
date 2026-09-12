@@ -52,6 +52,11 @@ describe("fmtModel", () => {
     expect(fmtModel("claude-3-opus-20240229")).toBe("Opus 3");
   });
 
+  it("ignores a bracketed context variant so both sources read alike", () => {
+    expect(fmtModel("claude-opus-5[1m]")).toBe("Opus 5");
+    expect(fmtModel("claude-opus-5")).toBe("Opus 5");
+  });
+
   it("strips a region/provider prefix", () => {
     expect(fmtModel("us.anthropic.claude-opus-4-8")).toBe("Opus 4.8");
   });
