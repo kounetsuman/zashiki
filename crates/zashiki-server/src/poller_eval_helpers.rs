@@ -43,22 +43,27 @@ pub(crate) fn claude_is_alive(state: CockpitTerminalState) -> bool {
 /// reports the model that will answer and re-reports it after a `/model` switch, while the transcript
 /// records the model that did answer. Either can hold the newer fact — the statusLine stops reporting
 /// once its bridge is gone, and the transcript stands still while a session idles — so the reading
-/// established later wins, and an untimed reading only wins for lack of a rival. An id past
-/// `WIRE_STRING_MAX_LEN` is dropped here, the one point both sources pass through, because the client
-/// rejects a whole `state.sync` over one out-of-bound string.
+/// established later wins, and an untimed reading only wins for lack of a rival. A reading whose id is
+/// past `WIRE_STRING_MAX_LEN` is discarded before the comparison, so a corrupt one loses to its rival
+/// instead of emptying the cell — the client rejects a whole `state.sync` over one out-of-bound
+/// string, and this is the one point both sources pass through.
 pub(crate) fn resolve_model(
     reported: Option<ModelReading>,
     from_transcript: Option<ModelReading>,
 ) -> Option<String> {
-    let newer = match (reported, from_transcript) {
+    let within_bounds = |reading: ModelReading| {
+        (reading.model.len() <= crate::protocol::WIRE_STRING_MAX_LEN).then_some(reading)
+    };
+    let newer = match (
+        reported.and_then(within_bounds),
+        from_transcript.and_then(within_bounds),
+    ) {
         (Some(report), Some(transcript)) => {
             Some(if transcript.at_ms > report.at_ms { transcript } else { report })
         }
         (report, transcript) => report.or(transcript),
     };
-    newer
-        .map(|reading| reading.model)
-        .filter(|model| model.len() <= crate::protocol::WIRE_STRING_MAX_LEN)
+    newer.map(|reading| reading.model)
 }
 
 /// Splits a comma-separated marker override (trimmed, empties dropped); an unset or all-empty
@@ -226,6 +231,21 @@ mod tests {
         let long = "c".repeat(crate::protocol::WIRE_STRING_MAX_LEN + 1);
         assert_eq!(resolve_model(reading(&long, 1000), None), None);
         assert_eq!(resolve_model(None, reading(&long, 1000)), None);
+    }
+
+    /// Dropping the out-of-bound reading must not drop the resolution: the surviving source shows,
+    /// even when the corrupt one was the newer of the two.
+    #[test]
+    fn an_out_of_bound_reading_loses_to_its_rival_rather_than_emptying_the_cell() {
+        let long = "c".repeat(crate::protocol::WIRE_STRING_MAX_LEN + 1);
+        assert_eq!(
+            resolve_model(reading("claude-opus-5", 1000), reading(&long, 2000)).as_deref(),
+            Some("claude-opus-5")
+        );
+        assert_eq!(
+            resolve_model(reading(&long, 2000), reading("claude-sonnet-5", 1000)).as_deref(),
+            Some("claude-sonnet-5")
+        );
     }
 
     #[test]
