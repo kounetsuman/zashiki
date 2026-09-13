@@ -110,6 +110,21 @@ describe("readDelimited", () => {
     expect(table.header).toEqual(["id", "last, first", "city"]);
   });
 
+  it("detects the delimiter of an export whose rows hold different column counts", () => {
+    const table = readDelimited("a.csv", "a;b\n1;2;3\n4;5\n6;7;8\n9;10\n");
+    expect(table.delimiter).toBe(";");
+    expect(table.header).toEqual(["a", "b", ""]);
+  });
+
+  it("detects the delimiter under a block of preamble lines", () => {
+    const table = readDelimited(
+      "a.csv",
+      "Report\nGenerated today\nsource: x\nnotes\n--\nid;name\n1;a\n2;b\n3;c\n4;d\n5;e\n",
+    );
+    expect(table.delimiter).toBe(";");
+    expect(cellsOf(table).at(-1)).toEqual(["5", "e"]);
+  });
+
   it("numbers rows by their line in the file, across blank lines and quoted newlines", () => {
     const table = readDelimited("a.csv", 'h,note\na,"one\ntwo"\n\nb,plain\n');
     expect(table.rows.map((r) => r.line)).toEqual([2, 5]);

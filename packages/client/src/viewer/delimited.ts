@@ -32,7 +32,7 @@ const CSV_DELIMITERS = [",", ";", "\t"];
 
 /** How much of the file the delimiter is guessed from. */
 const DETECTION_BYTES = 64 * 1024;
-const DETECTION_RECORDS = 10;
+const DETECTION_RECORDS = 20;
 
 const NUMERIC_CELL =
   /^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
@@ -141,9 +141,9 @@ function fitsBetter(fit: DelimiterFit, than: DelimiterFit): boolean {
 }
 
 /**
- * How well a candidate fits the sample. A column count only a minority of records reach is no
- * fit at all: that is a delimiter written inside the text (the commas in a semicolon export, a
- * stray tab in a column of prose), not the one separating the columns.
+ * How well a candidate fits the sample: how many records share its most common column count.
+ * A delimiter splitting less than half the sample is one written inside the text (the commas
+ * in a semicolon export, a stray tab in a column of prose), not the one separating columns.
  */
 function delimiterFit(sample: string, delimiter: string): DelimiterFit {
   const records = parseRecords(sample, delimiter, true).slice(
@@ -151,14 +151,17 @@ function delimiterFit(sample: string, delimiter: string): DelimiterFit {
     DETECTION_RECORDS,
   );
   const recordsPerCount = new Map<number, number>();
+  let splitRecords = 0;
   for (const record of records) {
     const count = record.cells.length;
-    if (count > 1)
-      recordsPerCount.set(count, (recordsPerCount.get(count) ?? 0) + 1);
+    if (count < 2) continue;
+    splitRecords++;
+    recordsPerCount.set(count, (recordsPerCount.get(count) ?? 0) + 1);
   }
+  if (splitRecords * 2 < records.length) return NO_FIT;
+
   let fit = NO_FIT;
   for (const [columns, agreeing] of recordsPerCount) {
-    if (agreeing * 2 <= records.length) continue;
     const candidate = { agreement: agreeing / records.length, columns };
     if (fitsBetter(candidate, fit)) fit = candidate;
   }
@@ -167,8 +170,8 @@ function delimiterFit(sample: string, delimiter: string): DelimiterFit {
 
 /**
  * The delimiter the file's own rows agree on; where two agree equally, the one splitting into
- * more columns (a semicolon export whose header itself contains a comma). Scoring a sample
- * rather than the first record alone keeps a title line or a one-word header from hiding it.
+ * more columns (a semicolon export whose header itself contains a comma). Judging a sample of
+ * records rather than the first one alone keeps a title line or a one-word header from hiding it.
  */
 function detectDelimiter(text: string): string {
   const sample = text.slice(0, DETECTION_BYTES);

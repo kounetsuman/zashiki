@@ -72,14 +72,20 @@ describe("DelimitedTable", () => {
     expect(columnOf("size").getAttribute("aria-sort")).toBe("descending");
   });
 
+  // Queried through the DOM rather than by role: resolving roles for thousands of rows is
+  // slow enough to time the test out under a loaded suite.
   it("renders up to the row cap and says how much of the file is shown", () => {
     const total = MAX_RENDERED_ROWS + 5;
     const content = `n\n${Array.from({ length: total }, (_, i) => i + 1).join("\n")}\n`;
-    render(<DelimitedTable relPath="big.csv" content={content} />);
-    expect(bodyRows()).toHaveLength(MAX_RENDERED_ROWS);
-    expect(screen.getByRole("status").textContent).toContain(
-      String(total.toLocaleString()),
+    const { container } = render(
+      <DelimitedTable relPath="big.csv" content={content} />,
     );
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(
+      MAX_RENDERED_ROWS,
+    );
+    const notice = container.querySelector(".delimited-truncated");
+    expect(notice?.getAttribute("role")).toBe("status");
+    expect(notice?.textContent).toContain(total.toLocaleString());
   });
 
   it("says nothing about truncation when the whole file is shown", () => {
