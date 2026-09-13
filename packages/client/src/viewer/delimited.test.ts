@@ -114,7 +114,8 @@ describe("readDelimited", () => {
   it("detects the delimiter of an export whose rows hold different column counts", () => {
     const table = readDelimited("a.csv", "a;b\n1;2;3\n4;5\n6;7;8\n9;10\n");
     expect(table.delimiter).toBe(";");
-    expect(table.header).toEqual(["a", "b", ""]);
+    expect(table.header).toEqual(["a", "b"]);
+    expect(cellsOf(table)[0]).toEqual(["1", "2", "3"]);
   });
 
   it("keeps a ragged semicolon export off the commas written in its names", () => {
@@ -177,15 +178,21 @@ describe("readDelimited", () => {
     expect(cellsOf(table)).toEqual([["1"], ["2", "3", "4"]]);
   });
 
-  it("drops the columns of a stray record far past the width cap", () => {
+  it("keeps one stray record from widening the table, and caps its own width", () => {
     const wide = Array.from({ length: MAX_TABLE_COLUMNS + 50 }, (_, i) =>
       String(i),
     ).join(",");
-    const table = readDelimited("a.csv", `a,b\n1,2\n${wide}\n`);
-    expect(table.header).toHaveLength(MAX_TABLE_COLUMNS);
+    const table = readDelimited("a.csv", `a,b\n1,2\n3,4\n${wide}\n`);
+    expect(table.header).toEqual(["a", "b"]);
     expect(table.totalColumns).toBe(MAX_TABLE_COLUMNS + 50);
     expect(table.rows.at(-1)?.cells).toHaveLength(MAX_TABLE_COLUMNS);
     expect(table.rows[0]?.cells).toEqual(["1", "2"]);
+  });
+
+  it("reads on past a quote that never closes, as plain text from that record", () => {
+    const table = readDelimited("a.csv", 'a,b\n1,"oops\n2,x\n3,y\n');
+    expect(table.rows.map((r) => r.line)).toEqual([2, 3, 4]);
+    expect(cellsOf(table).at(-1)).toEqual(["3", "y"]);
   });
 
   it("leaves a long identifier column to the text comparison", () => {

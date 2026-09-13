@@ -1047,7 +1047,9 @@ textarea {
   padding: 0 10px;
   border-right: 1px solid #2c2c2c;
   border-bottom: 1px solid #262626;
-  white-space: pre;
+  /* nowrap, not pre: a quoted cell can hold newlines, and a record belongs on one row
+     (the full text stays in the cell's tooltip). */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: left;

@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
+  type DelimitedRow,
+  MAX_TABLE_COLUMNS,
   nextSort,
   readDelimited,
   type SortState,
@@ -14,12 +16,15 @@ export const MAX_RENDERED_ROWS = 2000;
 /** The cell budget a wide file spends its rows against. */
 const MAX_RENDERED_CELLS = 50_000;
 
-/** The row cap, lowered for a file wide enough that the full cap would flood the DOM. */
-function rowCap(columns: number): number {
-  return Math.min(
-    MAX_RENDERED_ROWS,
-    Math.floor(MAX_RENDERED_CELLS / Math.max(columns, 1)),
-  );
+/** The rows that fit both caps, counting the cells each row actually holds. */
+function rowsWithinBudget(rows: readonly DelimitedRow[]): number {
+  let cells = 0;
+  const cap = Math.min(rows.length, MAX_RENDERED_ROWS);
+  for (let i = 0; i < cap; i++) {
+    cells += (rows[i] as DelimitedRow).cells.length;
+    if (cells > MAX_RENDERED_CELLS) return i;
+  }
+  return cap;
 }
 
 /** How many colours the columns cycle through (the palette lives in styles.css). */
@@ -59,7 +64,7 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
     );
   }
 
-  const shown = rows.slice(0, rowCap(columns));
+  const shown = rows.slice(0, rowsWithinBudget(rows));
   return (
     <div className="delimited-table">
       <table aria-label={t("viewer.tableLabel", { path: relPath })}>
@@ -112,7 +117,7 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
               <th scope="row" className="delimited-rownum">
                 {row.line}
               </th>
-              {table.header.map((_, column) => (
+              {row.cells.map((cell, column) => (
                 <td
                   // biome-ignore lint/suspicious/noArrayIndexKey: a column is its position; header names may repeat
                   key={column}
@@ -120,16 +125,17 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
                   className={
                     table.numericColumns[column] === true ? "is-numeric" : ""
                   }
-                  title={row.cells[column] ?? ""}
+                  title={cell}
                 >
-                  {row.cells[column] ?? ""}
+                  {cell}
                 </td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
-      {(shown.length < rows.length || columns < table.totalColumns) && (
+      {(shown.length < rows.length ||
+        table.totalColumns > MAX_TABLE_COLUMNS) && (
         <p className="delimited-truncated" role="status">
           {shown.length < rows.length && (
             <span>
@@ -139,10 +145,10 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
               })}
             </span>
           )}
-          {columns < table.totalColumns && (
+          {table.totalColumns > MAX_TABLE_COLUMNS && (
             <span>
               {t("viewer.tableColumnsTruncated", {
-                shown: columns.toLocaleString(),
+                shown: MAX_TABLE_COLUMNS.toLocaleString(),
                 total: table.totalColumns.toLocaleString(),
               })}
             </span>
