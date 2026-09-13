@@ -8,7 +8,11 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { DelimitedTable, MAX_RENDERED_ROWS } from "./DelimitedTable.js";
+import {
+  DelimitedTable,
+  MAX_RENDERED_COLUMNS,
+  MAX_RENDERED_ROWS,
+} from "./DelimitedTable.js";
 
 const CSV = "name,size\nitem10,2\nitem2,10\nitem1,\n";
 
@@ -86,6 +90,39 @@ describe("DelimitedTable", () => {
     const notice = container.querySelector(".delimited-truncated");
     expect(notice?.getAttribute("role")).toBe("status");
     expect(notice?.textContent).toContain(total.toLocaleString());
+  });
+
+  it("caps the columns of a file wider than anyone reads across, and says so", () => {
+    const total = MAX_RENDERED_COLUMNS + 7;
+    const line = (fill: string) =>
+      Array.from({ length: total }, (_, i) => `${fill}${i}`).join(",");
+    const { container } = render(
+      <DelimitedTable
+        relPath="wide.csv"
+        content={`${line("c")}\n${line("v")}\n`}
+      />,
+    );
+    expect(container.querySelectorAll("thead th")).toHaveLength(
+      MAX_RENDERED_COLUMNS + 1,
+    );
+    expect(
+      container.querySelector(".delimited-truncated")?.textContent,
+    ).toContain(total.toLocaleString());
+  });
+
+  it("lowers the row cap for a wide file so the cell count stays bounded", () => {
+    const columns = 100;
+    const line = (fill: string) =>
+      Array.from({ length: columns }, (_, i) => `${fill}${i}`).join(",");
+    const { container } = render(
+      <DelimitedTable
+        relPath="wide.csv"
+        content={`${line("c")}\n${Array.from({ length: 900 }, () => line("v")).join("\n")}\n`}
+      />,
+    );
+    const rendered = container.querySelectorAll("tbody tr").length;
+    expect(rendered).toBeLessThan(900);
+    expect(rendered * columns).toBeLessThanOrEqual(50_000);
   });
 
   it("says nothing about truncation when the whole file is shown", () => {

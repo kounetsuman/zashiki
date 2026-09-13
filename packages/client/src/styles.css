@@ -1154,6 +1154,8 @@ textarea {
   position: sticky;
   left: 0;
   bottom: 0;
+  display: flex;
+  gap: 16px;
   margin: 0;
   padding: 3px 10px;
   background: #252526;

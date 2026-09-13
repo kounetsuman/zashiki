@@ -125,6 +125,15 @@ describe("readDelimited", () => {
     expect(table.header).toEqual(["id", "name", "city"]);
   });
 
+  it("keeps that export on its delimiter when the header too holds a comma", () => {
+    const table = readDelimited(
+      "a.csv",
+      "id;name, full;city\n1;Sato, K;Tokyo\n2;Doe, J\n3;Roe, M;Osaka\n4;Poe, L;Kyoto\n",
+    );
+    expect(table.delimiter).toBe(";");
+    expect(table.header).toEqual(["id", "name, full", "city"]);
+  });
+
   it("leaves a two-line file alone when only its second line holds a semicolon", () => {
     expect(readDelimited("a.csv", "note\nalpha; beta\n").delimiter).toBe(",");
     expect(readDelimited("a.csv", "note\nalpha\tbeta\n").delimiter).toBe(",");
@@ -173,6 +182,16 @@ describe("readDelimited", () => {
     expect(readDelimited("a.csv", "a,b\n").rows).toEqual([]);
     expect(readDelimited("a.csv", "").header).toEqual([]);
     expect(readDelimited("a.csv", "").rows).toEqual([]);
+  });
+
+  it("reads a quoted grouped number as a number in a comma file", () => {
+    const table = readDelimited("a.csv", 'id,amount\n1,"1,250"\n2,"950"\n');
+    expect(table.numericColumns).toEqual([true, true]);
+    const sorted = sortRows(table.rows, table.numericColumns, {
+      column: 1,
+      direction: "asc",
+    });
+    expect(sorted.map((r) => r.cells[1])).toEqual(["950", "1,250"]);
   });
 
   it("treats a grouped or comma-decimal number as text, not a number", () => {

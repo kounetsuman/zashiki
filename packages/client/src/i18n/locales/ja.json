@@ -185,7 +185,8 @@
     "rowNumber": "行番号",
     "sortByColumn": "{{column}} で並べ替え",
     "tableTruncated": "全 {{total}} 行のうち先頭 {{shown}} 行を表示中",
-    "tableEmpty": "表示できる行がありません。"
+    "tableEmpty": "表示できる行がありません。",
+    "tableColumnsTruncated": "全 {{total}} 列のうち先頭 {{shown}} 列を表示中"
   },
   "find": {
     "placeholder": "検索",

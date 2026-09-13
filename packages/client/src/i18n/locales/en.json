@@ -185,7 +185,8 @@
     "rowNumber": "Row",
     "sortByColumn": "Sort by {{column}}",
     "tableTruncated": "Showing the first {{shown}} of {{total}} rows",
-    "tableEmpty": "This file has no rows to show."
+    "tableEmpty": "This file has no rows to show.",
+    "tableColumnsTruncated": "Showing the first {{shown}} of {{total}} columns"
   },
   "find": {
     "placeholder": "Find",

@@ -34,11 +34,13 @@ const CSV_DELIMITERS = [",", ";", "\t"];
 const DETECTION_BYTES = 64 * 1024;
 const DETECTION_RECORDS = 20;
 
+const PLAIN_NUMBER = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
 /**
- * Grouping separators are left out on purpose: a comma in a number is a thousands mark in one
- * locale and the decimal point in another, and guessing wrong silently reorders the column.
+ * A comma inside a number is a thousands mark to one locale and the decimal point to another,
+ * so it is only read as a number where the file itself writes columns with commas.
  */
-const NUMERIC_CELL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const GROUPED_NUMBER = /^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$/;
 
 export function isDelimitedText(relPath: string): boolean {
   return TAB_SEPARATED.test(relPath) || COMMA_SEPARATED.test(relPath);
@@ -46,8 +48,8 @@ export function isDelimitedText(relPath: string): boolean {
 
 export function numericValue(cell: string): number | null {
   const trimmed = cell.trim();
-  if (!NUMERIC_CELL.test(trimmed)) return null;
-  const value = Number(trimmed);
+  if (!PLAIN_NUMBER.test(trimmed) && !GROUPED_NUMBER.test(trimmed)) return null;
+  const value = Number(trimmed.replaceAll(",", ""));
   return Number.isFinite(value) ? value : null;
 }
 
@@ -138,11 +140,15 @@ interface DelimiterFit {
 
 const NO_FIT: DelimiterFit = { coverage: 0, agreement: 0, columns: 0 };
 
-/** Reach first, then regularity, then width: a ragged export beats a comma that only splits its rows. */
+/**
+ * Reach first, then width, then regularity. A delimiter reaching every record beats one that
+ * only splits some; among those, the one finding more columns is reading the file rather than
+ * cutting inside its text, and ragged rows do not count against it.
+ */
 function fitsBetter(fit: DelimiterFit, than: DelimiterFit): boolean {
   if (fit.coverage !== than.coverage) return fit.coverage > than.coverage;
-  if (fit.agreement !== than.agreement) return fit.agreement > than.agreement;
-  return fit.columns > than.columns;
+  if (fit.columns !== than.columns) return fit.columns > than.columns;
+  return fit.agreement > than.agreement;
 }
 
 /**
@@ -200,12 +206,14 @@ function padded(cells: readonly string[], width: number): string[] {
 function isNumericColumn(
   rows: readonly DelimitedRow[],
   column: number,
+  grouped: boolean,
 ): boolean {
   let filled = false;
   for (const row of rows) {
     const cell = (row.cells[column] as string).trim();
     if (cell === "") continue;
-    if (numericValue(cell) === null) return false;
+    if (!PLAIN_NUMBER.test(cell) && !(grouped && GROUPED_NUMBER.test(cell)))
+      return false;
     filled = true;
   }
   return filled;
@@ -230,7 +238,7 @@ export function readDelimited(relPath: string, text: string): DelimitedTable {
     header: padded(records[0]?.cells ?? [], width),
     rows,
     numericColumns: Array.from({ length: width }, (_, column) =>
-      isNumericColumn(rows, column),
+      isNumericColumn(rows, column, delimiter === ","),
     ),
   };
 }
