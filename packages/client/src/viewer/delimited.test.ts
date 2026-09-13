@@ -86,6 +86,30 @@ describe("readDelimited", () => {
     ]);
   });
 
+  it("leaves a single column alone when one line happens to hold a semicolon", () => {
+    const table = readDelimited(
+      "a.csv",
+      "note\nalpha\nbeta; gamma\ndelta\nepsilon\n",
+    );
+    expect(table.delimiter).toBe(",");
+    expect(table.header).toEqual(["note"]);
+    expect(cellsOf(table)).toEqual([
+      ["alpha"],
+      ["beta; gamma"],
+      ["delta"],
+      ["epsilon"],
+    ]);
+  });
+
+  it("prefers the delimiter splitting further when both fit every record", () => {
+    const table = readDelimited(
+      "a.csv",
+      "id;last, first;city\n1;Sato, K;Tokyo\n2;Doe, J;Osaka\n",
+    );
+    expect(table.delimiter).toBe(";");
+    expect(table.header).toEqual(["id", "last, first", "city"]);
+  });
+
   it("numbers rows by their line in the file, across blank lines and quoted newlines", () => {
     const table = readDelimited("a.csv", 'h,note\na,"one\ntwo"\n\nb,plain\n');
     expect(table.rows.map((r) => r.line)).toEqual([2, 5]);

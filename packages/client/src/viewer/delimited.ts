@@ -125,40 +125,60 @@ function parseRecords(
   return records;
 }
 
+interface DelimiterFit {
+  /** Share of the sampled records that split into the same number of columns, above one. */
+  readonly agreement: number;
+  readonly columns: number;
+}
+
+const NO_FIT: DelimiterFit = { agreement: 0, columns: 0 };
+
+function fitsBetter(fit: DelimiterFit, than: DelimiterFit): boolean {
+  return (
+    fit.agreement > than.agreement ||
+    (fit.agreement === than.agreement && fit.columns > than.columns)
+  );
+}
+
 /**
- * The share of sampled records that split into the same column count above one. A delimiter the
- * whole file agrees on scores higher than one that only shreds some rows — which is what tells a
- * semicolon file apart from the commas written inside its text.
+ * How well a candidate fits the sample. A column count only a minority of records reach is no
+ * fit at all: that is a delimiter written inside the text (the commas in a semicolon export, a
+ * stray tab in a column of prose), not the one separating the columns.
  */
-function delimiterScore(sample: string, delimiter: string): number {
+function delimiterFit(sample: string, delimiter: string): DelimiterFit {
   const records = parseRecords(sample, delimiter, true).slice(
     0,
     DETECTION_RECORDS,
   );
-  if (records.length === 0) return 0;
   const recordsPerCount = new Map<number, number>();
   for (const record of records) {
     const count = record.cells.length;
     if (count > 1)
       recordsPerCount.set(count, (recordsPerCount.get(count) ?? 0) + 1);
   }
-  return Math.max(0, ...recordsPerCount.values()) / records.length;
+  let fit = NO_FIT;
+  for (const [columns, agreeing] of recordsPerCount) {
+    if (agreeing * 2 <= records.length) continue;
+    const candidate = { agreement: agreeing / records.length, columns };
+    if (fitsBetter(candidate, fit)) fit = candidate;
+  }
+  return fit;
 }
 
 /**
- * The delimiter the file's own rows agree on (ties keep the earlier candidate, so a plain comma
- * file stays a comma file). Scoring a sample rather than the first record alone keeps a title
- * line or a single-word header from hiding the real delimiter.
+ * The delimiter the file's own rows agree on; where two agree equally, the one splitting into
+ * more columns (a semicolon export whose header itself contains a comma). Scoring a sample
+ * rather than the first record alone keeps a title line or a one-word header from hiding it.
  */
 function detectDelimiter(text: string): string {
   const sample = text.slice(0, DETECTION_BYTES);
   let best = CSV_DELIMITERS[0] as string;
-  let bestScore = 0;
+  let bestFit = NO_FIT;
   for (const candidate of CSV_DELIMITERS) {
-    const score = delimiterScore(sample, candidate);
-    if (score > bestScore) {
+    const fit = delimiterFit(sample, candidate);
+    if (fitsBetter(fit, bestFit)) {
       best = candidate;
-      bestScore = score;
+      bestFit = fit;
     }
   }
   return best;
