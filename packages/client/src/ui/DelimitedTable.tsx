@@ -97,9 +97,9 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
         </thead>
         <tbody>
           {shown.map((row) => (
-            <tr key={row.index}>
+            <tr key={row.line}>
               <th scope="row" className="delimited-rownum">
-                {row.index}
+                {row.line}
               </th>
               {row.cells.map((cell, column) => (
                 <td

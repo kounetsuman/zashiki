@@ -32,7 +32,7 @@ describe("readDelimited", () => {
       ["ada", "36"],
       ["alan", "41"],
     ]);
-    expect(table.rows.map((r) => r.index)).toEqual([1, 2]);
+    expect(table.rows.map((r) => r.line)).toEqual([2, 3]);
   });
 
   it("keeps a quoted field's delimiters, newlines and escaped quotes", () => {
@@ -53,6 +53,30 @@ describe("readDelimited", () => {
     const table = readDelimited("a.csv", "name;age\nada;36\n");
     expect(table.delimiter).toBe(";");
     expect(table.header).toEqual(["name", "age"]);
+  });
+
+  it("detects the delimiter the rows agree on, not the one in the first line", () => {
+    const table = readDelimited("a.csv", "id\n1;2;3\n4;5;6\n");
+    expect(table.delimiter).toBe(";");
+    expect(cellsOf(table)).toEqual([
+      ["1", "2", "3"],
+      ["4", "5", "6"],
+    ]);
+  });
+
+  it("numbers rows by their line in the file, across blank lines and quoted newlines", () => {
+    const table = readDelimited("a.csv", 'h,note\na,"one\ntwo"\n\nb,plain\n');
+    expect(table.rows.map((r) => r.line)).toEqual([2, 5]);
+  });
+
+  it("keeps a quoted empty record, and skips blank lines", () => {
+    const table = readDelimited("a.csv", 'h\na\n\n""\nb\n');
+    expect(cellsOf(table)).toEqual([["a"], [""], ["b"]]);
+  });
+
+  it("normalizes CRLF inside a quoted field", () => {
+    const table = readDelimited("a.csv", 'h\r\n"one\r\ntwo"\r\n');
+    expect(cellsOf(table)).toEqual([["one\ntwo"]]);
   });
 
   it("handles CRLF line endings and a byte order mark", () => {
@@ -127,13 +151,13 @@ describe("sortRows", () => {
       column: 1,
       direction: "desc",
     });
-    expect(sorted.map((r) => r.index)).toEqual([1, 2, 3]);
+    expect(sorted.map((r) => r.line)).toEqual([2, 3, 4]);
   });
 
   it("leaves the rows untouched", () => {
-    const before = table.rows.map((r) => r.index);
+    const before = table.rows.map((r) => r.line);
     sortRows(table.rows, table.numericColumns, { column: 0, direction: "asc" });
-    expect(table.rows.map((r) => r.index)).toEqual(before);
+    expect(table.rows.map((r) => r.line)).toEqual(before);
   });
 });
 

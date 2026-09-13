@@ -1064,8 +1064,8 @@ textarea {
   font-weight: bold;
 }
 
-/* The row number repeats the file's own line ordering, so it stays out of the way:
-   dimmed, unselectable, and pinned to the left edge while columns scroll under it. */
+/* The row number is the record's line in the file, so it stays out of the way: dimmed,
+   unselectable, and pinned to the left edge while columns scroll under it. */
 .delimited-table .delimited-rownum {
   position: sticky;
   left: 0;

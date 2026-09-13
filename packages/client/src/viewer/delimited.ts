@@ -1,6 +1,6 @@
 /**
  * Reading delimited text (CSV / TSV) as a table: parsing, column typing and sorting
- * (pure functions; rendering lives in DelimitedTableView).
+ * (pure functions; rendering lives in DelimitedTable).
  */
 
 export type SortDirection = "asc" | "desc";
@@ -11,8 +11,8 @@ export interface SortState {
 }
 
 export interface DelimitedRow {
-  /** 1-based position in the file, so sorting can be undone and the row number shown. */
-  readonly index: number;
+  /** 1-based line the record starts on, so the row number matches the text view and survives sorting. */
+  readonly line: number;
   readonly cells: readonly string[];
 }
 
@@ -29,6 +29,10 @@ const COMMA_SEPARATED = /\.csv$/i;
 
 /** Candidates for a `.csv` whose delimiter is regional (`;` in much of Europe) or mislabelled. */
 const CSV_DELIMITERS = [",", ";", "\t"];
+
+/** How much of the file the delimiter is guessed from. */
+const DETECTION_BYTES = 64 * 1024;
+const DETECTION_RECORDS = 10;
 
 const NUMERIC_CELL =
   /^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
@@ -48,21 +52,30 @@ function stripByteOrderMark(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
 
+interface ParsedRecord {
+  readonly line: number;
+  readonly cells: string[];
+}
+
 /**
  * Splits into records. `quoted` follows RFC 4180 — a field opening with `"` runs until its
  * closing quote, so delimiters and newlines inside it are literal and `""` is one quote.
  * Tab-separated text has no such convention, so its quotes stay literal characters.
+ * Blank lines carry no record; a quoted empty field is a record, being a written value.
  */
 function parseRecords(
   text: string,
   delimiter: string,
   quoted: boolean,
-): string[][] {
-  const records: string[][] = [];
+): ParsedRecord[] {
+  const records: ParsedRecord[] = [];
   let cells: string[] = [];
   let field = "";
   let inQuotes = false;
   let atFieldStart = true;
+  let hasQuotedField = false;
+  let line = 1;
+  let recordLine = 1;
 
   const endField = (): void => {
     cells.push(field);
@@ -71,46 +84,81 @@ function parseRecords(
   };
   const endRecord = (): void => {
     endField();
-    records.push(cells);
+    if (hasQuotedField || cells.length > 1 || cells[0] !== "")
+      records.push({ line: recordLine, cells });
     cells = [];
+    hasQuotedField = false;
   };
 
   for (let i = 0; i < text.length; i++) {
     const char = text[i] as string;
     if (inQuotes) {
-      if (char !== '"') field += char;
-      else if (text[i + 1] === '"') {
-        field += '"';
-        i++;
-      } else inQuotes = false;
+      if (char === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
+      } else if (char === "\n" || char === "\r") {
+        if (char === "\r" && text[i + 1] === "\n") i++;
+        field += "\n";
+        line++;
+      } else field += char;
       continue;
     }
     if (quoted && atFieldStart && char === '"') {
       inQuotes = true;
+      hasQuotedField = true;
       atFieldStart = false;
     } else if (char === delimiter) endField();
     else if (char === "\n" || char === "\r") {
       if (char === "\r" && text[i + 1] === "\n") i++;
       endRecord();
+      line++;
+      recordLine = line;
     } else {
       field += char;
       atFieldStart = false;
     }
   }
-  if (field !== "" || cells.length > 0) endRecord();
+  if (field !== "" || cells.length > 0 || hasQuotedField) endRecord();
 
-  return records.filter((record) => record.length > 1 || record[0] !== "");
+  return records;
 }
 
-/** The delimiter that splits the first record into the most columns (ties keep the earlier candidate). */
-function detectDelimiter(text: string, quoted: boolean): string {
+/** The column count most of the sampled records agree on; 1 means the candidate does not split them. */
+function delimiterScore(sample: string, delimiter: string): number {
+  const seenPerCount = new Map<number, number>();
+  for (const record of parseRecords(sample, delimiter, true).slice(
+    0,
+    DETECTION_RECORDS,
+  )) {
+    const count = record.cells.length;
+    seenPerCount.set(count, (seenPerCount.get(count) ?? 0) + 1);
+  }
+  let columns = 0;
+  let agreeing = 0;
+  for (const [count, seen] of seenPerCount) {
+    if (seen > agreeing || (seen === agreeing && count > columns)) {
+      columns = count;
+      agreeing = seen;
+    }
+  }
+  return columns;
+}
+
+/**
+ * The delimiter the file's own rows agree on. Scoring a sample rather than the first record
+ * alone keeps a title line or a single-word header from hiding the real delimiter.
+ */
+function detectDelimiter(text: string): string {
+  const sample = text.slice(0, DETECTION_BYTES);
   let best = CSV_DELIMITERS[0] as string;
-  let bestColumns = 0;
+  let bestScore = 0;
   for (const candidate of CSV_DELIMITERS) {
-    const columns = parseRecords(text, candidate, quoted)[0]?.length ?? 0;
-    if (columns > bestColumns) {
+    const score = delimiterScore(sample, candidate);
+    if (score > bestScore) {
       best = candidate;
-      bestColumns = columns;
+      bestScore = score;
     }
   }
   return best;
@@ -138,19 +186,19 @@ function isNumericColumn(
 export function readDelimited(relPath: string, text: string): DelimitedTable {
   const quoted = !TAB_SEPARATED.test(relPath);
   const source = stripByteOrderMark(text);
-  const delimiter = quoted ? detectDelimiter(source, quoted) : "\t";
+  const delimiter = quoted ? detectDelimiter(source) : "\t";
   const records = parseRecords(source, delimiter, quoted);
   const width = records.reduce(
-    (max, record) => Math.max(max, record.length),
+    (max, record) => Math.max(max, record.cells.length),
     0,
   );
-  const rows = records.slice(1).map((record, i) => ({
-    index: i + 1,
-    cells: padded(record, width),
+  const rows = records.slice(1).map((record) => ({
+    line: record.line,
+    cells: padded(record.cells, width),
   }));
   return {
     delimiter,
-    header: padded(records[0] ?? [], width),
+    header: padded(records[0]?.cells ?? [], width),
     rows,
     numericColumns: Array.from({ length: width }, (_, column) =>
       isNumericColumn(rows, column),
@@ -178,9 +226,9 @@ export function sortRows(
     if (a === "" || b === "") {
       if (a !== "") return -1;
       if (b !== "") return 1;
-      return rowA.index - rowB.index;
+      return rowA.line - rowB.line;
     }
-    return compareCells(a, b, numeric) * sign || rowA.index - rowB.index;
+    return compareCells(a, b, numeric) * sign || rowA.line - rowB.line;
   });
 }
 

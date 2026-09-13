@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   bufferFailed,
   bufferLoaded,
+  bufferShowText,
   bufferTogglePreview,
   closeBuffer,
   externalViewerKey,
@@ -189,6 +190,13 @@ describe("media buffers", () => {
 });
 
 describe("preview toggle / close", () => {
+  it("bufferShowText leaves the alternate rendering, keeping the reference when already text", () => {
+    const bufs = bufferTogglePreview(openBuffer({}, REPO, REL), KEY);
+    expect(bufferShowText(bufs, KEY)[KEY]?.preview).toBe(false);
+    const text = bufferShowText(bufs, KEY);
+    expect(bufferShowText(text, KEY)).toBe(text);
+  });
+
   it("bufferTogglePreview flips preview", () => {
     const bufs = bufferTogglePreview(openBuffer({}, REPO, REL), KEY);
     expect(bufs[KEY]?.preview).toBe(true);

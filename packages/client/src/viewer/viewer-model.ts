@@ -195,6 +195,17 @@ export function bufferFailed(
   return patch(bufs, key, (b) => ({ ...b, status: "error", error }));
 }
 
+/**
+ * Leaves the alternate rendering, the table having no place to point a line number at.
+ * Revealing a line (search hit, quick open) needs the text view.
+ */
+export function bufferShowText(
+  bufs: ViewerBuffers,
+  key: string,
+): ViewerBuffers {
+  return patch(bufs, key, (b) => (b.preview ? { ...b, preview: false } : b));
+}
+
 export function bufferTogglePreview(
   bufs: ViewerBuffers,
   key: string,

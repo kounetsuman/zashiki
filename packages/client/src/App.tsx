@@ -372,6 +372,7 @@ export function App({
     openExternalMedia,
     closeBuffer: closeViewerBuffer,
     togglePreview: toggleViewerPreview,
+    showText: showViewerText,
     pathOf: viewerPathOf,
   } = useViewer(filesApi, activeViewerKey);
   const activeBuffer =
@@ -407,6 +408,7 @@ export function App({
       openViewerTab(key);
       setViewerFocusNonce((n) => n + 1);
       if (kind === null && typeof line === "number" && line > 0) {
+        showViewerText(key);
         setViewerReveal((prev) => ({
           key,
           line,
@@ -414,7 +416,7 @@ export function App({
         }));
       }
     },
-    [openViewerTab, ensureBuffer, ensureMediaBuffer],
+    [openViewerTab, ensureBuffer, ensureMediaBuffer, showViewerText],
   );
 
   // Quick-open palette (Cmd+P). The file list is fetched each time it opens and generation-guarded so

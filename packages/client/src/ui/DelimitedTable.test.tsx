@@ -45,10 +45,10 @@ describe("DelimitedTable", () => {
     ]);
   });
 
-  it("numbers the rows by their position in the file", () => {
+  it("numbers the rows by their line in the file, header included", () => {
     render(<DelimitedTable relPath="a.csv" content={CSV} />);
     const numbers = screen.getAllByRole("rowheader").map((h) => h.textContent);
-    expect(numbers).toEqual(["1", "2", "3"]);
+    expect(numbers).toEqual(["2", "3", "4"]);
   });
 
   it("cycles a column through ascending, descending and the file order", () => {

@@ -5,6 +5,7 @@ import type { MediaKind } from "../viewer/media.js";
 import {
   bufferFailed,
   bufferLoaded,
+  bufferShowText,
   bufferTogglePreview,
   closeBuffer as dropBuffer,
   externalViewerKey,
@@ -42,6 +43,8 @@ export interface Viewer {
   openExternalMedia(name: string, file: File, kind: MediaKind): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
+  /** Leaves the alternate rendering, so a line can be revealed in the text view. */
+  showText(key: string): void;
   /** Absolute path of the buffer at key, or null when it is gone. */
   pathOf(key: string): string | null;
 }
@@ -151,6 +154,10 @@ export function useViewer(
     setBuffers((prev) => bufferTogglePreview(prev, key));
   }, []);
 
+  const showText = useCallback((key: string): void => {
+    setBuffers((prev) => bufferShowText(prev, key));
+  }, []);
+
   const pathOf = useCallback((key: string): string | null => {
     const buf = buffersRef.current[key];
     if (buf === undefined) return null;
@@ -189,6 +196,7 @@ export function useViewer(
     openExternalMedia,
     closeBuffer,
     togglePreview,
+    showText,
     pathOf,
   };
 }
