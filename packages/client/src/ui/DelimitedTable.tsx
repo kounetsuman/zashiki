@@ -11,17 +11,15 @@ import {
 /** Rows past this one are left out: a whole large file in the DOM stalls the cockpit. */
 export const MAX_RENDERED_ROWS = 2000;
 
-/** Columns past this one are left out, no file being read that far across. */
-export const MAX_RENDERED_COLUMNS = 200;
-
-/** The cell budget a wide file spends its rows against, and the rows it keeps regardless. */
+/** The cell budget a wide file spends its rows against. */
 const MAX_RENDERED_CELLS = 50_000;
-const MIN_RENDERED_ROWS = 100;
 
 /** The row cap, lowered for a file wide enough that the full cap would flood the DOM. */
 function rowCap(columns: number): number {
-  const affordable = Math.floor(MAX_RENDERED_CELLS / Math.max(columns, 1));
-  return Math.min(MAX_RENDERED_ROWS, Math.max(MIN_RENDERED_ROWS, affordable));
+  return Math.min(
+    MAX_RENDERED_ROWS,
+    Math.floor(MAX_RENDERED_CELLS / Math.max(columns, 1)),
+  );
 }
 
 /** How many colours the columns cycle through (the palette lives in styles.css). */
@@ -45,7 +43,7 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
     [relPath, content],
   );
   const [sort, setSort] = useState<SortState | null>(null);
-  const columns = Math.min(table.header.length, MAX_RENDERED_COLUMNS);
+  const columns = table.header.length;
   // A file rewritten under the viewer can lose the sorted column.
   const activeSort = sort !== null && sort.column < columns ? sort : null;
   const rows = useMemo(
@@ -61,7 +59,6 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
     );
   }
 
-  const header = table.header.slice(0, columns);
   const shown = rows.slice(0, rowCap(columns));
   return (
     <div className="delimited-table">
@@ -73,7 +70,7 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
               className="delimited-rownum"
               aria-label={t("viewer.rowNumber")}
             />
-            {header.map((name, column) => (
+            {table.header.map((name, column) => (
               <th
                 // biome-ignore lint/suspicious/noArrayIndexKey: a column is its position; header names may repeat
                 key={column}
@@ -115,7 +112,7 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
               <th scope="row" className="delimited-rownum">
                 {row.line}
               </th>
-              {row.cells.slice(0, columns).map((cell, column) => (
+              {table.header.map((_, column) => (
                 <td
                   // biome-ignore lint/suspicious/noArrayIndexKey: a column is its position; header names may repeat
                   key={column}
@@ -123,16 +120,16 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
                   className={
                     table.numericColumns[column] === true ? "is-numeric" : ""
                   }
-                  title={cell}
+                  title={row.cells[column] ?? ""}
                 >
-                  {cell}
+                  {row.cells[column] ?? ""}
                 </td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
-      {(shown.length < rows.length || columns < table.header.length) && (
+      {(shown.length < rows.length || columns < table.totalColumns) && (
         <p className="delimited-truncated" role="status">
           {shown.length < rows.length && (
             <span>
@@ -142,11 +139,11 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
               })}
             </span>
           )}
-          {columns < table.header.length && (
+          {columns < table.totalColumns && (
             <span>
               {t("viewer.tableColumnsTruncated", {
                 shown: columns.toLocaleString(),
-                total: table.header.length.toLocaleString(),
+                total: table.totalColumns.toLocaleString(),
               })}
             </span>
           )}

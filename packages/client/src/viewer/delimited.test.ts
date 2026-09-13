@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   isDelimitedText,
+  MAX_TABLE_COLUMNS,
   nextSort,
   readDelimited,
   sortRows,
@@ -169,12 +170,37 @@ describe("readDelimited", () => {
     expect(cellsOf(table)).toEqual([["ada", "36"]]);
   });
 
-  it("pads ragged rows so every row has the full column count", () => {
+  it("names one header cell per column, whatever the rows hold", () => {
     const table = readDelimited("a.csv", "a,b\n1\n2,3,4\n");
     expect(table.header).toEqual(["a", "b", ""]);
-    expect(cellsOf(table)).toEqual([
-      ["1", "", ""],
-      ["2", "3", "4"],
+    expect(table.totalColumns).toBe(3);
+    expect(cellsOf(table)).toEqual([["1"], ["2", "3", "4"]]);
+  });
+
+  it("drops the columns of a stray record far past the width cap", () => {
+    const wide = Array.from({ length: MAX_TABLE_COLUMNS + 50 }, (_, i) =>
+      String(i),
+    ).join(",");
+    const table = readDelimited("a.csv", `a,b\n1,2\n${wide}\n`);
+    expect(table.header).toHaveLength(MAX_TABLE_COLUMNS);
+    expect(table.totalColumns).toBe(MAX_TABLE_COLUMNS + 50);
+    expect(table.rows.at(-1)?.cells).toHaveLength(MAX_TABLE_COLUMNS);
+    expect(table.rows[0]?.cells).toEqual(["1", "2"]);
+  });
+
+  it("leaves a long identifier column to the text comparison", () => {
+    const table = readDelimited(
+      "a.csv",
+      "id\n9007199254740993\n9007199254740992\n",
+    );
+    expect(table.numericColumns).toEqual([false]);
+    const sorted = sortRows(table.rows, table.numericColumns, {
+      column: 0,
+      direction: "asc",
+    });
+    expect(sorted.map((r) => r.cells[0])).toEqual([
+      "9007199254740992",
+      "9007199254740993",
     ]);
   });
 

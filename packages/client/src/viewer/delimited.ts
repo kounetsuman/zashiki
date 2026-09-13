@@ -19,6 +19,8 @@ export interface DelimitedRow {
 export interface DelimitedTable {
   readonly delimiter: string;
   readonly header: readonly string[];
+  /** Columns the file holds, above `header.length` when its width was cut to the cap. */
+  readonly totalColumns: number;
   readonly rows: readonly DelimitedRow[];
   /** Per column: every filled cell parses as a number, so it compares numerically and aligns right. */
   readonly numericColumns: readonly boolean[];
@@ -29,6 +31,12 @@ const COMMA_SEPARATED = /\.csv$/i;
 
 /** Candidates for a `.csv` whose delimiter is regional (`;` in much of Europe) or mislabelled. */
 const CSV_DELIMITERS = [",", ";", "\t"];
+
+/**
+ * Columns past this one are dropped while reading. A single stray record of thousands of
+ * delimiters would otherwise set the width of every row in the file.
+ */
+export const MAX_TABLE_COLUMNS = 200;
 
 /** How much of the file the delimiter is guessed from. */
 const DETECTION_BYTES = 64 * 1024;
@@ -50,7 +58,10 @@ export function numericValue(cell: string): number | null {
   const trimmed = cell.trim();
   if (!PLAIN_NUMBER.test(trimmed) && !GROUPED_NUMBER.test(trimmed)) return null;
   const value = Number(trimmed.replaceAll(",", ""));
-  return Number.isFinite(value) ? value : null;
+  if (!Number.isFinite(value)) return null;
+  // Identifiers run longer than a double holds exactly; comparing them as numbers would call
+  // distinct ids equal, so they are left to the text comparison, which reads digits in full.
+  return Number.isInteger(value) && !Number.isSafeInteger(value) ? null : value;
 }
 
 function stripByteOrderMark(text: string): string {
@@ -141,9 +152,10 @@ interface DelimiterFit {
 const NO_FIT: DelimiterFit = { coverage: 0, agreement: 0, columns: 0 };
 
 /**
- * Reach first, then width, then regularity. A delimiter reaching every record beats one that
- * only splits some; among those, the one finding more columns is reading the file rather than
- * cutting inside its text, and ragged rows do not count against it.
+ * Reach first, then width, then regularity, each measured on the column count most of the
+ * records share. A delimiter reaching every record beats one that splits only some; among
+ * those, the one most records see more columns through is reading the file rather than cutting
+ * inside its text — while a single odd record cannot make that case on its own.
  */
 function fitsBetter(fit: DelimiterFit, than: DelimiterFit): boolean {
   if (fit.coverage !== than.coverage) return fit.coverage > than.coverage;
@@ -152,7 +164,8 @@ function fitsBetter(fit: DelimiterFit, than: DelimiterFit): boolean {
 }
 
 /**
- * How well a candidate fits the sample. A delimiter separates the columns of every record;
+ * How well a candidate fits the sample, on the column count most of its records share. A
+ * delimiter separates the columns of every record;
  * one merely written inside the text splits some records and leaves the rest whole, which is
  * what disqualifies it. The single exception allowed is a one-word header above a wider table.
  */
@@ -171,13 +184,19 @@ function delimiterFit(sample: string, delimiter: string): DelimiterFit {
   }
   if (splitRecords < 2 || splitRecords < records.length - 1) return NO_FIT;
 
-  const coverage = splitRecords / records.length;
-  let fit = NO_FIT;
-  for (const [columns, agreeing] of recordsPerCount) {
-    const candidate = { coverage, agreement: agreeing / splitRecords, columns };
-    if (fitsBetter(candidate, fit)) fit = candidate;
+  let columns = 0;
+  let agreeing = 0;
+  for (const [count, reaching] of recordsPerCount) {
+    if (reaching > agreeing || (reaching === agreeing && count > columns)) {
+      columns = count;
+      agreeing = reaching;
+    }
   }
-  return fit;
+  return {
+    coverage: splitRecords / records.length,
+    agreement: agreeing / splitRecords,
+    columns,
+  };
 }
 
 /**
@@ -199,7 +218,8 @@ function detectDelimiter(text: string): string {
   return best;
 }
 
-function padded(cells: readonly string[], width: number): string[] {
+/** The header names one cell per column, the file's own header row being ragged or short. */
+function headerRow(cells: readonly string[], width: number): string[] {
   return Array.from({ length: width }, (_, i) => cells[i] ?? "");
 }
 
@@ -210,9 +230,12 @@ function isNumericColumn(
 ): boolean {
   let filled = false;
   for (const row of rows) {
-    const cell = (row.cells[column] as string).trim();
+    const cell = (row.cells[column] ?? "").trim();
     if (cell === "") continue;
-    if (!PLAIN_NUMBER.test(cell) && !(grouped && GROUPED_NUMBER.test(cell)))
+    if (
+      (!PLAIN_NUMBER.test(cell) && !(grouped && GROUPED_NUMBER.test(cell))) ||
+      numericValue(cell) === null
+    )
       return false;
     filled = true;
   }
@@ -225,17 +248,20 @@ export function readDelimited(relPath: string, text: string): DelimitedTable {
   const source = stripByteOrderMark(text);
   const delimiter = quoted ? detectDelimiter(source) : "\t";
   const records = parseRecords(source, delimiter, quoted);
-  const width = records.reduce(
+  const totalColumns = records.reduce(
     (max, record) => Math.max(max, record.cells.length),
     0,
   );
+  const width = Math.min(totalColumns, MAX_TABLE_COLUMNS);
   const rows = records.slice(1).map((record) => ({
     line: record.line,
-    cells: padded(record.cells, width),
+    cells:
+      record.cells.length > width ? record.cells.slice(0, width) : record.cells,
   }));
   return {
     delimiter,
-    header: padded(records[0]?.cells ?? [], width),
+    header: headerRow(records[0]?.cells ?? [], width),
+    totalColumns,
     rows,
     numericColumns: Array.from({ length: width }, (_, column) =>
       isNumericColumn(rows, column, delimiter === ","),

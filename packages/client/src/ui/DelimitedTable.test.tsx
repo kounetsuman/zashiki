@@ -8,11 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  DelimitedTable,
-  MAX_RENDERED_COLUMNS,
-  MAX_RENDERED_ROWS,
-} from "./DelimitedTable.js";
+import { MAX_TABLE_COLUMNS } from "../viewer/delimited.js";
+import { DelimitedTable, MAX_RENDERED_ROWS } from "./DelimitedTable.js";
 
 const CSV = "name,size\nitem10,2\nitem2,10\nitem1,\n";
 
@@ -93,7 +90,7 @@ describe("DelimitedTable", () => {
   });
 
   it("caps the columns of a file wider than anyone reads across, and says so", () => {
-    const total = MAX_RENDERED_COLUMNS + 7;
+    const total = MAX_TABLE_COLUMNS + 7;
     const line = (fill: string) =>
       Array.from({ length: total }, (_, i) => `${fill}${i}`).join(",");
     const { container } = render(
@@ -103,7 +100,7 @@ describe("DelimitedTable", () => {
       />,
     );
     expect(container.querySelectorAll("thead th")).toHaveLength(
-      MAX_RENDERED_COLUMNS + 1,
+      MAX_TABLE_COLUMNS + 1,
     );
     expect(
       container.querySelector(".delimited-truncated")?.textContent,
