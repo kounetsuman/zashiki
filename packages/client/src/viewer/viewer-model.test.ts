@@ -50,6 +50,18 @@ describe("openBuffer", () => {
     });
   });
 
+  it("opens delimited text in the table view and everything else as text", () => {
+    const csv = "data/report.csv";
+    expect(openBuffer({}, REPO, csv)[viewerKey(REPO, csv)]?.preview).toBe(true);
+    expect(openBuffer({}, REPO, REL)[KEY]?.preview).toBe(false);
+  });
+
+  it("opens a dropped delimited file in the table view", () => {
+    const name = "dropped.tsv";
+    const bufs = openExternalBuffer({}, name, "a\tb\n");
+    expect(bufs[externalViewerKey(name)]?.preview).toBe(true);
+  });
+
   it("leaves an existing entry unchanged with the same reference", () => {
     const bufs = openBuffer({}, REPO, REL);
     expect(openBuffer(bufs, REPO, REL)).toBe(bufs);

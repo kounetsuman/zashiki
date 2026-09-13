@@ -178,7 +178,14 @@
     "openFailed": "開けませんでした: {{error}}",
     "readTimeout": "読み込みがタイムアウトしました",
     "dropTooLarge": "{{name}} はプレビューするには大きすぎます（最大 2 MB）",
-    "dropReadFailed": "{{name}} を読み込めませんでした"
+    "dropReadFailed": "{{name}} を読み込めませんでした",
+    "table": "テーブル",
+    "text": "テキスト",
+    "tableLabel": "{{path}} のテーブル表示",
+    "rowNumber": "行番号",
+    "sortByColumn": "{{column}} で並べ替え",
+    "tableTruncated": "全 {{total}} 行のうち先頭 {{shown}} 行を表示中",
+    "tableEmpty": "表示できる行がありません。"
   },
   "find": {
     "placeholder": "検索",

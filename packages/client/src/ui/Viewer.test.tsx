@@ -84,6 +84,42 @@ describe("Viewer", () => {
     );
   });
 
+  it("renders a csv as a sortable table, with the toggle back to text", () => {
+    render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "data/report.csv",
+          content: "name,size\nb,2\na,10\n",
+          preview: true,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "テキスト" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "size で並べ替え" }),
+    ).toBeTruthy();
+  });
+
+  it("shows a csv as raw text once the table is toggled off", () => {
+    render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "data/report.csv",
+          content: "name,size\nb,2\n",
+          preview: false,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByRole("button", { name: "テーブル" })).toBeTruthy();
+  });
+
   it("focuses the editor content when the focus nonce changes (so Cmd+F reaches it)", () => {
     const { container, rerender } = render(
       <Viewer

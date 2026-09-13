@@ -1,0 +1,156 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  isDelimitedText,
+  nextSort,
+  readDelimited,
+  sortRows,
+} from "./delimited.js";
+
+const cellsOf = (table: ReturnType<typeof readDelimited>) =>
+  table.rows.map((r) => r.cells);
+
+describe("isDelimitedText", () => {
+  it("accepts the delimited-text extensions", () => {
+    expect(isDelimitedText("data/report.csv")).toBe(true);
+    expect(isDelimitedText("data/report.TSV")).toBe(true);
+    expect(isDelimitedText("data/report.tab")).toBe(true);
+  });
+
+  it("rejects everything else", () => {
+    expect(isDelimitedText("src/app.ts")).toBe(false);
+    expect(isDelimitedText("notes.md")).toBe(false);
+    expect(isDelimitedText("csv")).toBe(false);
+  });
+});
+
+describe("readDelimited", () => {
+  it("splits a comma file into a header and rows", () => {
+    const table = readDelimited("a.csv", "name,age\nada,36\nalan,41\n");
+    expect(table.header).toEqual(["name", "age"]);
+    expect(cellsOf(table)).toEqual([
+      ["ada", "36"],
+      ["alan", "41"],
+    ]);
+    expect(table.rows.map((r) => r.index)).toEqual([1, 2]);
+  });
+
+  it("keeps a quoted field's delimiters, newlines and escaped quotes", () => {
+    const table = readDelimited(
+      "a.csv",
+      'name,note\n"lovelace, ada","said ""hi""\nagain"\n',
+    );
+    expect(cellsOf(table)).toEqual([["lovelace, ada", 'said "hi"\nagain']]);
+  });
+
+  it("reads a tab file on tabs, leaving quotes as literal text", () => {
+    const table = readDelimited("a.tsv", 'name\tnote\nada\t"quoted"\n');
+    expect(table.delimiter).toBe("\t");
+    expect(cellsOf(table)).toEqual([["ada", '"quoted"']]);
+  });
+
+  it("detects a semicolon-delimited csv", () => {
+    const table = readDelimited("a.csv", "name;age\nada;36\n");
+    expect(table.delimiter).toBe(";");
+    expect(table.header).toEqual(["name", "age"]);
+  });
+
+  it("handles CRLF line endings and a byte order mark", () => {
+    const table = readDelimited("a.csv", "﻿name,age\r\nada,36\r\n");
+    expect(table.header).toEqual(["name", "age"]);
+    expect(cellsOf(table)).toEqual([["ada", "36"]]);
+  });
+
+  it("pads ragged rows so every row has the full column count", () => {
+    const table = readDelimited("a.csv", "a,b\n1\n2,3,4\n");
+    expect(table.header).toEqual(["a", "b", ""]);
+    expect(cellsOf(table)).toEqual([
+      ["1", "", ""],
+      ["2", "3", "4"],
+    ]);
+  });
+
+  it("has no rows for a header-only or empty file", () => {
+    expect(readDelimited("a.csv", "a,b\n").rows).toEqual([]);
+    expect(readDelimited("a.csv", "").header).toEqual([]);
+    expect(readDelimited("a.csv", "").rows).toEqual([]);
+  });
+
+  it("marks a column numeric only when every filled cell is a number", () => {
+    const table = readDelimited(
+      "a.csv",
+      "n,mixed,empty\n-1.5e3,1,\n42,x,\n,,\n",
+    );
+    expect(table.numericColumns).toEqual([true, false, false]);
+  });
+});
+
+describe("sortRows", () => {
+  const table = readDelimited(
+    "a.csv",
+    "name,size\nitem10,2\nitem2,10\nitem1,\n",
+  );
+
+  it("returns the original order when nothing is sorted", () => {
+    expect(sortRows(table.rows, table.numericColumns, null)).toEqual(
+      table.rows,
+    );
+  });
+
+  it("compares a numeric column by value, not as text", () => {
+    const sorted = sortRows(table.rows, table.numericColumns, {
+      column: 1,
+      direction: "asc",
+    });
+    expect(sorted.map((r) => r.cells[1])).toEqual(["2", "10", ""]);
+  });
+
+  it("keeps empty cells last in both directions", () => {
+    const desc = sortRows(table.rows, table.numericColumns, {
+      column: 1,
+      direction: "desc",
+    });
+    expect(desc.map((r) => r.cells[1])).toEqual(["10", "2", ""]);
+  });
+
+  it("compares a text column naturally", () => {
+    const sorted = sortRows(table.rows, table.numericColumns, {
+      column: 0,
+      direction: "asc",
+    });
+    expect(sorted.map((r) => r.cells[0])).toEqual(["item1", "item2", "item10"]);
+  });
+
+  it("breaks ties by the original row order", () => {
+    const tied = readDelimited("a.csv", "k,v\nb,1\na,1\nc,1\n");
+    const sorted = sortRows(tied.rows, tied.numericColumns, {
+      column: 1,
+      direction: "desc",
+    });
+    expect(sorted.map((r) => r.index)).toEqual([1, 2, 3]);
+  });
+
+  it("leaves the rows untouched", () => {
+    const before = table.rows.map((r) => r.index);
+    sortRows(table.rows, table.numericColumns, { column: 0, direction: "asc" });
+    expect(table.rows.map((r) => r.index)).toEqual(before);
+  });
+});
+
+describe("nextSort", () => {
+  it("cycles a column ascending, descending, then back to the file order", () => {
+    expect(nextSort(null, 2)).toEqual({ column: 2, direction: "asc" });
+    expect(nextSort({ column: 2, direction: "asc" }, 2)).toEqual({
+      column: 2,
+      direction: "desc",
+    });
+    expect(nextSort({ column: 2, direction: "desc" }, 2)).toBeNull();
+  });
+
+  it("starts ascending when a different column is picked", () => {
+    expect(nextSort({ column: 2, direction: "desc" }, 0)).toEqual({
+      column: 0,
+      direction: "asc",
+    });
+  });
+});

@@ -6,6 +6,7 @@
  * holds only state transitions. Realtime reflection is driven by polling re-firing bufferLoaded.
  */
 
+import { isDelimitedText } from "./delimited.js";
 import type { MediaKind } from "./media.js";
 
 export type BufferStatus = "loading" | "ready" | "error";
@@ -22,7 +23,7 @@ export interface ViewerBuffer {
   /** The content last read. null if not yet loaded, or when the buffer is media (rendered from `media.url`). */
   readonly content: string | null;
   readonly error?: string;
-  /** Whether the Markdown preview is showing (meaningful only for .md; toggle). */
+  /** Whether the file's alternate rendering is showing (Markdown preview, or the CSV/TSV table). */
   readonly preview: boolean;
   /** Content was supplied directly (e.g. a file dropped from Finder), not read from a repo. */
   readonly external?: boolean;
@@ -51,6 +52,11 @@ export function splitViewerKey(key: string): {
 /** Markdown-family extensions (preview targets). */
 export function isMarkdown(relPath: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(relPath);
+}
+
+/** Delimited text opens as a table, since its raw form is the harder one to read; Markdown opens as code. */
+function opensInAlternateView(relPath: string): boolean {
+  return isDelimitedText(relPath);
 }
 
 /** Sentinel repoPath for a buffer that belongs to no repo (dropped file). */
@@ -96,7 +102,7 @@ export function openBuffer(
       relPath,
       status: "loading",
       content: null,
-      preview: false,
+      preview: opensInAlternateView(relPath),
     },
   };
 }
@@ -117,7 +123,7 @@ export function openExternalBuffer(
       relPath: name,
       status: "ready",
       content,
-      preview: existing?.preview ?? false,
+      preview: existing?.preview ?? opensInAlternateView(name),
       external: true,
     },
   };
