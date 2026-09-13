@@ -19,7 +19,7 @@ export interface DelimitedRow {
 export interface DelimitedTable {
   readonly delimiter: string;
   readonly header: readonly string[];
-  /** Columns the widest record holds, above the cap when the read cut a record short. */
+  /** Columns the widest record holds, above `header.length` when the read cut it to the cap. */
   readonly totalColumns: number;
   readonly rows: readonly DelimitedRow[];
   /** Per column: every filled cell parses as a number, so it compares numerically and aligns right. */
@@ -232,24 +232,6 @@ function detectDelimiter(text: string): string {
   return best;
 }
 
-/** The column count most records share (ties go to the wider), so one odd line cannot set it. */
-function dominantColumnCount(records: readonly ParsedRecord[]): number {
-  const recordsPerCount = new Map<number, number>();
-  for (const record of records) {
-    const count = record.cells.length;
-    recordsPerCount.set(count, (recordsPerCount.get(count) ?? 0) + 1);
-  }
-  let columns = 0;
-  let sharing = 0;
-  for (const [count, reaching] of recordsPerCount) {
-    if (reaching > sharing || (reaching === sharing && count > columns)) {
-      columns = count;
-      sharing = reaching;
-    }
-  }
-  return columns;
-}
-
 /** The header names one cell per column, the file's own header row being ragged or short. */
 function headerRow(cells: readonly string[], width: number): string[] {
   return Array.from({ length: width }, (_, i) => cells[i] ?? "");
@@ -284,13 +266,13 @@ export function readDelimited(relPath: string, text: string): DelimitedTable {
     (max, record) => Math.max(max, record.cells.length),
     0,
   );
-  const width = Math.min(dominantColumnCount(records), MAX_TABLE_COLUMNS);
+  const width = Math.min(totalColumns, MAX_TABLE_COLUMNS);
+  // Rows keep the cells they have rather than being padded out to the width: a file whose
+  // records differ in length costs its own content, not its widest record times its length.
   const rows = records.slice(1).map((record) => ({
     line: record.line,
     cells:
-      record.cells.length > MAX_TABLE_COLUMNS
-        ? record.cells.slice(0, MAX_TABLE_COLUMNS)
-        : record.cells,
+      record.cells.length > width ? record.cells.slice(0, width) : record.cells,
   }));
   return {
     delimiter,
