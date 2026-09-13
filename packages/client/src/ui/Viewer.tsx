@@ -2,7 +2,7 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { isDelimitedText } from "../viewer/delimited.js";
@@ -177,19 +177,29 @@ export function Viewer({
     [showAlternate, alternate, buffer.content],
   );
 
-  // Focus the content (not the section) so the find keymap (Cmd+F) reaches the editor, and so
-  // the keys that scroll reach whichever element owns the scroll. Re-runs on the toggle too, the
-  // rendering the file switches to being the one the user is about to read. Also re-run on status: a first (uncached) open mounts the editor only once
-  // the read resolves, after the nonce bump, so focus must land then too. Preview
-  // and media fall back to the section (no editor). preventScroll avoids fighting
-  // a pending reveal-line scroll.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce / buffer.status / buffer.preview are re-run triggers, not read in the body.
+  const focusTarget = useCallback(
+    () =>
+      sectionRef.current?.querySelector<HTMLElement>(
+        ".cm-content, .delimited-table",
+      ) ?? null,
+    [],
+  );
+
+  // Focus the content (not the section) on open, so the find keymap (Cmd+F) reaches the editor
+  // and the keys that scroll reach whichever element owns the scroll. A first (uncached) open
+  // mounts that element only once the read resolves, after the nonce bump, so status is a
+  // trigger too. preventScroll avoids fighting a pending reveal-line scroll.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce / buffer.status are re-run triggers, not read in the body.
   useEffect(() => {
-    const content = sectionRef.current?.querySelector<HTMLElement>(
-      ".cm-content, .delimited-table",
-    );
-    (content ?? sectionRef.current)?.focus({ preventScroll: true });
-  }, [focusNonce, buffer.status, buffer.preview]);
+    (focusTarget() ?? sectionRef.current)?.focus({ preventScroll: true });
+  }, [focusNonce, buffer.status, focusTarget]);
+
+  // The toggle hands the scroll and the find keymap to another element, so focus follows it —
+  // to a real one only, leaving the toggle button focused where the rendering has none of its own.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: buffer.preview is a re-run trigger, not read in the body.
+  useEffect(() => {
+    focusTarget()?.focus({ preventScroll: true });
+  }, [buffer.preview, focusTarget]);
 
   function readyContent() {
     if (buffer.media !== undefined)

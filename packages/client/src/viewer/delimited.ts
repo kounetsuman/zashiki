@@ -237,23 +237,34 @@ function headerRow(cells: readonly string[], width: number): string[] {
   return Array.from({ length: width }, (_, i) => cells[i] ?? "");
 }
 
-function isNumericColumn(
+function isNumericCell(cell: string, grouped: boolean): boolean {
+  return (
+    (PLAIN_NUMBER.test(cell) || (grouped && GROUPED_NUMBER.test(cell))) &&
+    numericValue(cell) !== null
+  );
+}
+
+/**
+ * Per column, whether every filled cell is a number. Walked over the cells the rows hold rather
+ * than column by column, so a file with one wide record costs its content, not width times length.
+ */
+function numericColumns(
   rows: readonly DelimitedRow[],
-  column: number,
+  width: number,
   grouped: boolean,
-): boolean {
-  let filled = false;
+): boolean[] {
+  const filled = new Array<boolean>(width).fill(false);
+  const textual = new Array<boolean>(width).fill(false);
   for (const row of rows) {
-    const cell = (row.cells[column] ?? "").trim();
-    if (cell === "") continue;
-    if (
-      (!PLAIN_NUMBER.test(cell) && !(grouped && GROUPED_NUMBER.test(cell))) ||
-      numericValue(cell) === null
-    )
-      return false;
-    filled = true;
+    for (let column = 0; column < row.cells.length; column++) {
+      if (textual[column] === true) continue;
+      const cell = (row.cells[column] as string).trim();
+      if (cell === "") continue;
+      if (isNumericCell(cell, grouped)) filled[column] = true;
+      else textual[column] = true;
+    }
   }
-  return filled;
+  return filled.map((hasNumber, column) => hasNumber && !textual[column]);
 }
 
 /** Reads the file's text as a table whose first record is the header row. */
@@ -279,9 +290,7 @@ export function readDelimited(relPath: string, text: string): DelimitedTable {
     header: headerRow(records[0]?.cells ?? [], width),
     totalColumns,
     rows,
-    numericColumns: Array.from({ length: width }, (_, column) =>
-      isNumericColumn(rows, column, delimiter === ","),
-    ),
+    numericColumns: numericColumns(rows, width, delimiter === ","),
   };
 }
 

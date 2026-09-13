@@ -120,6 +120,43 @@ describe("Viewer", () => {
     expect(screen.getByRole("button", { name: "テーブル" })).toBeTruthy();
   });
 
+  it("leaves focus on the toggle when the Markdown preview has nothing to focus", () => {
+    const md = { ...base, relPath: "README.md", content: "# t\n" };
+    const { rerender } = render(
+      <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    const toggle = screen.getByRole("button", { name: "プレビュー" });
+    toggle.focus();
+    rerender(
+      <Viewer
+        buffer={{ ...md, preview: true }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("focuses the text of a csv switched off the table, so Cmd+F reaches it", () => {
+    const csv = {
+      ...base,
+      relPath: "data/report.csv",
+      content: "name,size\nb,2\n",
+      preview: true,
+    };
+    const { container, rerender } = render(
+      <Viewer buffer={csv} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    rerender(
+      <Viewer
+        buffer={{ ...csv, preview: false }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(document.activeElement).toBe(container.querySelector(".cm-content"));
+  });
+
   it("focuses the table of a csv, so the keys that scroll reach it", () => {
     const { container, rerender } = render(
       <Viewer
