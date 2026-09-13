@@ -34,8 +34,11 @@ const CSV_DELIMITERS = [",", ";", "\t"];
 const DETECTION_BYTES = 64 * 1024;
 const DETECTION_RECORDS = 20;
 
-const NUMERIC_CELL =
-  /^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+/**
+ * Grouping separators are left out on purpose: a comma in a number is a thousands mark in one
+ * locale and the decimal point in another, and guessing wrong silently reorders the column.
+ */
+const NUMERIC_CELL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
 export function isDelimitedText(relPath: string): boolean {
   return TAB_SEPARATED.test(relPath) || COMMA_SEPARATED.test(relPath);
@@ -44,7 +47,7 @@ export function isDelimitedText(relPath: string): boolean {
 export function numericValue(cell: string): number | null {
   const trimmed = cell.trim();
   if (!NUMERIC_CELL.test(trimmed)) return null;
-  const value = Number(trimmed.replaceAll(",", ""));
+  const value = Number(trimmed);
   return Number.isFinite(value) ? value : null;
 }
 
@@ -126,24 +129,26 @@ function parseRecords(
 }
 
 interface DelimiterFit {
-  /** Share of the sampled records that split into the same number of columns, above one. */
+  /** Share of the sampled records the candidate splits at all. */
+  readonly coverage: number;
+  /** Share of them landing on the same number of columns. */
   readonly agreement: number;
   readonly columns: number;
 }
 
-const NO_FIT: DelimiterFit = { agreement: 0, columns: 0 };
+const NO_FIT: DelimiterFit = { coverage: 0, agreement: 0, columns: 0 };
 
+/** Reach first, then regularity, then width: a ragged export beats a comma that only splits its rows. */
 function fitsBetter(fit: DelimiterFit, than: DelimiterFit): boolean {
-  return (
-    fit.agreement > than.agreement ||
-    (fit.agreement === than.agreement && fit.columns > than.columns)
-  );
+  if (fit.coverage !== than.coverage) return fit.coverage > than.coverage;
+  if (fit.agreement !== than.agreement) return fit.agreement > than.agreement;
+  return fit.columns > than.columns;
 }
 
 /**
- * How well a candidate fits the sample: how many records share its most common column count.
- * A delimiter splitting less than half the sample is one written inside the text (the commas
- * in a semicolon export, a stray tab in a column of prose), not the one separating columns.
+ * How well a candidate fits the sample. A delimiter separates the columns of every record;
+ * one merely written inside the text splits some records and leaves the rest whole, which is
+ * what disqualifies it. The single exception allowed is a one-word header above a wider table.
  */
 function delimiterFit(sample: string, delimiter: string): DelimiterFit {
   const records = parseRecords(sample, delimiter, true).slice(
@@ -158,20 +163,21 @@ function delimiterFit(sample: string, delimiter: string): DelimiterFit {
     splitRecords++;
     recordsPerCount.set(count, (recordsPerCount.get(count) ?? 0) + 1);
   }
-  if (splitRecords * 2 < records.length) return NO_FIT;
+  if (splitRecords < 2 || splitRecords < records.length - 1) return NO_FIT;
 
+  const coverage = splitRecords / records.length;
   let fit = NO_FIT;
   for (const [columns, agreeing] of recordsPerCount) {
-    const candidate = { agreement: agreeing / records.length, columns };
+    const candidate = { coverage, agreement: agreeing / splitRecords, columns };
     if (fitsBetter(candidate, fit)) fit = candidate;
   }
   return fit;
 }
 
 /**
- * The delimiter the file's own rows agree on; where two agree equally, the one splitting into
- * more columns (a semicolon export whose header itself contains a comma). Judging a sample of
- * records rather than the first one alone keeps a title line or a one-word header from hiding it.
+ * The delimiter the file's own rows agree on; where two fit equally, the one splitting into more
+ * columns (a semicolon export whose header itself contains a comma). Rows whose column counts
+ * vary still count as agreement on the delimiter, since a ragged export is still that export.
  */
 function detectDelimiter(text: string): string {
   const sample = text.slice(0, DETECTION_BYTES);

@@ -116,13 +116,27 @@ describe("readDelimited", () => {
     expect(table.header).toEqual(["a", "b", ""]);
   });
 
-  it("detects the delimiter under a block of preamble lines", () => {
+  it("keeps a ragged semicolon export off the commas written in its names", () => {
     const table = readDelimited(
       "a.csv",
-      "Report\nGenerated today\nsource: x\nnotes\n--\nid;name\n1;a\n2;b\n3;c\n4;d\n5;e\n",
+      "id;name;city\n1;Sato, K;Tokyo\n2;Doe, J\n3;Roe, M;Osaka\n4;Poe, L;Kyoto\n",
     );
     expect(table.delimiter).toBe(";");
-    expect(cellsOf(table).at(-1)).toEqual(["5", "e"]);
+    expect(table.header).toEqual(["id", "name", "city"]);
+  });
+
+  it("leaves a two-line file alone when only its second line holds a semicolon", () => {
+    expect(readDelimited("a.csv", "note\nalpha; beta\n").delimiter).toBe(",");
+    expect(readDelimited("a.csv", "note\nalpha\tbeta\n").delimiter).toBe(",");
+  });
+
+  it("leaves a column of prose alone when half its lines hold a semicolon", () => {
+    const lines = Array.from({ length: 12 }, (_, i) =>
+      i % 2 === 0 ? `alpha${i}; beta` : `plain${i}`,
+    );
+    const table = readDelimited("a.csv", `note\n${lines.join("\n")}\n`);
+    expect(table.delimiter).toBe(",");
+    expect(table.header).toEqual(["note"]);
   });
 
   it("numbers rows by their line in the file, across blank lines and quoted newlines", () => {
@@ -159,6 +173,14 @@ describe("readDelimited", () => {
     expect(readDelimited("a.csv", "a,b\n").rows).toEqual([]);
     expect(readDelimited("a.csv", "").header).toEqual([]);
     expect(readDelimited("a.csv", "").rows).toEqual([]);
+  });
+
+  it("treats a grouped or comma-decimal number as text, not a number", () => {
+    const table = readDelimited(
+      "a.csv",
+      "item;price\nwidget;1,250\nbolt;950\n",
+    );
+    expect(table.numericColumns).toEqual([false, false]);
   });
 
   it("marks a column numeric only when every filled cell is a number", () => {
