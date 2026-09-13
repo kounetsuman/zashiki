@@ -120,6 +120,38 @@ describe("Viewer", () => {
     expect(screen.getByRole("button", { name: "テーブル" })).toBeTruthy();
   });
 
+  it("focuses the table of a csv, so the keys that scroll reach it", () => {
+    const { container, rerender } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "data/report.csv",
+          content: "name,size\nb,2\n",
+          preview: true,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={0}
+      />,
+    );
+    rerender(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "data/report.csv",
+          content: "name,size\nb,2\n",
+          preview: true,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={1}
+      />,
+    );
+    expect(document.activeElement).toBe(
+      container.querySelector(".delimited-table"),
+    );
+  });
+
   it("focuses the editor content when the focus nonce changes (so Cmd+F reaches it)", () => {
     const { container, rerender } = render(
       <Viewer

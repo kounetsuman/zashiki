@@ -177,15 +177,16 @@ export function Viewer({
     [showAlternate, alternate, buffer.content],
   );
 
-  // Focus the editor content (not the section) so the find keymap (Cmd+F) reaches
-  // it. Also re-run on status: a first (uncached) open mounts the editor only once
+  // Focus the content (not the section) so the find keymap (Cmd+F) reaches the editor, and
+  // so the keys that scroll reach whichever element owns the scroll. Also re-run on status: a first (uncached) open mounts the editor only once
   // the read resolves, after the nonce bump, so focus must land then too. Preview
   // and media fall back to the section (no editor). preventScroll avoids fighting
   // a pending reveal-line scroll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce / buffer.status are re-run triggers, not read in the body.
   useEffect(() => {
-    const content =
-      sectionRef.current?.querySelector<HTMLElement>(".cm-content");
+    const content = sectionRef.current?.querySelector<HTMLElement>(
+      ".cm-content, .delimited-table",
+    );
     (content ?? sectionRef.current)?.focus({ preventScroll: true });
   }, [focusNonce, buffer.status]);
 

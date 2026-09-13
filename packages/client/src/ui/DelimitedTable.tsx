@@ -65,8 +65,10 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
   }
 
   const shown = rows.slice(0, rowsWithinBudget(rows));
+  // Focusable so the keys that scroll (arrows, PageDown) reach this scroll container: the
+  // Viewer focuses it on open, as it focuses the editor for a text file.
   return (
-    <div className="delimited-table">
+    <div className="delimited-table" tabIndex={-1}>
       <table aria-label={t("viewer.tableLabel", { path: relPath })}>
         <thead>
           <tr>
@@ -149,7 +151,6 @@ export function DelimitedTable({ relPath, content }: DelimitedTableProps) {
             <span>
               {t("viewer.tableColumnsTruncated", {
                 shown: MAX_TABLE_COLUMNS.toLocaleString(),
-                total: table.totalColumns.toLocaleString(),
               })}
             </span>
           )}

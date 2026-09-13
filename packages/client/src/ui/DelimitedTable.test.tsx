@@ -104,7 +104,7 @@ describe("DelimitedTable", () => {
     );
     expect(
       container.querySelector(".delimited-truncated")?.textContent,
-    ).toContain(total.toLocaleString());
+    ).toContain(MAX_TABLE_COLUMNS.toLocaleString());
   });
 
   it("lowers the row cap for a wide file so the cell count stays bounded", () => {
