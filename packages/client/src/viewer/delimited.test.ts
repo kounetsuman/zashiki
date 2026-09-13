@@ -64,6 +64,28 @@ describe("readDelimited", () => {
     ]);
   });
 
+  it("keeps a semicolon file semicolon-delimited when its text holds commas", () => {
+    const table = readDelimited(
+      "a.csv",
+      "name;desc\nada;hello, world\nalan;bye, now\n",
+    );
+    expect(table.delimiter).toBe(";");
+    expect(table.header).toEqual(["name", "desc"]);
+    expect(cellsOf(table)).toEqual([
+      ["ada", "hello, world"],
+      ["alan", "bye, now"],
+    ]);
+  });
+
+  it("stays comma-delimited when a comma file quotes semicolons in its text", () => {
+    const table = readDelimited("a.csv", 'name,desc\nada,"p;q"\nalan,"r;s"\n');
+    expect(table.delimiter).toBe(",");
+    expect(cellsOf(table)).toEqual([
+      ["ada", "p;q"],
+      ["alan", "r;s"],
+    ]);
+  });
+
   it("numbers rows by their line in the file, across blank lines and quoted newlines", () => {
     const table = readDelimited("a.csv", 'h,note\na,"one\ntwo"\n\nb,plain\n');
     expect(table.rows.map((r) => r.line)).toEqual([2, 5]);

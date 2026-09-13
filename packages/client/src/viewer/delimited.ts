@@ -125,30 +125,30 @@ function parseRecords(
   return records;
 }
 
-/** The column count most of the sampled records agree on; 1 means the candidate does not split them. */
+/**
+ * The share of sampled records that split into the same column count above one. A delimiter the
+ * whole file agrees on scores higher than one that only shreds some rows — which is what tells a
+ * semicolon file apart from the commas written inside its text.
+ */
 function delimiterScore(sample: string, delimiter: string): number {
-  const seenPerCount = new Map<number, number>();
-  for (const record of parseRecords(sample, delimiter, true).slice(
+  const records = parseRecords(sample, delimiter, true).slice(
     0,
     DETECTION_RECORDS,
-  )) {
+  );
+  if (records.length === 0) return 0;
+  const recordsPerCount = new Map<number, number>();
+  for (const record of records) {
     const count = record.cells.length;
-    seenPerCount.set(count, (seenPerCount.get(count) ?? 0) + 1);
+    if (count > 1)
+      recordsPerCount.set(count, (recordsPerCount.get(count) ?? 0) + 1);
   }
-  let columns = 0;
-  let agreeing = 0;
-  for (const [count, seen] of seenPerCount) {
-    if (seen > agreeing || (seen === agreeing && count > columns)) {
-      columns = count;
-      agreeing = seen;
-    }
-  }
-  return columns;
+  return Math.max(0, ...recordsPerCount.values()) / records.length;
 }
 
 /**
- * The delimiter the file's own rows agree on. Scoring a sample rather than the first record
- * alone keeps a title line or a single-word header from hiding the real delimiter.
+ * The delimiter the file's own rows agree on (ties keep the earlier candidate, so a plain comma
+ * file stays a comma file). Scoring a sample rather than the first record alone keeps a title
+ * line or a single-word header from hiding the real delimiter.
  */
 function detectDelimiter(text: string): string {
   const sample = text.slice(0, DETECTION_BYTES);
