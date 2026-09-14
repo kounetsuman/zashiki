@@ -9,6 +9,8 @@
   "permissions": [
     "core:default",
     "allow-open-devtools",
-    "allow-pick-and-read-file"
+    "allow-pick-and-read-file",
+    "allow-report-memo-status",
+    "allow-report-memo-saved"
   ]
 }

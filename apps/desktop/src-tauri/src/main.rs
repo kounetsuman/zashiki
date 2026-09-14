@@ -1,13 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod pages;
+mod quit_log;
 mod sidecar;
 #[cfg(target_os = "macos")]
 mod wake;
 
 use std::path::PathBuf;
 use std::process::Child;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
@@ -76,32 +77,65 @@ async fn pick_and_read_file(
     Ok(Some(PickedFile { name, content }))
 }
 
-/// One-shot reply channels the quit thread hands to the WebView. The quit gesture runs off the main
-/// thread and asks the WebView two things (Is the Memo dirty? Did the save finish?); `deciding`
-/// already serializes quit decisions, so only one request is ever outstanding per slot.
+/// Reply channels the quit thread hands to the WebView. The quit gesture runs off the main thread
+/// and asks the WebView two things (Is the Memo dirty? Did the save finish?), each tagged with a
+/// request number the WebView echoes back.
 #[derive(Default)]
 struct QuitBridge {
-    dirty_tx: Mutex<Option<mpsc::Sender<bool>>>,
-    saved_tx: Mutex<Option<mpsc::Sender<bool>>>,
+    next_request: AtomicU64,
+    dirty: Mutex<Option<PendingReply>>,
+    saved: Mutex<Option<PendingReply>>,
+    /// Whether the app has been pointed at the window yet. Until it has, the window still shows the
+    /// startup or error page, which has no Memo and no listener, so a quit would wait out both
+    /// timeouts and then ask about unsaved edits that cannot exist. Set when the navigation is
+    /// dispatched, not when the app has finished loading: quitting during the load still falls
+    /// through to the guard, which is the safe direction.
+    app_loaded: AtomicBool,
+}
+
+/// The request the quit thread is currently waiting on, and where to deliver its answer.
+struct PendingReply {
+    request: u64,
+    tx: mpsc::Sender<bool>,
+}
+
+/// The request number travels with the event so an answer can be matched to its question.
+#[derive(Clone, serde::Serialize)]
+struct MemoRequest {
+    request: u64,
+}
+
+/// Delivers an answer only when it belongs to the request still being waited on. A late answer to a
+/// request that already timed out would otherwise be read as the answer to the current one — the
+/// save retry asks again while the previous save may still be running.
+///
+/// The number orders answers; it does not authenticate them. The capability grants these commands to
+/// the local server origin, so whatever the WebView loads from there is already trusted to speak for
+/// the Memo — the same boundary every other app command sits behind.
+fn deliver(slot: &Mutex<Option<PendingReply>>, request: u64, answer: bool) {
+    if let Some(pending) = slot.lock().unwrap().as_ref() {
+        if pending.request == request {
+            let _ = pending.tx.send(answer);
+        }
+    }
 }
 
 /// The WebView's answer to `zashiki:memo-check`: whether the Memo has unsaved edits.
 #[tauri::command]
-fn report_memo_status(bridge: tauri::State<'_, QuitBridge>, dirty: bool) {
-    if let Some(tx) = bridge.dirty_tx.lock().unwrap().as_ref() {
-        let _ = tx.send(dirty);
-    }
+fn report_memo_status(bridge: tauri::State<'_, QuitBridge>, request: u64, dirty: bool) {
+    deliver(&bridge.dirty, request, dirty);
 }
 
 /// The WebView's answer to `zashiki:memo-save`: whether the flush actually landed (`ok`).
 #[tauri::command]
-fn report_memo_saved(bridge: tauri::State<'_, QuitBridge>, ok: bool) {
-    if let Some(tx) = bridge.saved_tx.lock().unwrap().as_ref() {
-        let _ = tx.send(ok);
-    }
+fn report_memo_saved(bridge: tauri::State<'_, QuitBridge>, request: u64, ok: bool) {
+    deliver(&bridge.saved, request, ok);
 }
 
 fn main() {
+    // The quit sequence runs off the main thread and its trace is the only record of why a quit did
+    // not happen; a panic there must not end that trace in silence.
+    quit_log::install_panic_logger();
     let cfg = Config::from_env();
     let base = base_url(&cfg);
     // The Child of the spawned server (None when riding along with an existing one).
@@ -143,6 +177,7 @@ fn main() {
                     Arc::clone(&win_deciding),
                     quit_port,
                     win_token.clone(),
+                    "window close button",
                 );
             }
         })
@@ -192,11 +227,16 @@ fn main() {
                 Ok((url, owned)) => {
                     *owned_slot.lock().unwrap() = owned;
                     match url.parse::<tauri::Url>() {
-                        Ok(_) => {
-                            if let Err(e) = window.eval(pages::redirect_script(&url)) {
-                                eprintln!("zashiki: 初期 URL への遷移に失敗しました: {e}");
+                        Ok(_) => match window.eval(pages::redirect_script(&url)) {
+                            Ok(()) => window
+                                .app_handle()
+                                .state::<QuitBridge>()
+                                .app_loaded
+                                .store(true, Ordering::SeqCst),
+                            Err(e) => {
+                                eprintln!("zashiki: 初期 URL への遷移に失敗しました: {e}")
                             }
-                        }
+                        },
                         Err(e) => eprintln!("zashiki: 初期 URL が不正です（{url}）: {e}"),
                     }
                 }
@@ -260,6 +300,7 @@ fn main() {
                 Arc::clone(&run_deciding),
                 quit_port,
                 run_token.clone(),
+                "app quit",
             );
         }
         tauri::RunEvent::Exit => shutdown_owned(&owned_on_exit),
@@ -285,26 +326,45 @@ fn quit_decision(activity: Option<sidecar::Activity>) -> QuitDecision {
 /// quit and, if so, flips `quitting` and triggers the real exit (which runs the normal graceful
 /// shutdown). `deciding` serializes decisions so repeated quit gestures don't stack dialogs, and the
 /// drop guard clears it even if the dialog panics during event-loop teardown (so quit can't wedge).
+///
+/// Every branch is traced to `quit_log`: a quit that refuses to happen shows nothing in the UI, so
+/// the log is the only place the reason can be read afterwards.
 fn request_guarded_quit(
     app: tauri::AppHandle,
     quitting: Arc<AtomicBool>,
     deciding: Arc<AtomicBool>,
     port: u16,
     token_path: PathBuf,
+    source: &'static str,
 ) {
     if deciding.swap(true, Ordering::SeqCst) {
+        quit_log::log(&format!(
+            "quit requested ({source}) while an earlier quit decision was still open; ignored"
+        ));
         return;
     }
     std::thread::spawn(move || {
         let _clear = ClearOnDrop(deciding);
+        quit_log::log(&format!("quit requested ({source})"));
         // Memo guard first: unsaved edits are the data loss the user cares about most, and a Cancel
         // here aborts the whole quit before we even look at running sessions.
-        if ask_memo_dirty(&app) {
+        if !app.state::<QuitBridge>().app_loaded.load(Ordering::SeqCst) {
+            // Nothing has been pointed at the window yet, so it is still the startup or error page:
+            // no Memo to lose, and asking would only wait out both timeouts. Logged because this is
+            // the one way the guard skips without being asked.
+            quit_log::log("the app was never loaded into the window; skipping the Memo guard");
+        } else if ask_memo_dirty(&app) {
             match confirm_memo_save(&app) {
-                MemoQuitAction::Cancel => return,
-                // A failed or timed-out save keeps the app open so the edits aren't lost on the way out.
-                MemoQuitAction::Save if !flush_memo(&app) => return,
-                MemoQuitAction::Save | MemoQuitAction::DontSave => {}
+                MemoQuitAction::Cancel => {
+                    quit_log::log("quit cancelled at the unsaved-Memo dialog");
+                    return;
+                }
+                MemoQuitAction::DontSave => quit_log::log("discarding the unsaved Memo edits"),
+                MemoQuitAction::Save => {
+                    if !save_memo_before_quit(&app) {
+                        return;
+                    }
+                }
             }
         }
         let activity = sidecar::read_token(&token_path)
@@ -312,45 +372,165 @@ fn request_guarded_quit(
             .and_then(|token| sidecar::fetch_activity(port, &token));
         let proceed = match quit_decision(activity) {
             QuitDecision::Proceed => true,
-            QuitDecision::Confirm(summary) => confirm_quit(&app, &summary),
+            QuitDecision::Confirm(summary) => {
+                quit_log::log(&format!("still busy: {summary}; asking to confirm"));
+                confirm_quit(&app, &summary)
+            }
         };
         if proceed {
+            quit_log::log("quitting");
             quitting.store(true, Ordering::SeqCst);
             app.exit(0);
+        } else {
+            quit_log::log("quit cancelled at the still-running dialog");
         }
     });
 }
 
-/// How long to wait for the WebView to answer the dirty check before we stop waiting.
-const MEMO_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
-/// A flush writes one small file; bound it so a wedged save can't hold the quit open forever.
-const MEMO_FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Asks the WebView whether the Memo has unsaved edits, waiting (bounded) for its reply. A WebView
-/// that doesn't answer in time is treated as dirty, so we prompt rather than exit past a Memo we
-/// couldn't confirm was clean. An `emit` failure means there is no WebView to save, so it reads false.
-fn ask_memo_dirty(app: &tauri::AppHandle) -> bool {
-    let (tx, rx) = mpsc::channel();
-    *app.state::<QuitBridge>().dirty_tx.lock().unwrap() = Some(tx);
-    let dirty = match app.emit("zashiki:memo-check", ()) {
-        Ok(()) => rx.recv_timeout(MEMO_CHECK_TIMEOUT).unwrap_or(true),
-        Err(_) => false,
-    };
-    *app.state::<QuitBridge>().dirty_tx.lock().unwrap() = None;
-    dirty
+/// Carries out the Save choice, and when the save doesn't land offers Retry / Quit without saving /
+/// Cancel rather than leaving the quit to fail on its own (which reads as the close button doing
+/// nothing). Returns whether the quit should continue.
+fn save_memo_before_quit(app: &tauri::AppHandle) -> bool {
+    loop {
+        let Err(failure) = flush_memo(app) else {
+            return true;
+        };
+        // A save we stopped waiting for can still land, since the window keeps writing past the wait.
+        // Whether the buffer is clean, not whether an answer arrived, is what says the edits are safe,
+        // so ask before putting a verdict in front of the user that we could refute ourselves.
+        if memo_is_clean(app) {
+            quit_log::log("the Memo turned out to be saved; continuing the quit");
+            return true;
+        }
+        match confirm_memo_flush_failure(app, failure) {
+            MemoFlushFailureAction::Retry => quit_log::log("retrying the Memo save"),
+            MemoFlushFailureAction::QuitAnyway => {
+                quit_log::log("quitting without a confirmed Memo save");
+                return true;
+            }
+            MemoFlushFailureAction::Cancel => {
+                quit_log::log("quit cancelled after the Memo save went unconfirmed");
+                return false;
+            }
+        }
+    }
 }
 
-/// Asks the WebView to persist the Memo, waiting (bounded) for it to confirm. Returns whether the
-/// save landed; a timeout or an unreachable WebView reads as false.
-fn flush_memo(app: &tauri::AppHandle) -> bool {
+/// How long to wait for the WebView to answer the dirty check before we stop waiting.
+const MEMO_CHECK_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long to wait for the WebView to confirm a save before asking the user what to do. This bounds
+/// how long the app may look frozen, not how long a save may take — the window keeps writing, and a
+/// write queued behind another can outlast any wait we could pick.
+const MEMO_FLUSH_WAIT: Duration = Duration::from_secs(5);
+
+/// What the WebView said, or that it didn't.
+enum Answer {
+    Said(bool),
+    NoReply,
+}
+
+/// Emits one tagged request to the WebView and waits (bounded) for the answer carrying that tag.
+/// The slot is cleared on the way out, so a later answer is dropped rather than mistaken for the
+/// next request's.
+fn ask_webview(
+    app: &tauri::AppHandle,
+    slot: fn(&QuitBridge) -> &Mutex<Option<PendingReply>>,
+    event: &str,
+    timeout: Duration,
+) -> Answer {
+    let bridge = app.state::<QuitBridge>();
+    let request = bridge.next_request.fetch_add(1, Ordering::SeqCst);
     let (tx, rx) = mpsc::channel();
-    *app.state::<QuitBridge>().saved_tx.lock().unwrap() = Some(tx);
-    let saved = match app.emit("zashiki:memo-save", ()) {
-        Ok(()) => rx.recv_timeout(MEMO_FLUSH_TIMEOUT).unwrap_or(false),
-        Err(_) => false,
+    *slot(&bridge).lock().unwrap() = Some(PendingReply { request, tx });
+    let answer = match app.emit(event, MemoRequest { request }) {
+        Ok(()) => match rx.recv_timeout(timeout) {
+            Ok(value) => Answer::Said(value),
+            Err(_) => Answer::NoReply,
+        },
+        // `emit` only fails on an invalid event name or an unserializable payload, both fixed here;
+        // were that ever to change, no answer is coming either way.
+        Err(e) => {
+            quit_log::log(&format!("could not send {event} ({e})"));
+            Answer::NoReply
+        }
     };
-    *app.state::<QuitBridge>().saved_tx.lock().unwrap() = None;
-    saved
+    *slot(&bridge).lock().unwrap() = None;
+    answer
+}
+
+/// Asks the WebView whether the Memo has unsaved edits. Anything other than a plain "no" is treated
+/// as dirty, so we prompt rather than exit past a Memo we couldn't confirm was clean.
+fn ask_memo_dirty(app: &tauri::AppHandle) -> bool {
+    match ask_webview(
+        app,
+        |bridge| &bridge.dirty,
+        "zashiki:memo-check",
+        MEMO_CHECK_TIMEOUT,
+    ) {
+        Answer::Said(dirty) => {
+            quit_log::log(&format!("Memo dirty check answered: {dirty}"));
+            dirty
+        }
+        Answer::NoReply => {
+            quit_log::log(&format!(
+                "Memo dirty check unanswered after {}s; assuming unsaved edits",
+                MEMO_CHECK_TIMEOUT.as_secs()
+            ));
+            true
+        }
+    }
+}
+
+/// Whether the Memo is confirmed saved. Only a plain "not dirty" counts: a check that went
+/// unanswered says nothing about the edits, and reading it as saved would discard them.
+fn memo_is_clean(app: &tauri::AppHandle) -> bool {
+    matches!(
+        ask_webview(
+            app,
+            |bridge| &bridge.dirty,
+            "zashiki:memo-check",
+            MEMO_CHECK_TIMEOUT,
+        ),
+        Answer::Said(false)
+    )
+}
+
+/// Why a quit-time save didn't land. Kept apart from "it landed" so the dialog can name the actual
+/// failure instead of always blaming an unresponsive window.
+enum MemoFlushFailure {
+    Rejected,
+    NoReply,
+}
+
+/// Asks the WebView to persist the Memo and waits (bounded) for it to confirm. The moment the wait
+/// ends without one, the window is handed back: from here on the shell is deciding rather than
+/// blocking, and a quit that is then cancelled must not leave the app under an overlay it has no way
+/// to dismiss.
+fn flush_memo(app: &tauri::AppHandle) -> Result<(), MemoFlushFailure> {
+    let outcome = match ask_webview(
+        app,
+        |bridge| &bridge.saved,
+        "zashiki:memo-save",
+        MEMO_FLUSH_WAIT,
+    ) {
+        Answer::Said(true) => {
+            quit_log::log("Memo saved");
+            return Ok(());
+        }
+        Answer::Said(false) => {
+            quit_log::log("Memo save reported as failed by the window");
+            MemoFlushFailure::Rejected
+        }
+        Answer::NoReply => {
+            quit_log::log(&format!(
+                "Memo save unanswered after {}s; the window never called report_memo_saved",
+                MEMO_FLUSH_WAIT.as_secs()
+            ));
+            MemoFlushFailure::NoReply
+        }
+    };
+    let _ = app.emit("zashiki:memo-save-abandoned", ());
+    Err(outcome)
 }
 
 /// The user's choice in the unsaved-Memo dialog.
@@ -389,6 +569,63 @@ fn confirm_memo_save(app: &tauri::AppHandle) -> MemoQuitAction {
     memo_quit_action(&result)
 }
 
+/// The user's choice when the save didn't confirm in time.
+enum MemoFlushFailureAction {
+    Retry,
+    QuitAnyway,
+    Cancel,
+}
+
+/// Maps the native dialog's result to an action. As with the unsaved-Memo dialog, anything
+/// unexpected (a dismissed dialog) keeps the app open rather than discarding the edits.
+fn memo_flush_failure_action(
+    result: &tauri_plugin_dialog::MessageDialogResult,
+) -> MemoFlushFailureAction {
+    use tauri_plugin_dialog::MessageDialogResult as R;
+    match result {
+        R::Yes => MemoFlushFailureAction::Retry,
+        R::Custom(label) if label == "Retry" => MemoFlushFailureAction::Retry,
+        R::No => MemoFlushFailureAction::QuitAnyway,
+        R::Custom(label) if label == "Quit Without Saving" => MemoFlushFailureAction::QuitAnyway,
+        _ => MemoFlushFailureAction::Cancel,
+    }
+}
+
+/// Says which failure actually happened: "the window went quiet" and "the save was refused" call for
+/// different responses from the user, and one message for both sends them after the wrong problem.
+fn memo_flush_failure_message(failure: &MemoFlushFailure) -> String {
+    let cause = match failure {
+        MemoFlushFailure::Rejected => {
+            "The Memo couldn't be written. The Zashiki server may have stopped.".to_string()
+        }
+        MemoFlushFailure::NoReply => {
+            "Zashiki asked the window to save the Memo but heard nothing back.".to_string()
+        }
+    };
+    format!("{cause}\n\nQuitting without saving loses the unsaved edits. See ~/Library/Logs/zashiki/shell.log for details.")
+}
+
+/// Deliberately native rather than drawn in the window: one case this exists for is the window
+/// failing to answer, and an in-page button would be just as unreachable as the reply we're missing.
+fn confirm_memo_flush_failure(
+    app: &tauri::AppHandle,
+    failure: MemoFlushFailure,
+) -> MemoFlushFailureAction {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let result = app
+        .dialog()
+        .message(memo_flush_failure_message(&failure))
+        .title("Couldn't save the Memo")
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::YesNoCancelCustom(
+            "Retry".to_string(),
+            "Quit Without Saving".to_string(),
+            "Cancel".to_string(),
+        ))
+        .blocking_show_with_result();
+    memo_flush_failure_action(&result)
+}
+
 struct ClearOnDrop(Arc<AtomicBool>);
 
 impl Drop for ClearOnDrop {
@@ -412,6 +649,8 @@ fn confirm_quit(app: &tauri::AppHandle, summary: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
     use sidecar::Activity;
 
@@ -463,6 +702,166 @@ mod tests {
             MemoQuitAction::DontSave
         ));
         assert!(matches!(memo_quit_action(&R::No), MemoQuitAction::DontSave));
+    }
+
+    /// A command reaches the WebView only when it is listed in three places: `generate_handler!`
+    /// here, `commands(&[..])` in build.rs (so tauri-build emits its ACL permission), and the
+    /// capability's `permissions` (so the permission is actually granted). Miss one and the call is
+    /// rejected at runtime with nothing in the UI to show for it — the shipped v0.31.0 quit guard was
+    /// unreachable for exactly that reason (#414).
+    ///
+    /// Compared as sets in both directions: tauri-build never prunes, so a command that is removed
+    /// leaves a permission file and a grant behind, still opening a name nobody registered.
+    #[test]
+    fn every_ipc_command_is_granted_to_the_webview() {
+        let registered = registered_commands();
+
+        assert_eq!(
+            build_rs_commands(),
+            registered,
+            "build.rs must generate a permission for exactly the registered commands"
+        );
+        assert_eq!(
+            generated_permission_files(),
+            registered,
+            "permissions/autogenerated must hold a file for exactly the registered commands"
+        );
+        assert_eq!(
+            capability_allowances(),
+            registered
+                .iter()
+                .map(|command| format!("allow-{}", command.replace('_', "-")))
+                .collect(),
+            "the capability must grant exactly the registered commands"
+        );
+    }
+
+    /// The command names inside this file's `generate_handler!` block — the source of truth the ACL
+    /// declarations have to agree with.
+    fn registered_commands() -> BTreeSet<String> {
+        let source = include_str!("main.rs");
+        let (_, after) = source
+            .split_once("invoke_handler(tauri::generate_handler![")
+            .expect("main.rs registers commands with generate_handler!");
+        let (block, _) = after.split_once(']').expect("generate_handler! is closed");
+        let commands = comma_separated(block);
+        assert!(!commands.is_empty(), "found no registered commands");
+        commands
+    }
+
+    /// The command names build.rs hands to tauri-build, which is what makes it emit each permission.
+    fn build_rs_commands() -> BTreeSet<String> {
+        let source = include_str!("../build.rs");
+        let (_, after) = source
+            .split_once("commands(&[")
+            .expect("build.rs lists the app commands");
+        let (block, _) = after.split_once("])").expect("the command list is closed");
+        comma_separated(&block.replace('"', ""))
+    }
+
+    /// The permission files tauri-build has emitted, one per command, named after it.
+    fn generated_permission_files() -> BTreeSet<String> {
+        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/permissions/autogenerated");
+        std::fs::read_dir(dir)
+            .expect("tauri-build emits the permission files during the build")
+            .filter_map(|entry| {
+                let path = entry.ok()?.path();
+                (path.extension()? == "toml")
+                    .then(|| path.file_stem()?.to_str().map(str::to_string))?
+            })
+            .collect()
+    }
+
+    /// The command permissions the capability grants (its `core:*` entries are not app commands).
+    fn capability_allowances() -> BTreeSet<String> {
+        let capability = include_str!("../capabilities/default.json");
+        serde_json::from_str::<serde_json::Value>(capability).expect("capability is valid JSON")
+            ["permissions"]
+            .as_array()
+            .expect("capability lists permissions")
+            .iter()
+            .filter_map(|value| value.as_str())
+            .filter(|permission| permission.starts_with("allow-"))
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn comma_separated(block: &str) -> BTreeSet<String> {
+        block
+            .split(',')
+            .map(|name| name.trim().to_string())
+            .filter(|name| !name.is_empty())
+            .collect()
+    }
+
+    #[test]
+    fn memo_flush_failure_message_names_the_actual_failure() {
+        let rejected = memo_flush_failure_message(&MemoFlushFailure::Rejected);
+        let no_reply = memo_flush_failure_message(&MemoFlushFailure::NoReply);
+
+        // A refused write must not be reported as an unresponsive window.
+        assert!(rejected.contains("server"), "got {rejected}");
+        assert!(!rejected.contains("heard nothing back"), "got {rejected}");
+        assert!(no_reply.contains("heard nothing back"), "got {no_reply}");
+        for message in [rejected, no_reply] {
+            assert!(message.contains("shell.log"), "got {message}");
+        }
+    }
+
+    #[test]
+    fn a_late_answer_is_not_taken_as_the_answer_to_the_next_question() {
+        // The save retry asks again while the previous save may still be running; its answer must
+        // not be mistaken for the retry's.
+        let slot = Mutex::new(None);
+        let (tx, rx) = mpsc::channel();
+        *slot.lock().unwrap() = Some(PendingReply { request: 7, tx });
+
+        deliver(&slot, 6, true);
+        assert!(
+            rx.try_recv().is_err(),
+            "an answer to request 6 must not satisfy request 7"
+        );
+
+        deliver(&slot, 7, true);
+        assert_eq!(rx.try_recv(), Ok(true));
+    }
+
+    #[test]
+    fn memo_flush_failure_retries_and_quits_on_their_buttons() {
+        use tauri_plugin_dialog::MessageDialogResult as R;
+        assert!(matches!(
+            memo_flush_failure_action(&R::Custom("Retry".to_string())),
+            MemoFlushFailureAction::Retry
+        ));
+        assert!(matches!(
+            memo_flush_failure_action(&R::Yes),
+            MemoFlushFailureAction::Retry
+        ));
+        assert!(matches!(
+            memo_flush_failure_action(&R::Custom("Quit Without Saving".to_string())),
+            MemoFlushFailureAction::QuitAnyway
+        ));
+        assert!(matches!(
+            memo_flush_failure_action(&R::No),
+            MemoFlushFailureAction::QuitAnyway
+        ));
+    }
+
+    #[test]
+    fn memo_flush_failure_keeps_the_app_open_on_cancel_or_dismissal() {
+        use tauri_plugin_dialog::MessageDialogResult as R;
+        assert!(matches!(
+            memo_flush_failure_action(&R::Custom("Cancel".to_string())),
+            MemoFlushFailureAction::Cancel
+        ));
+        assert!(matches!(
+            memo_flush_failure_action(&R::Cancel),
+            MemoFlushFailureAction::Cancel
+        ));
+        assert!(matches!(
+            memo_flush_failure_action(&R::Ok),
+            MemoFlushFailureAction::Cancel
+        ));
     }
 
     #[test]
