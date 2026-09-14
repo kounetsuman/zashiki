@@ -39,11 +39,31 @@ const taskLists = (md: Markdown) => {
   });
 };
 
+const mermaidFences = (md: Markdown) => {
+  const defaultFence =
+    md.renderer.rules.fence ??
+    ((tokens, idx, options, _env, self) =>
+      self.renderToken(tokens, idx, options));
+  md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    if (token === undefined)
+      return defaultFence(tokens, idx, options, env, self);
+    const language = token.info.trim().split(/\s+/)[0]?.toLowerCase();
+    if (language !== "mermaid")
+      return defaultFence(tokens, idx, options, env, self);
+    return `<div class="viewer-mermaid"><pre><code class="language-mermaid">${md.utils.escapeHtml(
+      token.content,
+    )}</code></pre></div>\n`;
+  };
+};
+
 const renderer = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: false,
-}).use(taskLists);
+})
+  .use(taskLists)
+  .use(mermaidFences);
 
 export function renderMarkdown(source: string): string {
   return renderer.render(source);

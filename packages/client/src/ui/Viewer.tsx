@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import { isDelimitedText } from "../viewer/delimited.js";
 import { renderMarkdown } from "../viewer/markdown.js";
+import { renderMermaidBlocks } from "../viewer/mermaid.js";
 import {
   isMarkdown,
   type MediaSource,
@@ -167,6 +168,7 @@ export function Viewer({
 }: ViewerProps) {
   const { t } = useTranslation();
   const sectionRef = useRef<HTMLElement | null>(null);
+  const previewRef = useRef<HTMLDivElement | null>(null);
   const alternate = alternateView(buffer.relPath);
   const showAlternate = alternate !== null && buffer.preview;
   const previewHtml = useMemo(
@@ -201,6 +203,16 @@ export function Viewer({
     focusTarget()?.focus({ preventScroll: true });
   }, [buffer.preview, focusTarget]);
 
+  // Runs after every commit (no dep array): the preview div can remount with
+  // value-identical HTML (e.g. a transient read error and recovery), which a
+  // previewHtml-keyed effect would miss. renderMermaidBlocks claims blocks
+  // synchronously and skips processed ones, so repeated calls are cheap no-ops.
+  useEffect(() => {
+    const host = previewRef.current;
+    if (host === null) return;
+    void renderMermaidBlocks(host);
+  });
+
   function readyContent() {
     if (buffer.media !== undefined)
       return <MediaHost media={buffer.media} relPath={buffer.relPath} />;
@@ -208,6 +220,7 @@ export function Viewer({
       return (
         // markdown-it escapes raw HTML with html:false (mitigates XSS).
         <div
+          ref={previewRef}
           className="viewer-preview markdown-body"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
           dangerouslySetInnerHTML={{ __html: previewHtml }}
