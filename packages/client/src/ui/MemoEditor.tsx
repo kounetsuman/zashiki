@@ -7,9 +7,12 @@ import { basicSetup } from "codemirror";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import type { IndentSetting } from "../lib/clipboard-edit-indent.js";
 import { type MemoStatus, memoStatus } from "../lib/memo-status.js";
 import { type MemoBuffer, memoDirty } from "../memo/memo-model.js";
+import { editorIndent } from "./editor-indent.js";
 import { editorSearch } from "./editor-search-panel.js";
+import { useClipboardIndentSetting } from "./useClipboardIndentSetting.js";
 
 /** Resolve CodeMirror's selection offsets into the line/column primitives {@link memoStatus} needs. */
 function readMemoStatus(state: EditorState): MemoStatus {
@@ -43,6 +46,8 @@ export interface MemoEditorProps {
 
 interface CodeMirrorHostProps
   extends Pick<MemoEditorProps, "buffer" | "onChange" | "onSave"> {
+  /** Indent unit for Tab / Shift+Tab, shared with the clipboard-edit modal. */
+  indent: IndentSetting;
   /** Reports the caret/selection readout on load and whenever the doc or selection changes. */
   onStatusChange(status: MemoStatus): void;
 }
@@ -54,6 +59,7 @@ interface CodeMirrorHostProps
  */
 function CodeMirrorHost({
   buffer,
+  indent,
   onChange,
   onSave,
   onStatusChange,
@@ -68,6 +74,8 @@ function CodeMirrorHost({
   onSaveRef.current = onSave;
   const onStatusChangeRef = useRef(onStatusChange);
   onStatusChangeRef.current = onStatusChange;
+  const indentRef = useRef(indent);
+  indentRef.current = indent;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -88,6 +96,7 @@ function CodeMirrorHost({
               },
             },
           ]),
+          editorIndent(() => indentRef.current),
           editorSearch(),
           basicSetup,
           scrollPastEnd(),
@@ -146,6 +155,7 @@ export function MemoEditor({
   focusNonce = 0,
 }: MemoEditorProps) {
   const { t } = useTranslation();
+  const { setting: indent } = useClipboardIndentSetting();
   const sectionRef = useRef<HTMLElement | null>(null);
   const [status, setStatus] = useState<MemoStatus | null>(null);
   const dirty = memoDirty(buffer);
@@ -176,6 +186,7 @@ export function MemoEditor({
       <div className="memo-body">
         <CodeMirrorHost
           buffer={buffer}
+          indent={indent}
           onChange={onChange}
           onSave={onSave}
           onStatusChange={setStatus}
