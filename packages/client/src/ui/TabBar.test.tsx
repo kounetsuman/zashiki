@@ -245,6 +245,24 @@ describe("TabBar", () => {
     expect(onRename).toHaveBeenCalledWith(SID, "myrepo", "新しい名前");
   });
 
+  it("marks the tab being renamed, so a shrunken pinned tab holds its width for the input", () => {
+    const { container } = render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        cockpitTerminals={[session]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onRename={vi.fn()}
+      />,
+    );
+    expect(container.querySelector(".tab-editing")).toBeNull();
+    fireEvent.doubleClick(screen.getByRole("tab"));
+    expect(container.querySelector(".tab-editing")).not.toBeNull();
+  });
+
   it("does not allow rename for a non-UUID window (unbound/plain-shell)", () => {
     const onRename = vi.fn();
     render(

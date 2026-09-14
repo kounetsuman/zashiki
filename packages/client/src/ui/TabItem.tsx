@@ -83,7 +83,7 @@ export function TabItem({
       ref={rootRef}
       className={`tab${active ? " tab-active" : ""}${
         dragging ? " tab-dragging" : ""
-      }${dropTarget ? " tab-drag-over" : ""}`}
+      }${dropTarget ? " tab-drag-over" : ""}${isEditing ? " tab-editing" : ""}`}
       style={
         active && orgColor !== undefined
           ? { borderTopColor: orgColor }

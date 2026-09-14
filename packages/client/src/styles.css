@@ -796,6 +796,11 @@ textarea {
   flex: none;
 }
 
+/* The tab being renamed keeps its full width, so the input stays readable however narrow the strip. */
+.tab-strip-pinned .tab.tab-editing {
+  flex: none;
+}
+
 .tab:hover {
   background: #2a2a2a;
 }
