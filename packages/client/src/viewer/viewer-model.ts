@@ -23,7 +23,7 @@ export interface ViewerBuffer {
   /** The content last read. null if not yet loaded, or when the buffer is media (rendered from `media.url`). */
   readonly content: string | null;
   readonly error?: string;
-  /** Whether the file's alternate rendering is showing (Markdown preview, or the CSV/TSV table). */
+  /** Whether the file's alternate rendering is showing (Markdown/HTML preview, or the CSV/TSV table). */
   readonly preview: boolean;
   /** Content was supplied directly (e.g. a file dropped from Finder), not read from a repo. */
   readonly external?: boolean;
@@ -57,9 +57,17 @@ export function isMarkdown(relPath: string): boolean {
   return /\.(md|markdown|mdx)$/i.test(relPath);
 }
 
-/** Delimited text opens as a table, since its raw form is the harder one to read; Markdown opens as code. */
+/** HTML documents (rendered in a sandboxed iframe preview). */
+export function isHtml(relPath: string): boolean {
+  return /\.html?$/i.test(relPath);
+}
+
+/**
+ * Delimited text and HTML open in their alternate rendering, since their raw form is the harder
+ * one to read; Markdown opens as code.
+ */
 function opensInAlternateView(relPath: string): boolean {
-  return isDelimitedText(relPath);
+  return isDelimitedText(relPath) || isHtml(relPath);
 }
 
 /** Sentinel repoPath for a buffer that belongs to no repo (dropped file). */

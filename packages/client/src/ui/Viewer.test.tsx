@@ -95,6 +95,45 @@ describe("Viewer", () => {
     );
   });
 
+  it("renders HTML in a sandboxed iframe in preview mode, with the toggle back to code", () => {
+    const { container } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "site/demo.html",
+          content: "<h1>hi</h1>",
+          preview: true,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "コード" })).toBeTruthy();
+    const frame = container.querySelector("iframe");
+    expect(frame?.getAttribute("title")).toBe("site/demo.html");
+    // Scripts run in an opaque origin: no same-origin access, popups, or top navigation.
+    expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame?.getAttribute("srcdoc")).toBe("<h1>hi</h1>");
+  });
+
+  it("shows the HTML source in CodeMirror when toggled off preview", () => {
+    const { container } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "site/demo.html",
+          content: "<h1>hi</h1>",
+          preview: false,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "プレビュー" })).toBeTruthy();
+    expect(container.querySelector("iframe")).toBeNull();
+    expect(container.querySelector(".viewer-cm")).toBeTruthy();
+  });
+
   it("renders a csv as a sortable table, with the toggle back to text", () => {
     render(
       <Viewer
