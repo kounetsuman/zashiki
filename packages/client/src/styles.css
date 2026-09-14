@@ -1022,6 +1022,154 @@ textarea {
   object-fit: contain;
 }
 
+/* ---- CSV / TSV table view ---- */
+
+/* Fills the viewer body and owns the scroll in both axes (the header row and the
+   row-number column stay pinned to its edges). */
+.delimited-table {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.delimited-table table {
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: auto;
+}
+
+.delimited-table th,
+.delimited-table td {
+  max-width: 42ch;
+  padding: 0 10px;
+  border-right: 1px solid #2c2c2c;
+  border-bottom: 1px solid #262626;
+  /* nowrap, not pre: a quoted cell can hold newlines, and a record belongs on one row
+     (the full text stays in the cell's tooltip). */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  font-weight: normal;
+}
+
+.delimited-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0;
+  background: #252526;
+  border-bottom: 1px solid #3c3c3c;
+  font-weight: bold;
+}
+
+/* The row number is the record's line in the file, so it stays out of the way: dimmed,
+   unselectable, and pinned to the left edge while columns scroll under it. */
+.delimited-table .delimited-rownum {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 3ch;
+  background: #1b1b1b;
+  border-right: 1px solid #3c3c3c;
+  color: #6a6a6a;
+  text-align: right;
+  user-select: none;
+}
+
+.delimited-table thead .delimited-rownum {
+  z-index: 3;
+  background: #252526;
+}
+
+.delimited-table tbody tr:hover td {
+  background: #2a2d2e;
+}
+
+.delimited-table .is-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.delimited-sort {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  font-weight: bold;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.delimited-sort:hover {
+  background: #333;
+}
+
+.delimited-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.delimited-arrow {
+  flex: none;
+  color: #8a8a8a;
+  font-size: 9px;
+}
+
+/* Rainbow columns: cells take their colour from the column's position, so a record
+   reads across without counting delimiters. */
+.delimited-table [data-column="0"] {
+  color: #e5c07b;
+}
+.delimited-table [data-column="1"] {
+  color: #98c379;
+}
+.delimited-table [data-column="2"] {
+  color: #61afef;
+}
+.delimited-table [data-column="3"] {
+  color: #e06c75;
+}
+.delimited-table [data-column="4"] {
+  color: #c678dd;
+}
+.delimited-table [data-column="5"] {
+  color: #56b6c2;
+}
+.delimited-table [data-column="6"] {
+  color: #d19a66;
+}
+.delimited-table [data-column="7"] {
+  color: #9aa7b8;
+}
+
+.delimited-truncated {
+  position: sticky;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  padding: 3px 10px;
+  background: #252526;
+  border-top: 1px solid #3c3c3c;
+  color: #bbb;
+}
+
+.delimited-empty {
+  padding: 12px;
+  color: #bbb;
+}
+
 /* ---- Memo（issue #268。唯一の編集可能サーフェス） ---- */
 
 /* Memo タブ active の間、main area 本体にオーバーレイ表示（Viewer と同じ被せ方）。 */

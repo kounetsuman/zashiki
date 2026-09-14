@@ -2,17 +2,33 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { isDelimitedText } from "../viewer/delimited.js";
 import { renderMarkdown } from "../viewer/markdown.js";
 import {
   isMarkdown,
   type MediaSource,
   type ViewerBuffer,
 } from "../viewer/viewer-model.js";
+import { DelimitedTable } from "./DelimitedTable.js";
 import { Loading } from "./Loading.js";
 import { viewerEditorExtensions } from "./viewer-editor.js";
+
+/** The second rendering a file offers beside its text, toggled from the toolbar. */
+type AlternateView = "markdownPreview" | "table";
+
+const TOGGLE_LABEL: Record<AlternateView, { show: string; hide: string }> = {
+  markdownPreview: { show: "viewer.preview", hide: "viewer.code" },
+  table: { show: "viewer.table", hide: "viewer.text" },
+};
+
+function alternateView(relPath: string): AlternateView | null {
+  if (isMarkdown(relPath)) return "markdownPreview";
+  if (isDelimitedText(relPath)) return "table";
+  return null;
+}
 
 export interface ViewerProps {
   buffer: ViewerBuffer;
@@ -151,24 +167,68 @@ export function Viewer({
 }: ViewerProps) {
   const { t } = useTranslation();
   const sectionRef = useRef<HTMLElement | null>(null);
-  const md5 = isMarkdown(buffer.relPath);
-  const showPreview = md5 && buffer.preview;
+  const alternate = alternateView(buffer.relPath);
+  const showAlternate = alternate !== null && buffer.preview;
   const previewHtml = useMemo(
-    () => (showPreview ? renderMarkdown(buffer.content ?? "") : ""),
-    [showPreview, buffer.content],
+    () =>
+      showAlternate && alternate === "markdownPreview"
+        ? renderMarkdown(buffer.content ?? "")
+        : "",
+    [showAlternate, alternate, buffer.content],
   );
 
-  // Focus the editor content (not the section) so the find keymap (Cmd+F) reaches
-  // it. Also re-run on status: a first (uncached) open mounts the editor only once
-  // the read resolves, after the nonce bump, so focus must land then too. Preview
-  // and media fall back to the section (no editor). preventScroll avoids fighting
-  // a pending reveal-line scroll.
+  const focusTarget = useCallback(
+    () =>
+      sectionRef.current?.querySelector<HTMLElement>(
+        ".cm-content, .delimited-table",
+      ) ?? null,
+    [],
+  );
+
+  // Focus the content (not the section) on open, so the find keymap (Cmd+F) reaches the editor
+  // and the keys that scroll reach whichever element owns the scroll. A first (uncached) open
+  // mounts that element only once the read resolves, after the nonce bump, so status is a
+  // trigger too. preventScroll avoids fighting a pending reveal-line scroll.
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce / buffer.status are re-run triggers, not read in the body.
   useEffect(() => {
-    const content =
-      sectionRef.current?.querySelector<HTMLElement>(".cm-content");
-    (content ?? sectionRef.current)?.focus({ preventScroll: true });
-  }, [focusNonce, buffer.status]);
+    (focusTarget() ?? sectionRef.current)?.focus({ preventScroll: true });
+  }, [focusNonce, buffer.status, focusTarget]);
+
+  // The toggle hands the scroll and the find keymap to another element, so focus follows it —
+  // to a real one only, leaving the toggle button focused where the rendering has none of its own.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: buffer.preview is a re-run trigger, not read in the body.
+  useEffect(() => {
+    focusTarget()?.focus({ preventScroll: true });
+  }, [buffer.preview, focusTarget]);
+
+  function readyContent() {
+    if (buffer.media !== undefined)
+      return <MediaHost media={buffer.media} relPath={buffer.relPath} />;
+    if (showAlternate && alternate === "markdownPreview")
+      return (
+        // markdown-it escapes raw HTML with html:false (mitigates XSS).
+        <div
+          className="viewer-preview markdown-body"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
+          dangerouslySetInnerHTML={{ __html: previewHtml }}
+        />
+      );
+    if (showAlternate && alternate === "table")
+      return (
+        <DelimitedTable
+          relPath={buffer.relPath}
+          content={buffer.content ?? ""}
+        />
+      );
+    return (
+      <CodeMirrorHost
+        buffer={buffer}
+        revealLine={revealLine}
+        revealNonce={revealNonce}
+        onRevealed={onRevealed}
+      />
+    );
+  }
 
   return (
     <section
@@ -192,14 +252,14 @@ export function Viewer({
         <span className="viewer-path" title={buffer.relPath}>
           {buffer.relPath}
         </span>
-        {md5 && (
+        {alternate !== null && (
           <button
             type="button"
-            className={`viewer-toggle${showPreview ? " is-active" : ""}`}
-            aria-pressed={showPreview}
+            className={`viewer-toggle${showAlternate ? " is-active" : ""}`}
+            aria-pressed={showAlternate}
             onClick={onTogglePreview}
           >
-            {showPreview ? t("viewer.code") : t("viewer.preview")}
+            {t(TOGGLE_LABEL[alternate][showAlternate ? "hide" : "show"])}
           </button>
         )}
       </div>
@@ -210,24 +270,7 @@ export function Viewer({
             {t("viewer.openFailed", { error: buffer.error })}
           </div>
         )}
-        {buffer.status === "ready" &&
-          (buffer.media !== undefined ? (
-            <MediaHost media={buffer.media} relPath={buffer.relPath} />
-          ) : showPreview ? (
-            // markdown-it escapes raw HTML with html:false (mitigates XSS).
-            <div
-              className="viewer-preview markdown-body"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
-              dangerouslySetInnerHTML={{ __html: previewHtml }}
-            />
-          ) : (
-            <CodeMirrorHost
-              buffer={buffer}
-              revealLine={revealLine}
-              revealNonce={revealNonce}
-              onRevealed={onRevealed}
-            />
-          ))}
+        {buffer.status === "ready" && readyContent()}
       </div>
     </section>
   );

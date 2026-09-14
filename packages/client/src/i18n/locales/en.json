@@ -178,7 +178,15 @@
     "openFailed": "Could not open: {{error}}",
     "readTimeout": "Reading timed out",
     "dropTooLarge": "{{name}} is too large to preview (max 2 MB)",
-    "dropReadFailed": "Could not read {{name}}"
+    "dropReadFailed": "Could not read {{name}}",
+    "table": "Table",
+    "text": "Text",
+    "tableLabel": "{{path}} as a table",
+    "rowNumber": "Row",
+    "sortByColumn": "Sort by {{column}}",
+    "tableTruncated": "Showing the first {{shown}} of {{total}} rows",
+    "tableEmpty": "This file has no rows to show.",
+    "tableColumnsTruncated": "Cells past column {{shown}} are not shown"
   },
   "find": {
     "placeholder": "Find",

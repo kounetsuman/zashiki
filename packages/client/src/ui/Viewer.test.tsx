@@ -84,6 +84,111 @@ describe("Viewer", () => {
     );
   });
 
+  it("renders a csv as a sortable table, with the toggle back to text", () => {
+    render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "data/report.csv",
+          content: "name,size\nb,2\na,10\n",
+          preview: true,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "テキスト" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "size で並べ替え" }),
+    ).toBeTruthy();
+  });
+
+  it("shows a csv as raw text once the table is toggled off", () => {
+    render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "data/report.csv",
+          content: "name,size\nb,2\n",
+          preview: false,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByRole("button", { name: "テーブル" })).toBeTruthy();
+  });
+
+  it("leaves focus on the toggle when the Markdown preview has nothing to focus", () => {
+    const md = { ...base, relPath: "README.md", content: "# t\n" };
+    const { rerender } = render(
+      <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    const toggle = screen.getByRole("button", { name: "プレビュー" });
+    toggle.focus();
+    rerender(
+      <Viewer
+        buffer={{ ...md, preview: true }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  it("focuses the text of a csv switched off the table, so Cmd+F reaches it", () => {
+    const csv = {
+      ...base,
+      relPath: "data/report.csv",
+      content: "name,size\nb,2\n",
+      preview: true,
+    };
+    const { container, rerender } = render(
+      <Viewer buffer={csv} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    rerender(
+      <Viewer
+        buffer={{ ...csv, preview: false }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(document.activeElement).toBe(container.querySelector(".cm-content"));
+  });
+
+  it("focuses the table of a csv, so the keys that scroll reach it", () => {
+    const { container, rerender } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "data/report.csv",
+          content: "name,size\nb,2\n",
+          preview: true,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={0}
+      />,
+    );
+    rerender(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "data/report.csv",
+          content: "name,size\nb,2\n",
+          preview: true,
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={1}
+      />,
+    );
+    expect(document.activeElement).toBe(
+      container.querySelector(".delimited-table"),
+    );
+  });
+
   it("focuses the editor content when the focus nonce changes (so Cmd+F reaches it)", () => {
     const { container, rerender } = render(
       <Viewer
