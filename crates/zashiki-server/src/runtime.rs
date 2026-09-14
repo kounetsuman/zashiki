@@ -125,6 +125,9 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         .as_deref()
         .and_then(crate::update_checker::parse_running_version);
     if let Some(version) = app_version.clone() {
+        // A just-updated bundle inherits the previous run's persisted "update available" entries;
+        // drop the ones this version has caught up to before the checker records anything new.
+        hub.prune_stale_update_notifications(&version);
         crate::update_checker::spawn_update_checker(hub.clone(), version);
     }
 

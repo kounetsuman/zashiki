@@ -137,14 +137,19 @@ pub fn scrollback_pressure_notification(used_bytes: usize, created_at: u64) -> N
     }
 }
 
+/// Id prefix of update-available notifications, shared with the client's header Update button
+/// (`updateAvailableVersion` in shared/notifications.ts derives the version from this id).
+pub const UPDATE_AVAILABLE_ID_PREFIX: &str = "update-available:";
+
 /// Notification announcing that a newer stable release exists on GitHub than the running bundle (#26).
 /// The id is per-version (`update-available:<version>`) so the same latest version does not re-stack on
 /// every daily poll (singleton per version via upsert), while a genuinely newer version stacks as a new
 /// entry. Toast + panel; sticky and non-dismissible so the update stays (and its header button keeps
-/// showing) until the running bundle actually catches up to the latest version.
+/// showing) until the running bundle actually catches up to the latest version — at which point the
+/// startup prune (`prune_stale_update_notifications`) removes it.
 pub fn update_available_notification(version: &str, url: &str, created_at: u64) -> Notification {
     Notification {
-        id: format!("update-available:{version}"),
+        id: format!("{UPDATE_AVAILABLE_ID_PREFIX}{version}"),
         level: NotificationLevel::Warn,
         title: format!("🆕 新しいバージョン {version} が利用できます"),
         body: Some(format!(
@@ -230,6 +235,19 @@ pub fn boundary_notification(failure: BoundaryFailure, created_at: u64) -> Notif
         dismissible: true,
         toast: None,
         cockpit_terminal_id: None,
+    }
+}
+
+/// Whether an update-available entry announces a version the running bundle has caught up to (not
+/// newer than `current`, or unparseable — nothing actionable left to announce). Comparison delegates
+/// to `update_checker::newer_release` so detection and pruning share one truth source (including
+/// `v`-prefix tolerance). These entries are persisted and non-dismissible, so without pruning them at
+/// startup they would keep toasting on every launch — and keep the header Update button visible —
+/// after the update itself (#408).
+pub fn is_stale_update_notification(n: &Notification, current: &semver::Version) -> bool {
+    match n.id.strip_prefix(UPDATE_AVAILABLE_ID_PREFIX) {
+        None => false,
+        Some(v) => crate::update_checker::newer_release(current, v).is_none(),
     }
 }
 
@@ -443,6 +461,27 @@ mod tests {
             list = append_notification(&list, note(&format!("n{i}"), 100 + i), 5);
         }
         assert!(list.iter().any(|x| x.id == "update-available:0.3.0"));
+    }
+
+    #[test]
+    fn stale_update_notifications_are_the_caught_up_and_unparseable_ones() {
+        let current = semver::Version::new(0, 30, 0);
+        // Older and equal versions are stale; a genuinely newer one and non-update entries are not.
+        for stale in ["0.28.0", "0.29.0", "0.30.0"] {
+            let n = update_available_notification(stale, "u", 1);
+            assert!(is_stale_update_notification(&n, &current), "{stale} is caught up to");
+        }
+        assert!(!is_stale_update_notification(
+            &update_available_notification("0.31.0", "u", 1),
+            &current
+        ));
+        assert!(!is_stale_update_notification(&note("boundary:rg-missing", 1), &current));
+        // Comparison shares update_checker::newer_release, so a v-prefixed id compares, not deletes.
+        assert!(!is_stale_update_notification(&note("update-available:v0.31.0", 1), &current));
+        assert!(is_stale_update_notification(&note("update-available:v0.30.0", 1), &current));
+        // Unparseable versions carry nothing actionable and would otherwise stick forever.
+        assert!(is_stale_update_notification(&note("update-available:", 1), &current));
+        assert!(is_stale_update_notification(&note("update-available:garbage", 1), &current));
     }
 
     #[test]
