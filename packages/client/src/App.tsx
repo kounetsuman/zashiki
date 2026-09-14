@@ -90,6 +90,7 @@ import { MemoEditor } from "./ui/MemoEditor.js";
 import { NavigationBar } from "./ui/NavigationBar.js";
 import { NotificationView } from "./ui/NotificationView.js";
 import { QuickOpen } from "./ui/QuickOpen.js";
+import { QuitSaveOverlay } from "./ui/QuitSaveOverlay.js";
 import { SearchView } from "./ui/SearchView.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
 import { SessionToaster } from "./ui/SessionToaster.js";
@@ -515,7 +516,7 @@ export function App({
   );
   const selfUpdate = useSelfUpdate(control, flashCopyToast, t, memoSaver.flush);
   useBeforeUnloadGuard(memoEnabled && memoDirty(memo));
-  useQuitGuard(
+  const savingMemoForQuit = useQuitGuard(
     () => memoEnabled && memoDirty(store.getSnapshot().memo),
     memoSaver.flush,
   );
@@ -1417,6 +1418,7 @@ export function App({
       {lastError !== null && (
         <ErrorDialog message={lastError} onDismiss={handleDismissError} />
       )}
+      {savingMemoForQuit && <QuitSaveOverlay />}
     </div>
   );
 }

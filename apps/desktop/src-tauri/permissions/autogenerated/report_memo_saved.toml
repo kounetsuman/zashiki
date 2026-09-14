@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-report-memo-saved"
+description = "Enables the report_memo_saved command without any pre-configured scope."
+commands.allow = ["report_memo_saved"]
+
+[[permission]]
+identifier = "deny-report-memo-saved"
+description = "Denies the report_memo_saved command without any pre-configured scope."
+commands.deny = ["report_memo_saved"]

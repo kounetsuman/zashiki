@@ -70,6 +70,9 @@
     "notificationsDeleted": "Deleted {{count}} notification(s)",
     "memoSaveFailed": "Couldn't save the Memo — check the connection and try again"
   },
+  "quitSave": {
+    "saving": "Saving the Memo before quitting…"
+  },
   "sessionList": {
     "ariaLabel": "Session list",
     "limitReached": "Usage limit reached",

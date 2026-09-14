@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-report-memo-status"
+description = "Enables the report_memo_status command without any pre-configured scope."
+commands.allow = ["report_memo_status"]
+
+[[permission]]
+identifier = "deny-report-memo-status"
+description = "Denies the report_memo_status command without any pre-configured scope."
+commands.deny = ["report_memo_status"]
