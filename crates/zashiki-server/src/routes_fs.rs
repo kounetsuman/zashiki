@@ -10,7 +10,7 @@ use tower_http::services::ServeFile;
 
 use crate::app_state::{scan, AppState};
 use crate::wire_support::{guard_file_path, json_error, json_ok, parse_json_body};
-use crate::{file, fs};
+use crate::{dashboard, file, fs};
 
 #[derive(Deserialize)]
 pub(crate) struct FileReadParams {
@@ -69,6 +69,37 @@ pub(crate) async fn media_read(
     match ServeFile::new(abs).oneshot(req).await {
         Ok(res) => res.into_response(),
         Err(unreachable) => match unreachable {},
+    }
+}
+
+/// `GET /api/dashboard`: returns the text of the configured dashboard file for the overlay's frame.
+/// It takes no parameters: the only readable path is the one in config.json.
+pub(crate) async fn dashboard_read(State(state): State<AppState>) -> Response {
+    let Some(config_path) = state
+        .control
+        .as_ref()
+        .and_then(|control| control.config_path.clone())
+    else {
+        return json_error(StatusCode::NOT_FOUND, "no dashboard is configured");
+    };
+    let max = state.file_max_bytes;
+    let result = tokio::task::spawn_blocking(move || {
+        let url = crate::config::read_config(&config_path).dashboard.url;
+        let home = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        dashboard::read_dashboard_file(&url, &home, max)
+    })
+    .await
+    .unwrap_or_else(|_| {
+        Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "read task failed".to_string(),
+        ))
+    });
+    match result {
+        Ok(content) => Json(serde_json::json!({ "content": content })).into_response(),
+        Err((status, msg)) => json_error(status, &msg),
     }
 }
 

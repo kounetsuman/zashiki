@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_DASHBOARD_SETTINGS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
 } from "./config.js";
@@ -205,6 +206,17 @@ describe("clientMessageSchema", () => {
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
       },
     ],
+    [{ t: "config.setDashboard", dashboard: DEFAULT_DASHBOARD_SETTINGS }],
+    [
+      {
+        t: "config.setDashboard",
+        dashboard: {
+          url: "file:///Users/me/board.html",
+          showOn: "both",
+          frequency: "once_per_day",
+        },
+      },
+    ],
     [{ t: "update.check" }],
     [{ t: "update.perform" }],
     [{ t: "account.refresh", restartSessions: true }],
@@ -344,6 +356,7 @@ describe("serverMessageSchema", () => {
         editor: "cursor -g",
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
+        dashboard: DEFAULT_DASHBOARD_SETTINGS,
       },
     ],
     [
@@ -377,6 +390,11 @@ describe("serverMessageSchema", () => {
             shellStart: { notify: true, sound: false, soundType: "tick" },
             shellEnd: { notify: false, sound: true, soundType: "bell" },
           },
+        },
+        dashboard: {
+          url: "https://dash.example/board",
+          showOn: "wake",
+          frequency: "once_per_day",
         },
       },
     ],
@@ -431,7 +449,7 @@ describe("serverMessageSchema", () => {
     });
   });
 
-  it("defaults omitted config.sync updateCheck/language/accountUsage/memoEnabled/editor/footerThresholds/notifications (compatible with old servers)", () => {
+  it("defaults omitted config.sync updateCheck/language/accountUsage/memoEnabled/editor/footerThresholds/notifications/dashboard (compatible with old servers)", () => {
     expect(
       serverMessageSchema.parse({
         t: "config.sync",
@@ -447,6 +465,7 @@ describe("serverMessageSchema", () => {
       editor: null,
       footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       notifications: DEFAULT_NOTIFICATION_SETTINGS,
+      dashboard: DEFAULT_DASHBOARD_SETTINGS,
     });
   });
 

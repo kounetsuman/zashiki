@@ -4553,7 +4553,10 @@ dependencies = [
 name = "zashiki-desktop"
 version = "0.0.0"
 dependencies = [
+ "block2",
  "libc",
+ "objc2-app-kit",
+ "objc2-foundation",
  "serde",
  "serde_json",
  "signal-hook",

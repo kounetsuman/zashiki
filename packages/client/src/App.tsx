@@ -3,6 +3,7 @@ import {
   type ClaudeInstall,
   type ClientMessage,
   claudeSessionId,
+  type DashboardSettings,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   type FileEntry,
@@ -27,6 +28,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { CrashApi } from "./api/crash.js";
+import type { DashboardApi } from "./api/dashboard.js";
 import type { FilesApi } from "./api/files.js";
 import type { FilesListApi } from "./api/files-list.js";
 import type { FsApi } from "./api/fs.js";
@@ -78,6 +80,7 @@ import { AccountUsageModal } from "./ui/AccountUsageModal.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
 import { CockpitTerminalListView } from "./ui/CockpitTerminalListView.js";
 import { CrashReportModal } from "./ui/CrashReportModal.js";
+import { DashboardOverlay } from "./ui/DashboardOverlay.js";
 import { DiffView } from "./ui/DiffView.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { ErrorDialog } from "./ui/ErrorDialog.js";
@@ -108,6 +111,7 @@ import { useClipboardCopy } from "./ui/useClipboardCopy.js";
 import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
 import { useCrashReport } from "./ui/useCrashReport.js";
+import { useDashboard } from "./ui/useDashboard.js";
 import { useDiff } from "./ui/useDiff.js";
 import { useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
@@ -181,6 +185,8 @@ export interface AppProps {
   reposApi: ReposApi;
   /** Surfaces the previous run's crash log on launch (omitted in tests that don't exercise it). */
   crashApi?: CrashApi;
+  /** Reads a local dashboard file for the launch/wake overlay (omitted in tests that don't exercise it). */
+  dashboardApi?: DashboardApi;
   /** Notification service (defaults to the real Web Notification + synthesized sound). */
   notifier?: Notifier;
   /** Persistence target for view selection state (defaults to localStorage). */
@@ -197,6 +203,7 @@ export function App({
   filesListApi,
   reposApi,
   crashApi,
+  dashboardApi,
   notifier: notifierProp,
   viewStorage: viewStorageProp,
 }: AppProps) {
@@ -213,6 +220,9 @@ export function App({
   );
   const [notificationSettings, setNotificationSettings] =
     useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
+  // null until the server's config.sync arrives, which is also what marks the launch moment.
+  const [dashboardSettings, setDashboardSettings] =
+    useState<DashboardSettings | null>(null);
   const [accountUsageModalOpen, setAccountUsageModalOpen] = useState(false);
   const [hooksStatus, setHooksStatus] = useState<HooksStatusMessage | null>(
     null,
@@ -222,7 +232,7 @@ export function App({
     RuntimeUpdateStatusMessage,
     "t"
   > | null>(null);
-  const { crashLog, dismissCrash } = useCrashReport(crashApi);
+  const { crashLog, crashChecked, dismissCrash } = useCrashReport(crashApi);
   const [notifier] = useState(() => notifierProp ?? createNotifier());
   const [viewStorage] = useState(() =>
     viewStorageProp === undefined ? defaultViewStorage() : viewStorageProp,
@@ -262,6 +272,19 @@ export function App({
   // and computes derived values.
   const [store] = useState(() =>
     createAppStore({ control, session, notifier }),
+  );
+
+  const {
+    frame: dashboardFrame,
+    showNonce: dashboardShowNonce,
+    dismiss: dismissDashboard,
+  } = useDashboard(
+    dashboardSettings,
+    dashboardApi,
+    viewStorage,
+    // The crash report is the more urgent unsolicited overlay, and two of them must not stack.
+    // Waiting for the check to answer keeps the dashboard from winning the race and drawing over it.
+    !crashChecked || crashLog !== null,
   );
   const {
     cockpitTerminals,
@@ -800,6 +823,7 @@ export function App({
       setMemoEnabled(m.memoEnabled);
       setEditor(m.editor);
       setFooterThresholds(m.footerThresholds);
+      setDashboardSettings(m.dashboard);
       // Apply the display language if the config file has one (unset = null keeps browser detection).
       if (m.language) void i18n.changeLanguage(m.language);
     });
@@ -853,6 +877,14 @@ export function App({
         t: "config.setFooterThresholds",
         footerThresholds: thresholds,
       });
+    },
+    [control],
+  );
+
+  const saveDashboard = useCallback(
+    (dashboard: DashboardSettings): void => {
+      setDashboardSettings(dashboard);
+      control.send({ t: "config.setDashboard", dashboard });
     },
     [control],
   );
@@ -1319,6 +1351,8 @@ export function App({
           editor={editor ?? ""}
           onSaveEditor={saveEditor}
           footerThresholds={footerThresholds}
+          dashboard={dashboardSettings ?? undefined}
+          onSaveDashboard={saveDashboard}
           onSaveFooterThresholds={saveFooterThresholds}
           notificationSettings={notificationSettings}
           onSetNotifications={saveNotifications}
@@ -1385,6 +1419,13 @@ export function App({
         )}
       {crashLog !== null && (
         <CrashReportModal log={crashLog} onClose={dismissCrash} />
+      )}
+      {dashboardFrame !== null && (
+        <DashboardOverlay
+          frame={dashboardFrame}
+          showNonce={dashboardShowNonce}
+          onClose={dismissDashboard}
+        />
       )}
       <Toaster notifications={notifications} />
       <SessionToaster

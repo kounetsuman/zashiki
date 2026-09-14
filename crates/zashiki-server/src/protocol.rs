@@ -195,6 +195,34 @@ impl NotificationSettings {
     }
 }
 
+/// When the dashboard page is shown. Mirrors the shared `DashboardShowOn`; `Both` covers launch and wake.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DashboardShowOn {
+    #[default]
+    Launch,
+    Wake,
+    Both,
+}
+
+/// How often the dashboard is shown at a matching moment. Mirrors the shared `DashboardFrequency`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DashboardFrequency {
+    #[default]
+    EveryTime,
+    OncePerDay,
+}
+
+/// The page shown in front of the cockpit at launch / on wake from sleep. A blank `url` turns it off.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardSettings {
+    pub url: String,
+    pub show_on: DashboardShowOn,
+    pub frequency: DashboardFrequency,
+}
+
 /// Session status-footer material: token totals plus the epoch-ms starting points for live elapsed.
 /// `turn` is measured from the most recent human prompt; `session` spans the whole transcript.
 /// Tokens/timestamps come from the transcript (no user setup). Account usage limits are global, not
@@ -337,6 +365,10 @@ pub enum ClientMessage {
     /// distributed via config.sync, like the footer-thresholds change.
     #[serde(rename = "config.setNotifications", rename_all = "camelCase")]
     ConfigSetNotifications { notifications: NotificationSettings },
+    /// Dashboard page change from SETTINGS. Persisted to config.json and distributed via config.sync,
+    /// like the notification-switches change.
+    #[serde(rename = "config.setDashboard", rename_all = "camelCase")]
+    ConfigSetDashboard { dashboard: DashboardSettings },
     /// Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run
     /// wizard or SETTINGS). Idempotent merge; the resulting hooks.status is broadcast.
     #[serde(rename = "hooks.register")]
@@ -588,6 +620,7 @@ pub enum ServerMessage {
         editor: Option<String>,
         footer_thresholds: FooterThresholds,
         notifications: NotificationSettings,
+        dashboard: DashboardSettings,
     },
     /// Full distribution of in-app notifications (to all control connections right after connecting
     /// and on changes; a full replacement, not a diff).
@@ -1129,13 +1162,19 @@ mod tests {
             editor: Some("cursor -g".into()),
             footer_thresholds: FooterThresholds::default(),
             notifications: NotificationSettings::default(),
+            dashboard: DashboardSettings {
+                url: "file:///Users/me/board.html".into(),
+                show_on: DashboardShowOn::Both,
+                frequency: DashboardFrequency::OncePerDay,
+            },
         };
         let json = concat!(
             r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false,"memoEnabled":false,"editor":"cursor -g","footerThresholds":"#,
             r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
             r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}},"#,
-            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true,"soundType":"descend"},"done":{"notify":true,"sound":true,"soundType":"chime"},"subagentStart":{"notify":false,"sound":false,"soundType":"ping"},"subagentEnd":{"notify":false,"sound":false,"soundType":"pong"},"shellStart":{"notify":false,"sound":false,"soundType":"tick"},"shellEnd":{"notify":false,"sound":false,"soundType":"tock"}}}"#,
+            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true,"soundType":"descend"},"done":{"notify":true,"sound":true,"soundType":"chime"},"subagentStart":{"notify":false,"sound":false,"soundType":"ping"},"subagentEnd":{"notify":false,"sound":false,"soundType":"pong"},"shellStart":{"notify":false,"sound":false,"soundType":"tick"},"shellEnd":{"notify":false,"sound":false,"soundType":"tock"}}},"#,
+            r#""dashboard":{"url":"file:///Users/me/board.html","showOn":"both","frequency":"once_per_day"}"#,
             r#"}"#
         );
         assert_eq!(to_json(&msg), json);
@@ -1153,13 +1192,15 @@ mod tests {
             editor: None,
             footer_thresholds: FooterThresholds::default(),
             notifications: NotificationSettings::default(),
+            dashboard: DashboardSettings::default(),
         };
         let json = concat!(
             r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true,"memoEnabled":true,"editor":null,"footerThresholds":"#,
             r#"{"usagePercent":{"warn":{"enabled":true,"value":50},"high":{"enabled":true,"value":75},"crit":{"enabled":true,"value":91}},"#,
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
             r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}},"#,
-            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true,"soundType":"descend"},"done":{"notify":true,"sound":true,"soundType":"chime"},"subagentStart":{"notify":false,"sound":false,"soundType":"ping"},"subagentEnd":{"notify":false,"sound":false,"soundType":"pong"},"shellStart":{"notify":false,"sound":false,"soundType":"tick"},"shellEnd":{"notify":false,"sound":false,"soundType":"tock"}}}"#,
+            r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true,"soundType":"descend"},"done":{"notify":true,"sound":true,"soundType":"chime"},"subagentStart":{"notify":false,"sound":false,"soundType":"ping"},"subagentEnd":{"notify":false,"sound":false,"soundType":"pong"},"shellStart":{"notify":false,"sound":false,"soundType":"tick"},"shellEnd":{"notify":false,"sound":false,"soundType":"tock"}}},"#,
+            r#""dashboard":{"url":"","showOn":"launch","frequency":"every_time"}"#,
             r#"}"#
         );
         assert_eq!(to_json(&msg), json);
@@ -1187,6 +1228,26 @@ mod tests {
         let json = r#"{"t":"config.setMemoEnabled","enabled":true}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg, ClientMessage::ConfigSetMemoEnabled { enabled: true });
+        assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn config_set_dashboard_roundtrips_and_matches_wire() {
+        let json = concat!(
+            r#"{"t":"config.setDashboard","dashboard":"#,
+            r#"{"url":"https://dash.example/board","showOn":"wake","frequency":"once_per_day"}}"#
+        );
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            msg,
+            ClientMessage::ConfigSetDashboard {
+                dashboard: DashboardSettings {
+                    url: "https://dash.example/board".into(),
+                    show_on: DashboardShowOn::Wake,
+                    frequency: DashboardFrequency::OncePerDay,
+                },
+            }
+        );
         assert_eq!(to_json(&msg), json);
     }
 

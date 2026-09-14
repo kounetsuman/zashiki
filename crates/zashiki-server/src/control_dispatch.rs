@@ -152,6 +152,23 @@ pub(crate) async fn handle_client_message(
             }
             true
         }
+        // Persist the dashboard page and broadcast config.sync (like the notification-switches change).
+        // The written value is re-read, so read_config's trim is the authoritative sanitizer.
+        ClientMessage::ConfigSetDashboard { dashboard } => {
+            if let Some(path) = &services.config_path {
+                if let Err(e) = crate::config::write_config_dashboard(path, &dashboard) {
+                    return report_error(
+                        socket,
+                        &services.hub,
+                        "config_write_failed",
+                        &format!("config の書き込みに失敗しました: {e}"),
+                    )
+                    .await;
+                }
+                services.hub.publish_config(crate::config::read_config(path));
+            }
+            true
+        }
         // Install/remove zashiki's Claude Code integration in ~/.claude/settings.json, then broadcast
         // the fresh status to every connection.
         ClientMessage::HooksRegister => apply_hooks_change(socket, services, true).await,

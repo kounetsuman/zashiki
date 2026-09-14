@@ -28,7 +28,7 @@ Sub Area
 
 Navigation Area — switches Sub Area Views
 Cockpit Footer — per-terminal status
-Overlays — Notification Toast, Modal
+Overlays — Notification Toast, Modal, Dashboard
 ```
 
 - **Cockpit Terminal** (was window/session) — not called "session": Ctrl+C ends the Claude run, but the terminal itself survives.
@@ -37,6 +37,7 @@ Overlays — Notification Toast, Modal
 - **Memo** — the single opt-in scratchpad editor, pinned to the front of the Cockpit Tabs when enabled in Settings. It is the one deliberate exception to the read-only rule (Viewer/Diff stay read-only); Cmd-S saves it to `<repos.conf dir>/memo.md`, which the server broadcasts (`memo.sync`) so every client stays in sync. An unsaved edit shows a dirty dot on the tab. Tab / Shift+Tab indent and outdent every line the selection touches, on the indent unit shared with the clipboard edit modal (`src/ui/editor-indent.test.ts`).
 - **Pinned tab** — any tab can be pinned from its right-click menu. Pinned tabs render in their own fixed strip at the left, so scrolling the other tabs never hides them. While other tabs are open the strip takes at most two thirds of the bar, so pinning a lot of tabs can never leave the rest unreachable; the pinned tabs narrow to fit that cap, and the strip scrolls within itself once they reach the width of their own controls. The Memo tab is pinned implicitly (front-most, no pin toggle). The canonical rules live in `src/tabs/tab-model.test.ts`.
 - **Organization** (`org`) — a Cockpit Terminal belongs to one; the list is grouped by it.
+- **Dashboard** — an optional page drawn over the cockpit when zashiki starts and/or when the Mac wakes from sleep; Settings holds the address, the moment, and every time vs. once a day. A blank address (the default) shows nothing. A web address is framed as it is, so a site that refuses to be framed will not appear; a local file must be an `.html` file and has to be self-contained, because the files it links to are not served. Either way the page runs in an opaque origin, so it can never reach the app's token or storage but its own scripts cannot use cookies or storage either. Escape, the backdrop, and ✕ all dismiss it, but once the pointer has moved focus into the page itself, Escape belongs to that page — ✕ always works. The rules live in `src/lib/dashboard.test.ts` and `src/ui/useDashboard.test.tsx`.
 
 ## Running (development)
 
