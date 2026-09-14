@@ -725,6 +725,9 @@ textarea {
 }
 
 .tab-bar {
+  /* One width for every tab (see .tab); the pinned strip's cap reads it so the cap can never fall
+   * below a single tab. */
+  --tab-width: 220px;
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -735,18 +738,20 @@ textarea {
   border-bottom: 2px solid #333;
 }
 
-/* Pinned tabs sit in a fixed strip that never scrolls; the rest scroll horizontally beside it. */
+/* Pinned tabs sit in their own strip, which the unpinned tabs never scroll; the rest scroll beside it. */
 .tab-strip {
   display: flex;
   flex-direction: row;
   align-items: stretch;
 }
 
-/* Capped so the pinned strip can never swallow the whole bar; scrolls within itself past the cap
- * (its own scroll is independent, so the unpinned tabs scrolling never hides a pinned tab). */
+/* Capped so the pinned strip can never swallow the whole bar, but never below one whole tab —
+ * a tab is a fixed width, so a strip narrower than that clips a tab instead of narrowing it, and
+ * the clipped edge is where the close and unsaved-changes indicators live. Past the cap the strip
+ * scrolls within itself (independently, so the unpinned tabs scrolling never hides a pinned tab). */
 .tab-strip-pinned {
-  flex: 0 1 auto;
-  max-width: 66%;
+  flex: 0 0 auto;
+  max-width: max(66%, var(--tab-width));
   overflow-x: auto;
   scrollbar-width: none;
   border-right: 1px solid #333;
@@ -770,7 +775,7 @@ textarea {
   display: flex;
   align-items: center;
   flex: none;
-  width: 220px;
+  width: var(--tab-width);
   border-right: 1px solid #2a2a2a;
   border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
