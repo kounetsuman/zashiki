@@ -28,7 +28,8 @@ export interface TabItemProps {
   onUnpin?(key: string): void;
   /**
    * Shows the unsaved-changes dot (in place of the close button for a non-closeable tab). The dot's
-   * slot is always laid out so the tab keeps a constant width; only its visibility follows this flag.
+   * slot is always laid out so the label keeps the same room either way; only its visibility
+   * follows this flag.
    */
   dirty?: boolean;
   rename: TabRename;
