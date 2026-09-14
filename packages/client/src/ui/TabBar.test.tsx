@@ -245,6 +245,24 @@ describe("TabBar", () => {
     expect(onRename).toHaveBeenCalledWith(SID, "myrepo", "新しい名前");
   });
 
+  it("marks the tab being renamed, so a shrunken pinned tab holds its width for the input", () => {
+    const { container } = render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        cockpitTerminals={[session]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onRename={vi.fn()}
+      />,
+    );
+    expect(container.querySelector(".tab-editing")).toBeNull();
+    fireEvent.doubleClick(screen.getByRole("tab"));
+    expect(container.querySelector(".tab-editing")).not.toBeNull();
+  });
+
   it("does not allow rename for a non-UUID window (unbound/plain-shell)", () => {
     const onRename = vi.fn();
     render(
@@ -900,6 +918,44 @@ describe("TabBar pinning", () => {
     expect(pinnedStrip.textContent).toContain("最初のプロンプト");
     fireEvent.click(pinnedStrip.querySelector(".tab-pin") as HTMLElement);
     expect(onUnpin).toHaveBeenCalledWith(KEY);
+  });
+
+  it("lets the pinned strip take the whole bar when no other tab is open", () => {
+    const { container } = render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        cockpitTerminals={[session]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={vi.fn()}
+        onUnpin={vi.fn()}
+      />,
+    );
+    expect(container.querySelector(".tab-strip-pinned-only")).not.toBeNull();
+  });
+
+  it("caps the pinned strip once another tab has to stay reachable beside it", () => {
+    const { container } = render(
+      <TabBar
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        cockpitTerminals={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={vi.fn()}
+        onUnpin={vi.fn()}
+      />,
+    );
+    expect(container.querySelector(".tab-strip-pinned")).not.toBeNull();
+    expect(container.querySelector(".tab-strip-pinned-only")).toBeNull();
   });
 
   it("renders no close button for a pinned tab (it must be unpinned before closing)", () => {

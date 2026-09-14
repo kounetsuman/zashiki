@@ -194,7 +194,11 @@ export function TabBar({
       }
     >
       {pinnedTabs.length > 0 && (
-        <div className="tab-strip tab-strip-pinned">
+        <div
+          className={`tab-strip tab-strip-pinned${
+            scrollTabs.length === 0 ? " tab-strip-pinned-only" : ""
+          }`}
+        >
           {pinnedTabs.map(renderTab)}
         </div>
       )}

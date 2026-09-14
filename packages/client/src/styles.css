@@ -735,21 +735,26 @@ textarea {
   border-bottom: 2px solid #333;
 }
 
-/* Pinned tabs sit in a fixed strip that never scrolls; the rest scroll horizontally beside it. */
+/* Pinned tabs sit in their own strip, which the unpinned tabs never scroll; the rest scroll beside it. */
 .tab-strip {
   display: flex;
   flex-direction: row;
   align-items: stretch;
 }
 
-/* Capped so the pinned strip can never swallow the whole bar; scrolls within itself past the cap
- * (its own scroll is independent, so the unpinned tabs scrolling never hides a pinned tab). */
+/* Capped so the strip can never swallow the bar and strand the other tabs. It holds its width when
+ * those overflow, so their scrolling never eats into it. */
 .tab-strip-pinned {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   max-width: 66%;
   overflow-x: auto;
   scrollbar-width: none;
   border-right: 1px solid #333;
+}
+
+/* No other tab to strand, so the cap is lifted and pinned tabs keep the one width. */
+.tab-strip-pinned.tab-strip-pinned-only {
+  max-width: 100%;
 }
 
 .tab-strip-scroll {
@@ -764,16 +769,36 @@ textarea {
   display: none;
 }
 
+/* One width for every tab, so the close buttons line up and a tab never resizes when its title
+ * changes. */
 .tab {
   display: flex;
   align-items: center;
   flex: none;
-  max-width: 220px;
+  width: 220px;
   border-right: 1px solid #2a2a2a;
   border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
   background: #232323;
   color: #9a9a9a;
+}
+
+/* Against the cap above, a pinned tab narrows rather than lose its right edge, where the close and
+ * unsaved-changes marks sit. The floor is what its own controls occupy (pin, icon, mark, padding);
+ * below that the strip scrolls instead. */
+.tab-strip-pinned .tab {
+  flex: 0 1 auto;
+  min-width: 96px;
+}
+
+/* Uncapped, there is room to scroll instead of narrowing. */
+.tab-strip-pinned.tab-strip-pinned-only .tab {
+  flex: none;
+}
+
+/* The tab being renamed keeps its full width, so the input stays readable however narrow the strip. */
+.tab-strip-pinned .tab.tab-editing {
+  flex: none;
 }
 
 .tab:hover {
@@ -806,6 +831,7 @@ textarea {
   display: flex;
   align-items: center;
   gap: 5px;
+  flex: 1 1 auto;
   min-width: 0;
   padding: 4px 6px 4px 8px;
   border: none;
@@ -827,6 +853,7 @@ textarea {
 
 /* タブのダブルクリック rename の入力欄（issue #166）。 */
 .tab-title-input {
+  flex: 1 1 auto;
   min-width: 0;
   margin: 2px 4px 2px 6px;
   padding: 0 4px;
@@ -917,7 +944,7 @@ textarea {
   background: #c5c5c5;
 }
 
-/* Clean state: keep the dot's slot so the tab width is identical to the unsaved state. */
+/* Clean state: keep the dot's slot so the label ellipsizes at the same point either way. */
 .tab-dirty-hidden {
   visibility: hidden;
 }
