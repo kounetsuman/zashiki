@@ -902,6 +902,44 @@ describe("TabBar pinning", () => {
     expect(onUnpin).toHaveBeenCalledWith(KEY);
   });
 
+  it("lets the pinned strip take the whole bar when no other tab is open", () => {
+    const { container } = render(
+      <TabBar
+        tabs={[s(SID)]}
+        activeKey={KEY}
+        cockpitTerminals={[session]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={vi.fn()}
+        onUnpin={vi.fn()}
+      />,
+    );
+    expect(container.querySelector(".tab-strip-pinned-only")).not.toBeNull();
+  });
+
+  it("caps the pinned strip once another tab has to stay reachable beside it", () => {
+    const { container } = render(
+      <TabBar
+        tabs={[s(SID), s(SID2)]}
+        activeKey={KEY}
+        cockpitTerminals={[
+          session,
+          { ...session, cockpitTerminalId: SID2, title: "二番目" },
+        ]}
+        conversationTitles={{}}
+        pinnedKeys={new Set([KEY])}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onPin={vi.fn()}
+        onUnpin={vi.fn()}
+      />,
+    );
+    expect(container.querySelector(".tab-strip-pinned")).not.toBeNull();
+    expect(container.querySelector(".tab-strip-pinned-only")).toBeNull();
+  });
+
   it("renders no close button for a pinned tab (it must be unpinned before closing)", () => {
     const { container } = render(
       <TabBar

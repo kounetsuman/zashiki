@@ -742,15 +742,20 @@ textarea {
   align-items: stretch;
 }
 
-/* Capped so the pinned strip can never swallow the whole bar. It keeps its width when the unpinned
- * tabs overflow (so their scrolling never eats into it), and scrolls within itself in the extreme
- * where its tabs no longer fit even after narrowing. */
+/* Capped so the pinned strip can never swallow the bar and leave the other tabs unreachable. It
+ * keeps its width when those tabs overflow (so their scrolling never eats into it), and scrolls
+ * within itself in the extreme where its own tabs no longer fit even after narrowing. */
 .tab-strip-pinned {
   flex: 0 0 auto;
   max-width: 66%;
   overflow-x: auto;
   scrollbar-width: none;
   border-right: 1px solid #333;
+}
+
+/* With no other tabs open there is nothing to keep reachable, so the cap has nothing to protect. */
+.tab-strip-pinned-only {
+  max-width: 100%;
 }
 
 .tab-strip-scroll {
@@ -780,10 +785,11 @@ textarea {
 }
 
 /* Against the cap above, a pinned tab narrows instead of being cut off: the close button and the
- * unsaved-changes dot sit at its right edge, which is the edge that would go. */
+ * unsaved-changes dot sit at its right edge, which is the edge that would go. It stops at the width
+ * of those controls (pin, icon, mark) so they can't collide; past that the strip scrolls. */
 .tab-strip-pinned .tab {
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: 96px;
 }
 
 .tab:hover {
