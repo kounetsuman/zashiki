@@ -1,19 +1,17 @@
-import { EditorState, Prec } from "@codemirror/state";
+import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
-import { EditorView, keymap } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
   type IndentSetting,
-  indentSelection,
   MAX_SPACE_COUNT,
   MIN_SPACE_COUNT,
-  outdentSelection,
-  type TextSelection,
 } from "../lib/clipboard-edit-indent.js";
 import { trimLineEndWhitespace } from "../lib/clipboard-edit-modal.js";
+import { editorIndent } from "./editor-indent.js";
 import { editorSearch } from "./editor-search-panel.js";
 import { useClipboardIndentSetting } from "./useClipboardIndentSetting.js";
 import "./ClipboardEditModal.css";
@@ -32,27 +30,9 @@ export interface ClipboardEditModalProps {
   onClose(): void;
 }
 
-/** Re-indent the primary selection with a clipboard-edit pure transform, replacing the whole doc. */
-function applyIndent(
-  view: EditorView,
-  transform: (sel: TextSelection, setting: IndentSetting) => TextSelection,
-  setting: IndentSetting,
-): boolean {
-  const { from, to } = view.state.selection.main;
-  const next = transform(
-    { value: view.state.doc.toString(), start: from, end: to },
-    setting,
-  );
-  view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: next.value },
-    selection: { anchor: next.start, head: next.end },
-  });
-  return true;
-}
-
 /**
  * The CodeMirror editor inside the modal. It reuses the shared find/replace panel ({@link editorSearch})
- * so Ctrl+F searches here too, and drives Tab / Shift+Tab through the clipboard-edit indent helpers.
+ * so Ctrl+F searches here too, and the shared Tab / Shift+Tab block indent ({@link editorIndent}).
  * The live indent unit is read through a ref so flipping the radios takes effect without rebuilding
  * the editor.
  */
@@ -75,21 +55,7 @@ function ClipboardCodeMirror({
       state: EditorState.create({
         doc: initialDoc,
         extensions: [
-          Prec.high(
-            keymap.of([
-              {
-                key: "Tab",
-                preventDefault: true,
-                run: (v) => applyIndent(v, indentSelection, settingRef.current),
-              },
-              {
-                key: "Shift-Tab",
-                preventDefault: true,
-                run: (v) =>
-                  applyIndent(v, outdentSelection, settingRef.current),
-              },
-            ]),
-          ),
+          editorIndent(() => settingRef.current),
           editorSearch(),
           basicSetup,
           oneDark,

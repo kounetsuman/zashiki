@@ -34,7 +34,7 @@ Overlay — Notification Toast, Modal
 - **Cockpit Terminal**（旧 window/session）— 「session」と呼ばないのは、Ctrl+C で Claude の実行が終わっても端末自体は生き残るため。
 - **Claude Session**（`sid`）— Cockpit Terminal の中で走る一過性の Claude Code 実行。
 - **Viewer** — read-only のファイルビューワー。zashiki は vibe coding 専用コックピットなので、エディタに育てる予定はない。
-- **Memo** — 唯一の任意スクラッチパッドエディタ。Settings で有効にすると Cockpit Tabs の先頭に固定表示される。read-only 原則に対する唯一の意図的な例外（Viewer/Diff は read-only のまま）。Cmd-S で `<repos.conf のあるディレクトリ>/memo.md` に保存し、サーバが `memo.sync` で全クライアントへ配信して同期する。未保存の編集があるとタブに dirty dot が出る。
+- **Memo** — 唯一の任意スクラッチパッドエディタ。Settings で有効にすると Cockpit Tabs の先頭に固定表示される。read-only 原則に対する唯一の意図的な例外（Viewer/Diff は read-only のまま）。Cmd-S で `<repos.conf のあるディレクトリ>/memo.md` に保存し、サーバが `memo.sync` で全クライアントへ配信して同期する。未保存の編集があるとタブに dirty dot が出る。Tab / Shift+Tab で選択が掛かっている行をまとめてインデント／アンインデントする（インデント文字はクリップボード編集モーダルと共有。`src/ui/editor-indent.test.ts`）。
 - **Pinned tab（ピン留めタブ）** — 各タブは右クリックメニューからピン留めできる。ピン留めしたタブは左端の専用の固定ストリップに並び、残りのタブを横スクロールしても隠れない。他のタブが開いている間、このストリップはタブバーの 2/3 までしか取らない（ピン留めしすぎても残りのタブに辿り着けなくならない）。収まらない分はピン留めタブ側が細くなって収まり、ボタン類の幅まで縮んだらストリップ内でスクロールする。Memo タブは暗黙的にピン留めされる（先頭固定・ピン留めトグルなし）。仕様の正本は `src/tabs/tab-model.test.ts`。
 - **Organization**（`org`）— Cockpit Terminal はいずれか1つに所属し、一覧はこれで束ねる。
 
