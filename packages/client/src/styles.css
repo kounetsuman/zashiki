@@ -1519,6 +1519,10 @@ textarea {
   margin: 12px 0;
 }
 
+.viewer-preview .viewer-mermaid[data-mermaid-state="rendered"] {
+  margin: 8px 0;
+}
+
 .viewer-preview li.task-list-item {
   list-style: none;
 }

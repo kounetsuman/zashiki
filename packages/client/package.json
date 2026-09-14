@@ -31,6 +31,7 @@
     "i18next": "^26.3.6",
     "markdown-it": "^15.0.0",
     "material-symbols": "^0.45.10",
+    "mermaid": "^12.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-i18next": "^17.0.11"

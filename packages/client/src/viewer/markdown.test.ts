@@ -48,4 +48,25 @@ describe("renderMarkdown", () => {
     const html = renderMarkdown("<script>alert(1)</script>");
     expect(html).not.toContain("<script>");
   });
+
+  it("wraps a mermaid fence in a diagram placeholder keeping the source as a code block", () => {
+    const html = renderMarkdown("```mermaid\ngraph TD;\n  A-->B;\n```");
+    expect(html).toContain('class="viewer-mermaid"');
+    expect(html).toContain('<code class="language-mermaid">');
+    expect(html).toContain("graph TD;");
+  });
+
+  it("escapes HTML inside a mermaid fence", () => {
+    const html = renderMarkdown(
+      '```mermaid\ngraph TD;\n  A["<script>x</script>"]\n```',
+    );
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;");
+  });
+
+  it("leaves non-mermaid fences as plain code blocks", () => {
+    const html = renderMarkdown("```js\nconst a = 1;\n```");
+    expect(html).not.toContain("viewer-mermaid");
+    expect(html).toContain('<code class="language-js">');
+  });
 });
