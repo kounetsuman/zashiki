@@ -91,3 +91,23 @@ describe("useViewer media", () => {
     expect(revoked).toContain("blob:0");
   });
 });
+
+describe("useViewer pathOf", () => {
+  it("returns the absolute path for a repo buffer", () => {
+    const { result } = renderHook(() => useViewer(filesApi, null));
+    let key = "";
+    act(() => {
+      key = result.current.ensureBuffer("/repo", "src/app.ts");
+    });
+    expect(result.current.pathOf(key)).toBe("/repo/src/app.ts");
+  });
+
+  it("returns null for an external buffer (no repo path)", () => {
+    const { result } = renderHook(() => useViewer(filesApi, null));
+    let key = "";
+    act(() => {
+      key = result.current.openExternal("README.md", "content");
+    });
+    expect(result.current.pathOf(key)).toBeNull();
+  });
+});

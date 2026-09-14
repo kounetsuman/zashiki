@@ -200,10 +200,6 @@ export function ExplorerView({
     onCopyText?.(`${target.repoPath}/${target.relPath}`);
   };
 
-  const copyRelativePath = (target: ExplorerMenuTarget): void => {
-    onCopyText?.(target.relPath);
-  };
-
   const startRename = (target: ExplorerMenuTarget): void => {
     renameDoneRef.current = false;
     setRenaming(target);
@@ -484,7 +480,6 @@ export function ExplorerView({
           closeMenu={contextMenu.closeMenu}
           onReveal={reveal}
           onCopyPath={copyPath}
-          onCopyRelativePath={copyRelativePath}
           onRename={startRename}
           onDelete={setDeleteTarget}
         />

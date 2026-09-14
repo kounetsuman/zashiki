@@ -6,18 +6,16 @@ export interface ExplorerContextMenuProps {
   closeMenu(): void;
   onReveal(target: ExplorerMenuTarget): void;
   onCopyPath(target: ExplorerMenuTarget): void;
-  onCopyRelativePath(target: ExplorerMenuTarget): void;
   onRename(target: ExplorerMenuTarget): void;
   onDelete(target: ExplorerMenuTarget): void;
 }
 
-/** Right-click menu for an explorer file/directory: reveal, copy paths, rename, delete (trash). */
+/** Right-click menu for an explorer file/directory: reveal, copy path, rename, delete (trash). */
 export function ExplorerContextMenu({
   menu,
   closeMenu,
   onReveal,
   onCopyPath,
-  onCopyRelativePath,
   onRename,
   onDelete,
 }: ExplorerContextMenuProps) {
@@ -52,8 +50,7 @@ export function ExplorerContextMenu({
         style={{ top: menu.y, left: menu.x }}
       >
         {item(t("explorer.revealInFinder"), onReveal)}
-        {item(t("explorer.copyPath"), onCopyPath)}
-        {item(t("explorer.copyRelativePath"), onCopyRelativePath)}
+        {item(t("common.copyAbsPath"), onCopyPath)}
         {item(t("explorer.rename"), onRename)}
         {item(t("explorer.delete"), onDelete)}
       </div>

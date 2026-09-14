@@ -33,16 +33,19 @@ export interface ViewerBuffer {
 
 export type ViewerBuffers = Readonly<Record<string, ViewerBuffer>>;
 
+/** A file addressed by its repo checkout path and repo-relative path. */
+export interface RepoFile {
+  readonly repoPath: string;
+  readonly relPath: string;
+}
+
 /** The composite key matching the tab's id (repoPath and repo-relative path joined by a newline). */
 export function viewerKey(repoPath: string, relPath: string): string {
   return `${repoPath}\n${relPath}`;
 }
 
 /** Inverse of viewerKey: splits a viewer tab id back into its repoPath and repo-relative path. */
-export function splitViewerKey(key: string): {
-  repoPath: string;
-  relPath: string;
-} {
+function splitViewerKey(key: string): RepoFile {
   const nl = key.indexOf("\n");
   return nl < 0
     ? { repoPath: key, relPath: "" }
@@ -65,6 +68,15 @@ export const EXTERNAL_VIEWER_REPO = "";
 /** Key for an external (dropped) file, keyed by its name so re-dropping the same name refreshes in place. */
 export function externalViewerKey(name: string): string {
   return viewerKey(EXTERNAL_VIEWER_REPO, name);
+}
+
+/**
+ * The repo file a viewer key denotes, or null for an external file — which belongs to no
+ * repo, so no file action (reveal / copy absolute path / rename) can address it.
+ */
+export function repoFileOfViewerKey(key: string): RepoFile | null {
+  const file = splitViewerKey(key);
+  return file.repoPath === EXTERNAL_VIEWER_REPO ? null : file;
 }
 
 /**

@@ -23,7 +23,7 @@ export interface ExplorerContextMenuState {
 }
 
 /** The number of items in the explorer entry menu; feeds the position clamp. */
-const EXPLORER_MENU_ITEM_COUNT = 5;
+const EXPLORER_MENU_ITEM_COUNT = 4;
 
 /**
  * Owns the explorer entry right-click menu target and its clamped position, and closes it on Escape.

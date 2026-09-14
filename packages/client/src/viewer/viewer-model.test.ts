@@ -12,8 +12,8 @@ import {
   openExternalBuffer,
   openExternalMediaBuffer,
   openMediaBuffer,
+  repoFileOfViewerKey,
   shouldPollBuffer,
-  splitViewerKey,
   viewerKey,
   viewerKeysUnderPath,
   viewersAffectedByRename,
@@ -140,6 +140,15 @@ describe("external (dropped) buffers", () => {
     expect(repo && shouldPollBuffer(repo)).toBe(true);
     expect(ext && shouldPollBuffer(ext)).toBe(false);
   });
+
+  // The buffer's external flag and the key's sentinel repoPath express the same fact through
+  // two representations; consumers without buffer access (the tab context menu) rely on the key.
+  it("keeps the external flag and the key sentinel in agreement", () => {
+    expect(openExternalBuffer({}, NAME, "x")[EKEY]?.external).toBe(true);
+    expect(repoFileOfViewerKey(EKEY)).toBeNull();
+    expect(openBuffer({}, REPO, REL)[KEY]?.external).toBeUndefined();
+    expect(repoFileOfViewerKey(KEY)).not.toBeNull();
+  });
 });
 
 describe("media buffers", () => {
@@ -213,18 +222,18 @@ describe("preview toggle / close", () => {
   });
 });
 
-describe("splitViewerKey", () => {
-  it("is the inverse of viewerKey", () => {
-    expect(splitViewerKey(viewerKey(REPO, REL))).toEqual({
-      repoPath: REPO,
-      relPath: REL,
-    });
+describe("repoFileOfViewerKey", () => {
+  it("is the inverse of viewerKey for a repo-backed key", () => {
+    expect(repoFileOfViewerKey(KEY)).toEqual({ repoPath: REPO, relPath: REL });
   });
   it("keeps a repo-root path (empty relPath) roundtrippable", () => {
-    expect(splitViewerKey(viewerKey(REPO, ""))).toEqual({
+    expect(repoFileOfViewerKey(viewerKey(REPO, ""))).toEqual({
       repoPath: REPO,
       relPath: "",
     });
+  });
+  it("returns null for an external file's key", () => {
+    expect(repoFileOfViewerKey(externalViewerKey("README.md"))).toBeNull();
   });
 });
 

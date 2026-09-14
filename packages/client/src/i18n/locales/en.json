@@ -219,8 +219,6 @@
     "truncated": "Showing partial results (too many entries)",
     "mainTree": "main",
     "revealInFinder": "Reveal in Finder",
-    "copyPath": "Copy Path",
-    "copyRelativePath": "Copy Relative Path",
     "rename": "Rename",
     "delete": "Delete",
     "deleteConfirmTitle": "Move to Trash",

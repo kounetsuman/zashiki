@@ -782,6 +782,53 @@ describe("TabBar", () => {
     expect(onClose).toHaveBeenCalledWith(`viewer:${viewerId}`);
   });
 
+  it("shows the file actions on a repo viewer tab and copies the absolute path", () => {
+    const onCopyFilePath = vi.fn();
+    const viewerId = "/repo\nsrc/main.ts";
+    const e = (id: string): Tab => ({ kind: "viewer", id });
+    render(
+      <TabBar
+        tabs={[e(viewerId)]}
+        activeKey={`viewer:${viewerId}`}
+        cockpitTerminals={[]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onRevealFile={vi.fn()}
+        onCopyFilePath={onCopyFilePath}
+        onRenameFile={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toEqual(
+      ["閉じる", "Finderで表示", "絶対パスをコピー", "名前を変更"],
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "絶対パスをコピー" }));
+    expect(onCopyFilePath).toHaveBeenCalledWith("/repo", "src/main.ts");
+  });
+
+  it("hides the file actions on an external viewer tab (no repo path to act on)", () => {
+    const externalId = "\nREADME.md";
+    const e = (id: string): Tab => ({ kind: "viewer", id });
+    render(
+      <TabBar
+        tabs={[e(externalId)]}
+        activeKey={`viewer:${externalId}`}
+        cockpitTerminals={[]}
+        conversationTitles={{}}
+        onActivate={() => undefined}
+        onClose={() => undefined}
+        onRevealFile={vi.fn()}
+        onCopyFilePath={vi.fn()}
+        onRenameFile={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(screen.getByRole("tab"));
+    expect(screen.getAllByRole("menuitem").map((el) => el.textContent)).toEqual(
+      ["閉じる"],
+    );
+  });
+
   it("renders the Memo tab without a close button and hides its dirty dot when clean", () => {
     const m = (): Tab => ({ kind: "memo", id: "memo" });
     const { container } = render(

@@ -1150,9 +1150,6 @@ export function App({
             onCopyFilePath={(repoPath, relPath) =>
               copyExplorerText(`${repoPath}/${relPath}`)
             }
-            onCopyFileRelativePath={(_repoPath, relPath) =>
-              copyExplorerText(relPath)
-            }
             onRenameFile={renameFileFromTab}
           />
           <div className="tab-view">

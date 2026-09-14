@@ -59,6 +59,17 @@ describe("Viewer", () => {
     expect(onCopyPath).toHaveBeenCalled();
   });
 
+  it("hides the copy button for an external buffer (no absolute path to copy)", () => {
+    render(
+      <Viewer
+        buffer={{ ...base, repoPath: "", relPath: "README.md", external: true }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "パスをコピー" })).toBeNull();
+  });
+
   it("does not show the preview toggle for non-Markdown", () => {
     render(<Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />);
     expect(screen.queryByRole("button", { name: "プレビュー" })).toBeNull();

@@ -219,8 +219,6 @@
     "truncated": "一部のみ表示（多数のエントリ）",
     "mainTree": "main",
     "revealInFinder": "Finderで表示",
-    "copyPath": "パスをコピー",
-    "copyRelativePath": "相対パスをコピー",
     "rename": "名前を変更",
     "delete": "削除",
     "deleteConfirmTitle": "ゴミ箱に移動",
