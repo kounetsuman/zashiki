@@ -70,6 +70,9 @@
     "notificationsDeleted": "{{count}} 件の通知を削除しました",
     "memoSaveFailed": "メモを保存できませんでした。接続を確認して再試行してください"
   },
+  "quitSave": {
+    "saving": "終了前にメモを保存しています…"
+  },
   "sessionList": {
     "ariaLabel": "セッション一覧",
     "limitReached": "使用量上限に達しています",

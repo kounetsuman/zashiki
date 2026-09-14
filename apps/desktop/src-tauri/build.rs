@@ -2,12 +2,19 @@ use std::process::Command;
 
 fn main() {
     embed_git_sha();
-    // Autogenerate the ACL permission for the open_devtools app command so a capability can grant the
-    // remote-loaded frontend access to it (a plain tauri_build::build() would not emit it).
-    tauri_build::try_build(
-        tauri_build::Attributes::new()
-            .app_manifest(tauri_build::AppManifest::new().commands(&["open_devtools"])),
-    )
+    // Autogenerate an ACL permission per app command so a capability can grant the remote-loaded
+    // frontend access to them (a plain tauri_build::build() would not emit them). Every command in
+    // main.rs's `generate_handler!` belongs here and in capabilities/default.json; one that is
+    // missing is rejected at call time with no visible error (#414). The three lists are compared by
+    // `every_ipc_command_is_granted_to_the_webview` in main.rs, so drift fails the test suite.
+    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
+        tauri_build::AppManifest::new().commands(&[
+            "open_devtools",
+            "pick_and_read_file",
+            "report_memo_status",
+            "report_memo_saved",
+        ]),
+    ))
     .expect("failed to run tauri-build");
 }
 
