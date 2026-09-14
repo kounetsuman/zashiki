@@ -589,6 +589,23 @@ impl ControlHub {
         self.store_and_broadcast(items);
     }
 
+    /// Drops persisted update-available entries the running bundle has caught up to and re-persists the
+    /// pruned list. Runs once at startup: during a run every recorded update is strictly newer than the
+    /// running version, so stale entries can only come from the seed persisted by an older bundle (#408).
+    pub fn prune_stale_update_notifications(&self, current: &semver::Version) {
+        let changed = {
+            let mut state = self.inner.write().unwrap();
+            let before = state.notifications.len();
+            state
+                .notifications
+                .retain(|n| !crate::notifications::is_stale_update_notification(n, current));
+            (state.notifications.len() != before).then(|| state.notifications.clone())
+        };
+        if let Some(items) = changed {
+            self.store_and_broadcast(items);
+        }
+    }
+
     /// Enqueues an "update available" announcement into NOTIFICATION and broadcasts notifications.sync (#26).
     /// The per-version id coalesces repeated daily polls of the same latest version (upsert), while a newer
     /// version stacks as a new entry. createdAt is kept monotonically increasing like the other record_* methods.
