@@ -725,9 +725,6 @@ textarea {
 }
 
 .tab-bar {
-  /* One width for every tab (see .tab); the pinned strip's cap reads it so the cap can never fall
-   * below a single tab. */
-  --tab-width: 220px;
   display: flex;
   flex-direction: row;
   align-items: stretch;
@@ -745,13 +742,12 @@ textarea {
   align-items: stretch;
 }
 
-/* Capped so the pinned strip can never swallow the whole bar, but never below one whole tab —
- * a tab is a fixed width, so a strip narrower than that clips a tab instead of narrowing it, and
- * the clipped edge is where the close and unsaved-changes indicators live. Past the cap the strip
- * scrolls within itself (independently, so the unpinned tabs scrolling never hides a pinned tab). */
+/* Capped so the pinned strip can never swallow the whole bar. It keeps its width when the unpinned
+ * tabs overflow (so their scrolling never eats into it), and scrolls within itself in the extreme
+ * where its tabs no longer fit even after narrowing. */
 .tab-strip-pinned {
   flex: 0 0 auto;
-  max-width: max(66%, var(--tab-width));
+  max-width: 66%;
   overflow-x: auto;
   scrollbar-width: none;
   border-right: 1px solid #333;
@@ -775,12 +771,19 @@ textarea {
   display: flex;
   align-items: center;
   flex: none;
-  width: var(--tab-width);
+  width: 220px;
   border-right: 1px solid #2a2a2a;
   border-top: 2px solid transparent;
   border-bottom: 2px solid transparent;
   background: #232323;
   color: #9a9a9a;
+}
+
+/* Against the cap above, a pinned tab narrows instead of being cut off: the close button and the
+ * unsaved-changes dot sit at its right edge, which is the edge that would go. */
+.tab-strip-pinned .tab {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .tab:hover {
