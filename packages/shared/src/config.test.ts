@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_CONFIG,
+  DEFAULT_DASHBOARD_SETTINGS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_STARTUP_CONFIG,
+  dashboardSettingsSchema,
   footerThresholdsSchema,
   notificationSettingsSchema,
   parseConfig,
@@ -86,6 +88,42 @@ describe("parseConfig", () => {
       });
       expect(parsed.notifications.enabled).toBe(true);
     });
+  });
+});
+
+describe("dashboardSettingsSchema", () => {
+  const parse = (input: unknown) => dashboardSettingsSchema.parse(input);
+
+  it("is off, with the standard moment and frequency, for empty/absent input", () => {
+    expect(parse(undefined)).toEqual(DEFAULT_DASHBOARD_SETTINGS);
+    expect(parse({})).toEqual(DEFAULT_DASHBOARD_SETTINGS);
+  });
+
+  it("round-trips a configured page", () => {
+    const configured = {
+      url: "file:///Users/me/board.html",
+      showOn: "both",
+      frequency: "once_per_day",
+    };
+    expect(parse(configured)).toEqual(configured);
+  });
+
+  it("keeps the url when another field is hand-edited to an unknown value", () => {
+    expect(parse({ url: "https://dash.example", showOn: "someday" })).toEqual({
+      ...DEFAULT_DASHBOARD_SETTINGS,
+      url: "https://dash.example",
+    });
+    expect(parse({ url: "https://dash.example", frequency: "hourly" })).toEqual(
+      {
+        ...DEFAULT_DASHBOARD_SETTINGS,
+        url: "https://dash.example",
+      },
+    );
+  });
+
+  it("returns defaults for non-object input without throwing", () => {
+    expect(parse("nope")).toEqual(DEFAULT_DASHBOARD_SETTINGS);
+    expect(parse(null)).toEqual(DEFAULT_DASHBOARD_SETTINGS);
   });
 });
 

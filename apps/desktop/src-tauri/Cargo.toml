@@ -27,6 +27,21 @@ serde_json = "1"
 # Cmd+O のネイティブファイル選択結果（PickedFile）を command の戻り値として返すため。
 serde = { version = "1", features = ["derive"] }
 
+# NSWorkspace の「スリープ復帰」通知を購読してフロントへ転送するため。
+# バージョンは tauri 自身が依存する objc2 ツリーに合わせ、二重取り込みを避ける。
+# default-features = false + 使うクラスのみ列挙: 依存する API を宣言に残すため（feature は
+# グラフ全体で union されるので、ビルド時間はこの指定では変わらない）。
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", default-features = false, features = [
+  "std",
+  "block2",
+  "NSNotification",
+  "NSOperation",
+  "NSString",
+] }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 # SIGTERM/SIGINT を graceful exit（RunEvent::Exit 経由の sidecar 掃除）に変換する（issue #38 実測: SIGTERM では Exit が発火せず owned server が孤児化した）

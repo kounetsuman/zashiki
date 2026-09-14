@@ -1,5 +1,6 @@
 import type {
   ClaudeInstall,
+  DashboardSettings,
   FooterThresholds,
   HooksStatusMessage,
   NotificationSettings,
@@ -10,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
+import { DashboardSettingsField } from "./DashboardSettingsField.js";
 import { FooterThresholdsField } from "./FooterThresholdsField.js";
 import { Modal } from "./Modal.js";
 import { NotificationSettingsField } from "./NotificationSettingsField.js";
@@ -97,6 +99,10 @@ export interface SettingsModalProps {
   editor?: string;
   /** Persist the editor command (Save). A blank value clears it back to the ZK_EDITOR / cursor -g fallback. */
   onSaveEditor?(command: string): void;
+  /** Current dashboard page settings. Omit (with the handler) to hide the section. */
+  dashboard?: DashboardSettings;
+  /** Persist the dashboard page settings (Save). A blank address turns the feature off. */
+  onSaveDashboard?(dashboard: DashboardSettings): void;
   /** Current status-footer severity thresholds. Omit (with the handler) to hide the section. */
   footerThresholds?: FooterThresholds;
   /** Persist the status-footer severity thresholds (Save). */
@@ -169,6 +175,8 @@ export function SettingsModal({
   onSetMemoEnabled,
   editor,
   onSaveEditor,
+  dashboard,
+  onSaveDashboard,
   footerThresholds,
   onSaveFooterThresholds,
   notificationSettings,
@@ -459,6 +467,12 @@ export function SettingsModal({
                   discard={() => setEditorDraft(currentEditor)}
                 />
               </div>
+            )}
+            {onSaveDashboard !== undefined && dashboard !== undefined && (
+              <DashboardSettingsField
+                value={dashboard}
+                onSave={onSaveDashboard}
+              />
             )}
             {onSaveFooterThresholds !== undefined &&
               footerThresholds !== undefined && (

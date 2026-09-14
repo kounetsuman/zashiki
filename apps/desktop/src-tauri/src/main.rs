@@ -2,6 +2,8 @@
 
 mod pages;
 mod sidecar;
+#[cfg(target_os = "macos")]
+mod wake;
 
 use std::path::PathBuf;
 use std::process::Child;
@@ -176,6 +178,9 @@ fn main() {
                     return Ok(());
                 }
             };
+
+            #[cfg(target_os = "macos")]
+            wake::forward_system_wake(app.handle().clone());
 
             // setup is FnOnce, so cfg/base can be moved in directly.
             // The real bundle version lives in the shell (tauri.conf.json, injected at release), not the

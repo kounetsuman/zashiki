@@ -1,4 +1,5 @@
 import {
+  DEFAULT_DASHBOARD_SETTINGS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   type ServerMessage,
@@ -180,6 +181,7 @@ describe("ControlClient", () => {
         editor: null,
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
+        dashboard: DEFAULT_DASHBOARD_SETTINGS,
       },
     ]);
   });
@@ -209,6 +211,7 @@ describe("ControlClient", () => {
         editor: null,
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
+        dashboard: DEFAULT_DASHBOARD_SETTINGS,
       },
     ]);
   });

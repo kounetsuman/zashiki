@@ -125,6 +125,45 @@ export function notifyCategoryForKind(kind: string): NotifyCategory | null {
   }
 }
 
+/** The moments at which the dashboard page can be shown (`both` covers launch and wake). */
+export const DASHBOARD_SHOW_ON = ["launch", "wake", "both"] as const;
+export type DashboardShowOn = (typeof DASHBOARD_SHOW_ON)[number];
+
+/** How often the dashboard is shown at a moment that matches {@link DashboardShowOn}. */
+export const DASHBOARD_FREQUENCIES = ["every_time", "once_per_day"] as const;
+export type DashboardFrequency = (typeof DASHBOARD_FREQUENCIES)[number];
+
+/** The page shown in front of the cockpit at launch / on wake from sleep. A blank `url` turns it off. */
+export interface DashboardSettings {
+  url: string;
+  showOn: DashboardShowOn;
+  frequency: DashboardFrequency;
+}
+
+export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
+  url: "",
+  showOn: "launch",
+  frequency: "every_time",
+};
+
+export const dashboardSettingsSchema = z
+  .object({
+    url: z
+      .string()
+      .catch(DEFAULT_DASHBOARD_SETTINGS.url)
+      .default(DEFAULT_DASHBOARD_SETTINGS.url),
+    showOn: z
+      .enum(DASHBOARD_SHOW_ON)
+      .catch(DEFAULT_DASHBOARD_SETTINGS.showOn)
+      .default(DEFAULT_DASHBOARD_SETTINGS.showOn),
+    frequency: z
+      .enum(DASHBOARD_FREQUENCIES)
+      .catch(DEFAULT_DASHBOARD_SETTINGS.frequency)
+      .default(DEFAULT_DASHBOARD_SETTINGS.frequency),
+  })
+  .catch(DEFAULT_DASHBOARD_SETTINGS)
+  .default(DEFAULT_DASHBOARD_SETTINGS);
+
 /**
  * Live-apply settings (`~/.zashiki/config.json`).
  * The server watches the file and pushes changes to all clients via `config.sync`.
@@ -138,6 +177,8 @@ export const zashikiConfigSchema = z.object({
   language: z.enum(["ja", "en"]).nullable().catch(null).default(null),
   /** Per-category notification switches (master + show/sound per category). */
   notifications: notificationSettingsSchema,
+  /** The page shown in front of the cockpit at launch / on wake from sleep. */
+  dashboard: dashboardSettingsSchema,
 });
 
 export type ZashikiConfig = z.infer<typeof zashikiConfigSchema>;
@@ -147,6 +188,7 @@ export const DEFAULT_CONFIG: ZashikiConfig = {
   updateCheck: true,
   language: null,
   notifications: DEFAULT_NOTIFICATION_SETTINGS,
+  dashboard: DEFAULT_DASHBOARD_SETTINGS,
 };
 
 /** A colored band of a status-footer indicator: whether it paints and the value at or above which it applies. */

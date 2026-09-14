@@ -28,7 +28,7 @@ Sub Area
 
 Navigation Area — Sub Area View の切替
 Cockpit Footer — Cockpit Terminal ごとの状態
-Overlay — Notification Toast, Modal
+Overlay — Notification Toast, Modal, Dashboard
 ```
 
 - **Cockpit Terminal**（旧 window/session）— 「session」と呼ばないのは、Ctrl+C で Claude の実行が終わっても端末自体は生き残るため。
@@ -37,6 +37,7 @@ Overlay — Notification Toast, Modal
 - **Memo** — 唯一の任意スクラッチパッドエディタ。Settings で有効にすると Cockpit Tabs の先頭に固定表示される。read-only 原則に対する唯一の意図的な例外（Viewer/Diff は read-only のまま）。Cmd-S で `<repos.conf のあるディレクトリ>/memo.md` に保存し、サーバが `memo.sync` で全クライアントへ配信して同期する。未保存の編集があるとタブに dirty dot が出る。Tab / Shift+Tab で選択が掛かっている行をまとめてインデント／アンインデントする（インデント文字はクリップボード編集モーダルと共有。`src/ui/editor-indent.test.ts`）。
 - **Pinned tab（ピン留めタブ）** — 各タブは右クリックメニューからピン留めできる。ピン留めしたタブは左端の専用の固定ストリップに並び、残りのタブを横スクロールしても隠れない。他のタブが開いている間、このストリップはタブバーの 2/3 までしか取らない（ピン留めしすぎても残りのタブに辿り着けなくならない）。収まらない分はピン留めタブ側が細くなって収まり、ボタン類の幅まで縮んだらストリップ内でスクロールする。Memo タブは暗黙的にピン留めされる（先頭固定・ピン留めトグルなし）。仕様の正本は `src/tabs/tab-model.test.ts`。
 - **Organization**（`org`）— Cockpit Terminal はいずれか1つに所属し、一覧はこれで束ねる。
+- **Dashboard** — zashiki の起動時や Mac のスリープ復帰時にコックピットの前面へ出す任意のページ。アドレス・表示タイミング・毎回か1日1回かは Settings で決める。アドレスが空（既定）なら何も出さない。Web のアドレスはそのまま埋め込むため、埋め込みを拒否するサイトは表示されない。ローカルファイルはサーバ経由で読み込むため `.html` ファイルに限られ、リンク先のファイルは配信されないので単体で完結している必要がある。いずれの場合もページは不透明オリジンで動くので、アプリのトークンやストレージには一切届かない代わりに、ページ自身のスクリプトも Cookie やストレージを使えない。Escape・背景クリック・✕ で閉じられるが、ページ内にフォーカスが移った後の Escape はそのページのものになるため、✕ は常に使える。規則は `src/lib/dashboard.test.ts` と `src/ui/useDashboard.test.tsx`。
 
 ## 起動（開発）
 

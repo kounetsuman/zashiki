@@ -168,6 +168,21 @@
   color: var(--modal-text-muted);
 }
 
+.dashboard-settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.dashboard-settings-choice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--modal-text-dim);
+  cursor: pointer;
+}
+
 /* Docks below the scrollable body (a flex-none row of the modal box) and appears only while some
  * field is dirty, so unsaved edits are noticed and can be saved or discarded together. */
 .unsaved-bar {

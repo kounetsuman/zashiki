@@ -45,6 +45,8 @@ pub struct ConfigView {
     pub footer_thresholds: crate::protocol::FooterThresholds,
     /// Per-category notification switches (SETTINGS). Defaults reproduce the standard set.
     pub notifications: crate::protocol::NotificationSettings,
+    /// The page shown in front of the cockpit at launch / on wake (SETTINGS). A blank url is off.
+    pub dashboard: crate::protocol::DashboardSettings,
 }
 
 /// An immediate re-evaluation request to the poller. If `reply` is present, the
@@ -389,6 +391,38 @@ mod tests {
             let msg = next_json(&mut ws).await.expect("config.sync after clear");
             assert!(msg["editor"].is_null());
             assert_eq!(crate::config::read_config(&path).editor, None);
+        }
+
+        /// config.setDashboard: persists the dashboard page to config.json (preserving existing
+        /// fields) and immediately broadcasts config.sync carrying the trimmed value.
+        #[tokio::test]
+        async fn config_set_dashboard_writes_file_and_broadcasts_config_sync() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("config.json");
+            std::fs::write(&path, r#"{"notifySound": true}"#).unwrap();
+            let port = serve(services_with_config_path(path.clone())).await;
+            let mut ws = connect(port).await;
+
+            send(
+                &mut ws,
+                serde_json::json!({"t":"config.setDashboard","dashboard":{
+                    "url": "  https://dash.example/board  ",
+                    "showOn": "wake",
+                    "frequency": "once_per_day"
+                }}),
+            )
+            .await;
+
+            let msg = next_json(&mut ws)
+                .await
+                .expect("config.sync should be broadcast after config.setDashboard");
+            assert_eq!(msg["t"], "config.sync");
+            assert_eq!(msg["dashboard"]["url"], "https://dash.example/board"); // trimmed
+            assert_eq!(msg["dashboard"]["showOn"], "wake");
+            assert_eq!(msg["dashboard"]["frequency"], "once_per_day");
+            let c = crate::config::read_config(&path);
+            assert_eq!(c.dashboard.url, "https://dash.example/board");
+            assert!(c.notify_sound); // existing fields are preserved
         }
 
         /// The server side also allow-list validates ja/en (defense in depth against zod bypass).
