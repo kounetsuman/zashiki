@@ -7,6 +7,7 @@ import {
   bufferTogglePreview,
   closeBuffer,
   externalViewerKey,
+  isHtml,
   isMarkdown,
   openBuffer,
   openExternalBuffer,
@@ -39,6 +40,15 @@ describe("isMarkdown", () => {
   });
 });
 
+describe("isHtml", () => {
+  it("detects .html/.htm (case-insensitive)", () => {
+    expect(isHtml("demo.html")).toBe(true);
+    expect(isHtml("a.HTM")).toBe(true);
+    expect(isHtml("a.xhtml")).toBe(false);
+    expect(isHtml("a.ts")).toBe(false);
+  });
+});
+
 describe("openBuffer", () => {
   it("adds it in the loading state when not yet open", () => {
     const b = openBuffer({}, REPO, REL)[KEY];
@@ -55,6 +65,15 @@ describe("openBuffer", () => {
     const csv = "data/report.csv";
     expect(openBuffer({}, REPO, csv)[viewerKey(REPO, csv)]?.preview).toBe(true);
     expect(openBuffer({}, REPO, REL)[KEY]?.preview).toBe(false);
+  });
+
+  it("opens html in the rendered preview, for repo and dropped files alike", () => {
+    const html = "site/demo.html";
+    expect(openBuffer({}, REPO, html)[viewerKey(REPO, html)]?.preview).toBe(
+      true,
+    );
+    const bufs = openExternalBuffer({}, "dropped.html", "<h1>hi</h1>");
+    expect(bufs[externalViewerKey("dropped.html")]?.preview).toBe(true);
   });
 
   it("opens a dropped delimited file in the table view", () => {

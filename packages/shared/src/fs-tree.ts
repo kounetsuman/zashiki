@@ -168,6 +168,7 @@ export function fileIconKind(name: string): string {
     md: "md",
     css: "css",
     html: "html",
+    htm: "html",
     rs: "rust",
     toml: "toml",
     yml: "yaml",

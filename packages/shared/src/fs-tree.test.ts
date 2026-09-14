@@ -93,6 +93,8 @@ describe("fileIconKind (extension/name -> icon kind)", () => {
     expect(fileIconKind("styles.css")).toBe("css");
     expect(fileIconKind("lib.rs")).toBe("rust");
     expect(fileIconKind("logo.PNG")).toBe("image");
+    expect(fileIconKind("page.html")).toBe("html");
+    expect(fileIconKind("legacy.htm")).toBe("html");
   });
   it("classifies special filenames by name (taking precedence over extension)", () => {
     expect(fileIconKind("package.json")).toBe("npm");

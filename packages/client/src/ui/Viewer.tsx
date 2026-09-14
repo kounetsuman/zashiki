@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { isDelimitedText } from "../viewer/delimited.js";
 import { renderMarkdown } from "../viewer/markdown.js";
 import {
+  isHtml,
   isMarkdown,
   type MediaSource,
   type ViewerBuffer,
@@ -17,15 +18,17 @@ import { Loading } from "./Loading.js";
 import { viewerEditorExtensions } from "./viewer-editor.js";
 
 /** The second rendering a file offers beside its text, toggled from the toolbar. */
-type AlternateView = "markdownPreview" | "table";
+type AlternateView = "markdownPreview" | "htmlPreview" | "table";
 
 const TOGGLE_LABEL: Record<AlternateView, { show: string; hide: string }> = {
   markdownPreview: { show: "viewer.preview", hide: "viewer.code" },
+  htmlPreview: { show: "viewer.preview", hide: "viewer.code" },
   table: { show: "viewer.table", hide: "viewer.text" },
 };
 
 function alternateView(relPath: string): AlternateView | null {
   if (isMarkdown(relPath)) return "markdownPreview";
+  if (isHtml(relPath)) return "htmlPreview";
   if (isDelimitedText(relPath)) return "table";
   return null;
 }
@@ -152,9 +155,9 @@ function MediaHost({
 /**
  * File viewer. Overlays the main-area body only while the viewer tab in the
  * unified tab bar is active. Displays read-only via CodeMirror 6 (line numbers,
- * extension-based syntax highlighting, one-dark); Markdown toggles between code
- * and preview. File editing is delegated to claude code and is not done here
- * (realtime updates come from polling on the App side).
+ * extension-based syntax highlighting, one-dark); Markdown and HTML toggle
+ * between code and preview. File editing is delegated to claude code and is not
+ * done here (realtime updates come from polling on the App side).
  */
 export function Viewer({
   buffer,
@@ -180,7 +183,7 @@ export function Viewer({
   const focusTarget = useCallback(
     () =>
       sectionRef.current?.querySelector<HTMLElement>(
-        ".cm-content, .delimited-table",
+        ".cm-content, .delimited-table, .viewer-html-frame",
       ) ?? null,
     [],
   );
@@ -211,6 +214,17 @@ export function Viewer({
           className="viewer-preview markdown-body"
           // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
           dangerouslySetInnerHTML={{ __html: previewHtml }}
+        />
+      );
+    if (showAlternate && alternate === "htmlPreview")
+      return (
+        // allow-scripts without allow-same-origin: scripts run in an opaque origin, so the page
+        // cannot reach the app's token, API, or storage, open popups, or navigate the app.
+        <iframe
+          className="viewer-html-frame"
+          title={buffer.relPath}
+          sandbox="allow-scripts"
+          srcDoc={buffer.content ?? ""}
         />
       );
     if (showAlternate && alternate === "table")
