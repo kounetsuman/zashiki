@@ -238,17 +238,19 @@ export function Viewer({
       aria-label={t("viewer.viewerLabel", { path: buffer.relPath })}
     >
       <div className="viewer-toolbar">
-        <button
-          type="button"
-          className="viewer-copy"
-          aria-label={t("viewer.copyPathLabel")}
-          title={t("common.copyAbsPath")}
-          onClick={onCopyPath}
-        >
-          <span className="material-symbols-outlined" aria-hidden="true">
-            content_copy
-          </span>
-        </button>
+        {buffer.external !== true && (
+          <button
+            type="button"
+            className="viewer-copy"
+            aria-label={t("viewer.copyPathLabel")}
+            title={t("common.copyAbsPath")}
+            onClick={onCopyPath}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              content_copy
+            </span>
+          </button>
+        )}
         <span className="viewer-path" title={buffer.relPath}>
           {buffer.relPath}
         </span>

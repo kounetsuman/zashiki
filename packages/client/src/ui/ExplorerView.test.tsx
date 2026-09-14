@@ -291,30 +291,24 @@ describe("ExplorerView context menu", () => {
     await openFileMenu({});
     for (const label of [
       "Finderで表示",
-      "パスをコピー",
-      "相対パスをコピー",
+      "絶対パスをコピー",
       "名前を変更",
       "削除",
     ]) {
       expect(screen.getByRole("menuitem", { name: label })).toBeTruthy();
     }
+    expect(
+      screen.queryByRole("menuitem", { name: "相対パスをコピー" }),
+    ).toBeNull();
   });
 
-  it("copies the absolute and relative paths via onCopyText", async () => {
+  it("copies the absolute path via onCopyText", async () => {
     const onCopyText = vi.fn();
     await openFileMenu({ onCopyText });
     await act(async () => {
-      fireEvent.click(screen.getByText("パスをコピー"));
+      fireEvent.click(screen.getByText("絶対パスをコピー"));
     });
     expect(onCopyText).toHaveBeenCalledWith(`${REPO}/src/app.ts`);
-
-    await act(async () => {
-      fireEvent.contextMenu(screen.getByText("app.ts"));
-    });
-    await act(async () => {
-      fireEvent.click(screen.getByText("相対パスをコピー"));
-    });
-    expect(onCopyText).toHaveBeenLastCalledWith("src/app.ts");
   });
 
   it("renames inline, calling api.rename and onPathRenamed", async () => {

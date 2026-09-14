@@ -1,16 +1,12 @@
 import { type CockpitTerminalInfo, claudeSessionId } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
-
-interface ViewerMenuFile {
-  repoPath: string;
-  relPath: string;
-}
+import type { RepoFile } from "../viewer/viewer-model.js";
 
 export interface TabContextMenuProps {
   menu: {
     key: string;
     cockpitTerminalId: string | null;
-    viewer: ViewerMenuFile | null;
+    viewer: RepoFile | null;
     pinnable: boolean;
     pinned: boolean;
     x: number;
@@ -26,16 +22,15 @@ export interface TabContextMenuProps {
   onUnpin?(key: string): void;
   onDuplicate?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
-  onReveal?(file: ViewerMenuFile): void;
-  onCopyPath?(file: ViewerMenuFile): void;
-  onCopyRelativePath?(file: ViewerMenuFile): void;
-  onRename?(key: string, file: ViewerMenuFile): void;
+  onReveal?(file: RepoFile): void;
+  onCopyPath?(file: RepoFile): void;
+  onRename?(key: string, file: RepoFile): void;
 }
 
 /**
  * Right-click menu overlay for a tab. Close is hidden for a pinned tab (it must be unpinned first);
  * Pin/Unpin renders for any pinnable tab; duplicate / copy session id render only for session tabs;
- * reveal / copy paths / rename render only for viewer tabs.
+ * reveal / copy path / rename render only for viewer tabs.
  */
 export function TabContextMenu({
   menu,
@@ -49,7 +44,6 @@ export function TabContextMenu({
   onCopySessionId,
   onReveal,
   onCopyPath,
-  onCopyRelativePath,
   onRename,
 }: TabContextMenuProps) {
   const { t } = useTranslation();
@@ -61,7 +55,7 @@ export function TabContextMenu({
   const canDuplicate = target !== undefined && claudeSessionId(target) !== null;
   const canCopySessionId =
     target !== undefined && claudeSessionId(target) !== null;
-  const fileItem = (label: string, run: (f: ViewerMenuFile) => void) =>
+  const fileItem = (label: string, run: (f: RepoFile) => void) =>
     viewer !== null && (
       <button
         type="button"
@@ -178,9 +172,7 @@ export function TabContextMenu({
         {onReveal !== undefined &&
           fileItem(t("explorer.revealInFinder"), onReveal)}
         {onCopyPath !== undefined &&
-          fileItem(t("explorer.copyPath"), onCopyPath)}
-        {onCopyRelativePath !== undefined &&
-          fileItem(t("explorer.copyRelativePath"), onCopyRelativePath)}
+          fileItem(t("common.copyAbsPath"), onCopyPath)}
         {viewer !== null && onRename !== undefined && (
           <button
             type="button"

@@ -45,7 +45,7 @@ export interface Viewer {
   togglePreview(key: string): void;
   /** Leaves the alternate rendering, so a line can be revealed in the text view. */
   showText(key: string): void;
-  /** Absolute path of the buffer at key, or null when it is gone. */
+  /** Absolute path of the buffer at key, or null when it is gone or external (no repo path). */
   pathOf(key: string): string | null;
 }
 
@@ -160,8 +160,8 @@ export function useViewer(
 
   const pathOf = useCallback((key: string): string | null => {
     const buf = buffersRef.current[key];
-    if (buf === undefined) return null;
-    return buf.external ? buf.relPath : `${buf.repoPath}/${buf.relPath}`;
+    if (buf === undefined || buf.external === true) return null;
+    return `${buf.repoPath}/${buf.relPath}`;
   }, []);
 
   useEffect(() => {

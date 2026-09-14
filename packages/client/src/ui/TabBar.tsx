@@ -56,8 +56,6 @@ export interface TabBarProps {
   onRevealFile?(repoPath: string, relPath: string): void;
   /** Copy a viewer tab's absolute path. Menu item hidden when unspecified. */
   onCopyFilePath?(repoPath: string, relPath: string): void;
-  /** Copy a viewer tab's repo-relative path. Menu item hidden when unspecified. */
-  onCopyFileRelativePath?(repoPath: string, relPath: string): void;
   /** Commits an inline rename of a viewer tab's file. Rename is disabled when unspecified. */
   onRenameFile?(repoPath: string, relPath: string, newName: string): void;
 }
@@ -89,7 +87,6 @@ export function TabBar({
   onCopySessionId,
   onRevealFile,
   onCopyFilePath,
-  onCopyFileRelativePath,
   onRenameFile,
 }: TabBarProps) {
   const { t } = useTranslation();
@@ -101,15 +98,13 @@ export function TabBar({
   const viewerMenuItems =
     (onRevealFile !== undefined ? 1 : 0) +
     (onCopyFilePath !== undefined ? 1 : 0) +
-    (onCopyFileRelativePath !== undefined ? 1 : 0) +
     (onRenameFile !== undefined ? 1 : 0);
   const pinMenuItems = onPin !== undefined || onUnpin !== undefined ? 1 : 0;
-  const contextMenu = useTabContextMenu(
-    1 +
-      (onCloseAll !== undefined ? 1 : 0) +
-      pinMenuItems +
-      Math.max(sessionMenuItems, viewerMenuItems),
-  );
+  const contextMenu = useTabContextMenu({
+    base: 1 + (onCloseAll !== undefined ? 1 : 0) + pinMenuItems,
+    session: sessionMenuItems,
+    viewer: viewerMenuItems,
+  });
 
   // Scroll the tab into view the moment it becomes active (ref fires on attach).
   const scrollActiveIntoView = useCallback((node: HTMLDivElement | null) => {
@@ -225,11 +220,6 @@ export function TabBar({
             onCopyFilePath === undefined
               ? undefined
               : (f) => onCopyFilePath(f.repoPath, f.relPath)
-          }
-          onCopyRelativePath={
-            onCopyFileRelativePath === undefined
-              ? undefined
-              : (f) => onCopyFileRelativePath(f.repoPath, f.relPath)
           }
           onRename={
             onRenameFile === undefined
