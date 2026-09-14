@@ -742,9 +742,8 @@ textarea {
   align-items: stretch;
 }
 
-/* Capped so the pinned strip can never swallow the bar and leave the other tabs unreachable. It
- * keeps its width when those tabs overflow (so their scrolling never eats into it), and scrolls
- * within itself in the extreme where its own tabs no longer fit even after narrowing. */
+/* Capped so the strip can never swallow the bar and strand the other tabs. It holds its width when
+ * those overflow, so their scrolling never eats into it. */
 .tab-strip-pinned {
   flex: 0 0 auto;
   max-width: 66%;
@@ -753,8 +752,8 @@ textarea {
   border-right: 1px solid #333;
 }
 
-/* With no other tabs open there is nothing to keep reachable, so the cap has nothing to protect. */
-.tab-strip-pinned-only {
+/* No other tab to strand, so the cap is lifted and pinned tabs keep the one width. */
+.tab-strip-pinned.tab-strip-pinned-only {
   max-width: 100%;
 }
 
@@ -770,8 +769,8 @@ textarea {
   display: none;
 }
 
-/* Every tab is the same width — the width of the longest label the strip can show before it
- * ellipsizes — so the close buttons line up and a tab never resizes when its title changes. */
+/* One width for every tab, so the close buttons line up and a tab never resizes when its title
+ * changes. */
 .tab {
   display: flex;
   align-items: center;
@@ -784,12 +783,17 @@ textarea {
   color: #9a9a9a;
 }
 
-/* Against the cap above, a pinned tab narrows instead of being cut off: the close button and the
- * unsaved-changes dot sit at its right edge, which is the edge that would go. It stops at the width
- * of those controls (pin, icon, mark) so they can't collide; past that the strip scrolls. */
+/* Against the cap above, a pinned tab narrows rather than lose its right edge, where the close and
+ * unsaved-changes marks sit. The floor is what its own controls occupy (pin, icon, mark, padding);
+ * below that the strip scrolls instead. */
 .tab-strip-pinned .tab {
   flex: 0 1 auto;
   min-width: 96px;
+}
+
+/* Uncapped, there is room to scroll instead of narrowing. */
+.tab-strip-pinned.tab-strip-pinned-only .tab {
+  flex: none;
 }
 
 .tab:hover {
