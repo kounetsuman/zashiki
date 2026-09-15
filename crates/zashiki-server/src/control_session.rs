@@ -183,10 +183,22 @@ pub(crate) async fn handle_session_restart(
         }
         // The terminal is stopped rather than unchanged, so the list has to catch up either way.
         RestartOutcome::NotStarted => {
+            // Keyed by terminal, the way the account-switch pass records the same failure: retrying a
+            // spawn that keeps failing updates the one row instead of stacking another per click.
+            services.hub.record_error(
+                format!("restart-failed:{cockpit_terminal_id}"),
+                "restart_failed",
+                &format!(
+                    "{} を再起動できず、停止したままです。もう一度再起動すると会話を再開できます。",
+                    meta.wname
+                ),
+                crate::now_ms(),
+            );
             let message = format!(
                 "cockpit terminal {cockpit_terminal_id} could not be relaunched and is now stopped"
             );
-            let ok = report_error(socket, &services.hub, "restart_failed", &message).await;
+            let ok =
+                crate::control_dispatch::reply_refusal(socket, "restart_failed", &message).await;
             trigger_refresh(services).await;
             ok
         }
