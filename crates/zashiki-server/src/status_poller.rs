@@ -24,13 +24,16 @@ const TITLE_MAX_CHARS: usize = 30;
 /// The wire value for a terminal whose process has ended (`CockpitTerminalState::Exited`).
 const EXITED_WIRE: &str = "exited";
 
+/// Wire value for a terminal whose process is up but is not running claude.
+const NO_CLAUDE_WIRE: &str = "no_claude";
+
 /// Detect Background Activity edges between two snapshots: per terminal, a subagent / background-shell
 /// count crossing 0→>0 fires a start, >0→0 fires an end. Only terminals present in both snapshots are
 /// considered, so a newly-appearing terminal (or the first poll cycle, which has no previous snapshot)
 /// never fires — a reconnect or restart that resends running state does not burst. Absent counts read
 /// as 0.
 ///
-/// A terminal reports no edge at all while its process is gone or has just been replaced: an end
+/// A terminal reports no edge at all while claude is gone from it or it has just been replaced: an end
 /// would claim work finished when it was cut off, and a start would attribute a survivor's activity to
 /// a terminal that is no longer running it. `replaced` names the terminals whose process changed this
 /// round (a restart, or an account switch).
@@ -64,6 +67,7 @@ pub fn detect_activity_transitions(
         ];
         for (prev_n, cur_n, start, end) in counts {
             let settled = session.state != EXITED_WIRE
+                && session.state != NO_CLAUDE_WIRE
                 && !replaced.contains(&session.cockpit_terminal_id);
             let kind = if prev_n == 0 && cur_n > 0 && settled {
                 Some(start)
@@ -1785,6 +1789,17 @@ mod tests {
         let mut ended = sess("@1", Some(0), Some(0));
         ended.state = "exited".to_string();
         let events = detect_activity_transitions(&prev, &snap(vec![ended]), &HashSet::new());
+        assert!(events.is_empty(), "got {:?}", kinds(&events));
+    }
+
+    /// Quitting claude back to the login shell cuts its background work off just the same, so that
+    /// terminal reports no end either — the shell being up does not make the work finished.
+    #[test]
+    fn a_terminal_that_lost_claude_fires_no_activity_end() {
+        let prev = snap(vec![sess("@1", Some(2), Some(1))]);
+        let mut lost = sess("@1", Some(0), Some(0));
+        lost.state = "no_claude".to_string();
+        let events = detect_activity_transitions(&prev, &snap(vec![lost]), &HashSet::new());
         assert!(events.is_empty(), "got {:?}", kinds(&events));
     }
 
