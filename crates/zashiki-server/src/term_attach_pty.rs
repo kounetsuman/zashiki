@@ -84,6 +84,11 @@ fn apply_term_size(session: &PtySession, services: &ControlServices, term_id: &s
 /// bound right away.
 const BIND_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// How long a bridge keeps a socket whose session is gone, covering the `term.select` that follows
+/// closing the terminal on screen. Capped by the heartbeat, which is the other thing that can release
+/// it, so a shortened tick in a test does not wait out a production grace.
+const RELEASE_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
+
 pub async fn attach_owned_term(mut socket: WebSocket, term_id: String, services: ControlServices) {
     let outcome = services.terms.lock().unwrap().try_mark_attached(&term_id);
     match outcome {
@@ -203,6 +208,15 @@ fn note_dead_pty(term_id: &str, session: &PtySession, data: &[u8]) {
     let _ = session.has_exited();
 }
 
+/// Starts the countdown to letting go of a term whose session is gone, unless one is already running.
+/// Left alone once armed, so a session that stays gone is released on the first grace rather than
+/// having it renewed by every heartbeat that finds it still missing.
+fn arm_release(at: &mut Option<tokio::time::Instant>, grace: std::time::Duration) {
+    if at.is_none() {
+        *at = Some(tokio::time::Instant::now() + grace);
+    }
+}
+
 /// The main loop: subscribe -> initial restore (raw ring replay + redraw sequence) -> then run
 /// live/input/backpressure/heartbeat. Because an owned PTY's attach target can be swapped on a tab switch
 /// (term.select), watch for session_id changes via `bind_notify`; on change, re-subscribe to the new PTY
@@ -235,8 +249,9 @@ async fn run_bridge(
     let mut alive = true;
     // Set once the session's output stream closes; see the `RecvError::Closed` arm below.
     let mut ended = false;
-    // Consecutive heartbeats that found no session for this term; see the heartbeat arm.
-    let mut missing_ticks = 0u32;
+    // When to let go of a term whose session is gone; see `arm_release`.
+    let mut release_at: Option<tokio::time::Instant> = None;
+    let release_grace = RELEASE_GRACE.min(services.heartbeat);
 
     let resume_notify = services
         .terms
@@ -260,7 +275,15 @@ async fn run_bridge(
     let mut paused = false;
 
     loop {
+        let release_deadline = release_at;
         tokio::select! {
+            // Nothing is waiting to be released unless a deadline is armed, so this arm idles forever.
+            _ = async move {
+                match release_deadline {
+                    Some(at) => tokio::time::sleep_until(at).await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => break,
             _ = heartbeat.tick() => {
                 // A restart swaps the PTY without changing the session id, so `bind_notify` stays
                 // quiet. The reconnect notice normally brings the client back at once; this is the
@@ -282,16 +305,14 @@ async fn run_bridge(
                     // An empty binding means the term itself is gone — `term.close` took its entry —
                     // and reaches the release path below, since no session is registered under "".
                     match services.sessions.get(&current_sid).await {
-                        // Out of the registry: the terminal was closed, not restarted. Given one more
-                        // tick before letting go, because closing the terminal on screen removes it
-                        // before the client's `term.select` for the next one arrives — dropping the
+                        // Out of the registry: the terminal was closed, not restarted. Released after
+                        // the grace rather than at once, because closing the terminal on screen removes
+                        // it before the client's `term.select` for the next one arrives — dropping the
                         // socket in that gap is the reconnect-and-replay this bridge stays open to
-                        // avoid. Holding it forever would pin a scrollback nothing accounts for, so the
-                        // second consecutive miss releases.
-                        None if missing_ticks > 0 => break,
-                        None => missing_ticks += 1,
+                        // avoid.
+                        None => arm_release(&mut release_at, release_grace),
                         Some(current) if !Arc::ptr_eq(&current, &session) => {
-                            missing_ticks = 0;
+                            release_at = None;
                             bound_sid = current_sid;
                             session = current;
                             apply_term_size(&session, services, term_id);
@@ -304,7 +325,7 @@ async fn run_bridge(
                                 Err(()) => break,
                             }
                         }
-                        Some(_) => missing_ticks = 0,
+                        Some(_) => release_at = None,
                     }
                 }
                 if !alive {
@@ -351,8 +372,11 @@ async fn run_bridge(
                 // even when the user is simply switching to another terminal — the `term.select` that
                 // follows rebinds this bridge in place. Staying attached also keeps the last screen
                 // readable and lets a restart hand this term a live PTY again. A bridge whose session
-                // really is gone for good is released by the heartbeat below.
-                Err(RecvError::Closed) => ended = true,
+                // really is gone for good is released once the grace below runs out.
+                Err(RecvError::Closed) => {
+                    ended = true;
+                    arm_release(&mut release_at, release_grace);
+                }
             },
             // ack has progressed to the low watermark and a resume was signaled -> re-read shared state.
             // On resume, resend the current screen to recover the output discarded while paused (screen
@@ -398,8 +422,8 @@ async fn run_bridge(
                 }
                 bound_sid = next_sid;
                 session = next_session;
-                // The term has a session again, so the grace before releasing starts over.
-                missing_ticks = 0;
+                // The term has a session again, so nothing is waiting to be released.
+                release_at = None;
                 // Align the swap-target PTY to the TermEntry's real size too (so size stays consistent
                 // after a tab switch).
                 apply_term_size(&session, services, term_id);
@@ -1000,9 +1024,9 @@ mod tests {
     async fn removing_the_bound_session_releases_the_bridge() {
         use futures_util::SinkExt;
         use tokio_tungstenite::tungstenite::Message as TMsg;
-        // The release is the heartbeat's job — the stream closing does not end the bridge, because the
-        // same thing happens when the user merely switches terminals. Shortened here so the test does
-        // not wait out a production tick.
+        // The stream closing does not end the bridge on its own, because the same thing happens when
+        // the user merely switches terminals. Shortened here so the test does not wait out a
+        // production tick.
         let mut services = services_with_pty("t1", "sess-1", cat_cfg()).await;
         services.heartbeat = Duration::from_millis(50);
         let sessions = services.sessions.clone();
@@ -1025,6 +1049,35 @@ mod tests {
         })
         .await;
         assert_eq!(closed, Ok(true), "the bridge should release the socket");
+    }
+
+    /// And it lets go on its own grace rather than on the heartbeat: waiting for a tick would leave the
+    /// pane rendering a dead screen and swallowing input for up to a minute of production interval.
+    #[tokio::test]
+    async fn a_removed_session_releases_the_bridge_without_waiting_for_a_heartbeat() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        let mut services = services_with_pty("t1", "sess-1", cat_cfg()).await;
+        services.heartbeat = Duration::from_secs(600);
+        let sessions = services.sessions.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        ws.send(TMsg::Binary("hello\n".into())).await.unwrap();
+        assert!(recv_until(&mut ws, "hello", 3000).await.contains("hello"));
+
+        sessions.remove("sess-1").await;
+
+        use futures_util::StreamExt;
+        let closed = tokio::time::timeout(RELEASE_GRACE + Duration::from_millis(2000), async {
+            loop {
+                match ws.next().await {
+                    Some(Ok(_)) => continue,
+                    _ => return true,
+                }
+            }
+        })
+        .await;
+        assert_eq!(closed, Ok(true), "the bridge should not wait for a heartbeat");
     }
 
     /// The client reuses one term slot for every Cockpit Terminal, so switching away from one that
