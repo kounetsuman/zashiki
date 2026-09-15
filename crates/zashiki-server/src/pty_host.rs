@@ -19,6 +19,7 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::broadcast;
@@ -152,18 +153,43 @@ fn screen_restore_sequence(screen: &vt100::Screen) -> Vec<u8> {
     out
 }
 
+/// Number of times opening a PTY is attempted before a spawn is reported as failed.
+const OPENPTY_ATTEMPTS: usize = 4;
+
+/// Pause between PTY open attempts.
+const OPENPTY_RETRY_DELAY: Duration = Duration::from_millis(5);
+
+/// macOS refuses an occasional PTY allocation under concurrency even with hundreds of slots free
+/// (measured at roughly one in five thousand parallel calls), which a burst of spawns - restoring
+/// every terminal at startup - runs into. Retrying turns that into a short delay rather than a
+/// terminal that never opens.
+fn open_pty_with_retry<T, E>(mut open: impl FnMut() -> Result<T, E>) -> Result<T, E> {
+    let mut attempt = 1;
+    loop {
+        match open() {
+            Ok(opened) => return Ok(opened),
+            Err(_) if attempt < OPENPTY_ATTEMPTS => {
+                thread::sleep(OPENPTY_RETRY_DELAY);
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
 impl PtySession {
     /// Opens the PTY, launches `command`, and starts a single reader thread.
     pub fn spawn(config: PtyConfig) -> std::io::Result<Self> {
         let pty_system = native_pty_system();
-        let pair = pty_system
-            .openpty(PtySize {
+        let pair = open_pty_with_retry(|| {
+            pty_system.openpty(PtySize {
                 rows: config.rows,
                 cols: config.cols,
                 pixel_width: 0,
                 pixel_height: 0,
             })
-            .map_err(to_io)?;
+        })
+        .map_err(to_io)?;
 
         let child = pair.slave.spawn_command(config.command).map_err(to_io)?;
         // The portable-pty pty backend always returns a PID. None is unexpected, so we fail the spawn
@@ -1005,5 +1031,35 @@ mod tests {
 
     fn contains(haystack: &[u8], needle: &[u8]) -> bool {
         haystack.windows(needle.len()).any(|w| w == needle)
+    }
+
+    #[test]
+    fn opening_a_pty_retries_a_transient_failure() {
+        let attempts = std::cell::Cell::new(0);
+
+        let opened = open_pty_with_retry(|| {
+            attempts.set(attempts.get() + 1);
+            if attempts.get() < OPENPTY_ATTEMPTS {
+                Err("transient")
+            } else {
+                Ok("opened")
+            }
+        });
+
+        assert_eq!(opened, Ok("opened"));
+        assert_eq!(attempts.get(), OPENPTY_ATTEMPTS);
+    }
+
+    #[test]
+    fn opening_a_pty_gives_up_once_the_attempts_are_spent() {
+        let attempts = std::cell::Cell::new(0);
+
+        let opened: Result<&str, &str> = open_pty_with_retry(|| {
+            attempts.set(attempts.get() + 1);
+            Err("unavailable")
+        });
+
+        assert_eq!(opened, Err("unavailable"));
+        assert_eq!(attempts.get(), OPENPTY_ATTEMPTS);
     }
 }
