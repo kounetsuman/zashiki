@@ -426,10 +426,9 @@ impl StatusPoller {
         }
 
         // Only sids with a live fd1 output need a transcript read to tell bg from fg; absent that,
-        // there is nothing resident (0 shells is omitted, not sent as 0). An ended terminal usually has
-        // no sid to resolve and so reports none, but a claude of its own that outlived it — reparented,
-        // still carrying the session id — keeps the sid resolvable and its shells counted. That is the
-        // honest reading: those processes are running, whatever became of the terminal that started them.
+        // there is nothing resident (0 shells is omitted, not sent as 0). An ended terminal reports
+        // none: the sid is resolved by walking the pane's own subtree, and anything that outlived the
+        // terminal was reparented out of it.
         let mut shells_running: Option<u32> = None;
         if let Some(sid) = &sid {
             if shell_outputs.iter().any(|o| &o.sid == sid) {
