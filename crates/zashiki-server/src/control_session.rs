@@ -195,13 +195,11 @@ pub(crate) async fn handle_session_restart(
         RestartOutcome::NotStarted => {
             // Keyed by terminal, the way the account-switch pass records the same failure: retrying a
             // spawn that keeps failing updates the one row instead of stacking another per click.
-            services.hub.record_error(
-                format!("restart-failed:{cockpit_terminal_id}"),
+            services.hub.record_terminal_error(
+                relaunch_failed_notification_id(cockpit_terminal_id),
                 "restart_failed",
-                &format!(
-                    "{} を再起動できず、停止したままです。もう一度再起動すると会話を再開できます。",
-                    meta.wname
-                ),
+                &relaunch_failed_body(&meta.wname),
+                cockpit_terminal_id,
                 crate::now_ms(),
             );
             let message = format!(
@@ -213,6 +211,17 @@ pub(crate) async fn handle_session_restart(
             ok
         }
     }
+}
+
+/// The notification a terminal left stopped by a failed relaunch carries. Shared with the
+/// account-switch pass, which reports the same failure with its own code.
+pub(crate) fn relaunch_failed_body(wname: &str) -> String {
+    format!("{wname} を再起動できず、停止したままです。もう一度再起動すると会話を再開できます。")
+}
+
+/// Its id, which is also how a later success retracts it.
+pub(crate) fn relaunch_failed_notification_id(cockpit_terminal_id: &str) -> String {
+    format!("restart-failed:{cockpit_terminal_id}")
 }
 
 /// What a restart attempt did, which the caller needs because the failures differ: one leaves the
@@ -325,10 +334,26 @@ pub(crate) async fn restart_in_place(
     // re-attaching to the new PTY straight away.
     let term_ids = services.terms.lock().unwrap().term_ids_for_session(id);
     if !term_ids.is_empty() {
+        // Woken directly as well as told to reconnect: the notice only reaches clients whose control
+        // socket is up at that moment, and a bridge that misses it stays on the dead PTY — silently
+        // dropping what is typed into it — until a heartbeat comes round.
+        {
+            let terms = services.terms.lock().unwrap();
+            for term_id in &term_ids {
+                if let Some(notify) = terms.bind_notify(term_id) {
+                    notify.notify_one();
+                }
+            }
+        }
         services
             .hub
             .broadcast(crate::protocol::ServerMessage::TermReconnect { term_ids });
     }
+    // An earlier failure on this terminal is no longer true. Left standing it would tell the user a
+    // terminal they are looking at is stopped.
+    services
+        .hub
+        .dismiss_notification(&relaunch_failed_notification_id(id));
     RestartOutcome::Restarted
 }
 
@@ -445,6 +470,84 @@ mod tests {
         for busy in ["running", "running_bg_agent", "waiting_input", "idle", "watching"] {
             assert!(!restartable(false, Some(busy), false), "{busy} is not restartable");
         }
+    }
+
+    /// The ids in the most recent notification sync seen on `rx`, or `None` if none arrived — which is
+    /// not the same as an empty list, and is what tells a missing retraction from a completed one.
+    async fn synced_notification_ids(
+        rx: &mut tokio::sync::broadcast::Receiver<crate::protocol::ServerMessage>,
+    ) -> Option<Vec<String>> {
+        let mut ids = None;
+        while let Ok(msg) = rx.try_recv() {
+            if let crate::protocol::ServerMessage::NotificationsSync { items } = msg {
+                ids = Some(items.into_iter().map(|n| n.id).collect());
+            }
+        }
+        ids
+    }
+
+    /// A relaunch that works takes back the notification an earlier failure left: the row it says is
+    /// stopped is the one the user is now looking at, running.
+    #[tokio::test]
+    async fn a_successful_restart_retracts_the_failure_it_had_left() {
+        let sessions = Arc::new(SessionRegistry::new());
+        sessions
+            .create_with_meta(SID.to_string(), sleep_cfg(), meta())
+            .await
+            .unwrap();
+        let services = services(sessions);
+        let mut rx = services.hub.subscribe();
+        let failure = relaunch_failed_notification_id(SID);
+        services.hub.record_terminal_error(
+            failure.clone(),
+            "restart_failed",
+            &relaunch_failed_body("repo"),
+            SID,
+            1,
+        );
+        assert!(synced_notification_ids(&mut rx)
+            .await
+            .expect("recording should have synced")
+            .contains(&failure));
+
+        assert_eq!(
+            restart_in_place(&services, SID, &meta(), "/bin/sh", "/bin/echo", None).await,
+            RestartOutcome::Restarted
+        );
+
+        assert!(!synced_notification_ids(&mut rx)
+            .await
+            .expect("the retraction should have synced")
+            .contains(&failure));
+    }
+
+    /// Terms bound to the restarted terminal are woken as well as told to reconnect: the notice only
+    /// reaches clients whose control socket is up right then, and a bridge that misses it keeps
+    /// rendering the dead PTY until a heartbeat comes round.
+    #[tokio::test]
+    async fn a_restart_wakes_the_terms_bound_to_it() {
+        let sessions = Arc::new(SessionRegistry::new());
+        sessions
+            .create_with_meta(SID.to_string(), sleep_cfg(), meta())
+            .await
+            .unwrap();
+        let services = services(sessions);
+        services.terms.lock().unwrap().commit(
+            crate::term_registry::TermEntry::new("t1".to_string(), SID.to_string(), 80, 24),
+        );
+        let notify = services.terms.lock().unwrap().bind_notify("t1").unwrap();
+
+        assert_eq!(
+            restart_in_place(&services, SID, &meta(), "/bin/sh", "/bin/echo", None).await,
+            RestartOutcome::Restarted
+        );
+
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(500), notify.notified())
+                .await
+                .is_ok(),
+            "the bridge on this term should have been woken"
+        );
     }
 
     /// A restart keeps the terminal where the user put it in the SESSION LIST, because the

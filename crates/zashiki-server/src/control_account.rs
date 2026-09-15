@@ -96,13 +96,11 @@ pub(crate) async fn restart_all_for_account(services: &ControlServices) {
         // Left on the account being switched away from, and only this terminal is affected — the user
         // has to be told which one, or they have no way to know the switch was partial.
         if outcome == crate::control_session::RestartOutcome::NotStarted {
-            services.hub.record_error(
+            services.hub.record_terminal_error(
                 format!("account-switch-failed:{id}"),
                 "account_switch_incomplete",
-                &format!(
-                    "{} を再起動できず、停止したままです。もう一度再起動すると会話を再開できます。",
-                    meta.wname
-                ),
+                &crate::control_session::relaunch_failed_body(&meta.wname),
+                &id,
                 crate::now_ms(),
             );
         }

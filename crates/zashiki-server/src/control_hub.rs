@@ -739,6 +739,33 @@ impl ControlHub {
     /// Enqueues a server error into NOTIFICATION and broadcasts notifications.sync to all
     /// connections. createdAt is kept
     /// monotonically increasing via the same `last_notification_at` as `record_activity`.
+    /// Records an error against one Cockpit Terminal, so the client can point at the row it is about.
+    /// Two terminals in the same repo otherwise produce notifications that read identically.
+    pub fn record_terminal_error(
+        &self,
+        id: String,
+        code: &str,
+        message: &str,
+        cockpit_terminal_id: &str,
+        now_ms: u64,
+    ) {
+        let items = {
+            let mut state = self.inner.write().unwrap();
+            let created = now_ms.max(state.last_notification_at + 1);
+            state.last_notification_at = created;
+            let mut n = crate::notifications::error_notification(id, code, message, created);
+            n.cockpit_terminal_id = Some(cockpit_terminal_id.to_string());
+            let next = crate::notifications::append_notification(
+                &state.notifications,
+                n,
+                crate::notifications::NOTIFICATIONS_MAX,
+            );
+            state.notifications = next.clone();
+            next
+        };
+        self.store_and_broadcast(items);
+    }
+
     pub fn record_error(&self, id: String, code: &str, message: &str, now_ms: u64) {
         let items = {
             let mut state = self.inner.write().unwrap();
@@ -1288,6 +1315,23 @@ mod tests {
             rx.recv().await.unwrap(),
             ServerMessage::NotificationsSync { .. }
         ));
+    }
+
+    /// An error recorded against a terminal carries its id, so the client can point at the row rather
+    /// than leaving the user to guess which of two terminals in a repo it means.
+    #[test]
+    fn a_terminal_error_names_the_terminal_it_is_about() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        hub.record_terminal_error("n1".to_string(), "restart_failed", "body", "@1", 1);
+        let recorded = hub
+            .inner
+            .read()
+            .unwrap()
+            .notifications
+            .last()
+            .cloned()
+            .unwrap();
+        assert_eq!(recorded.cockpit_terminal_id.as_deref(), Some("@1"));
     }
 
     #[test]
