@@ -159,9 +159,13 @@ fn screen_restore_sequence(screen: &vt100::Screen) -> Vec<u8> {
 /// Number of times opening a PTY is attempted before a spawn is reported as failed.
 const OPENPTY_ATTEMPTS: usize = 4;
 
+/// Pause between those attempts.
+const OPENPTY_RETRY_PAUSE: Duration = Duration::from_millis(1);
+
 /// macOS refuses an occasional PTY allocation even with hundreds of slots free, measured at roughly
-/// one in five thousand when ptys are opened concurrently across processes. Retrying straight away
-/// clears it, and costs next to nothing when a refusal turns out to be real exhaustion.
+/// one in five thousand when ptys are opened concurrently across processes. A brief pause between
+/// attempts covers a refusal that takes a moment to clear rather than clearing instantly; it is kept
+/// short because a spawn runs with the session registry locked.
 fn open_pty_with_retry<T, E: std::fmt::Display>(
     mut open: impl FnMut() -> Result<T, E>,
 ) -> Result<T, E> {
@@ -171,6 +175,7 @@ fn open_pty_with_retry<T, E: std::fmt::Display>(
             Ok(opened) => return Ok(opened),
             Err(e) if attempt < OPENPTY_ATTEMPTS => {
                 tracing::debug!("zashiki-server: pty の確保に失敗しました（試行 {attempt}）: {e}");
+                thread::sleep(OPENPTY_RETRY_PAUSE);
                 attempt += 1;
             }
             Err(err) => return Err(err),
