@@ -124,15 +124,17 @@ pub(crate) async fn handle_session_restart(
                 "restart_in_progress",
                 format!("cockpit terminal {cockpit_terminal_id} is still being relaunched"),
             ),
+            // Its screen could not be read this round, so what is running in it is as unknown as it is
+            // for a terminal no poll has reached yet - and claiming claude is running would be a guess.
+            Some("unknown") | None => (
+                "restart_unreported",
+                format!("cockpit terminal {cockpit_terminal_id} has not been reported on yet"),
+            ),
             Some(state) => (
                 "restart_busy",
                 format!(
                     "cockpit terminal {cockpit_terminal_id} is {state}; a restart is only offered where claude is not running"
                 ),
-            ),
-            None => (
-                "restart_unreported",
-                format!("cockpit terminal {cockpit_terminal_id} has not been reported on yet"),
             ),
         };
         return crate::control_dispatch::reply_refusal(socket, code, &message).await;
