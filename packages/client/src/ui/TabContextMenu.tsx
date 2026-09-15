@@ -60,7 +60,7 @@ export function TabContextMenu({
   // A no_claude terminal still has a live shell that may be running something, so restarting it asks
   // for a second click. The timestamp makes that independent of where the confirm lands: a
   // double-click cannot reach it, whatever row the arming item happened to be on.
-  const [restartArmedAt, setRestartArmedAt] = useState<number | null>(null);
+  const [restartArmed, setRestartArmed] = useState(false);
   const { cockpitTerminalId, viewer } = menu;
   const target =
     cockpitTerminalId === null
@@ -73,7 +73,7 @@ export function TabContextMenu({
   // does not return with the confirm already armed — the next click would then restart it outright.
   useEffect(() => {
     if (!canRestart) {
-      setRestartArmedAt(null);
+      setRestartArmed(false);
     }
   }, [canRestart]);
   const canCopySessionId =
@@ -108,11 +108,10 @@ export function TabContextMenu({
         role="menu"
         style={{ top: menu.y, left: menu.x }}
       >
-        {restartArmedAt !== null && canRestart && cockpitTerminalId !== null ? (
+        {restartArmed && canRestart && cockpitTerminalId !== null ? (
           <RestartConfirm
-            armedAt={restartArmedAt}
             target={target}
-            onCancel={() => setRestartArmedAt(null)}
+            onCancel={() => setRestartArmed(false)}
             onConfirm={() => {
               onRestart?.(cockpitTerminalId);
               closeMenu();
@@ -198,7 +197,7 @@ export function TabContextMenu({
                     // The backdrop closes the menu on any click that reaches it, which would discard
                     // the pending confirmation.
                     e.stopPropagation();
-                    setRestartArmedAt(Date.now());
+                    setRestartArmed(true);
                   }}
                 >
                   {t("common.restartSession")}

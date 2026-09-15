@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CockpitTerminalListView } from "./CockpitTerminalListView.js";
@@ -816,17 +822,18 @@ describe("CockpitTerminalListView: right-click menu", () => {
     );
     expect(props.onRestart).not.toHaveBeenCalled();
 
-    // A confirm this soon after arming is a double-click reaching the button that replaced the one it
-    // armed, not a decision.
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "ターミナルを再起動（確定）" }),
-    );
-    expect(props.onRestart).not.toHaveBeenCalled();
+    // A confirm this soon after arming would be a double-click reaching the button that replaced the
+    // one it armed, so it is not clickable yet — and looks it.
+    const confirm = () =>
+      screen.getByRole("menuitem", {
+        name: "ターミナルを再起動（確定）",
+      }) as HTMLButtonElement;
+    expect(confirm().disabled).toBe(true);
 
-    await new Promise((resolve) => setTimeout(resolve, ARM_SETTLE_MS + 50));
-    fireEvent.click(
-      screen.getByRole("menuitem", { name: "ターミナルを再起動（確定）" }),
-    );
+    await waitFor(() => expect(confirm().disabled).toBe(false), {
+      timeout: ARM_SETTLE_MS + 500,
+    });
+    fireEvent.click(confirm());
     expect(props.onRestart).toHaveBeenCalledWith(SID2);
   });
 
