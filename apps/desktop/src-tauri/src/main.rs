@@ -1,5 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+// Compiled everywhere, wired up only on macOS: CI checks and tests this crate on Linux, and the
+// test that pins the menu's event names to the page has to run there too.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod menu;
 mod pages;
 mod quit_log;
 mod sidecar;
@@ -156,8 +160,12 @@ fn main() {
     let win_token = quit_token_path.clone();
 
     let owned_in_setup = Arc::clone(&owned_server);
-    let build_result = tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    // Only macOS gets a menu from Tauri, and only there does the menu take the keystroke before the
+    // WebView; elsewhere a menu bar of our own would newly swallow Ctrl+Z on its way to the terminal.
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(menu::build).on_menu_event(menu::on_event);
+    let build_result = builder
         .manage(QuitBridge::default())
         .invoke_handler(tauri::generate_handler![
             open_devtools,
