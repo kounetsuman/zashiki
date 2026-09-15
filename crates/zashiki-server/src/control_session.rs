@@ -349,11 +349,14 @@ pub(crate) async fn restart_in_place(
             .hub
             .broadcast(crate::protocol::ServerMessage::TermReconnect { term_ids });
     }
-    // An earlier failure on this terminal is no longer true. Left standing it would tell the user a
-    // terminal they are looking at is stopped.
-    services
-        .hub
-        .dismiss_notification(&relaunch_failed_notification_id(id));
+    // An earlier failure on this terminal is no longer true, whichever pass recorded it. Left standing
+    // it would tell the user a terminal they are looking at is stopped.
+    for stale in [
+        relaunch_failed_notification_id(id),
+        crate::control_account::switch_failed_notification_id(id),
+    ] {
+        services.hub.dismiss_notification(&stale);
+    }
     RestartOutcome::Restarted
 }
 
@@ -486,8 +489,9 @@ mod tests {
         ids
     }
 
-    /// A relaunch that works takes back the notification an earlier failure left: the row it says is
-    /// stopped is the one the user is now looking at, running.
+    /// A relaunch that works takes back the notifications an earlier failure left — from either pass,
+    /// since both say the same thing: the row they call stopped is the one the user is looking at,
+    /// running.
     #[tokio::test]
     async fn a_successful_restart_retracts_the_failure_it_had_left() {
         let sessions = Arc::new(SessionRegistry::new());
@@ -498,27 +502,30 @@ mod tests {
         let services = services(sessions);
         let mut rx = services.hub.subscribe();
         let failure = relaunch_failed_notification_id(SID);
-        services.hub.record_terminal_error(
-            failure.clone(),
-            "restart_failed",
-            &relaunch_failed_body("repo"),
-            SID,
-            1,
-        );
-        assert!(synced_notification_ids(&mut rx)
+        let switch_failure = crate::control_account::switch_failed_notification_id(SID);
+        for id in [failure.clone(), switch_failure.clone()] {
+            services.hub.record_terminal_error(
+                id,
+                "restart_failed",
+                &relaunch_failed_body("repo"),
+                SID,
+                1,
+            );
+        }
+        let recorded = synced_notification_ids(&mut rx)
             .await
-            .expect("recording should have synced")
-            .contains(&failure));
+            .expect("recording should have synced");
+        assert!(recorded.contains(&failure) && recorded.contains(&switch_failure));
 
         assert_eq!(
             restart_in_place(&services, SID, &meta(), "/bin/sh", "/bin/echo", None).await,
             RestartOutcome::Restarted
         );
 
-        assert!(!synced_notification_ids(&mut rx)
+        let left = synced_notification_ids(&mut rx)
             .await
-            .expect("the retraction should have synced")
-            .contains(&failure));
+            .expect("the retraction should have synced");
+        assert!(!left.contains(&failure) && !left.contains(&switch_failure), "{left:?}");
     }
 
     /// Terms bound to the restarted terminal are woken as well as told to reconnect: the notice only

@@ -12,6 +12,12 @@ use crate::control::ControlServices;
 use crate::control_dispatch::trigger_refresh;
 use crate::control_hub::ControlHub;
 
+/// The id of the notification this pass leaves on a terminal it could not relaunch. Shared so a later
+/// restart that succeeds can take it back.
+pub(crate) fn switch_failed_notification_id(cockpit_terminal_id: &str) -> String {
+    format!("account-switch-failed:{cockpit_terminal_id}")
+}
+
 /// Runs the interactive `claude auth login` (browser OAuth) to completion, then re-reads and broadcasts
 /// the account. `claude auth` has no silent switch, so re-authenticating is how the account changes.
 /// Login is detached from any terminal: `claude` opens the browser itself and finishes via its
@@ -97,7 +103,7 @@ pub(crate) async fn restart_all_for_account(services: &ControlServices) {
         // has to be told which one, or they have no way to know the switch was partial.
         if outcome == crate::control_session::RestartOutcome::NotStarted {
             services.hub.record_terminal_error(
-                format!("account-switch-failed:{id}"),
+                switch_failed_notification_id(&id),
                 "account_switch_incomplete",
                 &crate::control_session::relaunch_failed_body(&meta.wname),
                 &id,
