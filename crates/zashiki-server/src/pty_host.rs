@@ -476,10 +476,8 @@ impl PtySession {
             // last `Arc`, and a join can take as long as a descendant that escaped the kill keeps the
             // pty slave open. That reader is also why the history is dropped here — it would otherwise
             // keep appending to a buffer nothing sums any more.
-            let mut inner = lock_recover(&self.inner);
-            inner.tx = None;
-            inner.retain = false;
-            inner.scrollback = ScrollbackBuffer::new();
+            lock_recover(&self.inner).tx = None;
+            self.release_history();
             return;
         }
         self.kill();
@@ -490,6 +488,16 @@ impl PtySession {
         // After the join, so the reader's last chunks are out. Ends every attached bridge, so a client
         // does not sit rendering a session that is gone — including one that missed the reconnect notice.
         self.close_output();
+        // A bridge can hold the last `Arc` for a heartbeat tick or two after this, and nothing sums a
+        // closed session's buffer any more, so the history is dropped here rather than with the session.
+        self.release_history();
+    }
+
+    /// Drops the scrollback and stops collecting more.
+    fn release_history(&self) {
+        let mut inner = lock_recover(&self.inner);
+        inner.retain = false;
+        inner.scrollback = ScrollbackBuffer::new();
     }
 }
 
@@ -797,6 +805,19 @@ mod tests {
         let mut sub = session.subscribe();
         drain_until(&mut sub, "before", 2000).await;
         session.stop();
+        assert!(session.scrollback_len() > 0);
+
+        session.shutdown();
+        assert_eq!(session.scrollback_len(), 0);
+    }
+
+    /// And one closed while it was still running: a bridge can hold the session for a heartbeat tick
+    /// or two after the close, and nothing sums a closed session's buffer any more.
+    #[tokio::test]
+    async fn closing_a_live_session_releases_its_history() {
+        let session = PtySession::spawn(sh("printf 'before\\n'; sleep 30")).unwrap();
+        let mut sub = session.subscribe();
+        drain_until(&mut sub, "before", 2000).await;
         assert!(session.scrollback_len() > 0);
 
         session.shutdown();
