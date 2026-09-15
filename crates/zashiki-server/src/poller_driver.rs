@@ -4,7 +4,7 @@
 //! sole observer.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -54,6 +54,9 @@ async fn evaluate_and_publish<P: PollerPorts>(
     config: &PollConfig,
     hub: &ControlHub,
 ) -> StateSnapshot {
+    // Taken before the inputs are read, so a restart confirmed while this poll is still resolving is
+    // not called off by a verdict formed before it happened.
+    let observed_at = Instant::now();
     let prev = poller.snapshot().cloned();
     let (snapshot, changed) = poller.evaluate(ports, config).await;
     if changed {
@@ -83,7 +86,7 @@ async fn evaluate_and_publish<P: PollerPorts>(
         .map(|s| s.cockpit_terminal_id.clone())
         .filter(|id| !mid_replacement.contains(id))
         .collect();
-    hub.clear_restart_marks(&claude_up, &no_claude, &live);
+    hub.clear_restart_marks(&claude_up, &no_claude, &live, observed_at);
     if let Some(prev) = prev {
         let events =
             detect_activity_transitions(&prev, &snapshot, poller.replaced_this_round());

@@ -462,8 +462,14 @@ impl ControlHub {
         claude_up: &HashSet<String>,
         no_claude: &HashSet<String>,
         live: &HashSet<String>,
+        observed_at: Instant,
     ) {
         self.inner.write().unwrap().relaunching.retain(|id, since| {
+            // A mark placed once this poll had already read its inputs describes a relaunch the poll
+            // never saw: the claude it resolved belongs to the process on its way out.
+            if *since >= observed_at {
+                return true;
+            }
             if claude_up.contains(id) || !live.contains(id) {
                 return false;
             }
@@ -838,29 +844,47 @@ mod tests {
         // there would offer a restart that kills the launch.
         let live = HashSet::from(["@1".to_string()]);
         let only = |id: &str| HashSet::from([id.to_string()]);
-        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live);
+        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live, Instant::now());
         assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
 
         // Cleared by the poll that finds claude running there.
-        hub.clear_restart_marks(&only("@1"), &HashSet::new(), &live);
+        hub.clear_restart_marks(&only("@1"), &HashSet::new(), &live, Instant::now());
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
 
         // A relaunch that has had its grace and still shows no claude is called off, so the user can
         // try again rather than being refused.
         hub.mark_restarted("@1");
         hub.age_relaunch_marks_for_test(RELAUNCH_SETTLE_GRACE);
-        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live);
+        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live, Instant::now());
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
 
         // A mark for a terminal that is gone is dropped too, rather than outliving the daemon.
         hub.mark_restarted("@1");
-        hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &HashSet::new());
+        hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &HashSet::new(), Instant::now());
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
 
         // And one that never settles at all expires with the TTL.
         hub.mark_restarted("@1");
         hub.age_relaunch_marks_for_test(RELAUNCH_MARK_TTL);
-        hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &live);
+        hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+    }
+
+    #[test]
+    fn a_restart_marked_after_a_poll_read_its_inputs_survives_that_poll() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let live = HashSet::from(["@1".to_string()]);
+        let only = |id: &str| HashSet::from([id.to_string()]);
+
+        // The poll reads its inputs, and the restart lands while it is still resolving them.
+        let observed_at = Instant::now();
+        hub.mark_restarted("@1");
+
+        hub.clear_restart_marks(&only("@1"), &HashSet::new(), &live, observed_at);
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
+
+        // The next poll, which read its inputs after the swap, does call it off.
+        hub.clear_restart_marks(&only("@1"), &HashSet::new(), &live, Instant::now());
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
     }
 
