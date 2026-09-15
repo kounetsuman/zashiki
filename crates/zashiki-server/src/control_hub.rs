@@ -738,9 +738,6 @@ impl ControlHub {
         self.store_and_broadcast(items);
     }
 
-    /// Enqueues a server error into NOTIFICATION and broadcasts notifications.sync to all
-    /// connections. createdAt is kept
-    /// monotonically increasing via the same `last_notification_at` as `record_activity`.
     /// Records an error against one Cockpit Terminal, so the client can point at the row it is about.
     /// Two terminals in the same repo otherwise produce notifications that read identically.
     pub fn record_terminal_error(
@@ -768,6 +765,9 @@ impl ControlHub {
         self.store_and_broadcast(items);
     }
 
+    /// Enqueues a server error into NOTIFICATION and broadcasts notifications.sync to all
+    /// connections. createdAt is kept monotonically increasing via the same `last_notification_at` as
+    /// `record_activity`.
     pub fn record_error(&self, id: String, code: &str, message: &str, now_ms: u64) {
         let items = {
             let mut state = self.inner.write().unwrap();
