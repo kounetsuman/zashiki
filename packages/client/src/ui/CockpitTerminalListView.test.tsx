@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CockpitTerminalListView } from "./CockpitTerminalListView.js";
-import { ARM_SETTLE_MS } from "./SessionContextMenu.js";
+import { ARM_SETTLE_MS } from "./RestartConfirm.js";
 
 const SID1 = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 const SID2 = "11111111-2222-4333-8444-555566667777";

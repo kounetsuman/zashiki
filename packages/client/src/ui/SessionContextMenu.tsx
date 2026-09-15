@@ -5,12 +5,8 @@ import {
 } from "@zashiki/shared";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RestartConfirm } from "./RestartConfirm.js";
 import type { ContextMenu } from "./session-list-model.js";
-
-/** A confirm this soon after arming is a double-click reaching the button that replaced the one it
- * armed, not a decision. Covers the usual double-click interval without making a deliberate confirm
- * feel blocked. */
-export const ARM_SETTLE_MS = 350;
 
 export interface SessionContextMenuProps {
   menu: ContextMenu;
@@ -43,10 +39,9 @@ export function SessionContextMenu({
 }: SessionContextMenuProps) {
   const { t } = useTranslation();
   // A no_claude terminal still has a live shell that may be running something, so restarting it asks
-  // for a second click, the way closing a row does. The timestamp makes that independent of where the
-  // confirm lands: a double-click cannot reach it, whatever row the arming item happened to be on.
+  // for a second click. The timestamp makes that independent of where the confirm lands: a
+  // double-click cannot reach it, whatever row the arming item happened to be on.
   const [restartArmedAt, setRestartArmedAt] = useState<number | null>(null);
-  const restartArmed = restartArmedAt !== null;
   const target =
     menu.kind === "row"
       ? cockpitTerminals.find(
@@ -92,47 +87,16 @@ export function SessionContextMenu({
           >
             {t("sessionList.newSession")}
           </button>
-        ) : restartArmed && canRestart ? (
-          // Confirming replaces the whole menu rather than growing it. Leaving the other items on
-          // screen would shift them under the pointer, so a click aimed at one of them would confirm;
-          // replacing it also moves both rows away from where the arming click landed.
-          <div className="session-context-confirm" role="none">
-            <button
-              type="button"
-              role="menuitem"
-              className="session-context-item"
-              onClick={(e) => {
-                e.stopPropagation();
-                setRestartArmedAt(null);
-              }}
-            >
-              {t("common.cancel")}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="session-context-item"
-              onClick={(e) => {
-                // Too soon means a double-click landed here, not a decision. Swallow it rather than
-                // letting it reach the backdrop, which would close the menu and lose the confirmation.
-                if (
-                  restartArmedAt !== null &&
-                  Date.now() - restartArmedAt < ARM_SETTLE_MS
-                ) {
-                  e.stopPropagation();
-                  return;
-                }
-                onRestart?.(menu.cockpitTerminalId);
-                closeMenu();
-              }}
-            >
-              {t(
-                target?.state === "no_claude"
-                  ? "common.restartSessionConfirmShell"
-                  : "common.restartSessionConfirm",
-              )}
-            </button>
-          </div>
+        ) : restartArmedAt !== null && canRestart ? (
+          <RestartConfirm
+            armedAt={restartArmedAt}
+            target={target}
+            onCancel={() => setRestartArmedAt(null)}
+            onConfirm={() => {
+              onRestart?.(menu.cockpitTerminalId);
+              closeMenu();
+            }}
+          />
         ) : (
           <>
             {onRename !== undefined &&
