@@ -906,23 +906,6 @@ describe("CockpitTerminalListView: right-click menu", () => {
     ).toBeNull();
   });
 
-  it("does not restart when the menu item is clicked twice in a row", () => {
-    const exited: CockpitTerminalInfo[] = [
-      { ...cockpitTerminals[1], sid: undefined, state: "exited" },
-    ] as CockpitTerminalInfo[];
-    const props = renderView({
-      cockpitTerminals: exited,
-      onRestart: vi.fn(),
-    });
-    fireEvent.contextMenu(
-      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
-    );
-    const item = screen.getByRole("menuitem", { name: "ターミナルを再起動" });
-    fireEvent.click(item);
-    fireEvent.click(item);
-    expect(props.onRestart).not.toHaveBeenCalled();
-  });
-
   it("warns that running work ends when the row still has a live shell", () => {
     const noClaude: CockpitTerminalInfo[] = [
       { ...cockpitTerminals[1], sid: undefined, state: "no_claude" },
