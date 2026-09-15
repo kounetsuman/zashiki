@@ -302,7 +302,9 @@ pub(crate) async fn restart_in_place(
     match &outcome {
         Ok(ReplaceOutcome::Gone) => return RestartOutcome::Gone,
         Ok(ReplaceOutcome::Busy) => return RestartOutcome::Busy,
-        Ok(ReplaceOutcome::Replaced) => {}
+        // Restamped now that the swap has happened: the mark above may belong to an earlier relaunch
+        // of this terminal, and this process is the one that has to reach claude.
+        Ok(ReplaceOutcome::Replaced) => services.hub.restamp_restarted(id),
         // A bad login shell, fd exhaustion and ptmx exhaustion all reach the user as the same
         // sentence, so the distinguishing detail has to land somewhere.
         Err(e) => tracing::warn!("zashiki-server: {id} の再起動に失敗しました: {e}"),

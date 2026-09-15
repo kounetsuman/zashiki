@@ -441,6 +441,21 @@ impl ControlHub {
     /// and the row falling back to "no claude" in the meantime would offer a restart that kills it. Deliberately does not touch the
     /// published snapshot: the poller decides whether to publish by comparing against its own copy, and
     /// editing the hub's behind its back would break that. The next published snapshot supersedes this.
+    /// Restarts the grace on an existing mark, for a relaunch that reached the swap while an earlier
+    /// one's mark was still standing. Adds no mark of its own — the one placed before the swap is what
+    /// covers the relaunch, and a terminal nothing is relaunching must not start reading `starting`.
+    pub fn restamp_restarted(&self, cockpit_terminal_id: &str) {
+        if let Some(since) = self
+            .inner
+            .write()
+            .unwrap()
+            .relaunching
+            .get_mut(cockpit_terminal_id)
+        {
+            *since = Instant::now();
+        }
+    }
+
     pub fn mark_restarted(&self, cockpit_terminal_id: &str) {
         self.inner
             .write()
@@ -867,6 +882,33 @@ mod tests {
         hub.mark_restarted("@1");
         hub.age_relaunch_marks_for_test(RELAUNCH_MARK_TTL);
         hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+    }
+
+    /// A relaunch that reached the swap while an earlier mark was still standing gets the full grace
+    /// from its own swap, not what was left of the first one.
+    #[test]
+    fn a_relaunch_that_replaced_the_process_gets_its_own_grace() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let live = HashSet::from(["@1".to_string()]);
+        let only = |id: &str| HashSet::from([id.to_string()]);
+
+        hub.mark_restarted("@1");
+        hub.age_relaunch_marks_for_test(CLAUDE_SETTLE_GRACE);
+        hub.mark_restarted("@1");
+        hub.restamp_restarted("@1");
+
+        // The first mark had used up its grace; the swap that just happened starts it over.
+        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
+    }
+
+    /// Restamping never marks a terminal on its own: a relaunch that was refused before the swap must
+    /// not leave the row reading `starting`.
+    #[test]
+    fn restamping_an_unmarked_terminal_leaves_it_unmarked() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        hub.restamp_restarted("@1");
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
     }
 
