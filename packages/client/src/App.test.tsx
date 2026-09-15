@@ -1006,7 +1006,7 @@ describe("App", () => {
     expect(control.sent.some((m) => m.t === "cockpitTerminal.new")).toBe(false);
   });
 
-  it("on term.reconnect, reattaches the pty via session.reconnect", () => {
+  it("on term.reconnect naming this term, reattaches the pty via session.reconnect", () => {
     const control = createFakeAppControl();
     const f = fakeAppSession();
     render(
@@ -1021,8 +1021,27 @@ describe("App", () => {
         reposApi={fakeReposApi}
       />,
     );
-    act(() => control.emit({ t: "term.reconnect", termIds: ["old-term"] }));
+    act(() => control.emit({ t: "term.reconnect", termIds: ["term-current"] }));
     expect(f.reconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a term.reconnect naming only other terms", () => {
+    const control = createFakeAppControl();
+    const f = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={f.session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
+        reposApi={fakeReposApi}
+      />,
+    );
+    act(() => control.emit({ t: "term.reconnect", termIds: ["other-term"] }));
+    expect(f.reconnect).not.toHaveBeenCalled();
   });
 
   it("the header reads SESSION LIST and has no manual save/restore buttons (automated)", () => {

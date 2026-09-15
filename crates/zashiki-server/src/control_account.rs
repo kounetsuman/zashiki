@@ -8,12 +8,25 @@
 use std::process::Stdio;
 use std::sync::Arc;
 
-use zashiki_core::save_file::{is_uuid_sid, SaveEntry};
-
 use crate::control::ControlServices;
 use crate::control_dispatch::trigger_refresh;
 use crate::control_hub::ControlHub;
-use crate::session_registry::SessionMeta;
+
+/// The id of the notification this pass leaves on a terminal it could not relaunch. Shared so a later
+/// restart that succeeds can take it back.
+pub(crate) fn switch_failed_notification_id(cockpit_terminal_id: &str) -> String {
+    format!("account-switch-failed:{cockpit_terminal_id}")
+}
+
+/// Every notice this pass can leave on one terminal. All of them describe a terminal left behind by
+/// the switch, so a restart that works disproves each one.
+pub(crate) fn switch_notification_ids(cockpit_terminal_id: &str) -> [String; 3] {
+    [
+        switch_failed_notification_id(cockpit_terminal_id),
+        format!("account-switch-cwd:{cockpit_terminal_id}"),
+        format!("account-switch-busy:{cockpit_terminal_id}"),
+    ]
+}
 
 /// Runs the interactive `claude auth login` (browser OAuth) to completion, then re-reads and broadcasts
 /// the account. `claude auth` has no silent switch, so re-authenticating is how the account changes.
@@ -44,11 +57,19 @@ async fn run_auth_and_publish(hub: Arc<ControlHub>, subcommand: &str) {
     hub.publish_account_status(crate::account_status::read_account_status(&claude).await);
 }
 
+/// How long the whole pass may spend **waiting** on terminals whose restart claim is held, and how
+/// long to wait between attempts. Only the waiting counts against the budget — the pass's own
+/// teardown-and-spawn time must not consume it, or the terminals at the tail of a long list would be
+/// abandoned without ever being retried. Shared across the pass, so a list of held terminals cannot
+/// stretch it by the full budget each.
+const BUSY_RETRY_BUDGET: std::time::Duration = std::time::Duration::from_secs(3);
+const BUSY_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(200);
+
 /// Restarts every registered Cockpit Terminal in place (same id) via `claude --resume <sid>`. Runs
 /// sequentially so each teardown finishes before its respawn (they share the registry). Sessions with
 /// a non-UUID id are skipped, and the whole pass is a no-op when claude isn't launched (nothing is
-/// bound to an account). A single respawn failure just leaves that terminal closed; the rest still get
-/// the fresh account, as do new sessions.
+/// bound to an account). A terminal whose relaunch fails stays in the list on its stopped session and
+/// can be restarted by hand; the rest still get the fresh account, as do new sessions.
 pub(crate) async fn restart_all_for_account(services: &ControlServices) {
     if !services.launch_claude {
         return;
@@ -59,36 +80,78 @@ pub(crate) async fn restart_all_for_account(services: &ControlServices) {
         crate::session_launch::account_usage_settings(services.hub.account_usage_enabled());
 
     let mut restarted = false;
+    let mut busy_wait_left = BUSY_RETRY_BUDGET;
     for (id, _session, meta) in services.sessions.entries().await {
-        if !is_uuid_sid(&id) {
-            continue;
-        }
-        let cwd = crate::session_launch::resolve_cwd(&meta.cwd);
-        let entry = SaveEntry {
-            widx: String::new(),
-            wname: meta.wname.clone(),
-            cwd: cwd.clone(),
-            sid: id.clone(),
-        };
-        let Some(plan) =
-            crate::session_restore::plan_resume(&entry, &shell, &claude, settings.as_deref())
-        else {
-            continue;
-        };
-        // Only respawn what we actually tore down: a false return means the terminal was closed
-        // concurrently, and recreating it would resurrect a session the user just dismissed.
-        if !services.sessions.remove(&id).await {
-            continue;
-        }
-        let _ = services
-            .sessions
-            .create_with_meta(
-                id,
-                crate::session_restore::plan_to_config(&plan),
-                SessionMeta { cwd, wname: meta.wname },
+        let mut outcome = crate::control_session::restart_in_place(
+            services,
+            &id,
+            &meta,
+            &shell,
+            &claude,
+            settings.as_deref(),
+        )
+        .await;
+        // A restart the user started moments ago holds this id; skipping it would leave that terminal
+        // on the account we are switching away from, so wait for the claim and take it.
+        while outcome == crate::control_session::RestartOutcome::Busy
+            && !busy_wait_left.is_zero()
+        {
+            let wait = BUSY_RETRY_INTERVAL.min(busy_wait_left);
+            tokio::time::sleep(wait).await;
+            busy_wait_left -= wait;
+            outcome = crate::control_session::restart_in_place(
+                services,
+                &id,
+                &meta,
+                &shell,
+                &claude,
+                settings.as_deref(),
             )
             .await;
-        restarted = true;
+        }
+        // Left on the account being switched away from, and only this terminal is affected — the user
+        // has to be told which one, or they have no way to know the switch was partial.
+        if outcome == crate::control_session::RestartOutcome::NotStarted {
+            services.hub.record_terminal_error(
+                switch_failed_notification_id(&id),
+                "account_switch_incomplete",
+                &crate::control_session::relaunch_failed_body(&meta.wname),
+                &id,
+                crate::now_ms(),
+            );
+        }
+        // Refused before the process was touched, so this one is still running claude on the account
+        // being switched away from — the same partial switch as the cases above.
+        if outcome == crate::control_session::RestartOutcome::CwdMissing {
+            services.hub.record_error(
+                format!("account-switch-cwd:{id}"),
+                "account_switch_incomplete",
+                &format!(
+                    "{} は作業ディレクトリが見つからず再起動できないため、切り替え前のアカウントのままです。",
+                    meta.wname
+                ),
+                crate::now_ms(),
+            );
+        }
+        if outcome == crate::control_session::RestartOutcome::Busy {
+            services.hub.record_error(
+                format!("account-switch-busy:{id}"),
+                "account_switch_incomplete",
+                &format!(
+                    "{} は再起動中だったため、切り替え前のアカウントのままです。",
+                    meta.wname
+                ),
+                crate::now_ms(),
+            );
+        }
+        // A relaunch that failed still tore the old process down, so the list is stale either way.
+        if matches!(
+            outcome,
+            crate::control_session::RestartOutcome::Restarted
+                | crate::control_session::RestartOutcome::NotStarted
+        ) {
+            restarted = true;
+        }
     }
 
     if restarted {

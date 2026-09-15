@@ -256,10 +256,42 @@ describe("createAppStore", () => {
     expect(t.changes.length).toBe(before);
   });
 
-  it("calls session.reconnect on receiving term.reconnect", () => {
+  it("calls session.reconnect on a term.reconnect that names this term", () => {
     const t = setup();
-    t.control.emit({ t: "term.reconnect", termIds: ["old-term"] });
+    t.control.emit({ t: "term.reconnect", termIds: ["term-current"] });
     expect(t.reconnects).toEqual([1]);
+  });
+
+  it("answers a refused restart in the user's language, not the server's sentence", () => {
+    const t = setup();
+    t.control.emit({
+      t: "error",
+      code: "restart_busy",
+      message:
+        "cockpit terminal 579fa8cf-4901-45cb-b9ec-17e229231a37 is running again",
+    });
+    const shown = t.store.getSnapshot().lastError;
+    expect(shown).not.toBeNull();
+    expect(shown).not.toContain("579fa8cf");
+    expect(shown).not.toContain("restart_busy");
+  });
+
+  it("answers a restart that is already running the same way", () => {
+    const t = setup();
+    t.control.emit({
+      t: "error",
+      code: "restart_in_progress",
+      message: "cockpit terminal x is already being restarted",
+    });
+    const shown = t.store.getSnapshot().lastError;
+    expect(shown).not.toBeNull();
+    expect(shown).not.toContain("restart_in_progress");
+  });
+
+  it("ignores a term.reconnect that names only other terms", () => {
+    const t = setup();
+    t.control.emit({ t: "term.reconnect", termIds: ["other-term"] });
+    expect(t.reconnects).toEqual([]);
   });
 
   it("plays the sound and adds a session toast (org alias + summary) on notify", () => {

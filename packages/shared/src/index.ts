@@ -181,6 +181,7 @@ export {
   type CockpitTerminalInfo,
   type CockpitTerminalState,
   type ConfigSyncMessage,
+  canRestartCockpitTerminal,
   claudeInstallSchema,
   claudeSessionId,
   clientMessageSchema,

@@ -67,6 +67,8 @@ pub async fn owned_work_windows(registry: &SessionRegistry) -> Vec<CockpitTermin
             cockpit_terminal_id: id.clone(),
             name: meta.wname,
             active: true,
+            exited: session.has_exited(),
+            replacing: registry.is_replacing(&id),
             panes: vec![CockpitTerminalPane {
                 pane_id: id,
                 active: true,

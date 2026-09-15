@@ -4,7 +4,7 @@ use zashiki_core::terminal_size::clamp_terminal_size;
 
 use crate::control::{to_text, ControlServices, RefreshRequest};
 use crate::control_hub::{state_sync_of, ControlHub};
-use crate::control_session::handle_session_new;
+use crate::control_session::{handle_session_new, handle_session_restart};
 use crate::control_term::handle_term_open;
 use crate::protocol::{ClientMessage, ServerMessage};
 use crate::status_poller::StateSnapshot;
@@ -259,6 +259,9 @@ pub(crate) async fn handle_client_message(
             trigger_refresh(services).await;
             true
         }
+        ClientMessage::CockpitTerminalRestart { cockpit_terminal_id } => {
+            handle_session_restart(socket, services, &cockpit_terminal_id).await
+        }
         ClientMessage::CockpitTerminalReorder { order } => {
             services.sessions.set_order(order).await;
             trigger_refresh(services).await;
@@ -366,6 +369,16 @@ pub(crate) async fn trigger_refresh(services: &ControlServices) {
 /// unique per occurrence (randomUUID).
 pub(crate) async fn report_error(socket: &mut WebSocket, hub: &ControlHub, code: &str, message: &str) -> bool {
     hub.record_error(uuid::Uuid::new_v4().to_string(), code, message, crate::now_ms());
+    let msg = ServerMessage::Error {
+        code: code.to_string(),
+        message: message.to_string(),
+    };
+    socket.send(to_text(&msg)).await.is_ok()
+}
+
+/// Answers the requester with `{t:"error"}` without enqueuing a notification. For a refusal that is
+/// about this one request — the user needs the answer, but nobody needs a red row about it later.
+pub(crate) async fn reply_refusal(socket: &mut WebSocket, code: &str, message: &str) -> bool {
     let msg = ServerMessage::Error {
         code: code.to_string(),
         message: message.to_string(),

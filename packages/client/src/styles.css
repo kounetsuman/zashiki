@@ -313,6 +313,15 @@ textarea {
   background: #2a2a2a;
 }
 
+/* Confirm pair inside a context menu. It replaces the menu rather than growing inside it, so the two
+   rows start at the menu's top while the item that armed them sat further down — a repeat click lands
+   on the backdrop and closes the menu. Stacked rather than side by side so neither row is wide enough
+   to reach under a pointer aimed at the other. */
+.session-context-confirm {
+  display: flex;
+  flex-direction: column;
+}
+
 .session-context-item:disabled {
   color: #666;
   cursor: default;
@@ -388,6 +397,10 @@ textarea {
 
 .state-no_claude {
   color: #777;
+}
+
+.state-exited {
+  color: #e06c75;
 }
 
 .state-unknown {

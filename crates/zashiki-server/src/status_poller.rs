@@ -3,7 +3,7 @@
 //! changed. The infra (screen capture / ps / jsonl reads) is injected via `PollerPorts`, and this module holds only
 //! the logic (timer driving and WS broadcast wiring come later).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use zashiki_core::process_tree::{build_process_maps, count_vitest_in_tree, parse_ps_snapshot};
 use zashiki_core::repos::org_of_cwd;
@@ -21,12 +21,32 @@ use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOu
 
 const TITLE_MAX_CHARS: usize = 30;
 
+/// The wire value for a terminal whose process has ended (`CockpitTerminalState::Exited`).
+const EXITED_WIRE: &str = "exited";
+
+/// Wire value for a terminal whose process is up but is not running claude.
+const NO_CLAUDE_WIRE: &str = "no_claude";
+
+/// Wire value for a terminal that has no claude yet but is still inside the startup grace. The poll
+/// that first sees claude gone publishes this, not `no_claude`, so an edge guard needs both.
+const STARTING_WIRE: &str = "starting";
+
 /// Detect Background Activity edges between two snapshots: per terminal, a subagent / background-shell
 /// count crossing 0→>0 fires a start, >0→0 fires an end. Only terminals present in both snapshots are
 /// considered, so a newly-appearing terminal (or the first poll cycle, which has no previous snapshot)
 /// never fires — a reconnect or restart that resends running state does not burst. Absent counts read
 /// as 0.
-pub fn detect_activity_transitions(prev: &StateSnapshot, cur: &StateSnapshot) -> Vec<NotifyEvent> {
+///
+/// A terminal reports no edge at all while claude is gone from it — including the startup grace, which
+/// is what the poll that first sees it gone publishes — or it has just been replaced: an end would
+/// claim work finished when it was cut off, and a start would attribute a survivor's activity to a
+/// terminal that is no longer running it. `replaced` names the terminals whose process changed this
+/// round (a restart, or an account switch).
+pub fn detect_activity_transitions(
+    prev: &StateSnapshot,
+    cur: &StateSnapshot,
+    replaced: &HashSet<String>,
+) -> Vec<NotifyEvent> {
     let mut events = Vec::new();
     for session in &cur.sessions {
         let Some(before) = prev
@@ -51,9 +71,13 @@ pub fn detect_activity_transitions(prev: &StateSnapshot, cur: &StateSnapshot) ->
             ),
         ];
         for (prev_n, cur_n, start, end) in counts {
-            let kind = if prev_n == 0 && cur_n > 0 {
+            let settled = session.state != EXITED_WIRE
+                && session.state != NO_CLAUDE_WIRE
+                && session.state != STARTING_WIRE
+                && !replaced.contains(&session.cockpit_terminal_id);
+            let kind = if prev_n == 0 && cur_n > 0 && settled {
                 Some(start)
-            } else if prev_n > 0 && cur_n == 0 {
+            } else if prev_n > 0 && cur_n == 0 && settled {
                 Some(end)
             } else {
                 None
@@ -99,6 +123,9 @@ pub struct StatusPoller {
     prev_open_tasks: HashMap<String, bool>,
     /// The consecutive no_claude poll count per window (material for the startup grace decision). Reset to 0 on anything other than no_claude.
     no_claude_streak: HashMap<String, u32>,
+    /// Terminals whose process was replaced during the last evaluate. Whatever work the old one had
+    /// was cut off with it, so it must not be reported as having finished.
+    replaced_this_round: HashSet<String>,
     /// The most recent picked pane pid per window. The basis for detecting a window rebuild from restore/kill
     /// (a pid change under the same cockpit_terminal_id) and resetting the streak (closes the gap where stale carried-over state disables the grace).
     last_pid: HashMap<String, i64>,
@@ -120,6 +147,12 @@ impl StatusPoller {
         self.last.as_ref()
     }
 
+    /// Terminals whose process was replaced during the last [`Self::evaluate`].
+    pub fn replaced_this_round(&self) -> &HashSet<String> {
+        &self.replaced_this_round
+    }
+
+
     /// Evaluates all windows to build a StateSnapshot. The returned bool indicates whether it changed from last time
     /// (the caller broadcasts only when true).
     pub async fn evaluate<P: PollerPorts>(
@@ -127,6 +160,7 @@ impl StatusPoller {
         ports: &P,
         config: &PollConfig,
     ) -> (StateSnapshot, bool) {
+        self.replaced_this_round.clear();
         let windows = ports.list_work_windows().await;
         let maps = build_process_maps(&parse_ps_snapshot(&ports.ps_snapshot().await));
         // No windows = no session to attribute a shell to, so skip the lsof spawn entirely.
@@ -206,7 +240,7 @@ impl StatusPoller {
         let mut fleet_view_working: Option<usize> = None;
         let mut bg_agent_scraped = false;
         let mut open_tasks_on_screen = false;
-        let (mut state, limited, menu_open) = if in_mode {
+        let (mut state, mut limited, mut menu_open) = if in_mode {
             (
                 self.prev_states
                     .get(&win.cockpit_terminal_id)
@@ -289,6 +323,12 @@ impl StatusPoller {
             if rebuilt {
                 self.no_claude_streak.remove(&win.cockpit_terminal_id);
             }
+            // A pid change is only visible once the new process is up; the teardown before it is just
+            // as much a replacement, and reads the same way to the activity counts.
+            if rebuilt || win.replacing {
+                self.replaced_this_round
+                    .insert(win.cockpit_terminal_id.clone());
+            }
             let streak = if state == CockpitTerminalState::NoClaude {
                 let entry = self
                     .no_claude_streak
@@ -324,6 +364,22 @@ impl StatusPoller {
         // of Idle (fresh Done clearing a phantom bell) re-reads the on-screen open-task fact.
         let state = if state == CockpitTerminalState::Idle && open_tasks_on_screen {
             CockpitTerminalState::Watching
+        } else {
+            state
+        };
+        // The pane keeps rendering its last screen after the process behind it ends, so every verdict
+        // scraped above describes a terminal that is no longer there — the activity it showed included.
+        // Left standing, a tray frozen on screen would keep reporting subagents that cannot be running.
+        // Only the screen-derived signals are dropped: what is read from the process table below stays,
+        // because a descendant that outlived the terminal really is still running.
+        let state = if win.exited {
+            skill_agents = None;
+            fleet_view_working = None;
+            bg_agent_scraped = false;
+            open_tasks_on_screen = false;
+            limited = false;
+            menu_open = false;
+            CockpitTerminalState::Exited
         } else {
             state
         };
@@ -370,7 +426,9 @@ impl StatusPoller {
         }
 
         // Only sids with a live fd1 output need a transcript read to tell bg from fg; absent that,
-        // there is nothing resident (0 shells is omitted, not sent as 0).
+        // there is nothing resident (0 shells is omitted, not sent as 0). An ended terminal reports
+        // none: the sid is resolved by walking the pane's own subtree, and anything that outlived the
+        // terminal was reparented out of it.
         let mut shells_running: Option<u32> = None;
         if let Some(sid) = &sid {
             if shell_outputs.iter().any(|o| &o.sid == sid) {
@@ -383,7 +441,9 @@ impl StatusPoller {
         }
 
         // Counted from the pane pid so claude's Bash-spawned test runs (deeper in the subtree) are
-        // included. Absent when zero, mirroring the other Background Activity counts.
+        // included. Absent when zero, mirroring the other Background Activity counts. Unlike the
+        // shells above — which lsof finds by sid wherever they ended up — this walks the pane's
+        // subtree, so survivors reparented away from an ended terminal fall out of it on their own.
         let vitest_running = match count_vitest_in_tree(pid, maps) {
             0 => None,
             n => Some(n),
@@ -463,6 +523,8 @@ mod tests {
 
     fn window(cockpit_terminal_id: &str, name: &str, panes: Vec<CockpitTerminalPane>) -> CockpitTerminal {
         CockpitTerminal {
+            exited: false,
+            replacing: false,
             cockpit_terminal_id: cockpit_terminal_id.to_string(),
             name: name.to_string(),
             active: true,
@@ -603,6 +665,46 @@ mod tests {
             model: model.map(str::to_string),
             model_at_ms: model.map(|_| model_at_ms),
         }
+    }
+
+    /// A terminal whose process has ended reports `exited`, even though its last screen still shows a
+    /// running claude: the screen outlives the process, so the process is what decides.
+    #[tokio::test]
+    async fn exited_terminal_wins_over_its_stale_screen() {
+        let mut win = window("@1", "work", vec![pane("%1", 100, 0, "/repos/charlie/app")]);
+        win.exited = true;
+        let ports = FakePorts {
+            windows: vec![win],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].state, "exited");
+    }
+
+    /// The activity a dead terminal last showed cannot still be happening, so it is not reported:
+    /// otherwise a frozen subagent tray would keep the quit confirmation armed with nothing to quit.
+    #[tokio::test]
+    async fn exited_terminal_reports_no_activity_from_its_frozen_screen() {
+        let mut win = window("@1", "work", vec![pane("%1", 100, 0, "/repos/charlie/app")]);
+        win.exited = true;
+        let ports = FakePorts {
+            windows: vec![win],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([(
+                "%1".to_string(),
+                "  ⏺ main\n  ◯ general-purpose  作業  1s".to_string(),
+            )]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        let s = &snap.sessions[0];
+        assert_eq!(s.state, "exited");
+        assert_eq!(s.running_subagents, Some(0));
+        assert!(!s.limited);
     }
 
     /// A session whose transcript has no assistant reply yet still reports the model Claude Code
@@ -863,7 +965,7 @@ mod tests {
             ..Default::default()
         };
         let mut cfg = config();
-        cfg.poll_sec = 8.0; // grace_polls = ceil(8/8) = 1
+        cfg.poll_sec = zashiki_core::session_state::STARTUP_GRACE_SEC; // grace_polls = 1
         let mut poller = StatusPoller::new();
         let (snap1, _) = poller.evaluate(&ports, &cfg).await;
         assert_eq!(snap1.sessions[0].state, "starting");
@@ -916,7 +1018,7 @@ mod tests {
     #[tokio::test]
     async fn rebuilt_window_resets_grace_even_if_prev_settled_no_claude() {
         let mut cfg = config();
-        cfg.poll_sec = 8.0;
+        cfg.poll_sec = zashiki_core::session_state::STARTUP_GRACE_SEC;
         let mut poller = StatusPoller::new();
 
         // Poll the pid=100 window a few times until it settles to no_claude (1: starting → 2: no_claude settled).
@@ -989,7 +1091,7 @@ mod tests {
     async fn exited_claude_absent_from_ps_settles_no_claude() {
         let cwd = "/repos/charlie/app";
         let mut cfg = config();
-        cfg.poll_sec = 8.0;
+        cfg.poll_sec = zashiki_core::session_state::STARTUP_GRACE_SEC;
         let mut poller = StatusPoller::new();
 
         let traced = FakePorts {
@@ -1638,30 +1740,129 @@ mod tests {
     fn transitions_fire_subagent_and_shell_edges_on_the_zero_boundary() {
         let prev = snap(vec![sess("@1", Some(0), Some(1))]);
         let cur = snap(vec![sess("@1", Some(2), Some(0))]);
-        let events = detect_activity_transitions(&prev, &cur);
+        let events = detect_activity_transitions(&prev, &cur, &HashSet::new());
         assert_eq!(kinds(&events), vec![NotifyKind::SubagentStart, NotifyKind::ShellEnd]);
         assert_eq!(events[0].name, "repo");
         assert_eq!(events[0].session_title, "題名");
+    }
+
+    /// The same rule on the start edge: a descendant that outlived the terminal opening a shell is not
+    /// that terminal picking work back up, so it reports nothing either.
+    #[test]
+    fn an_ended_terminal_fires_no_activity_start() {
+        let prev = snap(vec![sess("@1", Some(0), Some(0))]);
+        let mut ended = sess("@1", Some(0), Some(2));
+        ended.state = "exited".to_string();
+        let events = detect_activity_transitions(&prev, &snap(vec![ended]), &HashSet::new());
+        assert!(events.is_empty(), "got {:?}", kinds(&events));
+    }
+
+    /// A terminal whose process was just replaced — a restart, or the pass that re-launches every
+    /// terminal on an account switch — reports no end either. It never passes through `exited`, but
+    /// its work was cut off just the same.
+    #[test]
+    fn a_replaced_terminal_fires_no_activity_end() {
+        let prev = snap(vec![sess("@1", Some(2), Some(1))]);
+        let cur = snap(vec![sess("@1", Some(0), Some(0))]);
+        let replaced = HashSet::from(["@1".to_string()]);
+        let events = detect_activity_transitions(&prev, &cur, &replaced);
+        assert!(events.is_empty(), "got {:?}", kinds(&events));
+    }
+
+    /// The teardown half of a restart counts as a replacement too: the pid has not visibly changed
+    /// yet, but the process is on its way out, so the activity going quiet is not it finishing.
+    #[tokio::test]
+    async fn a_terminal_mid_replacement_is_counted_as_replaced() {
+        let mut win = window("@1", "work", vec![pane("%1", 100, 0, "/repos/charlie/app")]);
+        win.replacing = true;
+        let ports = FakePorts {
+            windows: vec![win],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        poller.evaluate(&ports, &config()).await;
+        assert!(poller.replaced_this_round().contains("@1"));
+    }
+
+    /// A terminal that ends does not report its background work as finished: it was cut off with the
+    /// process, and a completion notification would be acted on as if the work were done.
+    #[test]
+    fn an_ended_terminal_fires_no_activity_end() {
+        let prev = snap(vec![sess("@1", Some(1), Some(1))]);
+        let mut ended = sess("@1", Some(0), Some(0));
+        ended.state = "exited".to_string();
+        let events = detect_activity_transitions(&prev, &snap(vec![ended]), &HashSet::new());
+        assert!(events.is_empty(), "got {:?}", kinds(&events));
+    }
+
+    /// Quitting claude back to the login shell cuts its background work off just the same, so that
+    /// terminal reports no end either — the shell being up does not make the work finished.
+    #[test]
+    fn a_terminal_that_lost_claude_fires_no_activity_end() {
+        let prev = snap(vec![sess("@1", Some(2), Some(1))]);
+        let mut lost = sess("@1", Some(0), Some(0));
+        lost.state = "no_claude".to_string();
+        let events = detect_activity_transitions(&prev, &snap(vec![lost]), &HashSet::new());
+        assert!(events.is_empty(), "got {:?}", kinds(&events));
+    }
+
+    /// Driven through the poller rather than by hand, because the state the guard sees is not the one
+    /// the terminal is in: the poll that first finds claude gone is still inside the startup grace, so
+    /// it publishes `starting` - and that is the very poll the counts cross zero on.
+    #[tokio::test]
+    async fn losing_claude_reports_no_activity_end_on_the_poll_that_sees_it() {
+        let cwd = "/repos/charlie/app";
+        let running = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([(
+                "%1".to_string(),
+                "  ⏺ main\n  ◯ general-purpose  作業  1s".to_string(),
+            )]),
+            subagent_ages: HashMap::from([(format!("{cwd}\u{0}{SID}"), vec![1.0])]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (before, _) = poller.evaluate(&running, &config()).await;
+        assert!(
+            before.sessions[0].running_subagents.unwrap_or(0) > 0,
+            "the terminal should start out with background work"
+        );
+
+        let quit = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: "  100    1 -zsh\n".to_string(),
+            captures: HashMap::from([("%1".to_string(), "just a shell".to_string())]),
+            ..Default::default()
+        };
+        let (after, _) = poller.evaluate(&quit, &config()).await;
+        assert_eq!(after.sessions[0].state, "starting");
+        assert_eq!(after.sessions[0].running_subagents.unwrap_or(0), 0);
+
+        let events = detect_activity_transitions(&before, &after, poller.replaced_this_round());
+        assert!(events.is_empty(), "got {:?}", kinds(&events));
     }
 
     #[test]
     fn transitions_ignore_changes_that_do_not_cross_zero() {
         let prev = snap(vec![sess("@1", Some(1), Some(0))]);
         let cur = snap(vec![sess("@1", Some(3), Some(0))]);
-        assert!(detect_activity_transitions(&prev, &cur).is_empty());
+        assert!(detect_activity_transitions(&prev, &cur, &HashSet::new()).is_empty());
     }
 
     #[test]
     fn transitions_ignore_a_newly_appearing_terminal() {
         let prev = snap(vec![]);
         let cur = snap(vec![sess("@1", Some(2), Some(1))]);
-        assert!(detect_activity_transitions(&prev, &cur).is_empty());
+        assert!(detect_activity_transitions(&prev, &cur, &HashSet::new()).is_empty());
     }
 
     #[test]
     fn transitions_treat_absent_counts_as_zero() {
         let prev = snap(vec![sess("@1", None, None)]);
         let cur = snap(vec![sess("@1", Some(1), None)]);
-        assert_eq!(kinds(&detect_activity_transitions(&prev, &cur)), vec![NotifyKind::SubagentStart]);
+        assert_eq!(kinds(&detect_activity_transitions(&prev, &cur, &HashSet::new())), vec![NotifyKind::SubagentStart]);
     }
 }

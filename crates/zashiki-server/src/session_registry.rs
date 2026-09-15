@@ -4,7 +4,7 @@
 //! separately), this is a straightforward ownership map without multiplexing of grouped sessions. The source
 //! of truth for behavior is the `tests` at the end of this file.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,6 +12,46 @@ use std::time::Duration;
 use tokio::sync::Mutex;
 
 use crate::pty_host::{PtyConfig, PtySession};
+
+/// What [`SessionRegistry::replace`] did, so the caller can say why nothing happened.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReplaceOutcome {
+    /// The PTY behind the registration was swapped for the new one.
+    Replaced,
+    /// Another replacement of this id is already in flight.
+    Busy,
+    /// The terminal was closed while the replacement was being prepared.
+    Gone,
+}
+
+/// Holds the "this id is being replaced" claim for as long as the replacement runs, and releases it on
+/// Drop so a cancelled replacement cannot leave the id claimed forever.
+struct ReplaceClaim<'a> {
+    claimed: &'a std::sync::Mutex<HashSet<String>>,
+    id: String,
+}
+
+impl<'a> ReplaceClaim<'a> {
+    fn take(claimed: &'a std::sync::Mutex<HashSet<String>>, id: &str) -> Option<Self> {
+        let taken = claimed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(id.to_string());
+        taken.then(|| Self {
+            claimed,
+            id: id.to_string(),
+        })
+    }
+}
+
+impl Drop for ReplaceClaim<'_> {
+    fn drop(&mut self) {
+        self.claimed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.id);
+    }
+}
 
 /// Grace period between sending SIGTERM and SIGKILL when ending a session (gives claude a chance to flush).
 const TERMINATE_GRACE: Duration = Duration::from_millis(300);
@@ -34,6 +74,10 @@ struct Entry {
 #[derive(Default)]
 pub struct SessionRegistry {
     sessions: Mutex<HashMap<String, Entry>>,
+    /// Ids currently being replaced. A replacement runs across several awaits, so without this two of
+    /// them could both launch a claude on the same conversation. Held by [`ReplaceClaim`], whose Drop
+    /// releases it however the replacement ends.
+    replacing: std::sync::Mutex<HashSet<String>>,
     /// User-chosen display order of ids (the SESSION LIST). Ids present here sort by their position; ids
     /// absent (e.g. freshly created) sort after them by id. Empty means "no manual order" — pure id order.
     order: Mutex<Vec<String>>,
@@ -132,6 +176,84 @@ impl SessionRegistry {
         *self.order.lock().await = order;
     }
 
+    /// Swaps in a freshly launched PTY for `id`, keeping the registration and its place in the manual
+    /// order. `Gone` means the terminal was closed while the swap was in progress, so the new PTY is
+    /// discarded rather than resurrecting a row the user just dismissed.
+    ///
+    /// One replacement per id at a time; a second call while one is in flight reports `Busy`.
+    /// The old process is torn down **before** the replacement is launched: both are started with the
+    /// same Claude session id, and two of them would be writing one conversation at once. A launch
+    /// that then fails returns `Err` with the registration still in place, on its now-dead session —
+    /// the row stays in the list (its id is the conversation's only handle) and can be restarted again.
+    pub async fn replace(
+        &self,
+        id: &str,
+        config: PtyConfig,
+        meta: SessionMeta,
+    ) -> std::io::Result<ReplaceOutcome> {
+        let Some(_claim) = ReplaceClaim::take(&self.replacing, id) else {
+            return Ok(ReplaceOutcome::Busy);
+        };
+        self.replace_held(id, config, meta).await
+    }
+
+    /// The body of [`Self::replace`], run while this id is claimed.
+    async fn replace_held(
+        &self,
+        id: &str,
+        config: PtyConfig,
+        meta: SessionMeta,
+    ) -> std::io::Result<ReplaceOutcome> {
+        let previous = {
+            let sessions = self.sessions.lock().await;
+            if self.shutting_down.load(Ordering::SeqCst) {
+                None
+            } else {
+                sessions.get(id).map(|e| Arc::clone(&e.session))
+            }
+        };
+        let Some(previous) = previous else {
+            return Ok(ReplaceOutcome::Gone);
+        };
+        previous.terminate();
+        tokio::time::sleep(TERMINATE_GRACE).await;
+        let teardown = Arc::clone(&previous);
+        // `stop`, not `shutdown`: the child is killed and collected here, but the reader thread is left
+        // to finish on its own. Joining it can take as long as a descendant that escaped the group kill
+        // keeps the pty slave open, and this call holds the per-id claim — a terminal whose reader never
+        // returns would otherwise be stuck reporting "restart in progress" for the life of the daemon.
+        let _ = tokio::task::spawn_blocking(move || teardown.stop()).await;
+
+        // Launch under the lock, the way `create_with_meta` does: the teardown above spans awaits, and
+        // a quit that drained the registry meanwhile would otherwise get a claude started behind it.
+        let mut sessions = self.sessions.lock().await;
+        // Only swap over the entry this call tore down: anything else means the row was closed and
+        // re-created meanwhile, and replacing that would strand a live session.
+        let still_ours = sessions
+            .get(id)
+            .is_some_and(|e| Arc::ptr_eq(&e.session, &previous));
+        if self.shutting_down.load(Ordering::SeqCst) || !still_ours {
+            return Ok(ReplaceOutcome::Gone);
+        }
+        let session = Arc::new(PtySession::spawn(config)?);
+        sessions.insert(id.to_string(), Entry { session, meta });
+        drop(sessions);
+        // Only now: until the replacement is registered, the old session is what the row still points
+        // at, and a failed spawn leaves it there for the user to read.
+        previous.discard_history();
+        Ok(ReplaceOutcome::Replaced)
+    }
+
+    /// Whether a replacement for `id` is in flight. The poller uses it so the teardown window — where
+    /// the process is being swapped but its pid has not visibly changed yet — is not mistaken for that
+    /// terminal's background work finishing.
+    pub fn is_replacing(&self, id: &str) -> bool {
+        self.replacing
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains(id)
+    }
+
     /// The number of registrations.
     pub async fn len(&self) -> usize {
         self.sessions.lock().await.len()
@@ -145,8 +267,10 @@ impl SessionRegistry {
     /// Unregisters `id` and reliably kills the process group via SIGTERM → grace → SIGKILL.
     /// Only the removal from the map is done under the lock; the lock is not held during the grace sleep. Returns `false` if it does not exist.
     ///
-    /// KILL + reap + reader join are consolidated into `shutdown()` and completed within remove **regardless of the
-    /// Arc owner count** (it leaves no zombie/thread even if another task holds an Arc obtained via `get()`).
+    /// KILL + reap are consolidated into `shutdown()` and completed within remove **regardless of the
+    /// Arc owner count** (it leaves no zombie even if another task holds an Arc obtained via `get()`).
+    /// The reader thread is joined too, except on a session a `stop()` already tore down, where waiting
+    /// on a reader a descendant can hold open forever is the worse trade — see [`PtySession::stop`].
     /// `shutdown()` is blocking, so it is offloaded to the blocking pool and does not stall the tokio workers.
     pub async fn remove(&self, id: &str) -> bool {
         let entry = self.sessions.lock().await.remove(id);
@@ -329,6 +453,37 @@ mod tests {
         }
         // shutdown_all on an empty registry is a no-op (must not panic).
         reg.shutdown_all().await;
+    }
+
+    /// Two restarts of one terminal cannot both launch a claude on its conversation: the second one
+    /// finds the id claimed and declines.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn replace_serializes_per_id() {
+        let reg = Arc::new(SessionRegistry::new());
+        reg.create_with_meta("x".to_string(), sleep_cfg(), SessionMeta::default())
+            .await
+            .unwrap();
+
+        let first = {
+            let reg = Arc::clone(&reg);
+            tokio::spawn(async move {
+                reg.replace("x", sleep_cfg(), SessionMeta::default()).await
+            })
+        };
+        // Long enough to be inside the teardown grace, where the id is claimed.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let second = reg.replace("x", sleep_cfg(), SessionMeta::default()).await;
+
+        assert!(
+            matches!(second, Ok(ReplaceOutcome::Busy)),
+            "a concurrent replace declines instead of launching a second claude"
+        );
+        assert!(matches!(
+            first.await.unwrap(),
+            Ok(ReplaceOutcome::Replaced)
+        ));
+        assert_eq!(reg.len().await, 1);
     }
 
     /// After shutdown_all, new creates are rejected (a claude spawned during teardown is not orphaned).

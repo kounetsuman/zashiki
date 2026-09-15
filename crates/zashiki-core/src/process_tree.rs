@@ -206,9 +206,16 @@ impl Iterator for Subtree<'_> {
     }
 }
 
+/// Walks the processes under `start`, inclusive. A non-positive root yields nothing: pid 0 is not a
+/// process but the ppid launchd reports, so rooting a walk there would sweep in the whole machine and
+/// attribute a stranger's session to whatever asked.
 fn subtree(start: i64, maps: &ProcessMaps) -> Subtree<'_> {
     Subtree {
-        queue: VecDeque::from([start]),
+        queue: if start > 0 {
+            VecDeque::from([start])
+        } else {
+            VecDeque::new()
+        },
         visited: HashSet::new(),
         children_of: &maps.children_of,
     }
@@ -229,6 +236,18 @@ pub fn count_vitest_in_tree(start_pid: i64, maps: &ProcessMaps) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A terminal whose pid is gone reports 0, and pid 0 is launchd's ppid — walking from it would
+    /// return the first claude on the machine.
+    #[test]
+    fn a_non_positive_root_finds_nothing() {
+        let maps = build_process_maps(&parse_ps_snapshot(
+            "  100     1 ??  /bin/zsh -lc claude --session-id 579fa8cf-4901-45cb-b9ec-17e229231a37\n",
+        ));
+        assert_eq!(find_sid_in_tree(0, &maps), None);
+        assert_eq!(find_sid_in_tree(-1, &maps), None);
+        assert_eq!(count_vitest_in_tree(0, &maps), 0);
+    }
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 

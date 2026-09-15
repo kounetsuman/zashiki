@@ -1,5 +1,6 @@
 import {
   type CockpitTerminalInfo,
+  canRestartCockpitTerminal,
   resolveOrgColor,
   resolveOrgName,
 } from "@zashiki/shared";
@@ -57,6 +58,7 @@ export interface CockpitTerminalListViewProps {
    * If omitted, the item is not shown in the row menu.
    */
   onDuplicate?(cockpitTerminalId: string): void;
+  onRestart?(cockpitTerminalId: string): void;
   /**
    * Copy the target session's Claude Code session id (`sid`) to the clipboard verbatim.
    * If omitted, the item is not shown in the row menu.
@@ -102,6 +104,7 @@ export function CockpitTerminalListView({
   conversationTitles = {},
   connected = true,
   onDuplicate,
+  onRestart,
   onCopySessionId,
   onRename,
   onReorderOrgs,
@@ -155,11 +158,15 @@ export function CockpitTerminalListView({
     setDropRow(null);
   };
 
-  // The row menu has at most 4 items: Delete + (when provided) Rename + Duplicate + Copy session id.
-  const rowItemCount =
+  // Height budget for keeping the menu on screen: Delete + (when provided) Rename + Duplicate +
+  // Restart + Copy session id. Restart only renders for a terminal with no claude in it, so it is
+  // counted per row; confirming replaces the menu with two rows rather than adding to it, which is
+  // shorter than what is budgeted here.
+  const rowItemCount = (s: CockpitTerminalInfo): number =>
     1 +
     (onRename !== undefined ? 1 : 0) +
     (onDuplicate !== undefined ? 1 : 0) +
+    (onRestart !== undefined && canRestartCockpitTerminal(s) ? 1 : 0) +
     (onCopySessionId !== undefined ? 1 : 0);
   const { menu, openOrgMenu, openRowMenu, closeMenu } =
     useSessionContextMenu(rowItemCount);
@@ -430,6 +437,7 @@ export function CockpitTerminalListView({
           closeMenu={closeMenu}
           onRename={onRename}
           onDuplicate={onDuplicate}
+          onRestart={onRestart}
           onCopySessionId={onCopySessionId}
         />
       )}

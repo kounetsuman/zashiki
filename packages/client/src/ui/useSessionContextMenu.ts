@@ -13,10 +13,12 @@ export interface SessionContextMenuState {
 
 /**
  * Owns the right-click menu target and position (clamped into the viewport) and closes it on Escape.
- * The row menu's item count feeds the clamp so the menu never overflows below the pointer.
+ * The row menu's item count feeds the clamp so the menu never overflows below the pointer; it is asked
+ * per row, because some items only render for certain terminals and a fixed maximum would lift the
+ * menu away from the pointer on every other row.
  */
 export function useSessionContextMenu(
-  rowItemCount: number,
+  rowItemCount: (s: CockpitTerminalInfo) => number,
 ): SessionContextMenuState {
   const [menu, setMenu] = useState<ContextMenu | null>(null);
 
@@ -33,7 +35,7 @@ export function useSessionContextMenu(
     (e: React.MouseEvent): void => {
       e.preventDefault();
       e.stopPropagation();
-      const { x, y } = clampMenuPos(e.clientX, e.clientY, rowItemCount);
+      const { x, y } = clampMenuPos(e.clientX, e.clientY, rowItemCount(s));
       setMenu({
         kind: "row",
         cockpitTerminalId: s.cockpitTerminalId,

@@ -4,7 +4,7 @@
 //! sole observer.
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -54,13 +54,43 @@ async fn evaluate_and_publish<P: PollerPorts>(
     config: &PollConfig,
     hub: &ControlHub,
 ) -> StateSnapshot {
+    // Taken before the inputs are read, so a restart confirmed while this poll is still resolving is
+    // not called off by a verdict formed before it happened.
+    let observed_at = Instant::now();
     let prev = poller.snapshot().cloned();
     let (snapshot, changed) = poller.evaluate(ports, config).await;
     if changed {
         hub.publish_snapshot(snapshot.clone());
     }
+    let live: std::collections::HashSet<String> = snapshot
+        .sessions
+        .iter()
+        .map(|s| s.cockpit_terminal_id.clone())
+        .collect();
+    // A relaunch is done once a poll finds claude running there — a resolved sid is how that shows —
+    // and not merely when the pane pid changes, which happens as soon as the shell is up and long
+    // before a large transcript has finished resuming. A poll that caught the terminal mid-replacement
+    // does not count: the sid it resolved belongs to the process on its way out.
+    let mid_replacement = poller.replaced_this_round();
+    let claude_up: std::collections::HashSet<String> = snapshot
+        .sessions
+        .iter()
+        .filter(|s| s.sid.is_some())
+        .map(|s| s.cockpit_terminal_id.clone())
+        .filter(|id| !mid_replacement.contains(id))
+        .collect();
+    let no_claude: std::collections::HashSet<String> = snapshot
+        .sessions
+        .iter()
+        .filter(|s| s.state == "no_claude")
+        .map(|s| s.cockpit_terminal_id.clone())
+        .filter(|id| !mid_replacement.contains(id))
+        .collect();
+    hub.clear_restart_marks(&claude_up, &no_claude, &live, observed_at);
     if let Some(prev) = prev {
-        deliver_transitions(hub, detect_activity_transitions(&prev, &snapshot), crate::now_ms());
+        let events =
+            detect_activity_transitions(&prev, &snapshot, poller.replaced_this_round());
+        deliver_transitions(hub, events, crate::now_ms());
     }
     snapshot
 }
@@ -151,6 +181,8 @@ mod tests {
     fn one_running_window() -> FakePorts {
         FakePorts {
             windows: vec![CockpitTerminal {
+                exited: false,
+                replacing: false,
                 cockpit_terminal_id: "@1".to_string(),
                 name: "work".to_string(),
                 active: true,

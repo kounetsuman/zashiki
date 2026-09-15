@@ -10,6 +10,9 @@
     "copyAbsPath": "絶対パスをコピー",
     "cannotDuplicate": "claude 未起動のため複製できるセッションがありません",
     "duplicateSession": "セッションを複製",
+    "restartSession": "ターミナルを再起動",
+    "restartSessionConfirm": "ターミナルを再起動（確定）",
+    "restartSessionConfirmShell": "実行中の処理を終了して再起動",
     "cannotCopySessionId": "claude 未起動のためコピーするセッションIDがありません",
     "copySessionId": "Claude Code セッションIDをコピー",
     "moveToTrash": "ゴミ箱に移動",
@@ -24,7 +27,17 @@
   "errorDialog": {
     "label": "エラー",
     "title": "⚠ エラー",
-    "outdatedServer": "サーバーがリクエストを拒否しました。稼働中の zashiki サーバーが古い可能性があります。再起動または更新してください（サーバーを再ビルドし、デーモンを再インストール）。"
+    "outdatedServer": "サーバーがリクエストを拒否しました。稼働中の zashiki サーバーが古い可能性があります。再起動または更新してください（サーバーを再ビルドし、デーモンを再インストール）。",
+    "restartGone": "このターミナルはすでに閉じられています。",
+    "restartBusy": "このターミナルでは Claude が動作中のため、再起動するものがありません。",
+    "restartInProgress": "このターミナルはすでに再起動中です。",
+    "restartStartingUp": "このターミナルはまだ起動中です。少し待ってからお試しください。",
+    "restartNotResumable": "このターミナルには再開できる Claude の会話がありません。",
+    "restartCwdMissing": "作業ディレクトリが見つからないため、会話を再開できません。",
+    "restartClaudeDisabled": "この構成では Claude を起動しないため、ターミナルを再起動できません。",
+    "restartFailed": "このターミナルを再起動できず、停止したままです。もう一度再起動すると会話を再開できます。",
+    "restartAlreadyRunning": "このターミナルは再び動作しているため、再起動するものがありません。",
+    "restartUnreported": "このターミナルの状態はまだ確認されていません。少し待ってからお試しください。"
   },
   "crashReport": {
     "title": "⚠ 前回 zashiki が異常終了しました",
@@ -77,6 +90,7 @@
     "ariaLabel": "セッション一覧",
     "limitReached": "使用量上限に達しています",
     "menuOpen": "Claude Code のメニュー表示中",
+    "exited": "ターミナルが終了しました",
     "addOrg": "組織を追加",
     "orgToggleTitle": "{{org}}（クリックで折畳・+ で新規セッション・Ctrl-N）",
     "newSessionInOrg": "{{org}} に新規セッション",

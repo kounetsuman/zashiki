@@ -1,5 +1,11 @@
-import { type CockpitTerminalInfo, claudeSessionId } from "@zashiki/shared";
+import {
+  type CockpitTerminalInfo,
+  canRestartCockpitTerminal,
+  claudeSessionId,
+} from "@zashiki/shared";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RestartConfirm } from "./RestartConfirm.js";
 import type { ContextMenu } from "./session-list-model.js";
 
 export interface SessionContextMenuProps {
@@ -12,6 +18,8 @@ export interface SessionContextMenuProps {
   closeMenu(): void;
   onRename?(cockpitTerminalId: string, name: string, title: string): void;
   onDuplicate?(cockpitTerminalId: string): void;
+  /** Relaunches a terminal whose process has ended. Rendered only for that state. */
+  onRestart?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
 }
 
@@ -26,15 +34,31 @@ export function SessionContextMenu({
   closeMenu,
   onRename,
   onDuplicate,
+  onRestart,
   onCopySessionId,
 }: SessionContextMenuProps) {
   const { t } = useTranslation();
+  // A no_claude terminal still has a live shell that may be running something, so restarting it asks
+  // for a second click. The timestamp makes that independent of where the confirm lands: a
+  // double-click cannot reach it, whatever row the arming item happened to be on.
+  const [restartArmed, setRestartArmed] = useState(false);
   const target =
     menu.kind === "row"
       ? cockpitTerminals.find(
           (s) => s.cockpitTerminalId === menu.cockpitTerminalId,
         )
       : undefined;
+  // Re-checked while the confirm is on screen, not just when it was offered: a state.sync can land in
+  // between and leave the terminal running again, or take it away entirely.
+  const canRestart = target !== undefined && canRestartCockpitTerminal(target);
+
+  // Dropped as soon as the terminal stops being restartable, so a row that goes away and comes back
+  // does not return with the confirm already armed — the next click would then restart it outright.
+  useEffect(() => {
+    if (!canRestart) {
+      setRestartArmed(false);
+    }
+  }, [canRestart]);
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: overlay purely for capturing clicks (Escape is handled by window keydown)
     // biome-ignore lint/a11y/noStaticElementInteractions: same as above (not an interactive widget, but a receiver for outside clicks)
@@ -63,6 +87,15 @@ export function SessionContextMenu({
           >
             {t("sessionList.newSession")}
           </button>
+        ) : restartArmed && canRestart ? (
+          <RestartConfirm
+            target={target}
+            onCancel={() => setRestartArmed(false)}
+            onConfirm={() => {
+              onRestart?.(menu.cockpitTerminalId);
+              closeMenu();
+            }}
+          />
         ) : (
           <>
             {onRename !== undefined &&
@@ -108,6 +141,21 @@ export function SessionContextMenu({
                   </button>
                 );
               })()}
+            {onRestart !== undefined && canRestart && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                onClick={(e) => {
+                  // The backdrop closes the menu on any click that reaches it, which would
+                  // discard the pending confirmation.
+                  e.stopPropagation();
+                  setRestartArmed(true);
+                }}
+              >
+                {t("common.restartSession")}
+              </button>
+            )}
             {onCopySessionId !== undefined &&
               (() => {
                 const canCopySessionId =

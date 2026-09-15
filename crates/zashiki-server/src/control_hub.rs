@@ -1,6 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 use tokio::sync::broadcast;
 
@@ -19,6 +20,8 @@ struct HubState {
     mac_notify: MacNotify,
     notifications: Vec<Notification>,
     snapshot: StateSnapshot,
+    /// Terminals relaunched recently, with when their mark was set. See [`ControlHub::mark_restarted`].
+    relaunching: HashMap<String, Instant>,
     /// Per-org notes (org → Markdown), delivered on connect and re-broadcast on any note change.
     notes: BTreeMap<String, String>,
     /// The single app-wide memo (Markdown), delivered on connect and re-broadcast on any change.
@@ -121,6 +124,22 @@ pub struct ControlHub {
     notifications_persist: Mutex<()>,
 }
 
+/// How long a relaunch mark survives without claude being seen. Generous enough for a resume of a large
+/// transcript to finish, and bounded so a relaunch that never completes still lets the user try again
+/// rather than leaving the row permanently un-restartable. Measured in time rather than in polls: a
+/// poll also runs on every refresh request, and a busy neighbouring terminal would otherwise spend the
+/// budget in seconds.
+const RELAUNCH_MARK_TTL: Duration = Duration::from_secs(60);
+
+/// How long a relaunch is given to produce a claude before a poll reporting none is taken as its
+/// answer. The window the poller gives a fresh launch, for the same reason: a login shell's profile
+/// runs before the `claude` exec, and from outside it looks the same as no claude coming at all. A
+/// launch slower than this is indistinguishable from one that failed, so what stands between it and a
+/// restart is the two-click confirm, not this.
+pub(crate) const CLAUDE_SETTLE_GRACE: Duration = Duration::from_millis(
+    (zashiki_core::session_state::STARTUP_GRACE_SEC * 1000.0) as u64,
+);
+
 pub(crate) fn hooks_status_message(status: RegistrationStatus) -> ServerMessage {
     ServerMessage::HooksStatus {
         hooks_registered: status.hooks_registered,
@@ -180,6 +199,7 @@ impl ControlHub {
         let (tx, _) = broadcast::channel(64);
         Arc::new(Self {
             inner: RwLock::new(HubState {
+                relaunching: HashMap::new(),
                 config,
                 notify_mode: NotifyMode::default(),
                 mac_notify: Arc::new(|_| {}),
@@ -418,6 +438,96 @@ impl ControlHub {
         self.inner.read().unwrap().config.account_usage
     }
 
+    /// Records that `cockpit_terminal_id` has just been relaunched, so [`Self::reported_state`] stops
+    /// answering with a state the relaunch has already invalidated. The mark lasts until a poll settles
+    /// the relaunch — claude up, or the startup grace waited out with none — or until
+    /// [`RELAUNCH_MARK_TTL`] has passed. A resume of a large transcript can take longer than that grace,
+    /// and the row falling back to "no claude" in the meantime would offer a restart that kills it. Deliberately does not touch the
+    /// published snapshot: the poller decides whether to publish by comparing against its own copy, and
+    /// editing the hub's behind its back would break that. The next published snapshot supersedes this.
+    /// Restarts the grace on an existing mark, for a relaunch that reached the swap while an earlier
+    /// one's mark was still standing. Adds no mark of its own — the one placed before the swap is what
+    /// covers the relaunch, and a terminal nothing is relaunching must not start reading `starting`.
+    pub fn restamp_restarted(&self, cockpit_terminal_id: &str) {
+        if let Some(since) = self
+            .inner
+            .write()
+            .unwrap()
+            .relaunching
+            .get_mut(cockpit_terminal_id)
+        {
+            *since = Instant::now();
+        }
+    }
+
+    pub fn mark_restarted(&self, cockpit_terminal_id: &str) {
+        self.inner
+            .write()
+            .unwrap()
+            .relaunching
+            .entry(cockpit_terminal_id.to_string())
+            // Not overwritten: a caller that loses the race still marks, and refreshing the timestamp
+            // would extend the winner's mark for as long as the retries keep coming.
+            .or_insert_with(Instant::now);
+    }
+
+    /// Forgets the given relaunch marks: the poll that just ran read those terminals' new processes, so
+    /// whatever it concluded is a better answer than the mark. Called after every poll, not only the
+    /// ones that publish — a poll whose result happens to match the last one still read them. Only
+    /// terminals whose process the poll actually saw are dropped; a restart still in flight keeps its
+    /// mark, since that poll looked at the process on its way out.
+    pub fn clear_restart_marks(
+        &self,
+        claude_up: &HashSet<String>,
+        no_claude: &HashSet<String>,
+        live: &HashSet<String>,
+        observed_at: Instant,
+    ) {
+        self.inner.write().unwrap().relaunching.retain(|id, since| {
+            // A mark placed once this poll had already read its inputs describes a relaunch the poll
+            // never saw: the claude it resolved belongs to the process on its way out.
+            if *since >= observed_at {
+                return true;
+            }
+            if claude_up.contains(id) || !live.contains(id) {
+                return false;
+            }
+            // A relaunch that has not produced a claude is only called off once it has had time to: a
+            // login shell's profile can take longer to reach the `claude` exec than the poller's startup
+            // grace allows, and dropping the mark there would offer a restart that kills it.
+            if no_claude.contains(id) && since.elapsed() >= CLAUDE_SETTLE_GRACE {
+                return false;
+            }
+            since.elapsed() < RELAUNCH_MARK_TTL
+        });
+    }
+
+    /// Ages every relaunch mark by `by`, so a test can reach a deadline without waiting for it.
+    #[cfg(test)]
+    pub fn age_relaunch_marks_for_test(&self, by: Duration) {
+        let mut state = self.inner.write().unwrap();
+        for since in state.relaunching.values_mut() {
+            // checked: a monotonic clock below `by` (a freshly booted machine) would panic.
+            *since = since.checked_sub(by).unwrap_or(*since);
+        }
+    }
+
+    /// The state last reported for `cockpit_terminal_id`, or `None` if it is not in the last snapshot.
+    /// A terminal relaunched since that snapshot reads as `starting`, because what it says about such a
+    /// terminal — that it has no process — was true only before the relaunch.
+    pub fn reported_state(&self, cockpit_terminal_id: &str) -> Option<String> {
+        let state = self.inner.read().unwrap();
+        if state.relaunching.contains_key(cockpit_terminal_id) {
+            return Some("starting".to_string());
+        }
+        state
+            .snapshot
+            .sessions
+            .iter()
+            .find(|s| s.cockpit_terminal_id == cockpit_terminal_id)
+            .map(|s| s.state.clone())
+    }
+
     /// Whether the global memo is opted in (the live `memoEnabled` config flag).
     pub fn memo_enabled(&self) -> bool {
         self.inner.read().unwrap().config.memo_enabled
@@ -628,9 +738,36 @@ impl ControlHub {
         self.store_and_broadcast(items);
     }
 
+    /// Records an error against one Cockpit Terminal, so the client can point at the row it is about.
+    /// Two terminals in the same repo otherwise produce notifications that read identically.
+    pub fn record_terminal_error(
+        &self,
+        id: String,
+        code: &str,
+        message: &str,
+        cockpit_terminal_id: &str,
+        now_ms: u64,
+    ) {
+        let items = {
+            let mut state = self.inner.write().unwrap();
+            let created = now_ms.max(state.last_notification_at + 1);
+            state.last_notification_at = created;
+            let mut n = crate::notifications::error_notification(id, code, message, created);
+            n.cockpit_terminal_id = Some(cockpit_terminal_id.to_string());
+            let next = crate::notifications::append_notification(
+                &state.notifications,
+                n,
+                crate::notifications::NOTIFICATIONS_MAX,
+            );
+            state.notifications = next.clone();
+            next
+        };
+        self.store_and_broadcast(items);
+    }
+
     /// Enqueues a server error into NOTIFICATION and broadcasts notifications.sync to all
-    /// connections. createdAt is kept
-    /// monotonically increasing via the same `last_notification_at` as `record_activity`.
+    /// connections. createdAt is kept monotonically increasing via the same `last_notification_at` as
+    /// `record_activity`.
     pub fn record_error(&self, id: String, code: &str, message: &str, now_ms: u64) {
         let items = {
             let mut state = self.inner.write().unwrap();
@@ -735,6 +872,93 @@ mod tests {
             org_colors: BTreeMap::new(),
             org_aliases: BTreeMap::new(),
         }
+    }
+
+    /// The restart gate reads the reported state, and a second confirmed click inside the poll interval
+    /// would otherwise take down the process the first one started. The published snapshot is left
+    /// alone — the poller owns that — so only the answer changes, until the next poll supersedes it.
+    #[test]
+    fn a_relaunched_terminal_reads_as_starting_until_the_next_poll() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+
+        hub.mark_restarted("@1");
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
+
+        // A poll that only saw the shell come up leaves the mark standing: resuming a large transcript,
+        // or a slow login profile, can take longer than the startup grace, and answering `no_claude`
+        // there would offer a restart that kills the launch.
+        let live = HashSet::from(["@1".to_string()]);
+        let only = |id: &str| HashSet::from([id.to_string()]);
+        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
+
+        // Cleared by the poll that finds claude running there.
+        hub.clear_restart_marks(&only("@1"), &HashSet::new(), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+
+        // A relaunch that has had its grace and still shows no claude is called off, so the user can
+        // try again rather than being refused.
+        hub.mark_restarted("@1");
+        hub.age_relaunch_marks_for_test(CLAUDE_SETTLE_GRACE);
+        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+
+        // A mark for a terminal that is gone is dropped too, rather than outliving the daemon.
+        hub.mark_restarted("@1");
+        hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &HashSet::new(), Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+
+        // And one that never settles at all expires with the TTL.
+        hub.mark_restarted("@1");
+        hub.age_relaunch_marks_for_test(RELAUNCH_MARK_TTL);
+        hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+    }
+
+    /// A relaunch that reached the swap while an earlier mark was still standing gets the full grace
+    /// from its own swap, not what was left of the first one.
+    #[test]
+    fn a_relaunch_that_replaced_the_process_gets_its_own_grace() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let live = HashSet::from(["@1".to_string()]);
+        let only = |id: &str| HashSet::from([id.to_string()]);
+
+        hub.mark_restarted("@1");
+        hub.age_relaunch_marks_for_test(CLAUDE_SETTLE_GRACE);
+        hub.mark_restarted("@1");
+        hub.restamp_restarted("@1");
+
+        // The first mark had used up its grace; the swap that just happened starts it over.
+        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
+    }
+
+    /// Restamping never marks a terminal on its own: a relaunch that was refused before the swap must
+    /// not leave the row reading `starting`.
+    #[test]
+    fn restamping_an_unmarked_terminal_leaves_it_unmarked() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        hub.restamp_restarted("@1");
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+    }
+
+    #[test]
+    fn a_restart_marked_after_a_poll_read_its_inputs_survives_that_poll() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        let live = HashSet::from(["@1".to_string()]);
+        let only = |id: &str| HashSet::from([id.to_string()]);
+
+        // The poll reads its inputs, and the restart lands while it is still resolving them.
+        let observed_at = Instant::now();
+        hub.mark_restarted("@1");
+
+        hub.clear_restart_marks(&only("@1"), &HashSet::new(), &live, observed_at);
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
+
+        // The next poll, which read its inputs after the swap, does call it off.
+        hub.clear_restart_marks(&only("@1"), &HashSet::new(), &live, Instant::now());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
     }
 
     fn session(state: &str, subagents: Option<u32>, shells: Option<u32>) -> CockpitTerminalInfo {
@@ -1093,6 +1317,23 @@ mod tests {
             rx.recv().await.unwrap(),
             ServerMessage::NotificationsSync { .. }
         ));
+    }
+
+    /// An error recorded against a terminal carries its id, so the client can point at the row rather
+    /// than leaving the user to guess which of two terminals in a repo it means.
+    #[test]
+    fn a_terminal_error_names_the_terminal_it_is_about() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        hub.record_terminal_error("n1".to_string(), "restart_failed", "body", "@1", 1);
+        let recorded = hub
+            .inner
+            .read()
+            .unwrap()
+            .notifications
+            .last()
+            .cloned()
+            .unwrap();
+        assert_eq!(recorded.cockpit_terminal_id.as_deref(), Some("@1"));
     }
 
     #[test]

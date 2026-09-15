@@ -1,6 +1,12 @@
-import { type CockpitTerminalInfo, claudeSessionId } from "@zashiki/shared";
+import {
+  type CockpitTerminalInfo,
+  canRestartCockpitTerminal,
+  claudeSessionId,
+} from "@zashiki/shared";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RepoFile } from "../viewer/viewer-model.js";
+import { RestartConfirm } from "./RestartConfirm.js";
 
 export interface TabContextMenuProps {
   menu: {
@@ -21,6 +27,8 @@ export interface TabContextMenuProps {
   /** Unpins the tab. Hidden when unspecified or for the Memo tab. */
   onUnpin?(key: string): void;
   onDuplicate?(cockpitTerminalId: string): void;
+  /** Relaunches a terminal whose process has ended. Rendered only for that state. */
+  onRestart?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
   onReveal?(file: RepoFile): void;
   onCopyPath?(file: RepoFile): void;
@@ -30,7 +38,8 @@ export interface TabContextMenuProps {
 /**
  * Right-click menu overlay for a tab. Close is hidden for a pinned tab (it must be unpinned first);
  * Pin/Unpin renders for any pinnable tab; duplicate / copy session id render only for session tabs;
- * reveal / copy path / rename render only for viewer tabs.
+ * restart renders only for a terminal whose process has ended; reveal / copy path / rename render
+ * only for viewer tabs.
  */
 export function TabContextMenu({
   menu,
@@ -41,18 +50,32 @@ export function TabContextMenu({
   onPin,
   onUnpin,
   onDuplicate,
+  onRestart,
   onCopySessionId,
   onReveal,
   onCopyPath,
   onRename,
 }: TabContextMenuProps) {
   const { t } = useTranslation();
+  // A no_claude terminal still has a live shell that may be running something, so restarting it asks
+  // for a second click. The timestamp makes that independent of where the confirm lands: a
+  // double-click cannot reach it, whatever row the arming item happened to be on.
+  const [restartArmed, setRestartArmed] = useState(false);
   const { cockpitTerminalId, viewer } = menu;
   const target =
     cockpitTerminalId === null
       ? undefined
       : cockpitTerminals.find((s) => s.cockpitTerminalId === cockpitTerminalId);
   const canDuplicate = target !== undefined && claudeSessionId(target) !== null;
+  const canRestart = target !== undefined && canRestartCockpitTerminal(target);
+
+  // Dropped as soon as the terminal stops being restartable, so a row that goes away and comes back
+  // does not return with the confirm already armed — the next click would then restart it outright.
+  useEffect(() => {
+    if (!canRestart) {
+      setRestartArmed(false);
+    }
+  }, [canRestart]);
   const canCopySessionId =
     target !== undefined && claudeSessionId(target) !== null;
   const fileItem = (label: string, run: (f: RepoFile) => void) =>
@@ -85,106 +108,136 @@ export function TabContextMenu({
         role="menu"
         style={{ top: menu.y, left: menu.x }}
       >
-        {!menu.pinned && (
-          <button
-            type="button"
-            role="menuitem"
-            className="session-context-item"
-            onClick={() => {
-              onClose(menu.key);
+        {restartArmed && canRestart && cockpitTerminalId !== null ? (
+          <RestartConfirm
+            target={target}
+            onCancel={() => setRestartArmed(false)}
+            onConfirm={() => {
+              onRestart?.(cockpitTerminalId);
               closeMenu();
             }}
-          >
-            {t("common.close")}
-          </button>
-        )}
-        {onCloseAll !== undefined && (
-          <button
-            type="button"
-            role="menuitem"
-            className="session-context-item"
-            onClick={() => {
-              onCloseAll();
-              closeMenu();
-            }}
-          >
-            {t("common.closeAllTabs")}
-          </button>
-        )}
-        {menu.pinnable && menu.pinned && onUnpin !== undefined && (
-          <button
-            type="button"
-            role="menuitem"
-            className="session-context-item"
-            onClick={() => {
-              onUnpin(menu.key);
-              closeMenu();
-            }}
-          >
-            {t("common.unpinTab")}
-          </button>
-        )}
-        {menu.pinnable && !menu.pinned && onPin !== undefined && (
-          <button
-            type="button"
-            role="menuitem"
-            className="session-context-item"
-            onClick={() => {
-              onPin(menu.key);
-              closeMenu();
-            }}
-          >
-            {t("common.pinTab")}
-          </button>
-        )}
-        {cockpitTerminalId !== null && onDuplicate !== undefined && (
-          <button
-            type="button"
-            role="menuitem"
-            className="session-context-item"
-            disabled={!canDuplicate}
-            title={canDuplicate ? undefined : t("common.cannotDuplicate")}
-            onClick={() => {
-              onDuplicate(cockpitTerminalId);
-              closeMenu();
-            }}
-          >
-            {t("common.duplicateSession")}
-          </button>
-        )}
-        {cockpitTerminalId !== null && onCopySessionId !== undefined && (
-          <button
-            type="button"
-            role="menuitem"
-            className="session-context-item"
-            disabled={!canCopySessionId}
-            title={
-              canCopySessionId ? undefined : t("common.cannotCopySessionId")
-            }
-            onClick={() => {
-              onCopySessionId(cockpitTerminalId);
-              closeMenu();
-            }}
-          >
-            {t("common.copySessionId")}
-          </button>
-        )}
-        {onReveal !== undefined &&
-          fileItem(t("explorer.revealInFinder"), onReveal)}
-        {onCopyPath !== undefined &&
-          fileItem(t("common.copyAbsPath"), onCopyPath)}
-        {viewer !== null && onRename !== undefined && (
-          <button
-            type="button"
-            role="menuitem"
-            className="session-context-item"
-            onClick={() => {
-              onRename(menu.key, viewer);
-              closeMenu();
-            }}
-          >
-            {t("explorer.rename")}
-          </button>
+          />
+        ) : (
+          <>
+            {!menu.pinned && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                onClick={() => {
+                  onClose(menu.key);
+                  closeMenu();
+                }}
+              >
+                {t("common.close")}
+              </button>
+            )}
+            {onCloseAll !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                onClick={() => {
+                  onCloseAll();
+                  closeMenu();
+                }}
+              >
+                {t("common.closeAllTabs")}
+              </button>
+            )}
+            {menu.pinnable && menu.pinned && onUnpin !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                onClick={() => {
+                  onUnpin(menu.key);
+                  closeMenu();
+                }}
+              >
+                {t("common.unpinTab")}
+              </button>
+            )}
+            {menu.pinnable && !menu.pinned && onPin !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                onClick={() => {
+                  onPin(menu.key);
+                  closeMenu();
+                }}
+              >
+                {t("common.pinTab")}
+              </button>
+            )}
+            {cockpitTerminalId !== null && onDuplicate !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                disabled={!canDuplicate}
+                title={canDuplicate ? undefined : t("common.cannotDuplicate")}
+                onClick={() => {
+                  onDuplicate(cockpitTerminalId);
+                  closeMenu();
+                }}
+              >
+                {t("common.duplicateSession")}
+              </button>
+            )}
+            {cockpitTerminalId !== null &&
+              onRestart !== undefined &&
+              canRestart && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="session-context-item"
+                  onClick={(e) => {
+                    // The backdrop closes the menu on any click that reaches it, which would discard
+                    // the pending confirmation.
+                    e.stopPropagation();
+                    setRestartArmed(true);
+                  }}
+                >
+                  {t("common.restartSession")}
+                </button>
+              )}
+            {cockpitTerminalId !== null && onCopySessionId !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                disabled={!canCopySessionId}
+                title={
+                  canCopySessionId ? undefined : t("common.cannotCopySessionId")
+                }
+                onClick={() => {
+                  onCopySessionId(cockpitTerminalId);
+                  closeMenu();
+                }}
+              >
+                {t("common.copySessionId")}
+              </button>
+            )}
+            {onReveal !== undefined &&
+              fileItem(t("explorer.revealInFinder"), onReveal)}
+            {onCopyPath !== undefined &&
+              fileItem(t("common.copyAbsPath"), onCopyPath)}
+            {viewer !== null && onRename !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                onClick={() => {
+                  onRename(menu.key, viewer);
+                  closeMenu();
+                }}
+              >
+                {t("explorer.rename")}
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

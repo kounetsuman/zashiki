@@ -12,6 +12,7 @@ const STATE_ICONS: Record<CockpitTerminalState, string> = {
   idle: "check",
   watching: "visibility",
   no_claude: "terminal_2",
+  exited: "power_off",
   starting: "pending",
   unknown: "help",
 };
@@ -39,6 +40,7 @@ export function StateIcon({
 }) {
   const { t } = useTranslation();
   const menuOpen = session.menuOpen === true;
+  const exited = session.state === "exited";
   const stateClass = menuOpen ? "menu" : fresh ? "fresh" : session.state;
   const glyph = menuOpen
     ? MENU_ICON
@@ -53,7 +55,13 @@ export function StateIcon({
     >
       <span
         className={`material-symbols-outlined state-stack-glyph state-${stateClass}`}
-        title={menuOpen ? t("sessionList.menuOpen") : undefined}
+        title={
+          menuOpen
+            ? t("sessionList.menuOpen")
+            : exited
+              ? t("sessionList.exited")
+              : undefined
+        }
       >
         {glyph}
       </span>

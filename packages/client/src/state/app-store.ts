@@ -21,6 +21,24 @@ import {
   upsertSessionToast,
 } from "./session-toast-model.js";
 
+/**
+ * Answers to a restart request, by wire code. These are refusals about one request — the terminal came
+ * back, is being restarted, or cannot be — so the user gets a sentence in their own language rather
+ * than the server's internal one.
+ */
+const RESTART_ANSWERS: Record<string, string> = {
+  restart_gone: "errorDialog.restartGone",
+  restart_busy: "errorDialog.restartBusy",
+  restart_already_running: "errorDialog.restartAlreadyRunning",
+  restart_unreported: "errorDialog.restartUnreported",
+  restart_in_progress: "errorDialog.restartInProgress",
+  restart_starting_up: "errorDialog.restartStartingUp",
+  restart_not_resumable: "errorDialog.restartNotResumable",
+  restart_cwd_missing: "errorDialog.restartCwdMissing",
+  restart_claude_disabled: "errorDialog.restartClaudeDisabled",
+  restart_failed: "errorDialog.restartFailed",
+};
+
 /** State the App uses for rendering (the useSyncExternalStore snapshot). */
 export interface AppState {
   cockpitTerminals: CockpitTerminalInfo[];
@@ -289,9 +307,22 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
         accountRefreshing: false,
       });
     } else if (m.t === "term.reconnect") {
-      // zk-* was recreated during restore, so reattach the pty.
-      deps.session.reconnect();
+      // Only the named terms are pointing at a PTY that was replaced. Reattaching any other term
+      // would discard its scrollback and replay it for nothing.
+      const termId = deps.session.getTermId();
+      if (termId !== null && m.termIds.includes(termId)) {
+        deps.session.reconnect();
+      }
     } else if (m.t === "error") {
+      const restartAnswer = Object.hasOwn(RESTART_ANSWERS, m.code)
+        ? RESTART_ANSWERS[m.code]
+        : undefined;
+      if (restartAnswer !== undefined) {
+        // The answer to one restart request. Said in the user's language rather than echoing the
+        // server's sentence, and without touching a pending session.new, which this says nothing about.
+        setState({ lastError: i18n.t(restartAnswer) });
+        return;
+      }
       // Clear the pending flag so a failed session.new request does not linger and mis-select another window.
       pendingNew = false;
       if (m.code === "unknown_term") {

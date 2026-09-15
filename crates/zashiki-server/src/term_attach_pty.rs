@@ -84,6 +84,11 @@ fn apply_term_size(session: &PtySession, services: &ControlServices, term_id: &s
 /// bound right away.
 const BIND_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// How long a bridge keeps a socket whose session is gone, covering the `term.select` that follows
+/// closing the terminal on screen. Capped by the heartbeat, which is the other thing that can release
+/// it, so a shortened tick in a test does not wait out a production grace.
+const RELEASE_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
+
 pub async fn attach_owned_term(mut socket: WebSocket, term_id: String, services: ControlServices) {
     let outcome = services.terms.lock().unwrap().try_mark_attached(&term_id);
     match outcome {
@@ -191,6 +196,27 @@ async fn send_restore(
 /// deferring. An alternate-screen session re-enters via its own `?1049h` inside the replay.
 const RESTORE_CLEAR_PREFIX: &[u8] = b"\x1b[?1049l\x1b[H\x1b[2J\x1b[3J";
 
+/// Forwards input to the pty. A write to a pty whose child is gone fails with EIO, so asking the
+/// session directly is a second way for the bridge to notice — it does not wait on the status poller
+/// looking. Only the ask is made here: whether the bridge is done reading is left to the output stream
+/// closing, which waits for the reader to forward the child's last output.
+fn note_dead_pty(term_id: &str, session: &PtySession, data: &[u8]) {
+    let Err(e) = session.write_input(data) else {
+        return;
+    };
+    tracing::debug!("zashiki-server: {term_id} への入力を破棄しました: {e}");
+    let _ = session.has_exited();
+}
+
+/// Starts the countdown to letting go of a term whose session is gone, unless one is already running.
+/// Left alone once armed, so a session that stays gone is released on the first grace rather than
+/// having it renewed by every heartbeat that finds it still missing.
+fn arm_release(at: &mut Option<tokio::time::Instant>, grace: std::time::Duration) {
+    if at.is_none() {
+        *at = Some(tokio::time::Instant::now() + grace);
+    }
+}
+
 /// The main loop: subscribe -> initial restore (raw ring replay + redraw sequence) -> then run
 /// live/input/backpressure/heartbeat. Because an owned PTY's attach target can be swapped on a tab switch
 /// (term.select), watch for session_id changes via `bind_notify`; on change, re-subscribe to the new PTY
@@ -221,6 +247,11 @@ async fn run_bridge(
     );
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut alive = true;
+    // Set once the session's output stream closes; see the `RecvError::Closed` arm below.
+    let mut ended = false;
+    // When to let go of a term whose session is gone; see `arm_release`.
+    let mut release_at: Option<tokio::time::Instant> = None;
+    let release_grace = RELEASE_GRACE.min(services.heartbeat);
 
     let resume_notify = services
         .terms
@@ -244,8 +275,59 @@ async fn run_bridge(
     let mut paused = false;
 
     loop {
+        let release_deadline = release_at;
         tokio::select! {
+            // Nothing is waiting to be released unless a deadline is armed, so this arm idles forever.
+            _ = async move {
+                match release_deadline {
+                    Some(at) => tokio::time::sleep_until(at).await,
+                    None => std::future::pending::<()>().await,
+                }
+            } => break,
             _ = heartbeat.tick() => {
+                // A restart swaps the PTY without changing the session id, so `bind_notify` stays
+                // quiet. The reconnect notice normally brings the client back at once; this is the
+                // backstop for a client that missed it, so an ended term is never stuck for good.
+                // Checked whatever state the bridge is in: the stream closing is the usual way a
+                // replacement is noticed, but a descendant holding the pty slave open can keep the
+                // reader — and so the stream — alive indefinitely, and this is the only other path.
+                //
+                // Read from the term rather than the local copy: the client may have selected another
+                // terminal since, and judging a closed terminal by the sid this bridge happens to hold
+                // would drop a socket that is about to be rebound.
+                let current_sid = services
+                    .terms
+                    .lock()
+                    .unwrap()
+                    .session_id(term_id)
+                    .unwrap_or_default();
+                {
+                    // An empty binding means the term itself is gone — `term.close` took its entry —
+                    // and reaches the release path below, since no session is registered under "".
+                    match services.sessions.get(&current_sid).await {
+                        // Out of the registry: the terminal was closed, not restarted. Released after
+                        // the grace rather than at once, because closing the terminal on screen removes
+                        // it before the client's `term.select` for the next one arrives — dropping the
+                        // socket in that gap is the reconnect-and-replay this bridge stays open to
+                        // avoid.
+                        None => arm_release(&mut release_at, release_grace),
+                        Some(current) if !Arc::ptr_eq(&current, &session) => {
+                            release_at = None;
+                            bound_sid = current_sid;
+                            session = current;
+                            apply_term_size(&session, services, term_id);
+                            sub = session.subscribe();
+                            ended = false;
+                            let replay = std::mem::take(&mut sub.replay);
+                            let formatted = session.screen_formatted();
+                            match send_restore(socket, services, term_id, replay, formatted).await {
+                                Ok(p) => paused = p,
+                                Err(()) => break,
+                            }
+                        }
+                        Some(_) => release_at = None,
+                    }
+                }
                 if !alive {
                     break;
                 }
@@ -255,7 +337,7 @@ async fn run_bridge(
                 }
             }
             // Always drain live output (even while paused, drain and discard = never stall the PTY itself).
-            live = sub.receiver.recv() => match live {
+            live = sub.receiver.recv(), if !ended => match live {
                 Ok(chunk) => {
                     if paused {
                         // Discard while paused. On resume, resend the current screen to reconcile (the
@@ -285,8 +367,26 @@ async fn run_bridge(
                         }
                     }
                 }
-                // PTY exit (the sender is dropped when the reader thread stops). Close the WS.
-                Err(RecvError::Closed) => break,
+                // The session behind this term is gone. Hold the socket either way: closing it sends the
+                // client into a reconnect loop that blanks the pane and re-replays the whole scrollback,
+                // even when the user is simply switching to another terminal — the `term.select` that
+                // follows rebinds this bridge in place. Staying attached also keeps the last screen
+                // readable and lets a restart hand this term a live PTY again. A bridge whose session
+                // really is gone for good — out of the registry — is released once the grace runs out.
+                // A terminal whose process ended on its own closes its stream too and stays registered,
+                // so the stream closing cannot be the signal on its own.
+                Err(RecvError::Closed) => {
+                    ended = true;
+                    let current_sid = services
+                        .terms
+                        .lock()
+                        .unwrap()
+                        .session_id(term_id)
+                        .unwrap_or_default();
+                    if services.sessions.get(&current_sid).await.is_none() {
+                        arm_release(&mut release_at, release_grace);
+                    }
+                }
             },
             // ack has progressed to the low watermark and a resume was signaled -> re-read shared state.
             // On resume, resend the current screen to recover the output discarded while paused (screen
@@ -316,7 +416,7 @@ async fn run_bridge(
                     .unwrap()
                     .session_id(term_id)
                     .unwrap_or_default();
-                if next_sid.is_empty() || next_sid == bound_sid {
+                if next_sid.is_empty() {
                     continue;
                 }
                 let Some(next_session) = services.sessions.get(&next_sid).await else {
@@ -324,12 +424,24 @@ async fn run_bridge(
                     // state.
                     continue;
                 };
+                // Same id is not the same session after a restart: re-selecting the tab is the user
+                // asking for it back, so take the chance to rebind instead of making them wait out the
+                // heartbeat.
+                if next_sid == bound_sid && Arc::ptr_eq(&next_session, &session) {
+                    continue;
+                }
                 bound_sid = next_sid;
                 session = next_session;
+                // The term has a session again, so nothing is waiting to be released.
+                release_at = None;
                 // Align the swap-target PTY to the TermEntry's real size too (so size stays consistent
                 // after a tab switch).
                 apply_term_size(&session, services, term_id);
                 sub = session.subscribe();
+                // The client reuses one term slot for every Cockpit Terminal, so this arm also runs
+                // after switching away from one that ended. Without clearing the flag, the live-output
+                // branch would stay disabled and the newly bound terminal would never echo.
+                ended = false;
                 // On tab reopen/switch too, rebuild the new PTY's scrollback: raw ring replay -> current
                 // screen.
                 let replay = std::mem::take(&mut sub.replay);
@@ -344,14 +456,22 @@ async fn run_bridge(
                 // second writer).
                 Some(Ok(Message::Binary(data))) => {
                     alive = true;
-                    if session.write_input(&data).is_err() {
-                        break;
+                    // Nothing to type into once the session has ended, and a pty master whose child is
+                    // gone answers a write with EIO. Dropping the keystroke keeps the bridge alive:
+                    // ending it here is what put the client in a reconnect loop, and latching `ended`
+                    // on a write error would be a state whose exit condition is stricter than its
+                    // entry. The stream closing is what marks a session ended — which can lag the
+                    // child's death by a poll, so a failure here is logged rather than lost.
+                    if !ended {
+                        note_dead_pty(term_id, &session, &data);
                     }
                 }
                 Some(Ok(Message::Text(text))) => {
                     alive = true;
-                    if session.write_input(text.as_bytes()).is_err() {
-                        break;
+                    // The frame type the client actually sends for keystrokes; same reasoning as the
+                    // binary arm above.
+                    if !ended {
+                        note_dead_pty(term_id, &session, text.as_bytes());
                     }
                 }
                 Some(Ok(Message::Pong(_))) => alive = true,
@@ -386,6 +506,14 @@ mod tests {
             org_colors: BTreeMap::new(),
             org_aliases: BTreeMap::new(),
         }
+    }
+
+    fn sh_cfg(script: &str) -> PtyConfig {
+        let mut cmd = CommandBuilder::new("sh");
+        cmd.arg("-c");
+        cmd.arg(script);
+        cmd.env("TERM", "xterm-256color");
+        PtyConfig::new(cmd)
     }
 
     fn cat_cfg() -> PtyConfig {
@@ -514,6 +642,51 @@ mod tests {
         ws.send(TMsg::Binary("ping-42\n".into())).await.unwrap();
         let seen = recv_until(&mut ws, "ping-42", 3000).await;
         assert!(seen.contains("ping-42"), "input not echoed to WS: {seen:?}");
+    }
+
+    /// A term whose session is torn down stays attached rather than being closed. Closing it would put
+    /// the client into a reconnect loop that re-replays the same screen; staying keeps that screen
+    /// readable until a restart hands the term a live PTY.
+    #[tokio::test]
+    async fn session_teardown_leaves_the_term_attached() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        let services = services_with_pty("t1", "sess-1", cat_cfg()).await;
+        let session = services.sessions.get("sess-1").await.unwrap();
+        let sessions = services.sessions.clone();
+        let terms = services.terms.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        ws.send(TMsg::Binary("before\n".into())).await.unwrap();
+        let _ = recv_until(&mut ws, "before", 3000).await;
+
+        tokio::task::spawn_blocking(move || session.shutdown())
+            .await
+            .unwrap();
+
+        // Typing into the frozen pane must not end the bridge: the pty master answers with EIO, and
+        // breaking here would reopen the reconnect loop. Text is the frame the client sends for
+        // keystrokes, so that is what this has to exercise.
+        ws.send(TMsg::Text("after-end\n".into())).await.unwrap();
+        ws.send(TMsg::Binary("after-end-binary\n".into()))
+            .await
+            .unwrap();
+        let after = recv_until(&mut ws, "never-sent", 500).await;
+        assert!(!after.contains("never-sent"));
+
+        // Still attached from the server's side: rebinding to a live session resumes output, which it
+        // could not do if the bridge had gone away.
+        sessions
+            .create("sess-2".to_string(), cat_cfg())
+            .await
+            .unwrap();
+        assert!(terms.lock().unwrap().rebind_session("t1", "sess-2"));
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        ws.send(TMsg::Binary("on-two\n".into())).await.unwrap();
+        assert!(
+            recv_until(&mut ws, "on-two", 3000).await.contains("on-two"),
+            "the bridge should have survived the input sent while ended"
+        );
     }
 
     #[tokio::test]
@@ -782,6 +955,208 @@ mod tests {
         // the PTY after the switch.
         ws.send(TMsg::Binary("on-two\n".into())).await.unwrap();
         assert!(recv_until(&mut ws, "on-two", 3000).await.contains("on-two"));
+    }
+
+    /// The case #416 is about: the terminal's own process ends, nobody tears it down, and the user
+    /// types into the frozen pane. The bridge must hold — a write to the dead master fails with EIO,
+    /// and breaking there is what put the client in a reconnect loop.
+    #[tokio::test]
+    async fn a_terminal_that_ends_on_its_own_keeps_its_term_attached() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        let services = services_with_pty("t1", "sess-1", sh_cfg("exit 0")).await;
+        let sessions = services.sessions.clone();
+        let terms = services.terms.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        ws.send(TMsg::Text("into-the-void\n".into())).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Still attached: a restart can hand this term a live PTY again.
+        sessions
+            .create("sess-2".to_string(), cat_cfg())
+            .await
+            .unwrap();
+        assert!(terms.lock().unwrap().rebind_session("t1", "sess-2"));
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        ws.send(TMsg::Text("alive-again\n".into())).await.unwrap();
+        assert!(
+            recv_until(&mut ws, "alive-again", 3000)
+                .await
+                .contains("alive-again"),
+            "the bridge should have survived input sent to a terminal that ended on its own"
+        );
+    }
+
+    /// And it survives past the grace that releases a closed terminal: an ended terminal stays
+    /// registered so a restart can reach it, and letting go would put the client into the very
+    /// blank-and-replay loop the bridge stays attached to avoid.
+    #[tokio::test]
+    async fn a_terminal_that_ends_on_its_own_outlasts_the_release_grace() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        let mut services = services_with_pty("t1", "sess-1", sh_cfg("exit 0")).await;
+        // Long enough that only the release grace could end this bridge.
+        services.heartbeat = Duration::from_secs(600);
+        let sessions = services.sessions.clone();
+        let terms = services.terms.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+
+        // The poller asking closes the stream of a session whose child is gone.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(sessions.get("sess-1").await.unwrap().has_exited());
+        tokio::time::sleep(RELEASE_GRACE + Duration::from_millis(500)).await;
+
+        sessions
+            .create("sess-2".to_string(), cat_cfg())
+            .await
+            .unwrap();
+        assert!(terms.lock().unwrap().rebind_session("t1", "sess-2"));
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        ws.send(TMsg::Text("alive-again\n".into())).await.unwrap();
+        assert!(
+            recv_until(&mut ws, "alive-again", 3000)
+                .await
+                .contains("alive-again"),
+            "the bridge should not have been released while its terminal was still registered"
+        );
+    }
+
+    /// Closing the terminal on screen and switching to another must not drop the socket: the client
+    /// would blank the pane and replay the whole scrollback on reconnect, for what is just a switch.
+    #[tokio::test]
+    async fn closing_the_shown_terminal_keeps_the_socket_for_the_next_one() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        let services = services_with_pty("t1", "sess-1", cat_cfg()).await;
+        services
+            .sessions
+            .create("sess-2".to_string(), cat_cfg())
+            .await
+            .unwrap();
+        let sessions = services.sessions.clone();
+        let terms = services.terms.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        ws.send(TMsg::Text("on-one\n".into())).await.unwrap();
+        assert!(recv_until(&mut ws, "on-one", 3000).await.contains("on-one"));
+
+        // The shown terminal is closed, and the client selects another one on the same term.
+        sessions.remove("sess-1").await;
+        assert!(terms.lock().unwrap().rebind_session("t1", "sess-2"));
+
+        // The rebind is asynchronous, so keep offering input until the new session answers.
+        let mut echoed = false;
+        for _ in 0..20 {
+            ws.send(TMsg::Text("on-two\n".into())).await.unwrap();
+            if recv_until(&mut ws, "on-two", 250).await.contains("on-two") {
+                echoed = true;
+                break;
+            }
+        }
+        assert!(
+            echoed,
+            "the same socket should carry the newly selected terminal"
+        );
+    }
+
+    /// A terminal removed from the registry is gone for good, so the bridge lets go rather than holding
+    /// the socket and that session's scrollback forever.
+    #[tokio::test]
+    async fn removing_the_bound_session_releases_the_bridge() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        // The stream closing does not end the bridge on its own, because the same thing happens when
+        // the user merely switches terminals. Shortened here so the test does not wait out a
+        // production tick.
+        let mut services = services_with_pty("t1", "sess-1", cat_cfg()).await;
+        services.heartbeat = Duration::from_millis(50);
+        let sessions = services.sessions.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        ws.send(TMsg::Binary("hello\n".into())).await.unwrap();
+        assert!(recv_until(&mut ws, "hello", 3000).await.contains("hello"));
+
+        sessions.remove("sess-1").await;
+
+        // The socket closes on its own once the heartbeat sees the session is gone.
+        use futures_util::StreamExt;
+        let closed = tokio::time::timeout(Duration::from_millis(3000), async {
+            loop {
+                match ws.next().await {
+                    Some(Ok(_)) => continue,
+                    _ => return true,
+                }
+            }
+        })
+        .await;
+        assert_eq!(closed, Ok(true), "the bridge should release the socket");
+    }
+
+    /// And it lets go on its own grace rather than on the heartbeat: waiting for a tick would leave the
+    /// pane rendering a dead screen and swallowing input for up to a minute of production interval.
+    #[tokio::test]
+    async fn a_removed_session_releases_the_bridge_without_waiting_for_a_heartbeat() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        let mut services = services_with_pty("t1", "sess-1", cat_cfg()).await;
+        services.heartbeat = Duration::from_secs(600);
+        let sessions = services.sessions.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        ws.send(TMsg::Binary("hello\n".into())).await.unwrap();
+        assert!(recv_until(&mut ws, "hello", 3000).await.contains("hello"));
+
+        sessions.remove("sess-1").await;
+
+        use futures_util::StreamExt;
+        let closed = tokio::time::timeout(RELEASE_GRACE + Duration::from_millis(2000), async {
+            loop {
+                match ws.next().await {
+                    Some(Ok(_)) => continue,
+                    _ => return true,
+                }
+            }
+        })
+        .await;
+        assert_eq!(closed, Ok(true), "the bridge should not wait for a heartbeat");
+    }
+
+    /// The client reuses one term slot for every Cockpit Terminal, so switching away from one that
+    /// ended must restore live output. Otherwise closing a terminal silences the one selected next.
+    #[tokio::test]
+    async fn rebind_after_the_bound_session_ended_restores_output() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        let services = services_with_pty("t1", "sess-1", cat_cfg()).await;
+        services
+            .sessions
+            .create("sess-2".to_string(), cat_cfg())
+            .await
+            .unwrap();
+        let first = services.sessions.get("sess-1").await.unwrap();
+        let terms = services.terms.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+        ws.send(TMsg::Binary("on-one\n".into())).await.unwrap();
+        assert!(recv_until(&mut ws, "on-one", 3000).await.contains("on-one"));
+
+        // The bound session ends, then the client selects another terminal on the same term.
+        tokio::task::spawn_blocking(move || first.shutdown())
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(terms.lock().unwrap().rebind_session("t1", "sess-2"));
+        tokio::time::sleep(Duration::from_millis(150)).await;
+
+        ws.send(TMsg::Binary("on-two\n".into())).await.unwrap();
+        assert!(
+            recv_until(&mut ws, "on-two", 3000).await.contains("on-two"),
+            "output from the newly bound session should reach the client"
+        );
     }
 
     /// Attaching a term with a TermEntry real size (120x40) resizes the PTY from its startup 80x24 to the
