@@ -372,10 +372,20 @@ async fn run_bridge(
                 // even when the user is simply switching to another terminal — the `term.select` that
                 // follows rebinds this bridge in place. Staying attached also keeps the last screen
                 // readable and lets a restart hand this term a live PTY again. A bridge whose session
-                // really is gone for good is released once the grace below runs out.
+                // really is gone for good — out of the registry — is released once the grace runs out.
+                // A terminal whose process ended on its own closes its stream too and stays registered,
+                // so the stream closing cannot be the signal on its own.
                 Err(RecvError::Closed) => {
                     ended = true;
-                    arm_release(&mut release_at, release_grace);
+                    let current_sid = services
+                        .terms
+                        .lock()
+                        .unwrap()
+                        .session_id(term_id)
+                        .unwrap_or_default();
+                    if services.sessions.get(&current_sid).await.is_none() {
+                        arm_release(&mut release_at, release_grace);
+                    }
                 }
             },
             // ack has progressed to the low watermark and a resume was signaled -> re-read shared state.
@@ -977,6 +987,41 @@ mod tests {
                 .await
                 .contains("alive-again"),
             "the bridge should have survived input sent to a terminal that ended on its own"
+        );
+    }
+
+    /// And it survives past the grace that releases a closed terminal: an ended terminal stays
+    /// registered so a restart can reach it, and letting go would put the client into the very
+    /// blank-and-replay loop the bridge stays attached to avoid.
+    #[tokio::test]
+    async fn a_terminal_that_ends_on_its_own_outlasts_the_release_grace() {
+        use futures_util::SinkExt;
+        use tokio_tungstenite::tungstenite::Message as TMsg;
+        let mut services = services_with_pty("t1", "sess-1", sh_cfg("exit 0")).await;
+        // Long enough that only the release grace could end this bridge.
+        services.heartbeat = Duration::from_secs(600);
+        let sessions = services.sessions.clone();
+        let terms = services.terms.clone();
+        let port = serve(services).await;
+        let mut ws = connect_term(port, "t1").await;
+
+        // The poller asking closes the stream of a session whose child is gone.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(sessions.get("sess-1").await.unwrap().has_exited());
+        tokio::time::sleep(RELEASE_GRACE + Duration::from_millis(500)).await;
+
+        sessions
+            .create("sess-2".to_string(), cat_cfg())
+            .await
+            .unwrap();
+        assert!(terms.lock().unwrap().rebind_session("t1", "sess-2"));
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        ws.send(TMsg::Text("alive-again\n".into())).await.unwrap();
+        assert!(
+            recv_until(&mut ws, "alive-again", 3000)
+                .await
+                .contains("alive-again"),
+            "the bridge should not have been released while its terminal was still registered"
         );
     }
 
