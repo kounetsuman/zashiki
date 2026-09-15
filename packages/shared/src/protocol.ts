@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  dashboardSettingsSchema,
   footerThresholdsSchema,
   notificationSettingsSchema,
 } from "./config.js";
@@ -344,6 +345,15 @@ export const configSetNotificationsSchema = z.object({
 });
 
 /**
+ * Dashboard page change from SETTINGS. The whole settings object is sent (the three fields are
+ * edited as a unit); the server persists it to config.json and distributes config.sync.
+ */
+export const configSetDashboardSchema = z.object({
+  t: z.literal("config.setDashboard"),
+  dashboard: dashboardSettingsSchema,
+});
+
+/**
  * Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run wizard
  * or SETTINGS). Idempotent; the server broadcasts the resulting `hooks.status`.
  */
@@ -435,6 +445,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   configSetEditorSchema,
   configSetFooterThresholdsSchema,
   configSetNotificationsSchema,
+  configSetDashboardSchema,
   hooksRegisterSchema,
   hooksUnregisterSchema,
   updateCheckSchema,
@@ -547,6 +558,8 @@ export const configSyncSchema = z.object({
   footerThresholds: footerThresholdsSchema,
   /** Per-category notification switches (defaults to the standard set; omitted by old servers). */
   notifications: notificationSettingsSchema,
+  /** The dashboard page shown at launch / on wake (defaults to off; omitted by old servers). */
+  dashboard: dashboardSettingsSchema,
 });
 
 /**

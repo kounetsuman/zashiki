@@ -16,8 +16,9 @@ use std::time::{Duration, SystemTime};
 
 use crate::control::{ConfigView, ControlHub};
 use crate::protocol::{
-    ElapsedBands, FooterBand, FooterThresholds, NotificationSettings, NotifyCategories,
-    NotifyCategoryPref, SoundPreset, TokenBands, UsageBands,
+    DashboardFrequency, DashboardSettings, DashboardShowOn, ElapsedBands, FooterBand,
+    FooterThresholds, NotificationSettings, NotifyCategories, NotifyCategoryPref, SoundPreset,
+    TokenBands, UsageBands,
 };
 
 /// Polling interval for config watching.
@@ -61,7 +62,34 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
         editor,
         footer_thresholds: parse_footer_thresholds(obj),
         notifications: parse_notifications(obj),
+        dashboard: parse_dashboard(obj),
     }
+}
+
+/// Parse `dashboard`, defaulting each field independently. The url is trimmed here so the sanitized
+/// value the server publishes is the one clients act on.
+fn parse_dashboard(
+    obj: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> DashboardSettings {
+    let node = obj
+        .and_then(|o| o.get("dashboard"))
+        .and_then(|v| v.as_object());
+    let d = DashboardSettings::default();
+    let url = node
+        .and_then(|o| o.get("url"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .unwrap_or(&d.url)
+        .to_string();
+    let show_on = node
+        .and_then(|o| o.get("showOn"))
+        .and_then(|v| serde_json::from_value::<DashboardShowOn>(v.clone()).ok())
+        .unwrap_or(d.show_on);
+    let frequency = node
+        .and_then(|o| o.get("frequency"))
+        .and_then(|v| serde_json::from_value::<DashboardFrequency>(v.clone()).ok())
+        .unwrap_or(d.frequency);
+    DashboardSettings { url, show_on, frequency }
 }
 
 /// One category preference, defaulting each sub-field independently from `default`.
@@ -209,6 +237,14 @@ pub fn write_config_notifications(
 ) -> std::io::Result<()> {
     let value = serde_json::to_value(notifications).unwrap_or(serde_json::Value::Null);
     write_config_field(path, "notifications", value)
+}
+
+pub fn write_config_dashboard(
+    path: &Path,
+    dashboard: &DashboardSettings,
+) -> std::io::Result<()> {
+    let value = serde_json::to_value(dashboard).unwrap_or(serde_json::Value::Null);
+    write_config_field(path, "dashboard", value)
 }
 
 /// Read the live-applied settings along with whether they were read successfully.
@@ -397,6 +433,55 @@ mod tests {
         let path = dir.path().join("nested/config.json");
         write_config_language(&path, "ja").unwrap();
         assert_eq!(read_config(&path).language, Some("ja".into()));
+    }
+
+    #[test]
+    fn parse_config_dashboard_defaults_to_off() {
+        assert_eq!(parse(json!({})).dashboard, DashboardSettings::default());
+    }
+
+    #[test]
+    fn parse_config_dashboard_reads_the_page_and_trims_the_url() {
+        let d = parse(json!({
+            "dashboard": {
+                "url": "  file:///Users/me/board.html  ",
+                "showOn": "both",
+                "frequency": "once_per_day"
+            }
+        }))
+        .dashboard;
+        assert_eq!(d.url, "file:///Users/me/board.html");
+        assert_eq!(d.show_on, DashboardShowOn::Both);
+        assert_eq!(d.frequency, DashboardFrequency::OncePerDay);
+    }
+
+    #[test]
+    fn parse_config_dashboard_keeps_the_url_when_another_field_is_unknown() {
+        let d = parse(json!({
+            "dashboard": { "url": "https://dash.example", "showOn": "someday", "frequency": 7 }
+        }))
+        .dashboard;
+        assert_eq!(d.url, "https://dash.example");
+        assert_eq!(d.show_on, DashboardShowOn::default());
+        assert_eq!(d.frequency, DashboardFrequency::default());
+    }
+
+    #[test]
+    fn write_config_dashboard_round_trips_and_preserves_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"language": "en"}"#).unwrap();
+
+        let dashboard = DashboardSettings {
+            url: "https://dash.example/board".to_string(),
+            show_on: DashboardShowOn::Wake,
+            frequency: DashboardFrequency::OncePerDay,
+        };
+        write_config_dashboard(&path, &dashboard).unwrap();
+
+        let c = read_config(&path);
+        assert_eq!(c.dashboard, dashboard);
+        assert_eq!(c.language, Some("en".into())); // existing fields are preserved
     }
 
     #[test]

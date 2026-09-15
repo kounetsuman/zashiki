@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client";
 import { I18nextProvider, Trans } from "react-i18next";
 import { App } from "./App.js";
 import { createCrashApi } from "./api/crash.js";
+import { createDashboardApi } from "./api/dashboard.js";
 import { createFilesApi } from "./api/files.js";
 import { createFilesListApi } from "./api/files-list.js";
 import { createFsApi } from "./api/fs.js";
@@ -72,6 +73,7 @@ if (token === null) {
   const filesListApi = createFilesListApi(base, token);
   const reposApi = createReposApi(base, token);
   const crashApi = createCrashApi(base, token);
+  const dashboardApi = createDashboardApi(base, token);
   root.render(
     <StrictMode>
       <I18nextProvider i18n={i18n}>
@@ -101,6 +103,7 @@ if (token === null) {
             filesListApi={filesListApi}
             reposApi={reposApi}
             crashApi={crashApi}
+            dashboardApi={dashboardApi}
           />
         </ErrorBoundary>
       </I18nextProvider>

@@ -83,6 +83,19 @@ output too (on macOS it uses private API, so it is not supported for App Store
 distribution; this app ships outside the App Store (Developer ID), so there is no
 practical impact).
 
+## Quit log (`shell.log`)
+
+Quitting is guarded: the shell asks the window whether the Memo has unsaved edits and, if
+so, offers Save / Don't Save / Cancel, then asks again if any session is still running.
+None of that appears in the UI when it goes wrong — a quit that refuses to happen just
+looks like a dead close button — so every branch of the sequence, panics included, appends
+to `~/Library/Logs/zashiki/shell.log`. It sits beside the server's `server.log` and uses
+the same UTC timestamps, so the two can be read side by side. `ZK_SHELL_LOG` redirects it.
+
+The shell's other progress output goes to stderr, which is visible under `tauri dev` but
+discarded when the `.app` is launched from Finder. The canonical spec is the `quit_log` and
+quit-guard tests in `apps/desktop/src-tauri` (cargo test).
+
 ## Update check (GitHub Releases)
 
 When you run an outdated bundle, the server notifies you in the NOTIFICATION panel

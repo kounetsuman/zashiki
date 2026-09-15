@@ -82,6 +82,9 @@
     "notificationsDeleted": "{{count}} 件の通知を削除しました",
     "memoSaveFailed": "メモを保存できませんでした。接続を確認して再試行してください"
   },
+  "quitSave": {
+    "saving": "終了前にメモを保存しています…"
+  },
   "sessionList": {
     "ariaLabel": "セッション一覧",
     "limitReached": "使用量上限に達しています",
@@ -200,6 +203,10 @@
     "tableTruncated": "全 {{total}} 行のうち先頭 {{shown}} 行を表示中",
     "tableEmpty": "表示できる行がありません。",
     "tableColumnsTruncated": "{{shown}} 列より右のセルは表示していません"
+  },
+  "dashboard": {
+    "title": "ダッシュボード",
+    "readFailed": "設定されたダッシュボードのファイルを読み込めませんでした。"
   },
   "find": {
     "placeholder": "検索",
@@ -387,6 +394,22 @@
         "percent": "%",
         "tokens": "トークン",
         "hours": "時間"
+      }
+    },
+    "dashboard": {
+      "section": "起動時・スリープ復帰時のダッシュボード",
+      "hint": "コックピットの前面に表示するページのアドレス。Web のアドレスか、ローカルの .html ファイルのパス（リンク先のファイルは配信しないため単体で完結したものにしてください）。空欄なら何も表示しません。",
+      "url": "ダッシュボードのアドレス",
+      "showOn": "表示するタイミング",
+      "showOnOption": {
+        "launch": "zashiki の起動時",
+        "wake": "Mac のスリープ復帰時",
+        "both": "両方"
+      },
+      "frequency": "表示する頻度",
+      "frequencyOption": {
+        "every_time": "毎回",
+        "once_per_day": "1 日 1 回"
       }
     },
     "hooksIntegration": "Claude Code 連携（通知・使用率フッタ）",

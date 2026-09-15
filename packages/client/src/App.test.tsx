@@ -10,12 +10,15 @@ import {
 import {
   type ClientMessage,
   type CockpitTerminalInfo,
+  type DashboardSettings,
+  DEFAULT_DASHBOARD_SETTINGS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   type ServerMessage,
 } from "@zashiki/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App.js";
+import type { CrashApi } from "./api/crash.js";
 import type { FilesApi } from "./api/files.js";
 import type { FilesListApi } from "./api/files-list.js";
 import type { FsApi } from "./api/fs.js";
@@ -337,6 +340,7 @@ describe("App", () => {
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
         memoEnabled: false,
+        dashboard: DEFAULT_DASHBOARD_SETTINGS,
       }),
     );
     expect(i18n.language).toBe("en");
@@ -1201,6 +1205,7 @@ describe("App", () => {
       footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       notifications: { ...DEFAULT_NOTIFICATION_SETTINGS, enabled },
       memoEnabled: false,
+      dashboard: DEFAULT_DASHBOARD_SETTINGS,
     });
     act(() => control.emit(configSync(false)));
     expect(notifier.isEnabled()).toBe(false);
@@ -1924,5 +1929,126 @@ describe("App welcome onboarding", () => {
     expect(
       screen.getByRole("dialog", { name: "zashiki へようこそ" }),
     ).toBeTruthy();
+  });
+});
+
+describe("App dashboard on launch", () => {
+  function memoryStorage(): Pick<Storage, "getItem" | "setItem"> {
+    const map = new Map<string, string>();
+    return {
+      getItem: (k) => map.get(k) ?? null,
+      setItem: (k, v) => void map.set(k, v),
+    };
+  }
+
+  function renderApp(
+    storage: Pick<Storage, "getItem" | "setItem">,
+    crashApi?: CrashApi,
+  ) {
+    storage.setItem(ONBOARDING_SEEN_KEY, "1");
+    const control = createFakeAppControl();
+    const { session } = fakeAppSession();
+    render(
+      <App
+        control={control}
+        session={session}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
+        reposApi={fakeReposApi}
+        crashApi={crashApi}
+        viewStorage={storage}
+      />,
+    );
+    return { control };
+  }
+
+  const configSync = (dashboard: DashboardSettings): ServerMessage => ({
+    t: "config.sync",
+    notifySound: true,
+    updateCheck: true,
+    language: null,
+    accountUsage: false,
+    memoEnabled: false,
+    editor: null,
+    footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
+    notifications: DEFAULT_NOTIFICATION_SETTINGS,
+    dashboard,
+  });
+
+  it("puts the configured page in front of the cockpit once the settings arrive, and Escape dismisses it", () => {
+    const { control } = renderApp(memoryStorage());
+    expect(screen.queryByRole("dialog", { name: "ダッシュボード" })).toBeNull();
+
+    act(() =>
+      control.emit(
+        configSync({
+          ...DEFAULT_DASHBOARD_SETTINGS,
+          url: "https://dash.example/board",
+        }),
+      ),
+    );
+    expect(screen.getByRole("dialog", { name: "ダッシュボード" })).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "ダッシュボード" })).toBeNull();
+  });
+
+  it("waits for the crash check before showing, so it cannot draw over a crash report", async () => {
+    let answer: (log: string | null) => void = () => undefined;
+    const crashApi: CrashApi = {
+      last: () =>
+        new Promise<string | null>((resolve) => {
+          answer = resolve;
+        }),
+      ack: () => Promise.resolve(),
+    };
+    const { control } = renderApp(memoryStorage(), crashApi);
+    act(() =>
+      control.emit(
+        configSync({
+          ...DEFAULT_DASHBOARD_SETTINGS,
+          url: "https://dash.example/board",
+        }),
+      ),
+    );
+    // The settings arrived first; the dashboard must hold until the crash answer lands.
+    expect(screen.queryByRole("dialog", { name: "ダッシュボード" })).toBeNull();
+
+    await act(async () => answer("boom"));
+    expect(screen.queryByRole("dialog", { name: "ダッシュボード" })).toBeNull();
+    expect(
+      screen.getByRole("dialog", { name: "⚠ 前回 zashiki が異常終了しました" }),
+    ).toBeTruthy();
+  });
+
+  it("shows once the crash check comes back empty", async () => {
+    let answer: (log: string | null) => void = () => undefined;
+    const crashApi: CrashApi = {
+      last: () =>
+        new Promise<string | null>((resolve) => {
+          answer = resolve;
+        }),
+      ack: () => Promise.resolve(),
+    };
+    const { control } = renderApp(memoryStorage(), crashApi);
+    act(() =>
+      control.emit(
+        configSync({
+          ...DEFAULT_DASHBOARD_SETTINGS,
+          url: "https://dash.example/board",
+        }),
+      ),
+    );
+    await act(async () => answer(null));
+    expect(screen.getByRole("dialog", { name: "ダッシュボード" })).toBeTruthy();
+  });
+
+  it("leaves the cockpit alone when no page is configured", () => {
+    const { control } = renderApp(memoryStorage());
+    act(() => control.emit(configSync(DEFAULT_DASHBOARD_SETTINGS)));
+    expect(screen.queryByRole("dialog", { name: "ダッシュボード" })).toBeNull();
   });
 });

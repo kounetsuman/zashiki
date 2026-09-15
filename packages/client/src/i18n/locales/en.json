@@ -82,6 +82,9 @@
     "notificationsDeleted": "Deleted {{count}} notification(s)",
     "memoSaveFailed": "Couldn't save the Memo — check the connection and try again"
   },
+  "quitSave": {
+    "saving": "Saving the Memo before quitting…"
+  },
   "sessionList": {
     "ariaLabel": "Session list",
     "limitReached": "Usage limit reached",
@@ -200,6 +203,10 @@
     "tableTruncated": "Showing the first {{shown}} of {{total}} rows",
     "tableEmpty": "This file has no rows to show.",
     "tableColumnsTruncated": "Cells past column {{shown}} are not shown"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "readFailed": "The configured dashboard file could not be read."
   },
   "find": {
     "placeholder": "Find",
@@ -387,6 +394,22 @@
         "percent": "%",
         "tokens": "tokens",
         "hours": "hours"
+      }
+    },
+    "dashboard": {
+      "section": "Dashboard on launch / wake",
+      "hint": "Address of a page to show in front of the cockpit. A web address, or the path to a local .html file (it must be self-contained: files it links to are not served). Leave blank to show nothing.",
+      "url": "Dashboard address",
+      "showOn": "Show",
+      "showOnOption": {
+        "launch": "When zashiki starts",
+        "wake": "When the Mac wakes up",
+        "both": "Both"
+      },
+      "frequency": "How often",
+      "frequencyOption": {
+        "every_time": "Every time",
+        "once_per_day": "Once a day"
       }
     },
     "hooksIntegration": "Claude Code integration (notifications & usage footer)",

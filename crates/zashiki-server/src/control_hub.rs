@@ -296,6 +296,7 @@ impl ControlHub {
                 editor: state.config.editor.clone(),
                 footer_thresholds: state.config.footer_thresholds,
                 notifications: state.config.notifications,
+                dashboard: state.config.dashboard.clone(),
             },
             ServerMessage::NotificationsSync {
                 items: state.notifications.clone(),
@@ -408,6 +409,7 @@ impl ControlHub {
             editor: config.editor.clone(),
             footer_thresholds: config.footer_thresholds,
             notifications: config.notifications,
+            dashboard: config.dashboard.clone(),
         };
         self.inner.write().unwrap().config = config;
         let _ = self.tx.send(msg);
@@ -882,6 +884,7 @@ mod tests {
                 editor: None,
                 footer_thresholds: Default::default(),
                 notifications: Default::default(),
+                dashboard: Default::default(),
             },
             vec![],
             snapshot_with("@1"),
@@ -1170,6 +1173,7 @@ mod tests {
             editor: None,
             footer_thresholds: Default::default(),
             notifications: Default::default(),
+            dashboard: Default::default(),
         });
         assert!(matches!(
             rx.recv().await.unwrap(),

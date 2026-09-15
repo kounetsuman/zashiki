@@ -19,7 +19,7 @@ const ELOOP_LINUX: i32 = 40;
 const ELOOP_MACOS: i32 = 62;
 
 /// Maps fs errors to the error contract (404/400/403 + EISDIR/ENOTDIR/ELOOP).
-fn status_for_fs_error(e: &io::Error) -> (StatusCode, String) {
+pub(crate) fn status_for_fs_error(e: &io::Error) -> (StatusCode, String) {
     let (code, msg) = match e.kind() {
         io::ErrorKind::NotFound => (StatusCode::NOT_FOUND, "file not found"),
         io::ErrorKind::PermissionDenied => (StatusCode::FORBIDDEN, "permission denied"),

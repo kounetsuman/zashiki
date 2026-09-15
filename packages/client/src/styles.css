@@ -3330,3 +3330,30 @@ textarea {
     "GRAD" 0,
     "opsz" 20;
 }
+
+/* Blocks the window while the shell's quit-time Memo save is in flight. Above every modal and the
+   title bar, since the quit it belongs to supersedes whatever else is open. */
+.quit-save-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  cursor: progress;
+}
+.quit-save-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.quit-save-text {
+  color: #ddd;
+  font-size: 13px;
+}

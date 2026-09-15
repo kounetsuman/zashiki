@@ -77,6 +77,17 @@ server の場合は一緒に落ちる。
 `tauri build` 産でもインスペクタを使えるよう tauri の `devtools` feature を付けている（macOS では
 private API を使うため App Store 配布時は非対応。本アプリは App Store 外（Developer ID）配布のため実害はない）。
 
+## 終了ログ（`shell.log`）
+
+終了はガードされている。シェルは Memo に未保存の変更があるかをウィンドウに尋ね、あれば
+保存／保存しない／キャンセルを出し、続けて実行中のセッションがあるかを尋ねる。これが失敗した時に
+画面へ出るものは何も無く、終了しないことが「閉じるボタンが死んでいる」ようにしか見えないため、
+この一連の分岐は panic も含めて `~/Library/Logs/zashiki/shell.log` に追記する。サーバの
+`server.log` と同じ場所・同じ UTC 表記なので並べて読める。`ZK_SHELL_LOG` で出力先を変えられる。
+
+シェルのそれ以外の進捗出力は stderr で、`tauri dev` では見えるが Finder から `.app` を起動した
+場合は捨てられる。仕様の正本は `apps/desktop/src-tauri` の `quit_log`・終了ガードのテスト（cargo test）。
+
 ## 更新チェック（GitHub Releases）
 
 古いバンドルで動かしていると、より新しい **安定版** リリースがあることを NOTIFICATION
