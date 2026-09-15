@@ -91,9 +91,10 @@ pub(crate) async fn handle_session_restart(
         let message = format!("cockpit terminal {cockpit_terminal_id} is no longer open");
         return crate::control_dispatch::reply_refusal(socket, "restart_gone", &message).await;
     };
-    // The same rule the client gates the menu item on, enforced here too so anything speaking the
-    // protocol directly gets the same answer. It is not a fresher view — both read the one published
-    // snapshot. What keeps a restart off a `no_claude` terminal whose shell is mid-command is the
+    // The rule the client gates the menu item on, enforced here too so anything speaking the protocol
+    // directly gets the same answer, and read against the terminal's own age: the published state is
+    // the same one the client saw, and a terminal that has not outlived the startup grace has not
+    // earned its `no_claude`. What keeps a restart off a `no_claude` terminal whose shell is mid-command is the
     // two-click confirm in the menu, not this.
     let Some(session) = services.sessions.get(cockpit_terminal_id).await else {
         // Closed between the two lookups. Saying anything about its state would describe a terminal

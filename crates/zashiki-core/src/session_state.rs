@@ -742,9 +742,11 @@ pub fn count_running_subagents(mtime_ages_sec: &[f64], fresh_within_sec: f64) ->
         .count()
 }
 
-/// The length of the startup grace (seconds). The width to absorb the cold start (node startup)
-/// from keying/spawning claude until it appears in the process tree. Given extra margin because it empirically takes several seconds.
-pub const STARTUP_GRACE_SEC: f64 = 8.0;
+/// The length of the startup grace (seconds). The width to absorb everything between spawning the pty
+/// and claude appearing in the process tree: a login shell's profile as well as claude's own cold
+/// start. Reporting `no_claude` early is not merely cosmetic — that state is what offers a restart, and
+/// a restart lands on the launch that was still on its way.
+pub const STARTUP_GRACE_SEC: f64 = 20.0;
 
 /// Converts the startup grace into a number of polls (`STARTUP_GRACE_SEC` divided by `poll_sec`,
 /// rounded up, minimum 1). An invalid poll falls to the default 2 seconds (the same rule as `fallback_state`).
@@ -1802,16 +1804,16 @@ mod tests {
 
     #[test]
     fn startup_grace_polls_scales_and_floors_at_one() {
-        // STARTUP_GRACE_SEC(8) divided by poll, rounded up.
-        assert_eq!(startup_grace_polls(2.0), 4);
-        assert_eq!(startup_grace_polls(8.0), 1);
-        // ceil(8/3)=3.
-        assert_eq!(startup_grace_polls(3.0), 3);
+        // STARTUP_GRACE_SEC(20) divided by poll, rounded up.
+        assert_eq!(startup_grace_polls(2.0), 10);
+        assert_eq!(startup_grace_polls(20.0), 1);
+        // ceil(20/3)=7.
+        assert_eq!(startup_grace_polls(3.0), 7);
         // Even for a long poll, grant at least 1 poll of grace.
         assert_eq!(startup_grace_polls(100.0), 1);
-        // An invalid poll falls to the default 2 seconds (ceil(8/2)=4).
-        assert_eq!(startup_grace_polls(0.0), 4);
-        assert_eq!(startup_grace_polls(-1.0), 4);
+        // An invalid poll falls to the default 2 seconds (ceil(20/2)=10).
+        assert_eq!(startup_grace_polls(0.0), 10);
+        assert_eq!(startup_grace_polls(-1.0), 10);
     }
 
     #[test]

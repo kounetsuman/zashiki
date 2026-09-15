@@ -960,7 +960,7 @@ mod tests {
             ..Default::default()
         };
         let mut cfg = config();
-        cfg.poll_sec = 8.0; // grace_polls = ceil(8/8) = 1
+        cfg.poll_sec = zashiki_core::session_state::STARTUP_GRACE_SEC; // grace_polls = 1
         let mut poller = StatusPoller::new();
         let (snap1, _) = poller.evaluate(&ports, &cfg).await;
         assert_eq!(snap1.sessions[0].state, "starting");
@@ -1013,7 +1013,7 @@ mod tests {
     #[tokio::test]
     async fn rebuilt_window_resets_grace_even_if_prev_settled_no_claude() {
         let mut cfg = config();
-        cfg.poll_sec = 8.0;
+        cfg.poll_sec = zashiki_core::session_state::STARTUP_GRACE_SEC;
         let mut poller = StatusPoller::new();
 
         // Poll the pid=100 window a few times until it settles to no_claude (1: starting → 2: no_claude settled).
@@ -1086,7 +1086,7 @@ mod tests {
     async fn exited_claude_absent_from_ps_settles_no_claude() {
         let cwd = "/repos/charlie/app";
         let mut cfg = config();
-        cfg.poll_sec = 8.0;
+        cfg.poll_sec = zashiki_core::session_state::STARTUP_GRACE_SEC;
         let mut poller = StatusPoller::new();
 
         let traced = FakePorts {

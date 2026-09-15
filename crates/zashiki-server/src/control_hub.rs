@@ -134,7 +134,9 @@ const RELAUNCH_MARK_TTL: Duration = Duration::from_secs(60);
 /// How long a relaunch is given to produce a claude before a poll reporting none is taken as its
 /// answer. Longer than the poller's startup grace, because a login shell's profile runs before the
 /// `claude` exec and the two look identical from outside.
-pub(crate) const CLAUDE_SETTLE_GRACE: Duration = Duration::from_secs(20);
+pub(crate) const CLAUDE_SETTLE_GRACE: Duration = Duration::from_millis(
+    (zashiki_core::session_state::STARTUP_GRACE_SEC * 1000.0) as u64,
+);
 
 pub(crate) fn hooks_status_message(status: RegistrationStatus) -> ServerMessage {
     ServerMessage::HooksStatus {
