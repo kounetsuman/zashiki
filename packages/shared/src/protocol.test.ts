@@ -5,6 +5,7 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
 } from "./config.js";
 import {
+  canRestartCockpitTerminal,
   claudeSessionId,
   clientMessageSchema,
   cockpitTerminalIdSchema,
@@ -166,6 +167,40 @@ describe("cockpitTerminalInfoSchema", () => {
   });
 });
 
+describe("canRestartCockpitTerminal", () => {
+  const uuid = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
+
+  it("allows restarting an exited terminal whose id is a Claude session id", () => {
+    expect(
+      canRestartCockpitTerminal({ cockpitTerminalId: uuid, state: "exited" }),
+    ).toBe(true);
+  });
+
+  it("allows restarting a terminal that fell through to a bare shell", () => {
+    expect(
+      canRestartCockpitTerminal({
+        cockpitTerminalId: uuid,
+        state: "no_claude",
+      }),
+    ).toBe(true);
+  });
+
+  it("refuses a live terminal", () => {
+    expect(
+      canRestartCockpitTerminal({ cockpitTerminalId: uuid, state: "idle" }),
+    ).toBe(false);
+  });
+
+  it("refuses an exited terminal with a synthetic id, which has no conversation to resume", () => {
+    expect(
+      canRestartCockpitTerminal({
+        cockpitTerminalId: "shell:0:work",
+        state: "exited",
+      }),
+    ).toBe(false);
+  });
+});
+
 describe("clientMessageSchema", () => {
   const termId = "c0a8012e-1111-4222-8333-444455556666";
   it.each([
@@ -183,6 +218,12 @@ describe("clientMessageSchema", () => {
       },
     ],
     [{ t: "cockpitTerminal.close", cockpitTerminalId: "@5" }],
+    [
+      {
+        t: "cockpitTerminal.restart",
+        cockpitTerminalId: "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f",
+      },
+    ],
     [{ t: "cockpitTerminal.reorder", order: ["@1", "@5"] }],
     [{ t: "state.refresh" }],
     [{ t: "config.update", language: "ja" }],

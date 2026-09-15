@@ -122,6 +122,19 @@ impl TermRegistry {
         self.entries.get(term_id).map(|e| e.session_id.clone())
     }
 
+    /// Every term currently showing `session_id`. Replacing that session's PTY leaves these terms
+    /// attached to the old one, so they are the terms that have to be told to re-attach.
+    pub fn term_ids_for_session(&self, session_id: &str) -> Vec<String> {
+        let mut ids: Vec<String> = self
+            .entries
+            .values()
+            .filter(|e| e.session_id == session_id)
+            .map(|e| e.term_id.clone())
+            .collect();
+        ids.sort();
+        ids
+    }
+
     /// The confirmed terminal size `(cols, rows)` (None if unregistered). cols/rows are already clamped
     /// and fit in u16. Used to resize the owned PTY to the real size on attach / bind.
     pub fn term_size(&self, term_id: &str) -> Option<(u16, u16)> {
@@ -137,10 +150,15 @@ impl TermRegistry {
     pub fn rebind_session(&mut self, term_id: &str, session_id: &str) -> bool {
         match self.entries.get_mut(term_id) {
             Some(entry) => {
-                if entry.session_id != session_id {
-                    entry.session_id = session_id.to_string();
-                    entry.bind_notify.notify_waiters();
-                }
+                entry.session_id = session_id.to_string();
+                // Woken even when the id is unchanged: a restart keeps the terminal's id while replacing
+                // the session behind it, so selecting that tab is exactly when the bridge needs to look
+                // again. It re-reads and carries on if nothing moved.
+                //
+                // notify_one, not notify_waiters: the bridge is a single waiter that spends most of its
+                // time elsewhere in its select loop, and a wake delivered only to current waiters would
+                // be lost — leaving it on the old session until a heartbeat noticed.
+                entry.bind_notify.notify_one();
                 true
             }
             None => false,
@@ -441,5 +459,22 @@ mod tests {
         assert!(reg.is_paused("t1"));
         assert_eq!(reg.get("t1").unwrap().diagnostics.ack_pause_count, 2);
         assert_eq!(reg.get("t1").unwrap().diagnostics.ack_resume_count, 1);
+    }
+}
+
+#[cfg(test)]
+mod restart_lookup_tests {
+    use super::*;
+
+    /// Terms are found by the session they show, so replacing that session's PTY can tell exactly
+    /// those terms to re-attach.
+    #[test]
+    fn term_ids_for_session_lists_only_that_sessions_terms() {
+        let mut reg = TermRegistry::new();
+        reg.commit(TermEntry::new("t2".to_string(), "$1".to_string(), 80, 24));
+        reg.commit(TermEntry::new("t1".to_string(), "$1".to_string(), 80, 24));
+        reg.commit(TermEntry::new("t3".to_string(), "$2".to_string(), 80, 24));
+        assert_eq!(reg.term_ids_for_session("$1"), vec!["t1", "t2"]);
+        assert_eq!(reg.term_ids_for_session("$9"), Vec::<String>::new());
     }
 }

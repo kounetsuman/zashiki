@@ -352,6 +352,8 @@ mod tests {
 
     fn window(id: &str, name: &str, panes: Vec<CockpitTerminalPane>) -> CockpitTerminal {
         CockpitTerminal {
+            exited: false,
+            replacing: false,
             cockpit_terminal_id: id.to_string(),
             name: name.to_string(),
             active: true,

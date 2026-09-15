@@ -68,7 +68,29 @@ impl PtyConfig {
 struct Inner {
     scrollback: ScrollbackBuffer,
     parser: vt100::Parser,
-    tx: broadcast::Sender<Arc<[u8]>>,
+    /// Dropped once no more output can arrive, so subscribers see the stream close. Without that, a
+    /// bridge holding an `Arc<PtySession>` keeps its receiver open on a session that is gone and waits
+    /// forever. The scrollback and last screen above stay readable either way.
+    tx: Option<broadcast::Sender<Arc<[u8]>>>,
+    /// The reader thread has stopped, so nothing more will be forwarded. Closing the stream waits for
+    /// this: a child's last output — often the reason it died — is still in flight when its exit
+    /// becomes observable, and subscribers would lose exactly the lines worth reading.
+    reader_done: bool,
+}
+
+impl Inner {
+    /// A receiver for live output. Already closed once teardown has dropped the sender, which is how
+    /// an attached bridge learns the session is gone.
+    fn subscribe(&self) -> broadcast::Receiver<Arc<[u8]>> {
+        match &self.tx {
+            Some(tx) => tx.subscribe(),
+            None => {
+                let (tx, rx) = broadcast::channel(1);
+                drop(tx);
+                rx
+            }
+        }
+    }
 }
 
 /// A single PTY session solely owned by the server.
@@ -80,9 +102,14 @@ pub struct PtySession {
     /// The PID of the child (= the process group leader; since portable-pty calls setsid, pgid==pid).
     child_pid: u32,
     /// A flag ensuring [`PtySession::shutdown`] (kill+reap+join) runs exactly once.
-    /// Since the PID may be reused after reap, this is a safety valve against firing a second group
-    /// kill.
     reaped: AtomicBool,
+    /// The child has been waited on, which frees its pid: it must not be waited on again, and
+    /// [`PtySession::pid`] must stop reporting it.
+    child_collected: AtomicBool,
+    /// The child was reaped by teardown, so nothing may be signalled at that pid — it may already
+    /// belong to something else. Separate from `child_collected` because the non-unix kill goes through
+    /// a handle rather than a pid, and muting that would take away its only way to reach a survivor.
+    child_reaped: AtomicBool,
     reader_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
@@ -152,7 +179,8 @@ impl PtySession {
         let inner = Arc::new(Mutex::new(Inner {
             scrollback: ScrollbackBuffer::new(),
             parser: vt100::Parser::new(config.rows, config.cols, 0),
-            tx,
+            tx: Some(tx),
+            reader_done: false,
         }));
 
         let handle = {
@@ -167,6 +195,8 @@ impl PtySession {
             child: Mutex::new(child),
             child_pid,
             reaped: AtomicBool::new(false),
+            child_collected: AtomicBool::new(false),
+            child_reaped: AtomicBool::new(false),
             reader_handle: Mutex::new(Some(handle)),
         })
     }
@@ -177,7 +207,7 @@ impl PtySession {
         let inner = lock_recover(&self.inner);
         Subscription {
             replay: inner.scrollback.snapshot(),
-            receiver: inner.tx.subscribe(),
+            receiver: inner.subscribe(),
         }
     }
 
@@ -185,7 +215,7 @@ impl PtySession {
     /// recovery path needs just a caught-up receiver and resends the current screen separately, so it
     /// must not pay for — or clone the full history under the lock via — [`subscribe`](Self::subscribe).
     pub fn resubscribe(&self) -> broadcast::Receiver<Arc<[u8]>> {
-        lock_recover(&self.inner).tx.subscribe()
+        lock_recover(&self.inner).subscribe()
     }
 
     /// Current retained scrollback size in bytes. Feeds the scrollback-memory monitor, which sums this
@@ -243,9 +273,87 @@ impl PtySession {
         lock_recover(&self.inner).parser.screen().cursor_position()
     }
 
-    /// The child's PID (= the process group ID).
+    /// The child's PID (= the process group ID), or 0 once it has been collected. A reaped pid can be
+    /// handed to an unrelated process, and the poller walks this pid's subtree to find the terminal's
+    /// claude — so a stale one could attribute a stranger's session to this terminal.
     pub fn pid(&self) -> u32 {
+        if self.child_collected.load(Ordering::SeqCst) {
+            return 0;
+        }
         self.child_pid
+    }
+
+    /// Whether the child has ended, **without reaping it**. Non-blocking, so the status poller can ask
+    /// on every tick.
+    ///
+    /// Not reaping is the point: an unreaped child keeps its pid — and with it the process group id,
+    /// since portable-pty calls setsid — reserved. That is what keeps [`PtySession::shutdown`]'s group
+    /// kill aimed at this terminal: once reaped, the pid can be handed to an unrelated process, and a
+    /// later kill would land on that one instead. The child is collected when the session is removed.
+    #[cfg(unix)]
+    pub fn has_exited(&self) -> bool {
+        if self.child_reaped.load(Ordering::SeqCst) {
+            // Attempted on every call, not just the one that first observes the exit: the reader may
+            // not have finished draining then, and `close_output` waits for it.
+            self.close_output();
+            return true;
+        }
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        let rc = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                self.child_pid as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if rc != 0 {
+            // ECHILD means it was already collected, so the pid is free and nothing may be signalled
+            // at it any more.
+            if std::io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD) {
+                self.child_reaped.store(true, Ordering::SeqCst);
+                self.child_collected.store(true, Ordering::SeqCst);
+                self.close_output();
+                return true;
+            }
+            return false;
+        }
+        // WNOHANG reports "nothing to see yet" by leaving the pid unset.
+        if siginfo_pid(&info) == 0 {
+            return false;
+        }
+        self.close_output();
+        true
+    }
+
+    /// Closes the output stream so subscribers stop waiting on a session that is gone. Needs both: the
+    /// child has ended (a reader can stop on a read error while the child is still working, and closing
+    /// there would leave a live terminal unable to accept input) and the reader has finished forwarding
+    /// (its last chunks are the ones that say why the child died).
+    fn close_output(&self) {
+        let mut inner = lock_recover(&self.inner);
+        if inner.reader_done {
+            inner.tx = None;
+        }
+    }
+
+    /// Whether the child has ended. Non-blocking, so the status poller can ask on every tick.
+    ///
+    /// Unlike the unix path this does collect the child (there is no non-reaping probe here), but it
+    /// deliberately does not record that: `child_reaped` mutes the kill paths, and here the kill is a
+    /// handle-based `Child::kill` rather than a pid, so muting it would only take away the one way a
+    /// surviving descendant can still be dealt with.
+    #[cfg(not(unix))]
+    pub fn has_exited(&self) -> bool {
+        // Attempted on every call, not just the one that first observes the exit: the reader may not
+        // have finished draining then, and `close_output` waits for it.
+        if matches!(lock_recover(&self.child).try_wait(), Ok(Some(_))) {
+            // Collected, so the pid is free — but the kill here is handle-based, so it stays usable.
+            self.child_collected.store(true, Ordering::SeqCst);
+            self.close_output();
+            return true;
+        }
+        false
     }
 
     /// Requests graceful termination of the process group (SIGTERM). Idempotent; failures are ignored.
@@ -264,11 +372,19 @@ impl PtySession {
     /// (pgid==pid), a negative PID takes down children and grandchildren all at once (preventing
     /// lingering processes).
     ///
+    /// Muted once the child has been waited on: its pid can be reassigned from that moment, and this
+    /// would then take down whatever group now owns it. Teardown signals before it waits, so its own
+    /// kill still goes through, and [`PtySession::has_exited`] deliberately leaves the child unreaped
+    /// so an exited terminal stays killable.
+    ///
     /// Limitation: it does not reach a grandchild that created its own group via `setsid`/`setpgid`
     /// (only descendants of the same session are guaranteed). Before cutover, measure empirically
     /// whether claude creates grandchildren that call setsid.
     #[cfg(unix)]
     fn signal_group(&self, sig: i32) {
+        if self.child_reaped.load(Ordering::SeqCst) {
+            return;
+        }
         unsafe {
             libc::kill(-(self.child_pid as i32), sig);
         }
@@ -276,24 +392,56 @@ impl PtySession {
 
     #[cfg(not(unix))]
     fn signal_group(&self, _sig: i32) {
+        if self.child_reaped.load(Ordering::SeqCst) {
+            return;
+        }
         let _ = lock_recover(&self.child).kill();
     }
 
     /// Reaps the exited child to prevent it becoming a zombie (called only within
     /// [`PtySession::shutdown`], after kill).
     fn reap(&self) {
+        // Set first: the pid becomes reusable the instant `wait` returns, and a concurrent signal in
+        // between would land on whatever took it. The child is still collectable with the flags up, and
+        // `shutdown` has already sent its own kill by this point.
+        self.child_reaped.store(true, Ordering::SeqCst);
+        self.child_collected.store(true, Ordering::SeqCst);
         let _ = lock_recover(&self.child).wait();
+    }
+
+    /// SIGKILL the process group and collect the child, leaving the reader thread to finish on its own.
+    ///
+    /// For a caller that must not be held up: the reader only returns once every fd on the pty slave is
+    /// closed, and a descendant that escaped the group kill (see [`PtySession::signal_group`]) can hold
+    /// it open indefinitely. The child is dead and collected either way; what is skipped is only the
+    /// wait for that thread, which then ends whenever its last writer does.
+    ///
+    /// Runs **exactly once**, sharing the flag with [`PtySession::shutdown`] so neither repeats a kill
+    /// at a pid the OS may have reassigned.
+    pub fn stop(&self) {
+        if self.reaped.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        self.kill();
+        self.reap();
     }
 
     /// SIGKILL the process group -> reap the child -> join the reader thread (blocking).
     ///
-    /// Runs **exactly once** via the `reaped` flag. Since the PID may be reused by another process
-    /// after reap, it does not fire a second group kill (preventing accidental hits on an unrelated
-    /// group). Because it is blocking, call it from an async context via `spawn_blocking`
+    /// Runs **exactly once** via the `reaped` flag, and is the only place the child is collected — an
+    /// exited terminal stays a zombie until then, which is what keeps the group kill aimed correctly.
+    /// Because it is blocking, call it from an async context via `spawn_blocking`
     /// ([`crate::session_registry::SessionRegistry::remove`]). `Drop` calls it as a safety net (a
     /// no-op if already removed).
     pub fn shutdown(&self) {
         if self.reaped.swap(true, Ordering::SeqCst) {
+            // A `stop` came first: the child is already dead and collected, but the reader was left to
+            // finish on its own and the stream is still open. Anyone attached is waiting on that, so
+            // finish the teardown here rather than returning with it half done.
+            if let Some(handle) = lock_recover(&self.reader_handle).take() {
+                let _ = handle.join();
+            }
+            self.close_output();
             return;
         }
         self.kill();
@@ -301,6 +449,9 @@ impl PtySession {
         if let Some(handle) = lock_recover(&self.reader_handle).take() {
             let _ = handle.join();
         }
+        // After the join, so the reader's last chunks are out. Ends every attached bridge, so a client
+        // does not sit rendering a session that is gone — including one that missed the reconnect notice.
+        self.close_output();
     }
 }
 
@@ -308,6 +459,17 @@ impl Drop for PtySession {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+/// The pid `waitid` reported, which the two platforms expose differently.
+#[cfg(target_os = "macos")]
+fn siginfo_pid(info: &libc::siginfo_t) -> libc::pid_t {
+    info.si_pid
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn siginfo_pid(info: &libc::siginfo_t) -> libc::pid_t {
+    unsafe { info.si_pid() }
 }
 
 /// Lock acquisition that continues processing with the latest internal state even if poisoned. If the
@@ -322,6 +484,16 @@ fn lock_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// Reads PTY output and performs the ring append, vt100 feed, and broadcast together under the lock.
 /// When read returns 0 (EOF) or Err (= child process exit), it breaks out of the loop.
 fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
+    /// Marks the reader finished however the thread leaves — including a panic, which would otherwise
+    /// leave the stream unclosable and every attached bridge waiting on output that can never come.
+    struct MarkDone(Arc<Mutex<Inner>>);
+    impl Drop for MarkDone {
+        fn drop(&mut self) {
+            lock_recover(&self.0).reader_done = true;
+        }
+    }
+    let _done = MarkDone(Arc::clone(&inner));
+
     let mut buf = [0u8; READ_CHUNK];
     loop {
         let n = match reader.read(&mut buf) {
@@ -334,8 +506,11 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
         guard.parser.process(chunk.as_ref());
         // Err if there are no subscribers. Dropped output is handled on the subscriber side via
         // replay/Lagged, so it is ignored here.
-        let _ = guard.tx.send(chunk);
+        if let Some(tx) = &guard.tx {
+            let _ = tx.send(chunk);
+        }
     }
+    // `MarkDone` records the finish; see `close_output` for what waits on it.
 }
 
 /// An append-only buffer that retains the full raw output of a session (the scrollback).
@@ -413,6 +588,149 @@ mod tests {
         }
     }
 
+    /// A child that ends on its own is reported as exited while staying unreaped, so its pid is still
+    /// reserved; teardown is what collects it and frees the pid.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn has_exited_reports_without_reaping_and_teardown_collects() {
+        let session = PtySession::spawn(sh("exit 0")).unwrap();
+        let pid = session.pid() as i32;
+        let deadline = Instant::now() + Duration::from_millis(3000);
+        while !session.has_exited() {
+            assert!(
+                Instant::now() < deadline,
+                "a finished child should be reported as exited"
+            );
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(
+            unsafe { libc::kill(pid, 0) },
+            0,
+            "the pid should stay reserved until teardown collects it"
+        );
+
+        session.shutdown();
+        assert!(
+            wait_until_dead(pid, 2000).await,
+            "teardown should leave no zombie"
+        );
+    }
+
+    /// Teardown after `has_exited` has reported the exit still completes: the child is collected and
+    /// the reader thread joined, rather than either being skipped.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn shutdown_after_has_exited_still_joins_the_reader() {
+        let session = PtySession::spawn(sh("exit 0")).unwrap();
+        let deadline = Instant::now() + Duration::from_millis(3000);
+        while !session.has_exited() {
+            assert!(Instant::now() < deadline, "the child should end on its own");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        session.shutdown();
+        assert!(
+            lock_recover(&session.reader_handle).is_none(),
+            "shutdown should still join the reader thread"
+        );
+    }
+
+    /// Teardown closes the output stream, so an attached bridge stops waiting on a session that is
+    /// gone. Without this a client that missed the reconnect notice would render a dead PTY forever.
+    #[tokio::test]
+    async fn shutdown_closes_subscribers() {
+        let session = PtySession::spawn(sh("sleep 30")).unwrap();
+        let mut sub = session.subscribe();
+        session.shutdown();
+        assert!(
+            matches!(sub.receiver.recv().await, Err(broadcast::error::RecvError::Closed)),
+            "a subscriber should see the stream close"
+        );
+        // A late subscriber gets a closed receiver too, rather than one that never yields.
+        let mut late = session.subscribe();
+        assert!(matches!(
+            late.receiver.recv().await,
+            Err(broadcast::error::RecvError::Closed)
+        ));
+    }
+
+    /// The stream stays open while the child is alive, whatever the reader thread did. A reader that
+    /// stops on a read error must not look like the session ending, or an attached term would go
+    /// permanently deaf and dumb on a terminal that is still working.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn output_stream_stays_open_while_the_child_lives() {
+        let session = PtySession::spawn(sh("sleep 30")).unwrap();
+        // Ask the way the poller does; the child is alive, so nothing should be closed.
+        assert!(!session.has_exited());
+        let mut sub = session.subscribe();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), sub.receiver.recv())
+                .await
+                .is_err(),
+            "a live session's stream should be open and simply idle"
+        );
+        session.shutdown();
+    }
+
+    /// Once the child has ended, the next poll closes the stream so attached terms learn about it —
+    /// teardown may never come, since an exited terminal stays registered to be restarted.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn observing_the_exit_closes_the_output_stream() {
+        let session = PtySession::spawn(sh("exit 0")).unwrap();
+        let deadline = Instant::now() + Duration::from_millis(3000);
+        while !session.has_exited() {
+            assert!(Instant::now() < deadline, "the child should end on its own");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let mut sub = session.subscribe();
+        assert!(matches!(
+            sub.receiver.recv().await,
+            Err(broadcast::error::RecvError::Closed)
+        ));
+    }
+
+    /// The child's last output is the reason it died, so observing the exit must not cut the stream
+    /// before those bytes are forwarded.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_last_output_before_an_exit_still_reaches_subscribers() {
+        let session = PtySession::spawn(sh("printf 'dying-words\\n'; exit 3")).unwrap();
+        let mut sub = session.subscribe();
+        // Ask the way the poller does, as early as possible, while the reader may still be forwarding.
+        let deadline = Instant::now() + Duration::from_millis(3000);
+        while !session.has_exited() {
+            assert!(Instant::now() < deadline, "the child should end on its own");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        let seen = drain_until(&mut sub, "dying-words", 2000).await;
+        assert!(seen.contains("dying-words"), "got {seen:?}");
+    }
+
+    /// A restart stops the old session without waiting for its reader; closing that terminal afterwards
+    /// must still finish the job, or an attached bridge would sit on a stream that never closes.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn shutdown_after_stop_still_closes_the_stream() {
+        let session = PtySession::spawn(sh("sleep 30")).unwrap();
+        let mut sub = session.subscribe();
+        session.stop();
+        session.shutdown();
+        assert!(matches!(
+            sub.receiver.recv().await,
+            Err(broadcast::error::RecvError::Closed)
+        ));
+    }
+
+    /// A running child is not reported as exited.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn has_exited_is_false_while_the_child_runs() {
+        let session = PtySession::spawn(sh("sleep 5")).unwrap();
+        assert!(!session.has_exited());
+        session.shutdown();
+    }
+
     /// Confirms that even if the reader thread panics while holding the inner lock and poisons the
     /// Mutex, subscribers, state queries, the writer, and resize keep responding with the latest state
     /// without cascading panics. With the old `.lock().unwrap()`, each call after poisoning would
@@ -469,6 +787,48 @@ mod tests {
         assert!(
             wait_until_dead(gpid, 3000).await,
             "grandchild {gpid} should die with the process group"
+        );
+    }
+
+    /// A descendant that outlives the leader is still killed once the poller has seen the leader end.
+    /// Reporting the exit leaves the child unreaped, so the pgid stays this terminal's and the group
+    /// form of kill keeps reaching what is left of it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn kill_after_has_exited_still_reaches_surviving_group_members() {
+        // Ignoring HUP is what makes this the interesting case: the descendant survives the leader
+        // (and the pty hangup that follows it), so only the group kill can still reach it. The leader
+        // waits before exiting so the trap is in place by the time the hangup arrives.
+        let session =
+            PtySession::spawn(sh("(trap '' HUP; sleep 60) & echo GPID=$!; sleep 0.3; exit 0"))
+                .unwrap();
+        let mut sub = session.subscribe();
+        let seen = drain_until(&mut sub, "GPID=", 2000).await;
+        let gpid: i32 = seen
+            .split("GPID=")
+            .nth(1)
+            .and_then(|s| {
+                s.split(|c: char| !c.is_ascii_digit())
+                    .find(|t| !t.is_empty())
+            })
+            .and_then(|t| t.parse().ok())
+            .expect("grandchild pid parsed from output");
+
+        let deadline = Instant::now() + Duration::from_millis(3000);
+        while !session.has_exited() {
+            assert!(Instant::now() < deadline, "the leader should exit on its own");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(
+            unsafe { libc::kill(gpid, 0) },
+            0,
+            "grandchild {gpid} should outlive the reaped leader"
+        );
+
+        session.kill();
+        assert!(
+            wait_until_dead(gpid, 3000).await,
+            "grandchild {gpid} should still die with the process group after the reap"
         );
     }
 

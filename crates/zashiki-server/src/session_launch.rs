@@ -105,8 +105,11 @@ pub(crate) fn claude_launch_payload(
 
 /// The resume payload passed to `sh -lc` (pure function). Tries `--resume <sid>`, and if that exits non-zero
 /// (e.g. the conversation no longer exists, which makes resume fail to start), falls back to a fresh session
-/// with the **same sid** so the pane keeps its identity instead of dropping to a bare shell. `sid` must already
-/// be validated as a UUID by the caller. Pass a resolved absolute path as `claude_program` for a thin PATH.
+/// with the **same sid** so the pane keeps its identity instead of dropping to a bare shell. The fallback can
+/// only run where that sid has no conversation under the resolved cwd, since claude scopes session ids per
+/// project directory and rejects one the directory already holds; a resume that fails in its own directory
+/// therefore does drop to the shell. `sid` must already be validated as a UUID by the caller. Pass a resolved
+/// absolute path as `claude_program` for a thin PATH.
 pub(crate) fn claude_resume_payload(
     claude_program: &str,
     sid: &str,

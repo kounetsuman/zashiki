@@ -29,8 +29,9 @@ export interface TabContextMenuState {
 export interface TabMenuItemCounts {
   /** Items offered on every tab (close, close all, pin/unpin). */
   base: number;
-  /** Extra items on a session tab (duplicate, copy session id). */
-  session: number;
+  /** Extra items on a session tab (duplicate, restart, copy session id), asked per tab because
+   * restart only renders for some terminals. */
+  session: (tab: Tab) => number;
   /** Extra items on a viewer tab showing a repo file (reveal, copy absolute path, rename). */
   viewer: number;
 }
@@ -58,7 +59,7 @@ export function useTabContextMenu(
     const viewer = tab.kind === "viewer" ? repoFileOfViewerKey(tab.id) : null;
     const kindItems =
       tab.kind === "session"
-        ? counts.session
+        ? counts.session(tab)
         : viewer !== null
           ? counts.viewer
           : 0;

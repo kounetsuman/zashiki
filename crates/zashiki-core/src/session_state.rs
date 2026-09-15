@@ -23,6 +23,10 @@ pub enum CockpitTerminalState {
     /// watching another session — and must not read as completed.
     Watching,
     NoClaude,
+    /// The terminal's own process has ended, so there is nothing left to type into. `detect_state`
+    /// does not return it; the poller reports it from the process itself, ahead of anything the last
+    /// screen still shows.
+    Exited,
     /// The transient where launch was keyed/spawned but claude has not yet appeared in the process
     /// tree. `detect_state` does not return it; the poller carves it out of `NoClaude` via `apply_startup_grace`.
     Starting,

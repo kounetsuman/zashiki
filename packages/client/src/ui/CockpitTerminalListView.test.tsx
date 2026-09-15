@@ -2,8 +2,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import { CockpitTerminalListView } from "./CockpitTerminalListView.js";
+import { ARM_SETTLE_MS } from "./SessionContextMenu.js";
 
 const SID1 = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
 const SID2 = "11111111-2222-4333-8444-555566667777";
@@ -57,8 +57,14 @@ function renderView(
     onFocusTerminal: vi.fn(),
     ...overrides,
   };
-  render(<CockpitTerminalListView {...props} />);
-  return props;
+  const view = render(<CockpitTerminalListView {...props} />);
+  return {
+    ...props,
+    /** Re-renders with the same props plus `next` (a later state.sync, say). */
+    update(next: Partial<Parameters<typeof CockpitTerminalListView>[0]>): void {
+      view.rerender(<CockpitTerminalListView {...props} {...next} />);
+    },
+  };
 }
 
 afterEach(cleanup);
@@ -388,6 +394,15 @@ describe("CockpitTerminalListView: session rows", () => {
       ],
     });
     expect(screen.getByText("check").className).toContain("state-idle");
+  });
+
+  it("draws an exited row with the power_off glyph", () => {
+    const exited: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], state: "exited" },
+    ] as CockpitTerminalInfo[];
+    renderView({ cockpitTerminals: exited });
+    expect(screen.queryByText("start")).toBeNull();
+    expect(screen.getByText("power_off").className).toContain("state-exited");
   });
 
   it("distinguishes a new/unused session (idle with no title) using start", () => {
@@ -783,6 +798,172 @@ describe("CockpitTerminalListView: right-click menu", () => {
     expect(props.onDuplicate).toHaveBeenCalledWith(SID2);
     // The menu closes after selection
     expect(screen.queryByRole("menuitem")).toBeNull();
+  });
+
+  it("restarts a row whose process has ended, once the confirm is a deliberate one", async () => {
+    const exited: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], sid: undefined, state: "exited" },
+    ] as CockpitTerminalInfo[];
+    const props = renderView({
+      cockpitTerminals: exited,
+      onRestart: vi.fn(),
+    });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動" }),
+    );
+    expect(props.onRestart).not.toHaveBeenCalled();
+
+    // A confirm this soon after arming is a double-click reaching the button that replaced the one it
+    // armed, not a decision.
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動（確定）" }),
+    );
+    expect(props.onRestart).not.toHaveBeenCalled();
+
+    await new Promise((resolve) => setTimeout(resolve, ARM_SETTLE_MS + 50));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動（確定）" }),
+    );
+    expect(props.onRestart).toHaveBeenCalledWith(SID2);
+  });
+
+  it("replaces the menu with the confirm pair, leaving nothing else to mis-click", () => {
+    const exited: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], sid: undefined, state: "exited" },
+    ] as CockpitTerminalInfo[];
+    renderView({ cockpitTerminals: exited, onRestart: vi.fn() });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動" }),
+    );
+
+    const labels = screen
+      .getAllByRole("menuitem")
+      .map((item) => item.textContent);
+    expect(labels).toEqual(["取消", "ターミナルを再起動（確定）"]);
+  });
+
+  it("lists Cancel before the confirm, so the safe choice comes first", () => {
+    const exited: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], sid: undefined, state: "exited" },
+    ] as CockpitTerminalInfo[];
+    renderView({ cockpitTerminals: exited, onRestart: vi.fn() });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動" }),
+    );
+
+    const confirmRow = document.querySelector(".session-context-confirm");
+    const labels = Array.from(confirmRow?.querySelectorAll("button") ?? []).map(
+      (b) => b.textContent,
+    );
+    expect(labels).toEqual(["取消", "ターミナルを再起動（確定）"]);
+  });
+
+  it("withdraws the confirm when the row stops being restartable", () => {
+    const exited: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], sid: undefined, state: "exited" },
+    ] as CockpitTerminalInfo[];
+    const props = renderView({
+      cockpitTerminals: exited,
+      onRestart: vi.fn(),
+    });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動" }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動（確定）" }),
+    ).toBeTruthy();
+
+    // The terminal came back — recovered on its own, or restarted from another window.
+    props.update({
+      cockpitTerminals: [
+        { ...cockpitTerminals[1], state: "idle" },
+      ] as CockpitTerminalInfo[],
+    });
+
+    expect(
+      screen.queryByRole("menuitem", { name: "ターミナルを再起動（確定）" }),
+    ).toBeNull();
+
+    // And it comes back disarmed: otherwise the next single click would restart outright.
+    props.update({ cockpitTerminals: exited });
+    expect(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("menuitem", { name: "ターミナルを再起動（確定）" }),
+    ).toBeNull();
+  });
+
+  it("does not restart when the menu item is clicked twice in a row", () => {
+    const exited: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], sid: undefined, state: "exited" },
+    ] as CockpitTerminalInfo[];
+    const props = renderView({
+      cockpitTerminals: exited,
+      onRestart: vi.fn(),
+    });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    const item = screen.getByRole("menuitem", { name: "ターミナルを再起動" });
+    fireEvent.click(item);
+    fireEvent.click(item);
+    expect(props.onRestart).not.toHaveBeenCalled();
+  });
+
+  it("warns that running work ends when the row still has a live shell", () => {
+    const noClaude: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], sid: undefined, state: "no_claude" },
+    ] as CockpitTerminalInfo[];
+    renderView({ cockpitTerminals: noClaude, onRestart: vi.fn() });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動" }),
+    );
+
+    expect(
+      screen.getByRole("menuitem", { name: "実行中の処理を終了して再起動" }),
+    ).toBeTruthy();
+  });
+
+  it("offers restart on a row that fell through to a bare shell", () => {
+    const noClaude: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], sid: undefined, state: "no_claude" },
+    ] as CockpitTerminalInfo[];
+    renderView({ cockpitTerminals: noClaude, onRestart: vi.fn() });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "ターミナルを再起動" }),
+    ).toBeTruthy();
+  });
+
+  it("does not offer restart on a live row", () => {
+    const live: CockpitTerminalInfo[] = [
+      { ...cockpitTerminals[1], state: "idle" },
+    ] as CockpitTerminalInfo[];
+    renderView({ cockpitTerminals: live, onRestart: vi.fn() });
+    fireEvent.contextMenu(
+      screen.getByRole("button", { name: /tango(?! を閉じる)/ }),
+    );
+    expect(
+      screen.queryByRole("menuitem", { name: "ターミナルを再起動" }),
+    ).toBeNull();
   });
 
   it("disables 'Duplicate session' for a row without a sid", () => {

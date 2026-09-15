@@ -304,6 +304,9 @@ pub enum ClientMessage {
     },
     #[serde(rename = "cockpitTerminal.close", rename_all = "camelCase")]
     CockpitTerminalClose { cockpit_terminal_id: String },
+    /// Tear the terminal down and bring it back under the same id, so its conversation resumes.
+    #[serde(rename = "cockpitTerminal.restart", rename_all = "camelCase")]
+    CockpitTerminalRestart { cockpit_terminal_id: String },
     /// New SESSION LIST display order (the full ordered list of cockpit terminal ids).
     #[serde(rename = "cockpitTerminal.reorder", rename_all = "camelCase")]
     CockpitTerminalReorder { order: Vec<String> },
@@ -751,6 +754,12 @@ mod tests {
                 r#"{"t":"cockpitTerminal.close","cockpitTerminalId":"@5"}"#,
                 ClientMessage::CockpitTerminalClose {
                     cockpit_terminal_id: "@5".into(),
+                },
+            ),
+            (
+                r#"{"t":"cockpitTerminal.restart","cockpitTerminalId":"579fa8cf-4901-45cb-b9ec-17e229231a37"}"#,
+                ClientMessage::CockpitTerminalRestart {
+                    cockpit_terminal_id: "579fa8cf-4901-45cb-b9ec-17e229231a37".into(),
                 },
             ),
             (

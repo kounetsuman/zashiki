@@ -737,6 +737,15 @@ export function App({
     [cockpitTerminals, conversationTitles, store, control],
   );
 
+  // Relaunch a terminal whose process has ended. The id is kept, so the server resumes the same
+  // conversation instead of starting a new one.
+  const restartSession = useCallback(
+    (cockpitTerminalId: string): void => {
+      control.send({ t: "cockpitTerminal.restart", cockpitTerminalId });
+    },
+    [control],
+  );
+
   // Stamp the pending copy label onto the forked window once it lands in state.sync. The added id is
   // detected the same way the store auto-selects it, and the label is persisted like a manual rename.
   const prevCockpitTerminalsRef = useRef<typeof cockpitTerminals>([]);
@@ -1141,6 +1150,7 @@ export function App({
             onRename={handleCommitConversationTitle}
             onReorder={reorderTabByKey}
             onDuplicate={duplicateSession}
+            onRestart={restartSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRevealFile={(repoPath, relPath) =>
               void fsApi
@@ -1265,6 +1275,7 @@ export function App({
             }
             onAddOrg={() => setAddOrgOpen(true)}
             onDuplicate={duplicateSession}
+            onRestart={restartSession}
             onCopySessionId={copySessionIdByCockpitTerminalId}
             onRename={handleCommitConversationTitle}
             onReorderOrgs={saveOrgOrder}

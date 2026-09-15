@@ -113,6 +113,13 @@ describe("findSidInTree (BFS port of dom_find_sid_in_tree)", () => {
   );
   const maps = buildProcessMaps(entries);
 
+  it("finds nothing from a non-positive root, which is not a process", () => {
+    // A reaped terminal reports pid 0, and pid 0 is launchd's ppid — walking from it would return the
+    // first claude on the machine.
+    expect(findSidInTree(0, maps)).toBeNull();
+    expect(findSidInTree(-1, maps)).toBeNull();
+  });
+
   it("returns the sid when claude is a direct child", () => {
     expect(findSidInTree(100, maps)).toBe(SID);
   });

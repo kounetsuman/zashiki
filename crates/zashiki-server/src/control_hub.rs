@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -19,6 +19,9 @@ struct HubState {
     mac_notify: MacNotify,
     notifications: Vec<Notification>,
     snapshot: StateSnapshot,
+    /// Terminals relaunched recently, with how many more polls their mark survives. See
+    /// [`ControlHub::mark_restarted`].
+    relaunching: HashMap<String, u32>,
     /// Per-org notes (org → Markdown), delivered on connect and re-broadcast on any note change.
     notes: BTreeMap<String, String>,
     /// The single app-wide memo (Markdown), delivered on connect and re-broadcast on any change.
@@ -121,6 +124,11 @@ pub struct ControlHub {
     notifications_persist: Mutex<()>,
 }
 
+/// How many polls a relaunch mark survives without claude being seen. Generous enough for a resume of
+/// a large transcript to finish, and bounded so a relaunch that never completes still lets the user try
+/// again rather than leaving the row permanently un-restartable.
+const RELAUNCH_MARK_POLLS: u32 = 15;
+
 pub(crate) fn hooks_status_message(status: RegistrationStatus) -> ServerMessage {
     ServerMessage::HooksStatus {
         hooks_registered: status.hooks_registered,
@@ -180,6 +188,7 @@ impl ControlHub {
         let (tx, _) = broadcast::channel(64);
         Arc::new(Self {
             inner: RwLock::new(HubState {
+                relaunching: HashMap::new(),
                 config,
                 notify_mode: NotifyMode::default(),
                 mac_notify: Arc::new(|_| {}),
@@ -414,6 +423,56 @@ impl ControlHub {
     /// so toggling the opt-in applies to the next launched claude without a restart.
     pub fn account_usage_enabled(&self) -> bool {
         self.inner.read().unwrap().config.account_usage
+    }
+
+    /// Records that `cockpit_terminal_id` has just been relaunched, so [`Self::reported_state`] stops
+    /// answering with a state the relaunch has already invalidated. The mark lasts until a poll sees
+    /// claude running there, or until [`RELAUNCH_MARK_POLLS`] polls have passed — a resume of a large
+    /// transcript can take longer than the startup grace, and the row falling back to "no claude" in
+    /// the meantime would offer a restart that kills the launch. Deliberately does not touch the
+    /// published snapshot: the poller decides whether to publish by comparing against its own copy, and
+    /// editing the hub's behind its back would break that. The next published snapshot supersedes this.
+    pub fn mark_restarted(&self, cockpit_terminal_id: &str) {
+        self.inner
+            .write()
+            .unwrap()
+            .relaunching
+            .insert(cockpit_terminal_id.to_string(), RELAUNCH_MARK_POLLS);
+    }
+
+    /// Forgets the given relaunch marks: the poll that just ran read those terminals' new processes, so
+    /// whatever it concluded is a better answer than the mark. Called after every poll, not only the
+    /// ones that publish — a poll whose result happens to match the last one still read them. Only
+    /// terminals whose process the poll actually saw are dropped; a restart still in flight keeps its
+    /// mark, since that poll looked at the process on its way out.
+    pub fn clear_restart_marks(&self, settled: &HashSet<String>, live: &HashSet<String>) {
+        self.inner
+            .write()
+            .unwrap()
+            .relaunching
+            .retain(|id, remaining| {
+                if settled.contains(id) || !live.contains(id) {
+                    return false;
+                }
+                *remaining = remaining.saturating_sub(1);
+                *remaining > 0
+            });
+    }
+
+    /// The state last reported for `cockpit_terminal_id`, or `None` if it is not in the last snapshot.
+    /// A terminal relaunched since that snapshot reads as `starting`, because what it says about such a
+    /// terminal — that it has no process — was true only before the relaunch.
+    pub fn reported_state(&self, cockpit_terminal_id: &str) -> Option<String> {
+        let state = self.inner.read().unwrap();
+        if state.relaunching.contains_key(cockpit_terminal_id) {
+            return Some("starting".to_string());
+        }
+        state
+            .snapshot
+            .sessions
+            .iter()
+            .find(|s| s.cockpit_terminal_id == cockpit_terminal_id)
+            .map(|s| s.state.clone())
     }
 
     /// Whether the global memo is opted in (the live `memoEnabled` config flag).
@@ -733,6 +792,41 @@ mod tests {
             org_colors: BTreeMap::new(),
             org_aliases: BTreeMap::new(),
         }
+    }
+
+    /// The restart gate reads the reported state, and a second confirmed click inside the poll interval
+    /// would otherwise take down the process the first one started. The published snapshot is left
+    /// alone — the poller owns that — so only the answer changes, until the next poll supersedes it.
+    #[test]
+    fn a_relaunched_terminal_reads_as_starting_until_the_next_poll() {
+        let hub = ControlHub::new(ConfigView::default(), vec![], snapshot_with("@1"));
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+
+        hub.mark_restarted("@1");
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
+
+        // A poll that only saw the shell come up leaves the mark standing: resuming a large transcript
+        // can take longer than the startup grace, and answering `no_claude` there would offer a restart
+        // that kills the launch.
+        let live = HashSet::from(["@1".to_string()]);
+        hub.clear_restart_marks(&HashSet::new(), &live);
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
+
+        // Cleared by the poll that finds claude running there.
+        hub.clear_restart_marks(&HashSet::from(["@1".to_string()]), &live);
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+
+        // A mark for a terminal that is gone is dropped too, rather than outliving the daemon.
+        hub.mark_restarted("@1");
+        hub.clear_restart_marks(&HashSet::new(), &HashSet::new());
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+
+        // And a relaunch that never completes runs out rather than locking the row out of restarting.
+        hub.mark_restarted("@1");
+        for _ in 0..RELAUNCH_MARK_POLLS {
+            hub.clear_restart_marks(&HashSet::new(), &live);
+        }
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
     }
 
     fn session(state: &str, subagents: Option<u32>, shells: Option<u32>) -> CockpitTerminalInfo {

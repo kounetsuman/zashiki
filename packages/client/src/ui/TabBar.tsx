@@ -1,5 +1,6 @@
 import {
   type CockpitTerminalInfo,
+  canRestartCockpitTerminal,
   resolveOrgColor,
   resolveOrgName,
 } from "@zashiki/shared";
@@ -47,6 +48,7 @@ export interface TabBarProps {
    * Claude session). The duplicate menu item is hidden when unspecified.
    */
   onDuplicate?(cockpitTerminalId: string): void;
+  onRestart?(cockpitTerminalId: string): void;
   /**
    * Right-clicking a session tab copies the Claude Code session id (`sid`) verbatim.
    * The copy menu item is hidden when unspecified.
@@ -84,6 +86,7 @@ export function TabBar({
   onRename,
   onReorder,
   onDuplicate,
+  onRestart,
   onCopySessionId,
   onRevealFile,
   onCopyFilePath,
@@ -92,9 +95,23 @@ export function TabBar({
   const { t } = useTranslation();
   const rename = useTabRename(tabs, cockpitTerminals, onRename, onRenameFile);
   const drag = useTabDrag(onReorder);
-  const sessionMenuItems =
-    (onDuplicate !== undefined ? 1 : 0) +
-    (onCopySessionId !== undefined ? 1 : 0);
+  // Restart only renders for a terminal with no claude in it, so it is counted per tab — the same rule
+  // the SESSION LIST applies to its rows, so the two surfaces place their menus alike.
+  const sessionMenuItems = (tab: Tab): number => {
+    const target =
+      tab.kind === "session"
+        ? cockpitTerminals.find((s) => s.cockpitTerminalId === tab.id)
+        : undefined;
+    return (
+      (onDuplicate !== undefined ? 1 : 0) +
+      (onRestart !== undefined &&
+      target !== undefined &&
+      canRestartCockpitTerminal(target)
+        ? 1
+        : 0) +
+      (onCopySessionId !== undefined ? 1 : 0)
+    );
+  };
   const viewerMenuItems =
     (onRevealFile !== undefined ? 1 : 0) +
     (onCopyFilePath !== undefined ? 1 : 0) +
@@ -210,6 +227,7 @@ export function TabBar({
           onPin={onPin}
           onUnpin={onUnpin}
           onDuplicate={onDuplicate}
+          onRestart={onRestart}
           onCopySessionId={onCopySessionId}
           onReveal={
             onRevealFile === undefined

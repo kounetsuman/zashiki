@@ -1,10 +1,10 @@
 import { z } from "zod";
-
 import {
   footerThresholdsSchema,
   notificationSettingsSchema,
 } from "./config.js";
 import { notificationSchema } from "./notifications.js";
+import { isUuidSid } from "./save-file.js";
 
 /** Response returned by the server's /healthz endpoint. */
 export const healthResponseSchema = z.object({
@@ -53,6 +53,8 @@ export type CockpitTerminalId = z.infer<typeof cockpitTerminalIdSchema>;
  * "watching" means the turn has ended but the on-screen task list still shows
  * remaining work — the session is standing by (e.g. watching another session),
  * not completed.
+ * "exited" means the terminal's own process has ended: nothing is left to type into, and the pane
+ * only shows whatever it rendered last. It is reported from the process, not from the screen.
  * "unknown" appears only when detection was skipped due to pane_in_mode (copy-mode etc.) and there is not yet a previous state to retain.
  */
 export const cockpitTerminalStateSchema = z.enum([
@@ -62,6 +64,7 @@ export const cockpitTerminalStateSchema = z.enum([
   "idle",
   "watching",
   "no_claude",
+  "exited",
   "starting",
   "unknown",
 ]);
@@ -189,6 +192,21 @@ export function claudeSessionId(session: {
   return sid;
 }
 
+/**
+ * Whether a terminal can be relaunched in place. It offers a way back whenever claude is not running
+ * there — the process ended, or it fell through to a bare shell — provided the id is one claude can
+ * resume a conversation from. A restored terminal with no Claude session id carries a synthetic id
+ * instead, which the server declines to restart.
+ */
+export function canRestartCockpitTerminal(session: {
+  cockpitTerminalId: string;
+  state: CockpitTerminalState;
+}): boolean {
+  const claudeIsGone =
+    session.state === "exited" || session.state === "no_claude";
+  return claudeIsGone && isUuidSid(session.cockpitTerminalId);
+}
+
 const colsSchema = z.number().int().min(1).max(10000);
 const rowsSchema = z.number().int().min(1).max(10000);
 
@@ -242,6 +260,12 @@ export const cockpitTerminalNewSchema = z.object({
 
 export const cockpitTerminalCloseSchema = z.object({
   t: z.literal("cockpitTerminal.close"),
+  cockpitTerminalId: cockpitTerminalIdSchema,
+});
+
+/** Tear the terminal down and bring it back under the same id, so its conversation resumes. */
+export const cockpitTerminalRestartSchema = z.object({
+  t: z.literal("cockpitTerminal.restart"),
   cockpitTerminalId: cockpitTerminalIdSchema,
 });
 
@@ -401,6 +425,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   termAckSchema,
   cockpitTerminalNewSchema,
   cockpitTerminalCloseSchema,
+  cockpitTerminalRestartSchema,
   cockpitTerminalReorderSchema,
   stateRefreshSchema,
   notificationDismissSchema,

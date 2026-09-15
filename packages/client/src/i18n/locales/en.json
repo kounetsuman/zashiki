@@ -10,6 +10,9 @@
     "copyAbsPath": "Copy absolute path",
     "cannotDuplicate": "claude is not running, so there is no session to duplicate",
     "duplicateSession": "Duplicate session",
+    "restartSession": "Restart terminal",
+    "restartSessionConfirm": "Restart terminal (confirm)",
+    "restartSessionConfirmShell": "Restart, ending anything running",
     "cannotCopySessionId": "claude is not running, so there is no session ID to copy",
     "copySessionId": "Copy Claude Code session ID",
     "moveToTrash": "Move to Trash",
@@ -24,7 +27,16 @@
   "errorDialog": {
     "label": "Error",
     "title": "⚠ Error",
-    "outdatedServer": "The server rejected the request. The running zashiki server may be outdated—restart or update it (rebuild the server and reinstall the daemon)."
+    "outdatedServer": "The server rejected the request. The running zashiki server may be outdated—restart or update it (rebuild the server and reinstall the daemon).",
+    "restartGone": "That terminal is no longer open.",
+    "restartBusy": "That terminal has Claude running in it, so there is nothing to restart.",
+    "restartInProgress": "That terminal is already being restarted.",
+    "restartNotResumable": "That terminal has no Claude conversation to resume.",
+    "restartCwdMissing": "That terminal's working directory no longer exists, so its conversation cannot be resumed.",
+    "restartClaudeDisabled": "This server does not launch Claude, so terminals cannot be restarted.",
+    "restartFailed": "That terminal could not be relaunched and is now stopped. Restart it to pick the conversation back up.",
+    "restartAlreadyRunning": "That terminal is running again, so there is nothing to restart.",
+    "restartUnreported": "That terminal has not been checked yet. Try again in a moment."
   },
   "crashReport": {
     "title": "⚠ zashiki crashed last time",
@@ -74,6 +86,7 @@
     "ariaLabel": "Session list",
     "limitReached": "Usage limit reached",
     "menuOpen": "In a Claude Code menu",
+    "exited": "Terminal has ended",
     "addOrg": "Add org",
     "orgToggleTitle": "{{org}} (click to fold / + for new session / Ctrl-N)",
     "newSessionInOrg": "New session in {{org}}",

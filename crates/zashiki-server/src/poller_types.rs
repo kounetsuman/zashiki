@@ -23,6 +23,12 @@ pub struct CockpitTerminal {
     pub cockpit_terminal_id: String,
     pub name: String,
     pub active: bool,
+    /// The terminal's own process has ended. Read from the process rather than the screen, because a
+    /// dead terminal keeps rendering whatever it showed last.
+    pub exited: bool,
+    /// A restart is swapping this terminal's PTY right now. Only used to keep the swap from reading as
+    /// the terminal's background work finishing.
+    pub replacing: bool,
     pub panes: Vec<CockpitTerminalPane>,
 }
 

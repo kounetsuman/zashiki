@@ -156,12 +156,16 @@ export function buildProcessMaps(
 /**
  * BFS over the process tree, returning the sid of the first claude found (null if none).
  * visited guards against anomalous ps data (cycles).
+ *
+ * A non-positive root finds nothing: pid 0 is not a process but the ppid launchd reports, so rooting a
+ * walk there would sweep in the whole machine and return a stranger's session. Mirrors the same guard
+ * in the Rust `process_tree::subtree`.
  */
 export function findSidInTree(
   startPid: number,
   maps: ProcessMaps,
 ): string | null {
-  const queue: number[] = [startPid];
+  const queue: number[] = startPid > 0 ? [startPid] : [];
   const visited = new Set<number>();
   while (queue.length > 0) {
     const pid = queue.shift();

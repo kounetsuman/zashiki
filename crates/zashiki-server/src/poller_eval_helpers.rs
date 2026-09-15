@@ -20,6 +20,7 @@ pub(crate) fn state_wire(state: CockpitTerminalState) -> &'static str {
         CockpitTerminalState::Idle => "idle",
         CockpitTerminalState::Watching => "watching",
         CockpitTerminalState::NoClaude => "no_claude",
+        CockpitTerminalState::Exited => "exited",
         CockpitTerminalState::Starting => "starting",
         CockpitTerminalState::Unknown => "unknown",
     }
@@ -270,6 +271,8 @@ mod tests {
 
     fn window(cockpit_terminal_id: &str, name: &str, panes: Vec<CockpitTerminalPane>) -> CockpitTerminal {
         CockpitTerminal {
+            exited: false,
+            replacing: false,
             cockpit_terminal_id: cockpit_terminal_id.to_string(),
             name: name.to_string(),
             active: true,
