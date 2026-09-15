@@ -27,15 +27,20 @@ const EXITED_WIRE: &str = "exited";
 /// Wire value for a terminal whose process is up but is not running claude.
 const NO_CLAUDE_WIRE: &str = "no_claude";
 
+/// Wire value for a terminal that has no claude yet but is still inside the startup grace. The poll
+/// that first sees claude gone publishes this, not `no_claude`, so an edge guard needs both.
+const STARTING_WIRE: &str = "starting";
+
 /// Detect Background Activity edges between two snapshots: per terminal, a subagent / background-shell
 /// count crossing 0→>0 fires a start, >0→0 fires an end. Only terminals present in both snapshots are
 /// considered, so a newly-appearing terminal (or the first poll cycle, which has no previous snapshot)
 /// never fires — a reconnect or restart that resends running state does not burst. Absent counts read
 /// as 0.
 ///
-/// A terminal reports no edge at all while claude is gone from it or it has just been replaced: an end
-/// would claim work finished when it was cut off, and a start would attribute a survivor's activity to
-/// a terminal that is no longer running it. `replaced` names the terminals whose process changed this
+/// A terminal reports no edge at all while claude is gone from it — including the startup grace, which
+/// is what the poll that first sees it gone publishes — or it has just been replaced: an end would
+/// claim work finished when it was cut off, and a start would attribute a survivor's activity to a
+/// terminal that is no longer running it. `replaced` names the terminals whose process changed this
 /// round (a restart, or an account switch).
 pub fn detect_activity_transitions(
     prev: &StateSnapshot,
@@ -68,6 +73,7 @@ pub fn detect_activity_transitions(
         for (prev_n, cur_n, start, end) in counts {
             let settled = session.state != EXITED_WIRE
                 && session.state != NO_CLAUDE_WIRE
+                && session.state != STARTING_WIRE
                 && !replaced.contains(&session.cockpit_terminal_id);
             let kind = if prev_n == 0 && cur_n > 0 && settled {
                 Some(start)
@@ -1800,6 +1806,43 @@ mod tests {
         let mut lost = sess("@1", Some(0), Some(0));
         lost.state = "no_claude".to_string();
         let events = detect_activity_transitions(&prev, &snap(vec![lost]), &HashSet::new());
+        assert!(events.is_empty(), "got {:?}", kinds(&events));
+    }
+
+    /// Driven through the poller rather than by hand, because the state the guard sees is not the one
+    /// the terminal is in: the poll that first finds claude gone is still inside the startup grace, so
+    /// it publishes `starting` - and that is the very poll the counts cross zero on.
+    #[tokio::test]
+    async fn losing_claude_reports_no_activity_end_on_the_poll_that_sees_it() {
+        let cwd = "/repos/charlie/app";
+        let running = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([(
+                "%1".to_string(),
+                "  ⏺ main\n  ◯ general-purpose  作業  1s".to_string(),
+            )]),
+            subagent_ages: HashMap::from([(format!("{cwd}\u{0}{SID}"), vec![1.0])]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (before, _) = poller.evaluate(&running, &config()).await;
+        assert!(
+            before.sessions[0].running_subagents.unwrap_or(0) > 0,
+            "the terminal should start out with background work"
+        );
+
+        let quit = FakePorts {
+            windows: vec![window("@1", "work", vec![pane("%1", 100, 0, cwd)])],
+            ps: "  100    1 -zsh\n".to_string(),
+            captures: HashMap::from([("%1".to_string(), "just a shell".to_string())]),
+            ..Default::default()
+        };
+        let (after, _) = poller.evaluate(&quit, &config()).await;
+        assert_eq!(after.sessions[0].state, "starting");
+        assert_eq!(after.sessions[0].running_subagents.unwrap_or(0), 0);
+
+        let events = detect_activity_transitions(&before, &after, poller.replaced_this_round());
         assert!(events.is_empty(), "got {:?}", kinds(&events));
     }
 
