@@ -113,6 +113,7 @@ import { useCopyToast } from "./ui/useCopyToast.js";
 import { useCrashReport } from "./ui/useCrashReport.js";
 import { useDashboard } from "./ui/useDashboard.js";
 import { useDiff } from "./ui/useDiff.js";
+import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
 import { useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
@@ -543,6 +544,7 @@ export function App({
     () => memoEnabled && memoDirty(store.getSnapshot().memo),
     memoSaver.flush,
   );
+  useEditMenuHistory();
 
   // Delete (dismiss) notifications from the read tab; shared by the ACTIVITY and NOTIFICATION views.
   const deleteNotifications = useCallback(

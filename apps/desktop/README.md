@@ -83,6 +83,17 @@ output too (on macOS it uses private API, so it is not supported for App Store
 distribution; this app ships outside the App Store (Developer ID), so there is no
 practical impact).
 
+## Edit menu (Undo / Redo)
+
+macOS hands the menu ⌘Z / ⇧⌘Z before the WebView sees the keystroke, and the native undo
+the predefined items run has no view of an in-page editor's own history — which left the
+Memo and the clipboard editor unable to undo. The shell therefore replaces those two items
+(`src-tauri/src/menu.rs`) with ones that forward the command to the page, where `useEditMenuHistory`
+applies it to whatever holds the caret: the CodeMirror editor it belongs to, or the
+browser's own history for a plain text field. The rest of the submenu keeps the predefined
+items, whose native actions do the right thing. This is macOS-only: on other platforms Tauri
+installs no menu, and the shell adds none, so nothing intercepts the keystroke in the first place.
+
 ## Quit log (`shell.log`)
 
 Quitting is guarded: the shell asks the window whether the Memo has unsaved edits and, if
