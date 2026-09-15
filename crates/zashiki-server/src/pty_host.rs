@@ -76,6 +76,10 @@ struct Inner {
     /// this: a child's last output — often the reason it died — is still in flight when its exit
     /// becomes observable, and subscribers would lose exactly the lines worth reading.
     reader_done: bool,
+    /// Whether output is still worth keeping. Cleared by [`PtySession::stop`]: nothing will read this
+    /// session's history again, and a reader that outlives the teardown would otherwise grow a buffer
+    /// the scrollback-memory monitor no longer sums.
+    retain: bool,
 }
 
 impl Inner {
@@ -181,6 +185,7 @@ impl PtySession {
             parser: vt100::Parser::new(config.rows, config.cols, 0),
             tx: Some(tx),
             reader_done: false,
+            retain: true,
         }));
 
         let handle = {
@@ -426,6 +431,17 @@ impl PtySession {
         self.reap();
     }
 
+    /// Drops the history of a session that has been replaced. Called once the replacement is registered,
+    /// not as part of the teardown: a relaunch that fails leaves this session in the row so the user can
+    /// read what happened and try again, and that is the one case where the history still matters. After
+    /// a successful swap nothing reads it again, and a reader left running by a descendant that escaped
+    /// the kill would keep appending to a buffer the scrollback-memory monitor no longer sums.
+    pub fn discard_history(&self) {
+        let mut inner = lock_recover(&self.inner);
+        inner.retain = false;
+        inner.scrollback = ScrollbackBuffer::new();
+    }
+
     /// SIGKILL the process group -> reap the child -> join the reader thread (blocking).
     ///
     /// Runs **exactly once** via the `reaped` flag, and is the only place the child is collected — an
@@ -435,13 +451,17 @@ impl PtySession {
     /// no-op if already removed).
     pub fn shutdown(&self) {
         if self.reaped.swap(true, Ordering::SeqCst) {
-            // A `stop` came first: the child is already dead and collected, but the reader was left to
-            // finish on its own and the stream is still open. Anyone attached is waiting on that, so
-            // finish the teardown here rather than returning with it half done.
-            if let Some(handle) = lock_recover(&self.reader_handle).take() {
-                let _ = handle.join();
-            }
-            self.close_output();
+            // A `stop` came first: the child is already dead and collected, so close the stream now
+            // rather than waiting on the reader. That wait exists to let a dying child's last output
+            // through, and here the teardown is deliberate — nobody is looking for those bytes. The
+            // reader is not joined either: `Drop` reaches this branch too, on whatever task held the
+            // last `Arc`, and a join can take as long as a descendant that escaped the kill keeps the
+            // pty slave open. That reader is also why the history is dropped here — it would otherwise
+            // keep appending to a buffer nothing sums any more.
+            let mut inner = lock_recover(&self.inner);
+            inner.tx = None;
+            inner.retain = false;
+            inner.scrollback = ScrollbackBuffer::new();
             return;
         }
         self.kill();
@@ -502,6 +522,10 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
         };
         let chunk: Arc<[u8]> = Arc::from(&buf[..n]);
         let mut guard = lock_recover(&inner);
+        if !guard.retain {
+            // Torn down: whatever still holds the pty open is no longer this terminal's history.
+            continue;
+        }
         guard.scrollback.push(chunk.as_ref());
         guard.parser.process(chunk.as_ref());
         // Err if there are no subscribers. Dropped output is handled on the subscriber side via
@@ -716,10 +740,49 @@ mod tests {
         let mut sub = session.subscribe();
         session.stop();
         session.shutdown();
-        assert!(matches!(
-            sub.receiver.recv().await,
-            Err(broadcast::error::RecvError::Closed)
-        ));
+        // Bounded: a stream that never closes should fail the test, not hang the suite.
+        let closed = tokio::time::timeout(Duration::from_millis(2000), sub.receiver.recv()).await;
+        assert!(
+            matches!(closed, Ok(Err(broadcast::error::RecvError::Closed))),
+            "got {closed:?}"
+        );
+    }
+
+    /// A replaced session stops retaining output. Its reader can outlive the teardown — a descendant
+    /// that escaped the group kill keeps the pty open — and nothing sums that buffer any more. The
+    /// history survives `stop` itself, because a relaunch that fails leaves this session in the row.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_replaced_session_keeps_no_more_scrollback() {
+        let session = PtySession::spawn(sh("printf 'before\\n'; sleep 30")).unwrap();
+        let mut sub = session.subscribe();
+        drain_until(&mut sub, "before", 2000).await;
+        assert!(session.scrollback_len() > 0);
+
+        session.stop();
+        assert!(
+            session.scrollback_len() > 0,
+            "a stopped session still holds its history for a failed relaunch"
+        );
+
+        session.discard_history();
+        assert_eq!(session.scrollback_len(), 0);
+    }
+
+    /// Closing a terminal that a failed relaunch left stopped still releases its history: the row is
+    /// going away, and a reader kept alive by a stray descendant would otherwise grow a buffer the
+    /// scrollback-memory monitor no longer sums.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn closing_a_stopped_session_releases_its_history() {
+        let session = PtySession::spawn(sh("printf 'before\\n'; sleep 30")).unwrap();
+        let mut sub = session.subscribe();
+        drain_until(&mut sub, "before", 2000).await;
+        session.stop();
+        assert!(session.scrollback_len() > 0);
+
+        session.shutdown();
+        assert_eq!(session.scrollback_len(), 0);
     }
 
     /// A running child is not reported as exited.

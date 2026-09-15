@@ -237,6 +237,10 @@ impl SessionRegistry {
         }
         let session = Arc::new(PtySession::spawn(config)?);
         sessions.insert(id.to_string(), Entry { session, meta });
+        drop(sessions);
+        // Only now: until the replacement is registered, the old session is what the row still points
+        // at, and a failed spawn leaves it there for the user to read.
+        previous.discard_history();
         Ok(ReplaceOutcome::Replaced)
     }
 

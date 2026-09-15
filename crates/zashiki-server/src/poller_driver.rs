@@ -68,14 +68,22 @@ async fn evaluate_and_publish<P: PollerPorts>(
     // and not merely when the pane pid changes, which happens as soon as the shell is up and long
     // before a large transcript has finished resuming. A poll that caught the terminal mid-replacement
     // does not count: the sid it resolved belongs to the process on its way out.
-    let settled: std::collections::HashSet<String> = snapshot
+    let mid_replacement = poller.replaced_this_round();
+    let claude_up: std::collections::HashSet<String> = snapshot
         .sessions
         .iter()
         .filter(|s| s.sid.is_some())
         .map(|s| s.cockpit_terminal_id.clone())
-        .filter(|id| !poller.replaced_this_round().contains(id))
+        .filter(|id| !mid_replacement.contains(id))
         .collect();
-    hub.clear_restart_marks(&settled, &live);
+    let no_claude: std::collections::HashSet<String> = snapshot
+        .sessions
+        .iter()
+        .filter(|s| s.state == "no_claude")
+        .map(|s| s.cockpit_terminal_id.clone())
+        .filter(|id| !mid_replacement.contains(id))
+        .collect();
+    hub.clear_restart_marks(&claude_up, &no_claude, &live);
     if let Some(prev) = prev {
         let events =
             detect_activity_transitions(&prev, &snapshot, poller.replaced_this_round());

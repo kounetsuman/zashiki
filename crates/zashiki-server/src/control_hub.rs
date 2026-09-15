@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
+use std::time::{Duration, Instant};
 
 use tokio::sync::broadcast;
 
@@ -19,9 +20,8 @@ struct HubState {
     mac_notify: MacNotify,
     notifications: Vec<Notification>,
     snapshot: StateSnapshot,
-    /// Terminals relaunched recently, with how many more polls their mark survives. See
-    /// [`ControlHub::mark_restarted`].
-    relaunching: HashMap<String, u32>,
+    /// Terminals relaunched recently, with when their mark was set. See [`ControlHub::mark_restarted`].
+    relaunching: HashMap<String, Instant>,
     /// Per-org notes (org → Markdown), delivered on connect and re-broadcast on any note change.
     notes: BTreeMap<String, String>,
     /// The single app-wide memo (Markdown), delivered on connect and re-broadcast on any change.
@@ -124,10 +124,17 @@ pub struct ControlHub {
     notifications_persist: Mutex<()>,
 }
 
-/// How many polls a relaunch mark survives without claude being seen. Generous enough for a resume of
-/// a large transcript to finish, and bounded so a relaunch that never completes still lets the user try
-/// again rather than leaving the row permanently un-restartable.
-const RELAUNCH_MARK_POLLS: u32 = 15;
+/// How long a relaunch mark survives without claude being seen. Generous enough for a resume of a large
+/// transcript to finish, and bounded so a relaunch that never completes still lets the user try again
+/// rather than leaving the row permanently un-restartable. Measured in time rather than in polls: a
+/// poll also runs on every refresh request, and a busy neighbouring terminal would otherwise spend the
+/// budget in seconds.
+const RELAUNCH_MARK_TTL: Duration = Duration::from_secs(60);
+
+/// How long a relaunch is given to produce a claude before a poll reporting none is taken as its
+/// answer. Longer than the poller's startup grace, because a login shell's profile runs before the
+/// `claude` exec and the two look identical from outside.
+const RELAUNCH_SETTLE_GRACE: Duration = Duration::from_secs(20);
 
 pub(crate) fn hooks_status_message(status: RegistrationStatus) -> ServerMessage {
     ServerMessage::HooksStatus {
@@ -428,10 +435,10 @@ impl ControlHub {
     }
 
     /// Records that `cockpit_terminal_id` has just been relaunched, so [`Self::reported_state`] stops
-    /// answering with a state the relaunch has already invalidated. The mark lasts until a poll sees
-    /// claude running there, or until [`RELAUNCH_MARK_POLLS`] polls have passed — a resume of a large
-    /// transcript can take longer than the startup grace, and the row falling back to "no claude" in
-    /// the meantime would offer a restart that kills the launch. Deliberately does not touch the
+    /// answering with a state the relaunch has already invalidated. The mark lasts until a poll settles
+    /// the relaunch — claude up, or the startup grace waited out with none — or until
+    /// [`RELAUNCH_MARK_TTL`] has passed. A resume of a large transcript can take longer than that grace,
+    /// and the row falling back to "no claude" in the meantime would offer a restart that kills it. Deliberately does not touch the
     /// published snapshot: the poller decides whether to publish by comparing against its own copy, and
     /// editing the hub's behind its back would break that. The next published snapshot supersedes this.
     pub fn mark_restarted(&self, cockpit_terminal_id: &str) {
@@ -439,7 +446,10 @@ impl ControlHub {
             .write()
             .unwrap()
             .relaunching
-            .insert(cockpit_terminal_id.to_string(), RELAUNCH_MARK_POLLS);
+            .entry(cockpit_terminal_id.to_string())
+            // Not overwritten: a caller that loses the race still marks, and refreshing the timestamp
+            // would extend the winner's mark for as long as the retries keep coming.
+            .or_insert_with(Instant::now);
     }
 
     /// Forgets the given relaunch marks: the poll that just ran read those terminals' new processes, so
@@ -447,18 +457,34 @@ impl ControlHub {
     /// ones that publish — a poll whose result happens to match the last one still read them. Only
     /// terminals whose process the poll actually saw are dropped; a restart still in flight keeps its
     /// mark, since that poll looked at the process on its way out.
-    pub fn clear_restart_marks(&self, settled: &HashSet<String>, live: &HashSet<String>) {
-        self.inner
-            .write()
-            .unwrap()
-            .relaunching
-            .retain(|id, remaining| {
-                if settled.contains(id) || !live.contains(id) {
-                    return false;
-                }
-                *remaining = remaining.saturating_sub(1);
-                *remaining > 0
-            });
+    pub fn clear_restart_marks(
+        &self,
+        claude_up: &HashSet<String>,
+        no_claude: &HashSet<String>,
+        live: &HashSet<String>,
+    ) {
+        self.inner.write().unwrap().relaunching.retain(|id, since| {
+            if claude_up.contains(id) || !live.contains(id) {
+                return false;
+            }
+            // A relaunch that has not produced a claude is only called off once it has had time to: a
+            // login shell's profile can take longer to reach the `claude` exec than the poller's startup
+            // grace allows, and dropping the mark there would offer a restart that kills it.
+            if no_claude.contains(id) && since.elapsed() >= RELAUNCH_SETTLE_GRACE {
+                return false;
+            }
+            since.elapsed() < RELAUNCH_MARK_TTL
+        });
+    }
+
+    /// Ages every relaunch mark by `by`, so a test can reach a deadline without waiting for it.
+    #[cfg(test)]
+    pub fn age_relaunch_marks_for_test(&self, by: Duration) {
+        let mut state = self.inner.write().unwrap();
+        for since in state.relaunching.values_mut() {
+            // checked: a monotonic clock below `by` (a freshly booted machine) would panic.
+            *since = since.checked_sub(by).unwrap_or(*since);
+        }
     }
 
     /// The state last reported for `cockpit_terminal_id`, or `None` if it is not in the last snapshot.
@@ -807,27 +833,34 @@ mod tests {
         hub.mark_restarted("@1");
         assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
 
-        // A poll that only saw the shell come up leaves the mark standing: resuming a large transcript
-        // can take longer than the startup grace, and answering `no_claude` there would offer a restart
-        // that kills the launch.
+        // A poll that only saw the shell come up leaves the mark standing: resuming a large transcript,
+        // or a slow login profile, can take longer than the startup grace, and answering `no_claude`
+        // there would offer a restart that kills the launch.
         let live = HashSet::from(["@1".to_string()]);
-        hub.clear_restart_marks(&HashSet::new(), &live);
+        let only = |id: &str| HashSet::from([id.to_string()]);
+        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live);
         assert_eq!(hub.reported_state("@1").as_deref(), Some("starting"));
 
         // Cleared by the poll that finds claude running there.
-        hub.clear_restart_marks(&HashSet::from(["@1".to_string()]), &live);
+        hub.clear_restart_marks(&only("@1"), &HashSet::new(), &live);
+        assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
+
+        // A relaunch that has had its grace and still shows no claude is called off, so the user can
+        // try again rather than being refused.
+        hub.mark_restarted("@1");
+        hub.age_relaunch_marks_for_test(RELAUNCH_SETTLE_GRACE);
+        hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live);
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
 
         // A mark for a terminal that is gone is dropped too, rather than outliving the daemon.
         hub.mark_restarted("@1");
-        hub.clear_restart_marks(&HashSet::new(), &HashSet::new());
+        hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &HashSet::new());
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
 
-        // And a relaunch that never completes runs out rather than locking the row out of restarting.
+        // And one that never settles at all expires with the TTL.
         hub.mark_restarted("@1");
-        for _ in 0..RELAUNCH_MARK_POLLS {
-            hub.clear_restart_marks(&HashSet::new(), &live);
-        }
+        hub.age_relaunch_marks_for_test(RELAUNCH_MARK_TTL);
+        hub.clear_restart_marks(&HashSet::new(), &HashSet::new(), &live);
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
     }
 

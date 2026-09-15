@@ -100,7 +100,7 @@ pub(crate) async fn restart_all_for_account(services: &ControlServices) {
                 format!("account-switch-failed:{id}"),
                 "account_switch_incomplete",
                 &format!(
-                    "{} could not be relaunched and is now stopped; restart it to pick the conversation back up",
+                    "{} を再起動できず、停止したままです。もう一度再起動すると会話を再開できます。",
                     meta.wname
                 ),
                 crate::now_ms(),
@@ -113,7 +113,7 @@ pub(crate) async fn restart_all_for_account(services: &ControlServices) {
                 format!("account-switch-cwd:{id}"),
                 "account_switch_incomplete",
                 &format!(
-                    "{} still runs on the previous account: its working directory no longer exists, so it cannot be relaunched",
+                    "{} は作業ディレクトリが見つからず再起動できないため、切り替え前のアカウントのままです。",
                     meta.wname
                 ),
                 crate::now_ms(),
@@ -124,7 +124,7 @@ pub(crate) async fn restart_all_for_account(services: &ControlServices) {
                 format!("account-switch-busy:{id}"),
                 "account_switch_incomplete",
                 &format!(
-                    "{} was being restarted, so it is still on the previous account",
+                    "{} は再起動中だったため、切り替え前のアカウントのままです。",
                     meta.wname
                 ),
                 crate::now_ms(),

@@ -278,7 +278,9 @@ async fn run_bridge(
                     .unwrap()
                     .session_id(term_id)
                     .unwrap_or_default();
-                if !current_sid.is_empty() {
+                {
+                    // An empty binding means the term itself is gone — `term.close` took its entry —
+                    // and reaches the release path below, since no session is registered under "".
                     match services.sessions.get(&current_sid).await {
                         // Out of the registry: the terminal was closed, not restarted. Given one more
                         // tick before letting go, because closing the terminal on screen removes it
