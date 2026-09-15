@@ -134,7 +134,7 @@ const RELAUNCH_MARK_TTL: Duration = Duration::from_secs(60);
 /// How long a relaunch is given to produce a claude before a poll reporting none is taken as its
 /// answer. Longer than the poller's startup grace, because a login shell's profile runs before the
 /// `claude` exec and the two look identical from outside.
-const RELAUNCH_SETTLE_GRACE: Duration = Duration::from_secs(20);
+pub(crate) const CLAUDE_SETTLE_GRACE: Duration = Duration::from_secs(20);
 
 pub(crate) fn hooks_status_message(status: RegistrationStatus) -> ServerMessage {
     ServerMessage::HooksStatus {
@@ -476,7 +476,7 @@ impl ControlHub {
             // A relaunch that has not produced a claude is only called off once it has had time to: a
             // login shell's profile can take longer to reach the `claude` exec than the poller's startup
             // grace allows, and dropping the mark there would offer a restart that kills it.
-            if no_claude.contains(id) && since.elapsed() >= RELAUNCH_SETTLE_GRACE {
+            if no_claude.contains(id) && since.elapsed() >= CLAUDE_SETTLE_GRACE {
                 return false;
             }
             since.elapsed() < RELAUNCH_MARK_TTL
@@ -854,7 +854,7 @@ mod tests {
         // A relaunch that has had its grace and still shows no claude is called off, so the user can
         // try again rather than being refused.
         hub.mark_restarted("@1");
-        hub.age_relaunch_marks_for_test(RELAUNCH_SETTLE_GRACE);
+        hub.age_relaunch_marks_for_test(CLAUDE_SETTLE_GRACE);
         hub.clear_restart_marks(&HashSet::new(), &only("@1"), &live, Instant::now());
         assert_eq!(hub.reported_state("@1").as_deref(), Some("running"));
 

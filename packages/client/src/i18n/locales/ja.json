@@ -31,6 +31,7 @@
     "restartGone": "このターミナルはすでに閉じられています。",
     "restartBusy": "このターミナルでは Claude が動作中のため、再起動するものがありません。",
     "restartInProgress": "このターミナルはすでに再起動中です。",
+    "restartStartingUp": "このターミナルはまだ起動中です。少し待ってからお試しください。",
     "restartNotResumable": "このターミナルには再開できる Claude の会話がありません。",
     "restartCwdMissing": "作業ディレクトリが見つからないため、会話を再開できません。",
     "restartClaudeDisabled": "この構成では Claude を起動しないため、ターミナルを再起動できません。",

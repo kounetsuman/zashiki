@@ -32,6 +32,7 @@ const RESTART_ANSWERS: Record<string, string> = {
   restart_already_running: "errorDialog.restartAlreadyRunning",
   restart_unreported: "errorDialog.restartUnreported",
   restart_in_progress: "errorDialog.restartInProgress",
+  restart_starting_up: "errorDialog.restartStartingUp",
   restart_not_resumable: "errorDialog.restartNotResumable",
   restart_cwd_missing: "errorDialog.restartCwdMissing",
   restart_claude_disabled: "errorDialog.restartClaudeDisabled",

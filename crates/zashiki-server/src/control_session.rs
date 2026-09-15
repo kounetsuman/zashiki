@@ -103,13 +103,20 @@ pub(crate) async fn handle_session_restart(
     };
     let has_no_process = session.has_exited();
     let reported = services.hub.reported_state(cockpit_terminal_id);
-    if !restartable(has_no_process, reported.as_deref()) {
+    let starting_up = session.uptime() < crate::control_hub::CLAUDE_SETTLE_GRACE;
+    if !restartable(has_no_process, reported.as_deref(), starting_up) {
         let (code, message) = match reported.as_deref() {
             // The published state still says it is down, but its process is up — it came back without
             // this request. Citing `exited` would name the one state a restart is offered for.
             Some("exited") => (
                 "restart_already_running",
                 format!("cockpit terminal {cockpit_terminal_id} is running again"),
+            ),
+            // Up too briefly for the missing claude to mean anything yet: a login shell's profile can
+            // take longer to reach the `claude` exec than the poller's startup grace allows.
+            Some("no_claude") => (
+                "restart_starting_up",
+                format!("cockpit terminal {cockpit_terminal_id} is still starting up"),
             ),
             // The relaunch this request would duplicate is still coming up: the hub answers `starting`
             // for a terminal it has marked, and saying claude is running there would be backwards.
@@ -232,8 +239,10 @@ pub(crate) enum RestartOutcome {
 /// snapshot says. `reported` is the published state, and the only way to see a terminal that fell
 /// through to a bare shell; a terminal with a live process that no snapshot has reported on is refused,
 /// since the client has no state to offer a restart from either and it may well be mid-turn.
-fn restartable(has_no_process: bool, reported: Option<&str>) -> bool {
-    has_no_process || reported == Some("no_claude")
+/// `starting_up` holds while the terminal is too young for a missing claude to be meaningful, and keeps
+/// a restart from killing a launch that is still on its way.
+fn restartable(has_no_process: bool, reported: Option<&str>, starting_up: bool) -> bool {
+    has_no_process || (reported == Some("no_claude") && !starting_up)
 }
 
 /// Swaps in a fresh PTY for a registered Cockpit Terminal, launched with `claude --resume <sid>` so
@@ -415,16 +424,21 @@ mod tests {
     #[test]
     fn a_restart_needs_a_terminal_with_no_claude_in_it() {
         // Ended: the session itself says so, whatever the last snapshot said.
-        assert!(restartable(true, Some("exited")));
-        assert!(restartable(true, None));
+        assert!(restartable(true, Some("exited"), false));
+        assert!(restartable(true, None, false));
         // Fell through to a bare shell: only the reported state shows this.
-        assert!(restartable(false, Some("no_claude")));
+        assert!(restartable(false, Some("no_claude"), false));
+        // The same terminal moments after launch, where claude may still be on its way: a login shell's
+        // profile can outlast the poller's startup grace, and restarting would kill the launch.
+        assert!(!restartable(false, Some("no_claude"), true));
+        // An ended terminal is restartable however young it is - nothing is coming up in it.
+        assert!(restartable(true, Some("exited"), true));
         // Just restarted — the snapshot has not caught up, but the process is live.
-        assert!(!restartable(false, Some("exited")));
+        assert!(!restartable(false, Some("exited"), false));
         // Never polled, and running.
-        assert!(!restartable(false, None));
+        assert!(!restartable(false, None, false));
         for busy in ["running", "running_bg_agent", "waiting_input", "idle", "watching"] {
-            assert!(!restartable(false, Some(busy)), "{busy} is not restartable");
+            assert!(!restartable(false, Some(busy), false), "{busy} is not restartable");
         }
     }
 

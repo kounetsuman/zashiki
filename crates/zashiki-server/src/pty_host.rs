@@ -19,6 +19,7 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::broadcast;
@@ -115,6 +116,9 @@ pub struct PtySession {
     /// a handle rather than a pid, and muting that would take away its only way to reach a survivor.
     child_reaped: AtomicBool,
     reader_handle: Mutex<Option<JoinHandle<()>>>,
+    /// When the child was launched, which separates a claude that is still coming up from one that is
+    /// not coming at all.
+    started_at: Instant,
 }
 
 #[cfg(unix)]
@@ -221,7 +225,13 @@ impl PtySession {
             child_collected: AtomicBool::new(false),
             child_reaped: AtomicBool::new(false),
             reader_handle: Mutex::new(Some(handle)),
+            started_at: Instant::now(),
         })
+    }
+
+    /// How long the child has been running.
+    pub fn uptime(&self) -> Duration {
+        self.started_at.elapsed()
     }
 
     /// Subscribe. Atomically takes `replay` (the full history so far) and the live receiver under the

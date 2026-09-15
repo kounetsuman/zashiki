@@ -31,6 +31,7 @@
     "restartGone": "That terminal is no longer open.",
     "restartBusy": "That terminal has Claude running in it, so there is nothing to restart.",
     "restartInProgress": "That terminal is already being restarted.",
+    "restartStartingUp": "That terminal is still starting up. Try again in a moment.",
     "restartNotResumable": "That terminal has no Claude conversation to resume.",
     "restartCwdMissing": "That terminal's working directory no longer exists, so its conversation cannot be resumed.",
     "restartClaudeDisabled": "This server does not launch Claude, so terminals cannot be restarted.",
