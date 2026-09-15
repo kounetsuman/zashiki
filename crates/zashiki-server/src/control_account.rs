@@ -18,6 +18,16 @@ pub(crate) fn switch_failed_notification_id(cockpit_terminal_id: &str) -> String
     format!("account-switch-failed:{cockpit_terminal_id}")
 }
 
+/// Every notice this pass can leave on one terminal. All of them describe a terminal left behind by
+/// the switch, so a restart that works disproves each one.
+pub(crate) fn switch_notification_ids(cockpit_terminal_id: &str) -> [String; 3] {
+    [
+        switch_failed_notification_id(cockpit_terminal_id),
+        format!("account-switch-cwd:{cockpit_terminal_id}"),
+        format!("account-switch-busy:{cockpit_terminal_id}"),
+    ]
+}
+
 /// Runs the interactive `claude auth login` (browser OAuth) to completion, then re-reads and broadcasts
 /// the account. `claude auth` has no silent switch, so re-authenticating is how the account changes.
 /// Login is detached from any terminal: `claude` opens the browser itself and finishes via its

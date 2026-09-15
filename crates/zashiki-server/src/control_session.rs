@@ -336,7 +336,8 @@ pub(crate) async fn restart_in_place(
     if !term_ids.is_empty() {
         // Woken directly as well as told to reconnect: the notice only reaches clients whose control
         // socket is up at that moment, and a bridge that misses it stays on the dead PTY — silently
-        // dropping what is typed into it — until a heartbeat comes round.
+        // dropping what is typed into it — until a heartbeat comes round. A client that does get the
+        // notice reopens the term and discards this rebind, which is the redundancy being paid for.
         {
             let terms = services.terms.lock().unwrap();
             for term_id in &term_ids {
@@ -351,10 +352,9 @@ pub(crate) async fn restart_in_place(
     }
     // An earlier failure on this terminal is no longer true, whichever pass recorded it. Left standing
     // it would tell the user a terminal they are looking at is stopped.
-    for stale in [
-        relaunch_failed_notification_id(id),
-        crate::control_account::switch_failed_notification_id(id),
-    ] {
+    for stale in std::iter::once(relaunch_failed_notification_id(id))
+        .chain(crate::control_account::switch_notification_ids(id))
+    {
         services.hub.dismiss_notification(&stale);
     }
     RestartOutcome::Restarted
@@ -502,10 +502,13 @@ mod tests {
         let services = services(sessions);
         let mut rx = services.hub.subscribe();
         let failure = relaunch_failed_notification_id(SID);
-        let switch_failure = crate::control_account::switch_failed_notification_id(SID);
-        for id in [failure.clone(), switch_failure.clone()] {
+        let from_switch = crate::control_account::switch_notification_ids(SID);
+        let stale: Vec<String> = std::iter::once(failure)
+            .chain(from_switch)
+            .collect();
+        for id in &stale {
             services.hub.record_terminal_error(
-                id,
+                id.clone(),
                 "restart_failed",
                 &relaunch_failed_body("repo"),
                 SID,
@@ -515,7 +518,7 @@ mod tests {
         let recorded = synced_notification_ids(&mut rx)
             .await
             .expect("recording should have synced");
-        assert!(recorded.contains(&failure) && recorded.contains(&switch_failure));
+        assert!(stale.iter().all(|id| recorded.contains(id)), "{recorded:?}");
 
         assert_eq!(
             restart_in_place(&services, SID, &meta(), "/bin/sh", "/bin/echo", None).await,
@@ -525,7 +528,7 @@ mod tests {
         let left = synced_notification_ids(&mut rx)
             .await
             .expect("the retraction should have synced");
-        assert!(!left.contains(&failure) && !left.contains(&switch_failure), "{left:?}");
+        assert!(stale.iter().all(|id| !left.contains(id)), "{left:?}");
     }
 
     /// Terms bound to the restarted terminal are woken as well as told to reconnect: the notice only
