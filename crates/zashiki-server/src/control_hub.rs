@@ -132,8 +132,10 @@ pub struct ControlHub {
 const RELAUNCH_MARK_TTL: Duration = Duration::from_secs(60);
 
 /// How long a relaunch is given to produce a claude before a poll reporting none is taken as its
-/// answer. Longer than the poller's startup grace, because a login shell's profile runs before the
-/// `claude` exec and the two look identical from outside.
+/// answer. The window the poller gives a fresh launch, for the same reason: a login shell's profile
+/// runs before the `claude` exec, and from outside it looks the same as no claude coming at all. A
+/// launch slower than this is indistinguishable from one that failed, so what stands between it and a
+/// restart is the two-click confirm, not this.
 pub(crate) const CLAUDE_SETTLE_GRACE: Duration = Duration::from_millis(
     (zashiki_core::session_state::STARTUP_GRACE_SEC * 1000.0) as u64,
 );

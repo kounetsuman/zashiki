@@ -267,8 +267,10 @@ impl SessionRegistry {
     /// Unregisters `id` and reliably kills the process group via SIGTERM → grace → SIGKILL.
     /// Only the removal from the map is done under the lock; the lock is not held during the grace sleep. Returns `false` if it does not exist.
     ///
-    /// KILL + reap + reader join are consolidated into `shutdown()` and completed within remove **regardless of the
-    /// Arc owner count** (it leaves no zombie/thread even if another task holds an Arc obtained via `get()`).
+    /// KILL + reap are consolidated into `shutdown()` and completed within remove **regardless of the
+    /// Arc owner count** (it leaves no zombie even if another task holds an Arc obtained via `get()`).
+    /// The reader thread is joined too, except on a session a `stop()` already tore down, where waiting
+    /// on a reader a descendant can hold open forever is the worse trade — see [`PtySession::stop`].
     /// `shutdown()` is blocking, so it is offloaded to the blocking pool and does not stall the tokio workers.
     pub async fn remove(&self, id: &str) -> bool {
         let entry = self.sessions.lock().await.remove(id);

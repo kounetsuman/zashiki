@@ -162,12 +162,17 @@ const OPENPTY_ATTEMPTS: usize = 4;
 /// macOS refuses an occasional PTY allocation even with hundreds of slots free, measured at roughly
 /// one in five thousand when ptys are opened concurrently across processes. Retrying straight away
 /// clears it, and costs next to nothing when a refusal turns out to be real exhaustion.
-fn open_pty_with_retry<T, E>(mut open: impl FnMut() -> Result<T, E>) -> Result<T, E> {
+fn open_pty_with_retry<T, E: std::fmt::Display>(
+    mut open: impl FnMut() -> Result<T, E>,
+) -> Result<T, E> {
     let mut attempt = 1;
     loop {
         match open() {
             Ok(opened) => return Ok(opened),
-            Err(_) if attempt < OPENPTY_ATTEMPTS => attempt += 1,
+            Err(e) if attempt < OPENPTY_ATTEMPTS => {
+                tracing::debug!("zashiki-server: pty の確保に失敗しました（試行 {attempt}）: {e}");
+                attempt += 1;
+            }
             Err(err) => return Err(err),
         }
     }
