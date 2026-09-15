@@ -19,7 +19,6 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
 
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::broadcast;
@@ -156,22 +155,15 @@ fn screen_restore_sequence(screen: &vt100::Screen) -> Vec<u8> {
 /// Number of times opening a PTY is attempted before a spawn is reported as failed.
 const OPENPTY_ATTEMPTS: usize = 4;
 
-/// Pause between PTY open attempts.
-const OPENPTY_RETRY_DELAY: Duration = Duration::from_millis(5);
-
-/// macOS refuses an occasional PTY allocation under concurrency even with hundreds of slots free
-/// (measured at roughly one in five thousand parallel calls), which a burst of spawns - restoring
-/// every terminal at startup - runs into. Retrying turns that into a short delay rather than a
-/// terminal that never opens.
+/// macOS refuses an occasional PTY allocation even with hundreds of slots free, measured at roughly
+/// one in five thousand when ptys are opened concurrently across processes. Retrying straight away
+/// clears it, and costs next to nothing when a refusal turns out to be real exhaustion.
 fn open_pty_with_retry<T, E>(mut open: impl FnMut() -> Result<T, E>) -> Result<T, E> {
     let mut attempt = 1;
     loop {
         match open() {
             Ok(opened) => return Ok(opened),
-            Err(_) if attempt < OPENPTY_ATTEMPTS => {
-                thread::sleep(OPENPTY_RETRY_DELAY);
-                attempt += 1;
-            }
+            Err(_) if attempt < OPENPTY_ATTEMPTS => attempt += 1,
             Err(err) => return Err(err),
         }
     }
