@@ -13,6 +13,7 @@ pub mod control;
 pub mod crash_report;
 pub mod dashboard;
 pub mod file;
+pub mod file_list;
 pub mod fs;
 pub mod git;
 pub mod hook_event_store;

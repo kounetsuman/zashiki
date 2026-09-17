@@ -1,5 +1,10 @@
-import type { FileEntry } from "@zashiki/shared";
+import type {
+  FileEntry,
+  FileListResponse,
+  FileListScope,
+} from "@zashiki/shared";
 import {
+  fileListScope,
   filterFiles,
   parseQuickOpenQuery,
   resolveOrgColor,
@@ -8,22 +13,98 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import type { FilesListApi } from "../api/files-list.js";
 import { useModalEscape } from "./useModalEscape.js";
 import "./QuickOpen.css";
 
 /** Max rows rendered for one query (the fuzzy filter is cheap; the DOM is the cost). */
 const RESULT_LIMIT = 200;
 
+/** A path query waits this long for typing to settle before listing its directory. */
+const PATH_LISTING_DEBOUNCE_MS = 150;
+
+const FAILED_LISTING: FileListResponse = {
+  truncated: false,
+  home: "",
+  files: [],
+};
+
 export interface QuickOpenProps {
-  files: readonly FileEntry[];
-  /** org whose files rank first; null when there is no active Cockpit Terminal. */
-  activeOrg: string | null;
+  api: FilesListApi;
+  /**
+   * The active terminal's working directory: its org is listed and its repo ranks first. A full-path
+   * query ignores it.
+   */
+  activeCwd: string | null;
   orgColors?: Record<string, string>;
   orgAliases?: Record<string, string>;
-  /** True when the server listing was capped (a hint is shown). */
-  truncated?: boolean;
   onOpen(file: FileEntry, line: number | null): void;
   onClose(): void;
+}
+
+/**
+ * The server listing for `scope` (null until it arrives, so another scope's files are never offered).
+ * Each scope is fetched at most once while the palette is open, and a failed fetch is retried once
+ * `query` changes.
+ */
+function useFileListing(
+  api: FilesListApi,
+  scope: FileListScope,
+  query: string,
+): FileListResponse | null {
+  const scopeKey = JSON.stringify(scope);
+  const fetched = useRef(new Map<string, FileListResponse>());
+  const [listing, setListing] = useState<{
+    scopeKey: string;
+    response: FileListResponse;
+  } | null>(null);
+  const failed = useRef(false);
+  const [attempt, setAttempt] = useState(0);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a keystroke is what triggers the retry.
+  useEffect(() => {
+    if (!failed.current) return;
+    failed.current = false;
+    setAttempt((n) => n + 1);
+  }, [query]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new attempt re-runs the fetch.
+  useEffect(() => {
+    const cached = fetched.current.get(scopeKey);
+    if (cached !== undefined) {
+      setListing({ scopeKey, response: cached });
+      failed.current = false;
+      return;
+    }
+    const request = JSON.parse(scopeKey) as FileListScope;
+    const controller = new AbortController();
+    const fetchListing = (): void => {
+      api.list(request, controller.signal).then(
+        (res) => {
+          fetched.current.set(scopeKey, res);
+          if (controller.signal.aborted) return;
+          setListing({ scopeKey, response: res });
+          failed.current = false;
+        },
+        () => {
+          if (controller.signal.aborted) return;
+          setListing({ scopeKey, response: FAILED_LISTING });
+          failed.current = true;
+        },
+      );
+    };
+    const timer =
+      request.kind === "path"
+        ? setTimeout(fetchListing, PATH_LISTING_DEBOUNCE_MS)
+        : undefined;
+    if (timer === undefined) fetchListing();
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [api, scopeKey, attempt]);
+
+  return listing?.scopeKey === scopeKey ? listing.response : null;
 }
 
 function basenameStart(relPath: string): number {
@@ -68,11 +149,10 @@ function Highlighted({
 }
 
 export function QuickOpen({
-  files,
-  activeOrg,
+  api,
+  activeCwd,
   orgColors = {},
   orgAliases = {},
-  truncated = false,
   onOpen,
   onClose,
 }: QuickOpenProps) {
@@ -101,9 +181,15 @@ export function QuickOpen({
   }, []);
 
   const { name, line } = parseQuickOpenQuery(query);
+  const listing = useFileListing(api, fileListScope(name, activeCwd), query);
   const results = useMemo(
-    () => filterFiles(files, name, activeOrg, RESULT_LIMIT),
-    [files, name, activeOrg],
+    () =>
+      filterFiles(listing?.files ?? [], name, {
+        activeCwd,
+        home: listing?.home ?? "",
+        limit: RESULT_LIMIT,
+      }),
+    [listing, name, activeCwd],
   );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset selection whenever the result set changes.
@@ -214,7 +300,7 @@ export function QuickOpen({
             })}
           </div>
         )}
-        {truncated && (
+        {listing?.truncated === true && (
           <div className="quickopen-truncated">{t("quickOpen.truncated")}</div>
         )}
       </div>

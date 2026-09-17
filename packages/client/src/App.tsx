@@ -6,7 +6,6 @@ import {
   type DashboardSettings,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
-  type FileEntry,
   type FooterThresholds,
   type HooksStatusMessage,
   isSinglePathSegment,
@@ -444,33 +443,21 @@ export function App({
     [openViewerTab, ensureBuffer, ensureMediaBuffer, showViewerText],
   );
 
-  // Quick-open palette (Cmd+P). The file list is fetched each time it opens and generation-guarded so
-  // a slow response can't repopulate a palette the user already closed. The active org ranks first.
-  const activeOrg = activeSession?.org ?? orgs[0] ?? null;
-  const [quickOpenVisible, setQuickOpenVisible] = useState(false);
-  const [quickOpenFiles, setQuickOpenFiles] = useState<{
-    files: FileEntry[];
-    truncated: boolean;
-  }>({ files: [], truncated: false });
-  const quickOpenGen = useRef(0);
+  // Quick-open palette (Cmd+P) lists the org of the Cockpit Terminal it opens over. From a Viewer or
+  // Diff tab no terminal is active, so it falls back to the last one that was.
+  const lastActiveCwd = useRef<string | null>(null);
+  useEffect(() => {
+    if (activeSession?.cwd !== undefined)
+      lastActiveCwd.current = activeSession.cwd;
+  }, [activeSession?.cwd]);
+  const [quickOpen, setQuickOpen] = useState<{ cwd: string | null } | null>(
+    null,
+  );
   const openQuickOpen = useCallback((): void => {
-    setQuickOpenVisible(true);
-    quickOpenGen.current += 1;
-    const gen = quickOpenGen.current;
-    void filesListApi.list().then(
-      (res) => {
-        if (gen === quickOpenGen.current)
-          setQuickOpenFiles({ files: res.files, truncated: res.truncated });
-      },
-      () => {
-        if (gen === quickOpenGen.current)
-          setQuickOpenFiles({ files: [], truncated: false });
-      },
-    );
-  }, [filesListApi]);
+    setQuickOpen({ cwd: activeSession?.cwd ?? lastActiveCwd.current });
+  }, [activeSession?.cwd]);
   const closeQuickOpen = useCallback((): void => {
-    quickOpenGen.current += 1;
-    setQuickOpenVisible(false);
+    setQuickOpen(null);
   }, []);
 
   // Open a file's diff as a diff tab (from the double-click on a Source Control file row).
@@ -1320,11 +1307,10 @@ export function App({
           />
         </aside>
       </div>
-      {quickOpenVisible && (
+      {quickOpen !== null && (
         <QuickOpen
-          files={quickOpenFiles.files}
-          truncated={quickOpenFiles.truncated}
-          activeOrg={activeOrg}
+          api={filesListApi}
+          activeCwd={quickOpen.cwd}
           orgColors={orgColors}
           orgAliases={orgAliases}
           onOpen={(file, line) => {

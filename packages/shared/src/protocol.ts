@@ -121,6 +121,8 @@ export const cockpitTerminalInfoSchema = z.object({
   name: z.string(),
   org: z.string(),
   repo: z.string(),
+  /** The pane's working directory; the scanned repo containing it is the terminal's repo. Absent for old servers. */
+  cwd: z.string().optional(),
   state: cockpitTerminalStateSchema,
   /** First 30 characters of the first user utterance in the jsonl (null when there is no utterance or it cannot be read). */
   title: z.string().nullable(),
