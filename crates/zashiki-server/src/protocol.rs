@@ -245,6 +245,10 @@ pub struct CockpitTerminalInfo {
     pub name: String,
     pub org: String,
     pub repo: String,
+    /// The pane's working directory; the scanned repo containing it is the terminal's repo. Absent for
+    /// old servers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
     /// State string (`waiting_input`/`running`/`idle`/`no_claude`/`unknown`).
     pub state: String,
     /// Summary of the first user utterance (null if absent).
@@ -819,6 +823,7 @@ mod tests {
                 name: "repo".into(),
                 org: "org1".into(),
                 repo: "repo".into(),
+                cwd: None,
                 state: "running".into(),
                 title: None,
                 sid: None,
@@ -950,6 +955,7 @@ mod tests {
                 name: "repo".into(),
                 org: "o".into(),
                 repo: "repo".into(),
+                cwd: None,
                 state: "running_bg_agent".into(),
                 title: None,
                 sid: None,
@@ -973,12 +979,38 @@ mod tests {
     }
 
     #[test]
+    fn session_info_serializes_cwd_when_present() {
+        let info = CockpitTerminalInfo {
+            cockpit_terminal_id: "@1".into(),
+            name: "repo".into(),
+            org: "o".into(),
+            repo: "client".into(),
+            cwd: Some("/ws/o/repo/packages/client".into()),
+            state: "idle".into(),
+            title: None,
+            sid: None,
+            active: false,
+            running_subagents: None,
+            shells_running: None,
+            vitest_running: None,
+            limited: false,
+            menu_open: false,
+            model: None,
+            usage: None,
+        };
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"client","cwd":"/ws/o/repo/packages/client","state":"idle","title":null,"active":false}"#;
+        assert_eq!(to_json(&info), json);
+        assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
+    }
+
+    #[test]
     fn session_info_serializes_shells_running_when_present() {
         let info = CockpitTerminalInfo {
             cockpit_terminal_id: "@1".into(),
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
+            cwd: None,
             state: "idle".into(),
             title: None,
             sid: None,
@@ -1003,6 +1035,7 @@ mod tests {
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
+            cwd: None,
             state: "running".into(),
             title: None,
             sid: None,
@@ -1028,6 +1061,7 @@ mod tests {
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
+            cwd: None,
             state: "running".into(),
             title: None,
             sid: None,
@@ -1053,6 +1087,7 @@ mod tests {
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
+            cwd: None,
             state: "running".into(),
             title: None,
             sid: Some("0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f".into()),
@@ -1101,6 +1136,7 @@ mod tests {
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
+            cwd: None,
             state: "idle".into(),
             title: None,
             sid: None,
@@ -1130,6 +1166,7 @@ mod tests {
             name: "repo".into(),
             org: "o".into(),
             repo: "repo".into(),
+            cwd: None,
             state: "idle".into(),
             title: None,
             sid: None,

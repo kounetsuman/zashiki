@@ -35,9 +35,13 @@ export { formatSessionName } from "./domain.js";
 export {
   type FileEntry,
   type FileListResponse,
+  type FileListScope,
+  type FilterOptions,
   fileEntrySchema,
   fileListResponseSchema,
+  fileListScope,
   filterFiles,
+  isPathQuery,
   parseQuickOpenQuery,
   type QuickOpenQuery,
   type ScoredFile,

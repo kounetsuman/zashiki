@@ -118,7 +118,7 @@ const fakeFilesApi: FilesApi = {
 };
 
 const fakeFilesListApi: FilesListApi = {
-  list: () => Promise.resolve({ truncated: false, files: [] }),
+  list: () => Promise.resolve({ truncated: false, home: "", files: [] }),
 };
 
 const fakeReposApi: ReposApi = {

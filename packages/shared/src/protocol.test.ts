@@ -96,6 +96,19 @@ describe("cockpitTerminalInfoSchema", () => {
     };
     expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
   });
+  it("optionally accepts cwd (locates the terminal's repo)", () => {
+    const info = {
+      cockpitTerminalId: "@3",
+      name: "zashiki",
+      org: "kilo",
+      repo: "client",
+      cwd: "/ws/kilo/zashiki/packages/client",
+      state: "idle",
+      title: null,
+      active: true,
+    };
+    expect(cockpitTerminalInfoSchema.parse(info)).toEqual(info);
+  });
   it("optionally accepts sid (the key for a custom title)", () => {
     const info = {
       cockpitTerminalId: "@3",
