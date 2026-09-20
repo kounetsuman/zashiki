@@ -10,6 +10,8 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TerminalView, type TerminalViewSession } from "./TerminalView.js";
+import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
+import { buildTerminalOptions } from "./terminal-options.js";
 
 const { MockTerminal } = vi.hoisted(() => {
   class MockTerminal {
@@ -27,9 +29,13 @@ const { MockTerminal } = vi.hoisted(() => {
     private renderHandler: (() => void) | null = null;
     renderDisposed = false;
     unicode = { activeVersion: "6" };
-    options: { fontSize?: number } = {};
+    options: { fontSize?: number; smoothScrollDuration?: number } = {};
+    buffer = { active: { baseY: 0, type: "normal" as "normal" | "alternate" } };
 
-    constructor(options?: { fontSize?: number }) {
+    constructor(options?: {
+      fontSize?: number;
+      smoothScrollDuration?: number;
+    }) {
       MockTerminal.instances.push(this);
       if (options) this.options = { ...options };
     }
@@ -84,6 +90,11 @@ const { MockTerminal } = vi.hoisted(() => {
     scrollToLineArg: number | null = null;
     scrollToLine(line: number): void {
       this.scrollToLineArg = line;
+    }
+    /** The smooth-scroll setting seen on each scrollToBottom, so the jump can be checked for it. */
+    scrollToBottomSmoothness: (number | undefined)[] = [];
+    scrollToBottom(): void {
+      this.scrollToBottomSmoothness.push(this.options.smoothScrollDuration);
     }
     dispose(): void {
       this.disposed = true;
@@ -357,6 +368,71 @@ describe("TerminalView", () => {
     f.emitData("hello");
     expect(term.written).toEqual(["hello"]);
     expect(notify).toHaveBeenCalledWith(5);
+  });
+
+  // A switch replays the incoming terminal's history into a cleared scrollback. The scrolled-up state
+  // the shared xterm carries over from the terminal being left would otherwise hold the viewport at
+  // the top of that replay (issue #426).
+  describe("after the server rebuilds the history", () => {
+    function renderTerminal() {
+      const f = fakeSession();
+      fitTarget = { cols: 80, rows: 24 };
+      render(<TerminalView session={f.session} />);
+      const term = MockTerminal.instances[0];
+      if (!term) throw new Error("terminal not created");
+      return { f, term };
+    }
+
+    it("leaves the viewport on the latest output", () => {
+      const { f, term } = renderTerminal();
+      term.buffer.active.baseY = 400;
+      f.emitData("\x1b[?1049l\x1b[H\x1b[2J\x1b[3Jreplayed history");
+      expect(term.scrollToBottomSmoothness).toHaveLength(1);
+    });
+
+    it("does not move the viewport for ordinary output (reading scrolled up is not interrupted)", () => {
+      const { f, term } = renderTerminal();
+      term.buffer.active.baseY = 400;
+      f.emitData("just more output\r\n");
+      expect(term.scrollToBottomSmoothness).toHaveLength(0);
+    });
+
+    it("skips the smooth scroll, which would still be on its way down as the next output arrives", () => {
+      const { f, term } = renderTerminal();
+      term.buffer.active.baseY = 400;
+      f.emitData("\x1b[3Jreplayed history");
+      expect(term.scrollToBottomSmoothness).toEqual([0]);
+      expect(term.options.smoothScrollDuration).toBe(
+        buildTerminalOptions(DEFAULT_TERMINAL_FONT_SIZE).smoothScrollDuration,
+      );
+    });
+
+    it("waits out a full-screen program instead of following its every chunk, then catches the normal buffer it hands back", () => {
+      const { f, term } = renderTerminal();
+      term.buffer.active.type = "alternate";
+      f.emitData("\x1b[3J\x1b[?1049hfull-screen program");
+      f.emitData("its next frame\r\n");
+      expect(term.scrollToBottomSmoothness).toHaveLength(0);
+
+      term.buffer.active.type = "normal";
+      term.buffer.active.baseY = 400;
+      f.emitData("\x1b[?1049lback at the prompt\r\n");
+      expect(term.scrollToBottomSmoothness).toHaveLength(1);
+    });
+
+    it("keeps following until the rebuilt terminal has a scrollback to scroll (xterm lets go of the carried-over state only on a scroll that reaches the bottom)", () => {
+      const { f, term } = renderTerminal();
+      f.emitData("\x1b[3Jtoo short to scroll");
+      f.emitData("still nothing to scroll\r\n");
+      expect(term.scrollToBottomSmoothness).toHaveLength(2);
+
+      term.buffer.active.baseY = 120;
+      f.emitData("output that fills the screen\r\n");
+      expect(term.scrollToBottomSmoothness).toHaveLength(3);
+
+      f.emitData("output after the viewport reached the bottom\r\n");
+      expect(term.scrollToBottomSmoothness).toHaveLength(3);
+    });
   });
 
   it("enables the Unicode11 width table for CJK widths (activeVersion=11)", () => {
