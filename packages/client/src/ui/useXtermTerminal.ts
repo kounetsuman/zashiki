@@ -12,6 +12,7 @@ import {
   type TerminalSize,
 } from "../lib/terminal-fit.js";
 import { stripTerminalReplies } from "../lib/terminal-reply.js";
+import { clearsScrollback } from "../lib/terminal-scrollback-clear.js";
 import type { SearchResults } from "../lib/terminal-search.js";
 import { wheelDeltaToLines } from "../lib/terminal-wheel.js";
 import type { TerminalViewSession } from "./TerminalView.js";
@@ -20,6 +21,18 @@ import { buildTerminalOptions } from "./terminal-options.js";
 import type { XtermRenderer } from "./xterm-renderer.js";
 
 const COPY_DEBOUNCE_MS = 200;
+
+/**
+ * Put the viewport back on the latest output, without the smooth scroll: xterm only lets go of the
+ * viewport once a scroll actually reaches the bottom, and an animated one is still on its way there
+ * while the next output arrives.
+ */
+function followLatestOutput(term: Terminal): void {
+  const smoothScrollDuration = term.options.smoothScrollDuration;
+  term.options.smoothScrollDuration = 0;
+  term.scrollToBottom();
+  term.options.smoothScrollDuration = smoothScrollDuration;
+}
 
 export interface XtermTerminalDeps {
   session: TerminalViewSession;
@@ -226,8 +239,24 @@ export function useXtermTerminal({
       }),
       term.onSelectionChange(scheduleCopy),
     ];
+    // A switch (and a re-attach) rebuilds this terminal's history: the scrollback is cleared and
+    // replayed. The scrolled-up state the shared xterm carries over from the terminal being left
+    // would hold the viewport where the clear left it — the top — while the replay piles up below it
+    // (issue #426). xterm lets go of that state only on a scroll that actually reaches the bottom, so
+    // follow the latest output until the rebuilt terminal has a scrollback to reach one in. Nothing is
+    // taken from the reader meanwhile: a viewport with nothing above it is one they cannot scroll
+    // either. The alternate screen never has a scrollback and hands the normal buffer's viewport back
+    // untouched when the program exits, so wait for it rather than follow every chunk of a TUI.
+    let followLatest = false;
     const offData = session.onData((chunk) => {
-      term.write(chunk, () => session.notifyWritten(chunk.length));
+      const rebuilt = clearsScrollback(chunk);
+      term.write(chunk, () => {
+        session.notifyWritten(chunk.length);
+        followLatest = followLatest || rebuilt;
+        if (!followLatest || term.buffer.active.type === "alternate") return;
+        followLatestOutput(term);
+        followLatest = term.buffer.active.baseY === 0;
+      });
     });
 
     // Cell dimensions are unsettled right after term.open, so the first fit (applySize) is a no-op
