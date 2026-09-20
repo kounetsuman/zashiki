@@ -3,8 +3,8 @@
 #
 # 使い方（~/.claude/settings.json の hooks から。詳細は hooks/README.md）:
 #   notify-event.sh <kind>
-#   kind: prompt|tool|waiting|done（Claude Code の hook 名
-#         UserPromptSubmit|PostToolUse|Notification|Stop でも可）
+#   kind: prompt|tool|waiting|done|subagent_end（Claude Code の hook 名
+#         UserPromptSubmit|PostToolUse|Notification|Stop|SubagentStop でも可）
 #
 # 鉄則: サーバ停止中でも Claude Code を絶対にブロック・失敗させない。
 # - curl は --max-time 1 + `|| true`（接続不可は即失敗して抜ける）
@@ -42,6 +42,7 @@ case "$kind" in
     fi
     ;;
   Stop | done) kind=done ;;
+  SubagentStop | subagent_end) kind=subagent_end ;;
   *)
     run_legacy
     exit 0
@@ -50,9 +51,12 @@ esac
 
 sid=""
 cwd=""
+agent_id=""
 if [ -n "$input" ] && command -v jq >/dev/null 2>&1; then
   sid="$(printf '%s' "$input" | jq -r '.session_id // ""' 2>/dev/null || true)"
   cwd="$(printf '%s' "$input" | jq -r '.cwd // ""' 2>/dev/null || true)"
+  # SubagentStop の session_id は親セッションのもの。終わったエージェント自身は agent_id で判る。
+  agent_id="$(printf '%s' "$input" | jq -r '.agent_id // ""' 2>/dev/null || true)"
 fi
 
 # set -u 下でも HOME 未設定（最小環境）で死なない（その場合は POST スキップ）
@@ -61,10 +65,11 @@ if [ -r "$token_file" ]; then
   token="$(cat "$token_file" 2>/dev/null || true)"
   if [ -n "$token" ]; then
     if command -v jq >/dev/null 2>&1; then
-      body="$(jq -cn --arg kind "$kind" --arg sid "$sid" --arg cwd "$cwd" \
+      body="$(jq -cn --arg kind "$kind" --arg sid "$sid" --arg cwd "$cwd" --arg agent "$agent_id" \
         '{kind: $kind}
          + (if $sid != "" then {sid: $sid} else {} end)
-         + (if $cwd != "" then {cwd: $cwd} else {} end)' 2>/dev/null)" ||
+         + (if $cwd != "" then {cwd: $cwd} else {} end)
+         + (if $agent != "" then {agent_id: $agent} else {} end)' 2>/dev/null)" ||
       body="{\"kind\":\"$kind\"}"
     else
       # jq 不在時は sid/cwd を諦めて kind だけ送る（値のエスケープ問題を避ける）

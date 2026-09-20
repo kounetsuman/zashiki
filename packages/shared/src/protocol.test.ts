@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -13,6 +16,8 @@ import {
   cockpitTerminalInfoSchema,
   focusRequestSchema,
   focusResponseSchema,
+  hookEventKindSchema,
+  hookEventRequestSchema,
   serverMessageSchema,
   sessionUsageSchema,
   termIdSchema,
@@ -615,6 +620,43 @@ describe("hooks integration messages", () => {
     expect(
       clientMessageSchema.safeParse({ t: "hooks.unregister" }).success,
     ).toBe(true);
+  });
+
+  /**
+   * The kinds the server registers with Claude Code are the kinds it can be sent, so the Zod mirror
+   * has to list exactly those. Reading the Rust source is what makes adding a hook on one side fail
+   * here rather than silently.
+   */
+  it("mirrors every hook kind the server registers", () => {
+    const claudeSettings = readFileSync(
+      fileURLToPath(
+        new URL(
+          "../../../crates/zashiki-server/src/claude_settings.rs",
+          import.meta.url,
+        ),
+      ),
+      "utf8",
+    );
+    const events = claudeSettings.slice(
+      claudeSettings.indexOf("const EVENTS"),
+      claudeSettings.indexOf("];", claudeSettings.indexOf("const EVENTS")),
+    );
+    const registered = [
+      ...events.matchAll(/\(\s*"[^"]+",\s*"([^"]+)"\s*\)/g),
+    ].map((m) => m[1]);
+    expect(registered.length).toBeGreaterThan(0);
+    expect([...registered].sort()).toEqual(
+      [...hookEventKindSchema.options].sort(),
+    );
+  });
+
+  it("accepts a subagent_end carrying the agent that finished", () => {
+    const parsed = hookEventRequestSchema.safeParse({
+      kind: "subagent_end",
+      sid: "579fa8cf-4901-45cb-b9ec-17e229231a37",
+      agent_id: "a374587f5bbaaf161",
+    });
+    expect(parsed.success).toBe(true);
   });
 
   it("parses hooks.status and defaults its booleans off for old servers", () => {

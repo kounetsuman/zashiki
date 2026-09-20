@@ -12,13 +12,14 @@
 
 use std::sync::Arc;
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::app_state::now_ms;
 use crate::claude_projects::ClaudeProjectsAdapter;
 use crate::hook_event_store::HookEventStore;
 use crate::lsof::LsofAdapter;
 use crate::poller_types::{HookEventAge, ModelReading};
+use zashiki_core::session_state::SubagentTranscript;
 use crate::ps::PsAdapter;
 use crate::session_model_store::SessionModelStore;
 use crate::session_registry::SessionRegistry;
@@ -110,8 +111,8 @@ impl PollerPorts for PtyPollerPorts {
             .await
     }
 
-    async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
-        self.projects.subagent_ages(cwd, sid).await
+    async fn subagent_transcripts(&self, cwd: &str, sid: &str) -> Vec<SubagentTranscript> {
+        self.projects.subagent_transcripts(cwd, sid).await
     }
 
     async fn lsof_fd_outputs(&self) -> String {
@@ -132,6 +133,10 @@ impl PollerPorts for PtyPollerPorts {
 
     async fn last_hook_event(&self, sid: &str) -> Option<HookEventAge> {
         self.hook_events.get(sid, now_ms())
+    }
+
+    async fn stopped_subagent_ages_sec(&self, sid: &str) -> HashMap<String, f64> {
+        self.hook_events.stopped_subagent_ages_sec(sid, now_ms())
     }
 
     async fn active_model(&self, sid: &str) -> Option<ModelReading> {
@@ -379,7 +384,7 @@ mod tests {
         assert!(!ports.ps_snapshot().await.is_empty());
         let slices = ports.read_slices(CWD, SID).await.unwrap();
         assert!(slices.head.contains("依頼"));
-        assert_eq!(ports.subagent_ages(CWD, SID).await.len(), 1);
+        assert_eq!(ports.subagent_transcripts(CWD, SID).await.len(), 1);
     }
 
     /// An empty projects adapter for tests (slices/subagent are absent = None/empty; used for

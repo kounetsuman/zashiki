@@ -2,7 +2,9 @@
 
 # hooks/ — Claude Code hook 合流点
 
-`notify-event.sh` は Claude Code の hook（UserPromptSubmit / PostToolUse / Notification / Stop）から呼ばれ、zashiki サーバの `POST /api/hooks/event` へイベントを転送する薄いシェル。サーバはこれを受けて状態の即時再評価と通知配送を行う。
+`notify-event.sh` は Claude Code の hook（UserPromptSubmit / PostToolUse / Notification / Stop / SubagentStop）から呼ばれ、zashiki サーバの `POST /api/hooks/event` へイベントを転送する薄いシェル。サーバはこれを受けて状態の即時再評価と通知配送を行う。
+
+`SubagentStop` は `subagent_end` として転送する。親セッションの id に加え、終わったエージェント自身の `agent_id` を送る。これ単体では何も通知せず、終わった後も画面に残り続けるトレイと、まだ動いているトレイを区別するために使う。`agent_id` を持たないペイロード（旧 Claude Code）は数に入れず、その場合トレイは実行中のままになる。
 
 `Notification` を `waiting` として転送するのは、その `notification_type` が画面にウィザード／入力ダイアログを出すもの（`permission_prompt`・`elicitation_dialog`）のときだけ。他の型（`idle_prompt`・`auth_success`・elicitation の完了系）は落とし、アイドルで完了済みのセッションが応答待ちにならないようにする。`notification_type` を持たないペイロード（旧 Claude Code）は従来どおり転送する。
 
@@ -37,6 +39,9 @@ hooks/statusLine を保持する（既存 statusLine は `ZK_LEGACY_STATUSLINE` 
     ],
     "Stop": [
       { "hooks": [{ "type": "command", "command": "/path/to/zashiki/hooks/notify-event.sh done" }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "/path/to/zashiki/hooks/notify-event.sh subagent_end" }] }
     ]
   }
 }

@@ -20,11 +20,12 @@ const MARKER_PREFIX: &str = "ZK_ZASHIKI=";
 const MARKER_ASSIGNMENT: &str = "ZK_ZASHIKI=1";
 
 /// (Claude Code hook event name, the `kind` arg passed to notify-event.sh).
-const EVENTS: [(&str, &str); 4] = [
+const EVENTS: [(&str, &str); 5] = [
     ("UserPromptSubmit", "prompt"),
     ("PostToolUse", "tool"),
     ("Notification", "waiting"),
     ("Stop", "done"),
+    ("SubagentStop", "subagent_end"),
 ];
 
 /// Absolute paths to the two bundled scripts, derived from the resolved hooks directory.
@@ -46,7 +47,7 @@ impl ScriptPaths {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct RegistrationStatus {
-    /// All four hook events carry a zashiki entry.
+    /// Every hook event in `EVENTS` carries a zashiki entry.
     pub hooks_registered: bool,
     /// A zashiki statusLine (plain or wrapping a legacy one) is present.
     pub status_line_registered: bool,
@@ -419,7 +420,7 @@ mod tests {
     // ---- register: fresh + idempotent ----
 
     #[test]
-    fn register_fresh_adds_four_hooks_and_statusline() {
+    fn register_fresh_adds_every_hook_and_the_statusline() {
         let (out, changed) = merge_register(&v("{}"), &paths());
         assert!(changed);
         let st = registration_status(&out, &paths());
@@ -434,6 +435,10 @@ mod tests {
         assert_eq!(
             out["hooks"]["Stop"][0]["hooks"][0]["command"],
             json!("ZK_ZASHIKI=1 '/opt/zashiki/hooks/notify-event.sh' done")
+        );
+        assert_eq!(
+            out["hooks"]["SubagentStop"][0]["hooks"][0]["command"],
+            json!("ZK_ZASHIKI=1 '/opt/zashiki/hooks/notify-event.sh' subagent_end")
         );
     }
 
@@ -682,14 +687,79 @@ mod tests {
         assert!(st.status_line_conflict);
     }
 
+    /// A hook the server registers has to be one the shell forwards and the intake route accepts.
+    /// The three lists are written by hand in three files, and registering an event the other two do
+    /// not carry fails silently: Claude Code calls the script, the script drops through to its
+    /// fall-through, and nothing ever reaches zashiki.
     #[test]
-    fn status_hooks_registered_requires_all_four_events() {
+    fn every_registered_event_is_carried_by_the_script_and_the_wire() {
+        let script = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../hooks/notify-event.sh"),
+        )
+        .expect("hooks/notify-event.sh");
+        for (event, kind) in EVENTS {
+            let arm_head = format!("{event} | {kind})");
+            let arm_start = script
+                .find(&arm_head)
+                .unwrap_or_else(|| panic!("notify-event.sh has no case arm for {event}"));
+            let arm_end = script[arm_start..]
+                .find(";;")
+                .map(|end| arm_start + end)
+                .unwrap_or(script.len());
+            assert!(
+                script[arm_start..arm_end].contains(&format!("kind={kind}")),
+                "notify-event.sh's {event} arm does not forward {kind}"
+            );
+            serde_json::from_value::<crate::protocol::HookKind>(json!(kind))
+                .unwrap_or_else(|_| panic!("{kind} is not a HookKind the intake route accepts"));
+        }
+    }
+
+    /// A `subagent_end` that names no agent is discarded by the intake route, so the two lines that
+    /// read `agent_id` out of the payload and put it in the body are load-bearing: lose either and
+    /// every stop is dropped, no tray is ever released, and nothing says so.
+    #[test]
+    fn the_script_forwards_the_agent_a_subagent_stop_names() {
+        let script = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../hooks/notify-event.sh"),
+        )
+        .expect("hooks/notify-event.sh");
+        assert!(
+            script.contains(".agent_id // \"\""),
+            "notify-event.sh no longer reads agent_id out of the hook payload"
+        );
+        assert!(
+            script.contains("{agent_id: $agent}"),
+            "notify-event.sh no longer puts agent_id in the POST body"
+        );
+    }
+
+    #[test]
+    fn status_hooks_registered_requires_every_event() {
         let three = v(r#"{"hooks":{
             "UserPromptSubmit":[{"hooks":[{"type":"command","command":"ZK_ZASHIKI=1 '/h/notify-event.sh' prompt"}]}],
             "PostToolUse":[{"hooks":[{"type":"command","command":"ZK_ZASHIKI=1 '/h/notify-event.sh' tool"}]}],
             "Notification":[{"hooks":[{"type":"command","command":"ZK_ZASHIKI=1 '/h/notify-event.sh' waiting"}]}]
         }}"#);
         assert!(!registration_status(&three, &paths()).hooks_registered);
+    }
+
+    /// An install that predates SubagentStop reads as unregistered, and registering again adds only
+    /// the missing event while leaving the four it already had byte-identical.
+    #[test]
+    fn register_tops_up_an_install_that_predates_subagent_stop() {
+        let before = merge_register(&v("{}"), &paths()).0;
+        let mut without = before.clone();
+        without["hooks"]
+            .as_object_mut()
+            .unwrap()
+            .remove("SubagentStop");
+        assert!(!registration_status(&without, &paths()).hooks_registered);
+
+        let (after, changed) = merge_register(&without, &paths());
+        assert!(changed);
+        assert!(registration_status(&after, &paths()).hooks_registered);
+        assert_eq!(bytes(&after), bytes(&before));
     }
 
     #[test]

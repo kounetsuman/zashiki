@@ -50,15 +50,33 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
         Err((status, msg)) => return json_error(status, &msg),
     };
 
-    // Record the event into the shared store before triggering the re-poll, so the immediate
-    // re-evaluation reads it and event-authoritative state applies without waiting for the next tick.
+    // Record into the shared store before triggering the re-poll, so the immediate re-evaluation
+    // reads it and event-authoritative state applies without waiting for the next tick.
     if let Some(sid) = req.sid.as_deref().filter(|s| !s.is_empty()) {
-        control
-            .hook_events
-            .record(sid, hooks::hook_event_of(req.kind), now_ms());
+        match req.kind {
+            crate::protocol::HookKind::SubagentEnd => {
+                // Two stops cannot be told apart without an agent to name, and an agent tray taken
+                // down on a miscount is worse than one left up.
+                if let Some(agent_id) = req.agent_id.as_deref().filter(|s| !s.is_empty()) {
+                    control
+                        .hook_events
+                        .record_subagent_end(sid, agent_id, now_ms());
+                }
+            }
+            kind => {
+                if let Some(event) = hooks::hook_event_of(kind) {
+                    control.hook_events.record(sid, event, now_ms());
+                }
+            }
+        }
     }
 
-    let snap = hooks_refresh(control).await;
+    // A stop changes nothing this tick — the agent that just stopped still has the freshest
+    // transcript — so it is left to the next poll rather than driving a capture of every pane.
+    let snap = match req.kind {
+        crate::protocol::HookKind::SubagentEnd => None,
+        _ => hooks_refresh(control).await,
+    };
     let resolved = match req.kind {
         crate::protocol::HookKind::Waiting | crate::protocol::HookKind::Done => {
             hooks_resolve(control, req.sid.as_deref(), req.cwd.as_deref()).await
@@ -386,6 +404,66 @@ mod hooks_rest_tests {
         .await;
         assert_eq!(s, StatusCode::OK);
         assert!(b.contains(r#""matched":false"#), "body: {b}");
+    }
+
+    /// A `SubagentStop` dates the stop for the poller and nothing else: it does not become the sid's
+    /// last hook event (which would displace the waiting/done reading the bell arbitration needs),
+    /// and it delivers no notification of its own — the poller owns that edge, from the count.
+    #[tokio::test]
+    async fn subagent_end_records_a_stop_and_leaves_the_last_event_alone() {
+        let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
+        let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+        let mut rx = hub.subscribe();
+        let services = services(hub, NotifyMode::Both, Arc::new(Mutex::new(vec![])));
+        let store = services.hook_events.clone();
+        store.record(sid, zashiki_core::session_state::HookEvent::Waiting, 1);
+        let (s, b) = send(
+            app(services),
+            "POST",
+            &format!(r#"{{"kind":"subagent_end","sid":"{sid}","agent_id":"a374587f5bbaaf161"}}"#),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(b.contains(r#""matched":false"#), "body: {b}");
+        assert_eq!(
+            store
+                .stopped_subagent_ages_sec(sid, crate::app_state::now_ms())
+                .len(),
+            1
+        );
+        assert_eq!(
+            store.get(sid, crate::app_state::now_ms()).unwrap().event,
+            zashiki_core::session_state::HookEvent::Waiting
+        );
+        while let Ok(msg) = rx.try_recv() {
+            assert!(
+                !matches!(msg, ServerMessage::Notify { .. }),
+                "subagent_end must not notify on its own"
+            );
+        }
+    }
+
+    /// A Claude Code that reports no agent leaves the stop uncounted rather than counted as an
+    /// anonymous one, which would let two stops from one agent release a tray two agents drew.
+    #[tokio::test]
+    async fn a_stop_without_an_agent_is_not_counted() {
+        let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
+        let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+        let services = services(hub, NotifyMode::Web, Arc::new(Mutex::new(vec![])));
+        let store = services.hook_events.clone();
+        let (s, _) = send(
+            app(services),
+            "POST",
+            &format!(r#"{{"kind":"subagent_end","sid":"{sid}"}}"#),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(
+            store
+                .stopped_subagent_ages_sec(sid, crate::app_state::now_ms())
+                .len(),
+            0
+        );
     }
 
     #[tokio::test]

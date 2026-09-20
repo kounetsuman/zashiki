@@ -14,6 +14,7 @@ use crate::jsonl::{
     background_task_ids, claude_project_dir_name, session_usage, user_line_title, SessionUsageData,
 };
 use crate::status_poller::Slices;
+use zashiki_core::session_state::SubagentTranscript;
 
 const DEFAULT_MAX_SLICE_BYTES: u64 = 64 * 1024;
 
@@ -92,15 +93,16 @@ impl ClaudeProjectsAdapter {
             .flatten()
     }
 
-    /// Elapsed seconds since mtime for each `<sid>/subagents/agent-*.jsonl` file (empty if the directory is missing).
-    pub async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
+    /// Each `<sid>/subagents/agent-*.jsonl` file as the agent it is named for plus how long ago it
+    /// last changed (empty if the directory is missing).
+    pub async fn subagent_transcripts(&self, cwd: &str, sid: &str) -> Vec<SubagentTranscript> {
         let dir = self
             .root_dir
             .join(claude_project_dir_name(cwd))
             .join(sid)
             .join("subagents");
         let now = (self.now_ms)();
-        tokio::task::spawn_blocking(move || subagent_ages_sync(&dir, now))
+        tokio::task::spawn_blocking(move || subagent_transcripts_sync(&dir, now))
             .await
             .unwrap_or_default()
     }
@@ -197,26 +199,35 @@ fn read_first_user_title_sync(path: &Path, max_chars: usize) -> Option<String> {
     }
 }
 
-/// Elapsed seconds since mtime for each `agent-*.jsonl` file in the subagents directory (unordered).
-fn subagent_ages_sync(dir: &Path, now_ms_val: u64) -> Vec<f64> {
+/// The agent id a subagent transcript is named for (`agent-<id>.jsonl`), which is the same id its
+/// `SubagentStop` hook reports. `.meta.json` and anything else in the directory is skipped.
+fn transcript_agent_id(name: &str) -> Option<&str> {
+    name.strip_prefix("agent-")?.strip_suffix(".jsonl")
+}
+
+/// Every `agent-*.jsonl` file in the subagents directory, unordered.
+fn subagent_transcripts_sync(dir: &Path, now_ms_val: u64) -> Vec<SubagentTranscript> {
     let Ok(read_dir) = fs::read_dir(dir) else {
         return Vec::new();
     };
-    let mut ages = Vec::new();
+    let mut transcripts = Vec::new();
     for entry in read_dir.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if !(name.starts_with("agent-") && name.ends_with(".jsonl")) {
+        let Some(agent_id) = transcript_agent_id(&name) else {
             continue;
-        }
+        };
         let Ok(meta) = entry.metadata() else {
             continue;
         };
         if meta.is_file() {
-            ages.push(age_sec(now_ms_val, mtime_ms(&meta)));
+            transcripts.push(SubagentTranscript {
+                agent_id: agent_id.to_string(),
+                age_sec: age_sec(now_ms_val, mtime_ms(&meta)),
+            });
         }
     }
-    ages
+    transcripts
 }
 
 #[cfg(test)]
@@ -420,37 +431,45 @@ mod tests {
     }
 
     #[test]
-    fn subagent_ages_returns_mtime_ages_for_agent_jsonl() {
+    fn subagent_transcripts_name_their_agent_and_mtime_age() {
         let tmp = tempfile::tempdir().unwrap();
         let sub_sid = "11111111-2222-3333-4444-555555555555";
         write_subagent(tmp.path(), sub_sid, "agent-aaa.jsonl", BASE_SEC);
         write_subagent(tmp.path(), sub_sid, "agent-bbb.jsonl", BASE_SEC - 120);
         let dir = tmp.path().join(PROJ_DIR).join(sub_sid).join("subagents");
-        let mut ages = subagent_ages_sync(&dir, BASE_SEC * 1000);
-        ages.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        assert_eq!(ages, vec![0.0, 120.0]);
+        let mut found = subagent_transcripts_sync(&dir, BASE_SEC * 1000);
+        found.sort_by(|a, b| a.age_sec.partial_cmp(&b.age_sec).unwrap());
+        assert_eq!(
+            found,
+            vec![
+                SubagentTranscript { agent_id: "aaa".to_string(), age_sec: 0.0 },
+                SubagentTranscript { agent_id: "bbb".to_string(), age_sec: 120.0 },
+            ]
+        );
     }
 
     #[test]
-    fn subagent_ages_ignores_non_agent_jsonl_files() {
+    fn subagent_transcripts_ignore_non_agent_jsonl_files() {
         let tmp = tempfile::tempdir().unwrap();
         let sid = "22222222-2222-3333-4444-555555555555";
         write_subagent(tmp.path(), sid, "agent-aaa.jsonl", BASE_SEC);
         write_subagent(tmp.path(), sid, "agent-aaa.meta.json", BASE_SEC);
         write_subagent(tmp.path(), sid, "note.txt", BASE_SEC);
         let dir = tmp.path().join(PROJ_DIR).join(sid).join("subagents");
-        assert_eq!(subagent_ages_sync(&dir, BASE_SEC * 1000).len(), 1);
+        let found = subagent_transcripts_sync(&dir, BASE_SEC * 1000);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].agent_id, "aaa");
     }
 
     #[test]
-    fn subagent_ages_missing_dir_is_empty() {
+    fn subagent_transcripts_missing_dir_is_empty() {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp
             .path()
             .join(PROJ_DIR)
             .join("99999999-0000-0000-0000-000000000000")
             .join("subagents");
-        assert!(subagent_ages_sync(&dir, BASE_SEC * 1000).is_empty());
+        assert!(subagent_transcripts_sync(&dir, BASE_SEC * 1000).is_empty());
     }
 
     #[tokio::test]
@@ -464,6 +483,6 @@ mod tests {
         };
         let slices = adapter.read_slices(CWD, SID).await.unwrap();
         assert_eq!(slices.mtime_age_sec, 3.0);
-        assert!(adapter.subagent_ages(CWD, SID).await.is_empty());
+        assert!(adapter.subagent_transcripts(CWD, SID).await.is_empty());
     }
 }
