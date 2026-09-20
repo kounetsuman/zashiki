@@ -2,7 +2,9 @@
 
 # hooks/ — Claude Code hook confluence point
 
-`notify-event.sh` is a thin shell called from Claude Code hooks (UserPromptSubmit / PostToolUse / Notification / Stop) that forwards events to the zashiki server's `POST /api/hooks/event`. On receiving them, the server immediately re-evaluates state and delivers notifications.
+`notify-event.sh` is a thin shell called from Claude Code hooks (UserPromptSubmit / PostToolUse / Notification / Stop / SubagentStop) that forwards events to the zashiki server's `POST /api/hooks/event`. On receiving them, the server immediately re-evaluates state and delivers notifications.
+
+A `SubagentStop` is forwarded as `subagent_end`, carrying the `agent_id` of the agent that finished alongside the parent session's id. It notifies nothing on its own: it lets the server tell an agent tray still drawn on screen after its agents are done from one whose agents are still working. A payload without `agent_id` (older Claude Code) is not counted, and such a tray keeps reading as busy.
 
 A `Notification` is forwarded as `waiting` only when its `notification_type` puts a wizard / input dialog on screen (`permission_prompt`, `elicitation_dialog`); other types (`idle_prompt`, `auth_success`, elicitation completions) are dropped so an idle-but-finished session isn't marked waiting. A payload without `notification_type` (older Claude Code) is forwarded as before.
 
@@ -37,6 +39,9 @@ Register it in `~/.claude/settings.json` (adjust the path to your own repository
     ],
     "Stop": [
       { "hooks": [{ "type": "command", "command": "/path/to/zashiki/hooks/notify-event.sh done" }] }
+    ],
+    "SubagentStop": [
+      { "hooks": [{ "type": "command", "command": "/path/to/zashiki/hooks/notify-event.sh subagent_end" }] }
     ]
   }
 }

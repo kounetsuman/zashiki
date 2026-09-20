@@ -195,15 +195,18 @@ fn notify_kind_of(kind: HookKind) -> Option<NotifyKind> {
     }
 }
 
-/// Maps a wire hook kind to its domain [`HookEvent`] for the shared store (a 1:1 crossing of the
-/// web-adapter / domain seam).
-pub fn hook_event_of(kind: HookKind) -> zashiki_core::session_state::HookEvent {
+/// Maps a wire hook kind to its domain [`HookEvent`] for the shared store (a crossing of the
+/// web-adapter / domain seam). `subagent_end` has no counterpart — it says nothing about whether the
+/// main session is waiting on the user — and the intake route takes it down its own path before
+/// reaching here, so the `None` is what makes this total rather than what enforces that.
+pub fn hook_event_of(kind: HookKind) -> Option<zashiki_core::session_state::HookEvent> {
     use zashiki_core::session_state::HookEvent;
     match kind {
-        HookKind::Waiting => HookEvent::Waiting,
-        HookKind::Done => HookEvent::Done,
-        HookKind::Prompt => HookEvent::Prompt,
-        HookKind::Tool => HookEvent::Tool,
+        HookKind::Waiting => Some(HookEvent::Waiting),
+        HookKind::Done => Some(HookEvent::Done),
+        HookKind::Prompt => Some(HookEvent::Prompt),
+        HookKind::Tool => Some(HookEvent::Tool),
+        HookKind::SubagentEnd => None,
     }
 }
 

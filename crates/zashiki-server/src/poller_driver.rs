@@ -163,7 +163,11 @@ mod tests {
         async fn read_slices(&self, _cwd: &str, _sid: &str) -> Option<Slices> {
             None
         }
-        async fn subagent_ages(&self, _cwd: &str, _sid: &str) -> Vec<f64> {
+        async fn subagent_transcripts(
+            &self,
+            _cwd: &str,
+            _sid: &str,
+        ) -> Vec<zashiki_core::session_state::SubagentTranscript> {
             Vec::new()
         }
         async fn lsof_fd_outputs(&self) -> String {

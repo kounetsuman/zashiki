@@ -1,10 +1,11 @@
 //! The public data types and infra-boundary trait of the status poller.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
 
 use crate::jsonl::SessionUsageData;
 use crate::protocol::CockpitTerminalInfo;
+use zashiki_core::session_state::SubagentTranscript;
 
 /// Pane material for a work window (material for the poller's decisions).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,8 +78,13 @@ pub trait PollerPorts {
     ) -> impl Future<Output = Option<String>> + Send {
         async { None }
     }
-    /// The elapsed mtime seconds of each subagents/*.jsonl file (material for the count).
-    fn subagent_ages(&self, cwd: &str, sid: &str) -> impl Future<Output = Vec<f64>> + Send;
+    /// Each subagents/*.jsonl file: the agent that wrote it and how long ago it last did (material
+    /// for the count, and for matching stops to the agents still to be accounted for).
+    fn subagent_transcripts(
+        &self,
+        cwd: &str,
+        sid: &str,
+    ) -> impl Future<Output = Vec<SubagentTranscript>> + Send;
     /// Raw `lsof -F pfn -a -d 1` output for resident background-shell detection (parsed by `crate::shells`).
     fn lsof_fd_outputs(&self) -> impl Future<Output = String> + Send;
     /// The set of `toolUseResult.backgroundTaskId` in the transcript (separates bg shells from fg).
@@ -105,6 +111,15 @@ pub trait PollerPorts {
     /// stubs that do not exercise the event layer need not implement it.
     fn last_hook_event(&self, _sid: &str) -> impl Future<Output = Option<HookEventAge>> + Send {
         async { None }
+    }
+    /// How long ago each agent under `sid` reported stopping, matched against the subagent
+    /// transcripts so a tray left drawn after its agents finished stops counting as one. Defaulted to
+    /// nothing heard so stubs that do not exercise the event layer need not implement it.
+    fn stopped_subagent_ages_sec(
+        &self,
+        _sid: &str,
+    ) -> impl Future<Output = HashMap<String, f64>> + Send {
+        async { HashMap::new() }
     }
 }
 

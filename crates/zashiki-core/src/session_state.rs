@@ -742,6 +742,59 @@ pub fn count_running_subagents(mtime_ages_sec: &[f64], fresh_within_sec: f64) ->
         .count()
 }
 
+/// One background agent's transcript: which agent wrote it, and how long ago it last did.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubagentTranscript {
+    /// Claude Code's id for the agent, taken from the `agent-<id>.jsonl` filename and matched
+    /// against the ids its `SubagentStop` hooks report.
+    pub agent_id: String,
+    pub age_sec: f64,
+}
+
+/// Slack (seconds) on "the stop came after the last write". Claude Code may append a transcript's
+/// closing line either side of the hook that reports the agent finished, and both times are floored
+/// to whole seconds. An agent that was let carry on past its stop writes again seconds or minutes
+/// later, well outside this.
+const STOP_ORDERING_SLACK_SEC: f64 = 1.0;
+
+/// Whether every background agent this session ever ran has reported stopping and stayed stopped.
+///
+/// A drawn agent tray is proof of a live agent, so the poller floors the running count at 1 while
+/// one is on screen. The tray stays drawn after the agents finish, so that floor never lifts on its
+/// own. Claude Code reports each agent's end through its `SubagentStop` hook, naming the agent, and
+/// writes one transcript per agent under that same name, so the tray is a leftover render once every
+/// transcript names an agent that has reported stopping since it last wrote.
+///
+/// "Since it last wrote" is what keeps a stop from being taken as final when it was not: another
+/// `SubagentStop` hook in the user's settings can send the agent back to work, and the agent goes on
+/// writing under the same name. Age otherwise plays no part — leaving a long-silent transcript out
+/// of the comparison is the one way this could take down a tray a live agent is still holding, since
+/// an agent mid-tool-call writes nothing for minutes and nothing but its own stop tells it apart
+/// from one that is finished.
+///
+/// Every way this can go wrong therefore leaves the tray up:
+///
+/// - an agent that never reports stopping — Claude Code runs no `SubagentStop` for one ended by a
+///   user interrupt, and the hook is dropped outright while the server is down — holds the tray up
+///   for the rest of the session, which is how the tray read before any stop was recorded;
+/// - so does every transcript written before this server came up, whose stop it could not have heard.
+///
+/// The one gap left open is momentary: an agent spawned into a session whose earlier agents all
+/// stopped has no transcript for a tick or so, and over that tick the tray reads as released.
+pub fn all_subagents_stopped(
+    transcripts: &[SubagentTranscript],
+    stopped_agent_ages_sec: &std::collections::HashMap<String, f64>,
+) -> bool {
+    !transcripts.is_empty()
+        && transcripts.iter().all(|transcript| {
+            stopped_agent_ages_sec
+                .get(&transcript.agent_id)
+                .is_some_and(|stop_age| {
+                    *stop_age <= transcript.age_sec + STOP_ORDERING_SLACK_SEC
+                })
+        })
+}
+
 /// The length of the startup grace (seconds). The width to absorb everything between spawning the pty
 /// and claude appearing in the process tree: a login shell's profile as well as claude's own cold
 /// start. Reporting `no_claude` early is not merely cosmetic — that state is what offers a restart, and
@@ -1798,6 +1851,94 @@ mod tests {
     #[test]
     fn count_running_subagents_empty_is_zero() {
         assert_eq!(count_running_subagents(&[], 30.0), 0);
+    }
+
+    // -- scraped tray vs. recorded subagent stops --
+
+    fn transcripts(entries: &[(&str, f64)]) -> Vec<SubagentTranscript> {
+        entries
+            .iter()
+            .map(|(agent_id, age_sec)| SubagentTranscript {
+                agent_id: (*agent_id).to_string(),
+                age_sec: *age_sec,
+            })
+            .collect()
+    }
+
+    /// Agents that reported stopping, each with how long ago. A stop older than the transcript's own
+    /// age came before that transcript's last write.
+    fn stopped(entries: &[(&str, f64)]) -> std::collections::HashMap<String, f64> {
+        entries
+            .iter()
+            .map(|(agent_id, age_sec)| ((*agent_id).to_string(), *age_sec))
+            .collect()
+    }
+
+    #[test]
+    fn tray_stands_while_an_agent_has_not_reported_stopping() {
+        let t = transcripts(&[("a1", 120.0)]);
+        assert!(!all_subagents_stopped(&t, &stopped(&[])));
+    }
+
+    #[test]
+    fn tray_is_released_once_every_agent_has_reported_stopping() {
+        let t = transcripts(&[("a1", 120.0), ("a2", 200.0)]);
+        assert!(all_subagents_stopped(
+            &t,
+            &stopped(&[("a1", 120.0), ("a2", 200.0)])
+        ));
+    }
+
+    /// The case this exists for: one agent finished while the other is mid-tool-call and has not
+    /// written for minutes.
+    #[test]
+    fn one_stop_does_not_release_a_tray_two_agents_drew() {
+        let t = transcripts(&[("a1", 120.0), ("a2", 130.0)]);
+        assert!(!all_subagents_stopped(&t, &stopped(&[("a1", 120.0)])));
+    }
+
+    /// Matching by name, not by number: one agent's stop cannot stand in for another's.
+    #[test]
+    fn a_stop_from_one_agent_does_not_cover_another() {
+        let t = transcripts(&[("live", 120.0), ("finished", 900.0)]);
+        assert!(!all_subagents_stopped(&t, &stopped(&[("finished", 900.0)])));
+    }
+
+    /// A stop from an agent that never wrote a transcript cannot release anything either.
+    #[test]
+    fn a_stop_without_a_transcript_does_not_cover_a_live_agent() {
+        let t = transcripts(&[("live", 120.0)]);
+        assert!(!all_subagents_stopped(&t, &stopped(&[("never-wrote", 10.0)])));
+    }
+
+    #[test]
+    fn tray_stands_with_no_transcript_to_account_for() {
+        assert!(!all_subagents_stopped(&[], &stopped(&[("a1", 10.0)])));
+    }
+
+    /// An agent sent back to work by another `SubagentStop` hook writes again after the stop zashiki
+    /// recorded, and its tray must not come down on the strength of that stop.
+    #[test]
+    fn a_stop_the_agent_outlived_does_not_release_the_tray() {
+        let t = transcripts(&[("a1", 40.0)]);
+        assert!(!all_subagents_stopped(&t, &stopped(&[("a1", 600.0)])));
+    }
+
+    /// The closing line of a transcript can land either side of the hook, within a second.
+    #[test]
+    fn the_stop_and_the_closing_line_may_arrive_in_either_order() {
+        let t = transcripts(&[("a1", 120.0)]);
+        assert!(all_subagents_stopped(&t, &stopped(&[("a1", 121.0)])));
+        assert!(!all_subagents_stopped(&t, &stopped(&[("a1", 122.0)])));
+    }
+
+    /// However long a transcript has been silent, its own stop is all that releases it: silence is
+    /// what a long tool call and a finished agent have in common.
+    #[test]
+    fn silence_alone_never_releases_a_transcript() {
+        let day_old = transcripts(&[("a1", 86400.0)]);
+        assert!(!all_subagents_stopped(&day_old, &stopped(&[])));
+        assert!(all_subagents_stopped(&day_old, &stopped(&[("a1", 86400.0)])));
     }
 
     // -- startup grace --

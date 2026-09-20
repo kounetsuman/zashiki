@@ -11,7 +11,7 @@ use zashiki_core::session_state::{
     apply_jsonl_fallback, apply_loop_pending, apply_startup_grace, count_running_subagents,
     detect_state, fleet_view_counts, has_bg_agent, hook_event_fresh_within_sec, is_limit_reached,
     is_menu_open, open_tasks_remaining, resolve_state, skill_agents_running, startup_grace_polls,
-    subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
+    all_subagents_stopped, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
 use crate::jsonl::{last_user_or_assistant_event, loop_wakeup_pending};
@@ -99,6 +99,7 @@ pub use crate::poller_types::{
     CockpitTerminal, CockpitTerminalPane, HookEventAge, ModelReading, PollConfig, PollerPorts,
     Slices, StateSnapshot,
 };
+pub use zashiki_core::session_state::SubagentTranscript;
 
 use crate::poller_eval_helpers::{
     build_orgs, claude_is_alive, is_pane_in_mode, last_path_segment, pick_pane,
@@ -401,14 +402,16 @@ impl StatusPoller {
         // Orthogonal to the resolved state, not gated on it: detect_state resolves a busy main to
         // `Running` before it can reach the bg panel, so gating on `RunningBgAgent` would drop the
         // count whenever the main is also working. A scraped tray is itself proof of >=1 live agent,
-        // so `bg_present` floors the count at 1 even when the jsonl mtimes have gone stale.
+        // so `bg_present` floors the count at 1 even when the jsonl mtimes have gone stale — until
+        // every transcript it could account for has a `SubagentStop` against it (`all_subagents_stopped`).
         let bg_present = bg_agent_scraped || state == CockpitTerminalState::RunningBgAgent;
         let mut running_subagents = 0;
         if bg_present {
             running_subagents = if let Some(n) = skill_agents {
                 n
             } else if let Some(sid) = &sid {
-                let ages = ports.subagent_ages(&cwd, sid).await;
+                let transcripts = ports.subagent_transcripts(&cwd, sid).await;
+                let ages: Vec<f64> = transcripts.iter().map(|t| t.age_sec).collect();
                 let recorded =
                     count_running_subagents(&ages, subagent_fresh_within_sec(config.poll_sec));
                 if recorded > 0 {
@@ -418,7 +421,12 @@ impl StatusPoller {
                     // terminal records no subagents of its own); carried-over state floors at 1.
                     fleet_view_working.unwrap_or(1)
                 } else {
-                    1
+                    let stopped = ports.stopped_subagent_ages_sec(sid).await;
+                    if all_subagents_stopped(&transcripts, &stopped) {
+                        0
+                    } else {
+                        1
+                    }
                 }
             } else {
                 1
@@ -543,6 +551,7 @@ mod tests {
         lsof: String,
         bg_task_ids: HashMap<String, HashSet<String>>,
         hook_events: HashMap<String, HookEventAge>,
+        subagent_stops: HashMap<String, HashMap<String, f64>>,
         session_usages: HashMap<String, crate::jsonl::SessionUsageData>,
         active_models: HashMap<String, ModelReading>,
     }
@@ -576,11 +585,23 @@ mod tests {
                 .get(&format!("{cwd}\u{0}{sid}"))
                 .and_then(|s| first_user_title(&s.head, max_chars))
         }
-        async fn subagent_ages(&self, cwd: &str, sid: &str) -> Vec<f64> {
+        async fn stopped_subagent_ages_sec(&self, sid: &str) -> HashMap<String, f64> {
+            self.subagent_stops.get(sid).cloned().unwrap_or_default()
+        }
+        /// Ages come from the fixture; the agent ids are synthesized positionally (`a0`, `a1`, …)
+        /// so a test that cares about stops can name them.
+        async fn subagent_transcripts(&self, cwd: &str, sid: &str) -> Vec<SubagentTranscript> {
             self.subagent_ages
                 .get(&format!("{cwd}\u{0}{sid}"))
                 .cloned()
                 .unwrap_or_default()
+                .into_iter()
+                .enumerate()
+                .map(|(i, age_sec)| SubagentTranscript {
+                    agent_id: format!("a{i}"),
+                    age_sec,
+                })
+                .collect()
         }
         async fn lsof_fd_outputs(&self) -> String {
             self.lsof.clone()
@@ -1219,6 +1240,71 @@ mod tests {
         assert_eq!(snap.sessions[0].state, "running_bg_agent");
         assert_eq!(snap.sessions[0].sid, None);
         assert_eq!(snap.sessions[0].running_subagents, Some(1));
+    }
+
+    /// The tray a finished batch leaves drawn keeps the count at 1 while no agent has reported
+    /// stopping — the floor this release is built on.
+    #[tokio::test]
+    async fn a_tray_left_drawn_keeps_counting_one_until_its_agents_report_stopping() {
+        let ports = stale_tray_ports(&[]);
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].running_subagents, Some(1));
+    }
+
+    /// Both agents accounted for: the tray is a leftover render and the count reaches 0.
+    #[tokio::test]
+    async fn a_stop_for_every_transcript_clears_a_tray_left_drawn() {
+        let ports = stale_tray_ports(&["a0", "a1"]);
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].running_subagents, Some(0));
+    }
+
+    /// The case the count exists for: one agent finished while the other is mid-tool-call and has
+    /// not written for minutes. One stop must not take the tray down.
+    #[tokio::test]
+    async fn one_stop_leaves_a_tray_two_agents_drew_counted() {
+        let ports = stale_tray_ports(&["a0"]);
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].running_subagents, Some(1));
+    }
+
+    /// Clearing the tray is what produces the `subagent_end` edge the activity feed delivers.
+    #[tokio::test]
+    async fn clearing_a_tray_left_drawn_emits_the_subagent_end_edge() {
+        let mut poller = StatusPoller::new();
+        let (before, _) = poller.evaluate(&stale_tray_ports(&[]), &config()).await;
+        let (after, _) = poller.evaluate(&stale_tray_ports(&["a0", "a1"]), &config()).await;
+        assert_eq!(
+            kinds(&detect_activity_transitions(&before, &after, &HashSet::new())),
+            vec![NotifyKind::SubagentEnd]
+        );
+    }
+
+    /// An agent tray on screen over two subagent transcripts that both fell silent ten minutes ago,
+    /// with `stopped` naming which of their agents reported stopping.
+    fn stale_tray_ports(stopped: &[&str]) -> FakePorts {
+        let cap = "  ⏺ main\n  ◯ code-review  Searching for a tool schema  10m 8s";
+        FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap.to_string())]),
+            subagent_ages: HashMap::from([(
+                format!("/repos/charlie/app\u{0}{SID}"),
+                vec![600.0, 620.0],
+            )]),
+            subagent_stops: HashMap::from([(
+                SID.to_string(),
+                stopped.iter().map(|id| ((*id).to_string(), 600.0)).collect(),
+            )]),
+            ..Default::default()
+        }
     }
 
     #[tokio::test]

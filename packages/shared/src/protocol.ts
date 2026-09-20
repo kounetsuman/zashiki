@@ -729,13 +729,15 @@ export type RuntimeUpdateState = RuntimeUpdateStatusMessage["state"];
 
 /**
  * Hook event kind (hooks/notify-event.sh maps it from Claude Code's hook name).
- * prompt=UserPromptSubmit / tool=PostToolUse / waiting=Notification / done=Stop.
+ * prompt=UserPromptSubmit / tool=PostToolUse / waiting=Notification / done=Stop /
+ * subagent_end=SubagentStop.
  */
 export const hookEventKindSchema = z.enum([
   "prompt",
   "tool",
   "waiting",
   "done",
+  "subagent_end",
 ]);
 
 export type HookEventKind = z.infer<typeof hookEventKindSchema>;
@@ -746,6 +748,11 @@ export const hookEventRequestSchema = z.object({
   sid: z.string().max(256).optional(),
   /** The cwd at the time the hook fired (fallback key when resolution by sid fails). */
   cwd: z.string().max(4096).optional(),
+  /**
+   * The agent a subagent_end came from; absent on every other kind. Snake-cased like `sid` and
+   * `cwd`: this body is written by hooks/notify-event.sh, not by the camelCase WS protocol.
+   */
+  agent_id: z.string().max(256).optional(),
 });
 
 export type HookEventRequest = z.infer<typeof hookEventRequestSchema>;

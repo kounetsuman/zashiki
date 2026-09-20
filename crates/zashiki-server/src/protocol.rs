@@ -490,8 +490,8 @@ pub enum NotifyKind {
 }
 
 /// The kind of Claude Code hook event.
-/// prompt only refreshes (no notification), tool triggers git.dirty, and waiting/done deliver
-/// notifications.
+/// prompt only refreshes (no notification), tool triggers git.dirty, waiting/done deliver
+/// notifications, and subagent_end names one finished agent for the poller to account for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum HookKind {
@@ -499,6 +499,10 @@ pub enum HookKind {
     Tool,
     Waiting,
     Done,
+    /// `SubagentStop` — one background agent finished, named by `agent_id`. Two words on the wire,
+    /// so it carries its own rename rather than the lowercase default.
+    #[serde(rename = "subagent_end")]
+    SubagentEnd,
 }
 
 /// Request for `POST /api/hooks/event`.
@@ -511,6 +515,10 @@ pub struct HookEventRequest {
     /// The cwd at hook firing time (a fallback key when resolution by sid fails).
     #[serde(default)]
     pub cwd: Option<String>,
+    /// The agent that fired a `SubagentStop`, as Claude Code identifies it. Absent on every other
+    /// kind, and on a Claude Code old enough not to report it.
+    #[serde(default)]
+    pub agent_id: Option<String>,
 }
 
 /// Response for `POST /api/hooks/event`. `ok` is always true.
