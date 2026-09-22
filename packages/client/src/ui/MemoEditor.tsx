@@ -4,12 +4,16 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap, scrollPastEnd } from "@codemirror/view";
 import { basicSetup } from "codemirror";
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { IndentSetting } from "../lib/clipboard-edit-indent.js";
 import { type MemoStatus, memoStatus } from "../lib/memo-status.js";
 import { type MemoBuffer, memoDirty } from "../memo/memo-model.js";
+import {
+  clampMemoViewState,
+  type MemoViewState,
+} from "../memo/memo-view-state.js";
 import { editorIndent } from "./editor-indent.js";
 import { editorSearch } from "./editor-search-panel.js";
 import { useClipboardIndentSetting } from "./useClipboardIndentSetting.js";
@@ -42,10 +46,19 @@ export interface MemoEditorProps {
   onSave(text: string): void;
   /** Bumped by App to focus the editor when the Memo tab is activated. */
   focusNonce?: number;
+  /**
+   * Scroll offset and caret, held by the caller so they outlive the editor: the Memo tab mounts it
+   * only while active, so switching tabs destroys the CodeMirror view. Must be a stable ref — a new
+   * one rebuilds the editor.
+   */
+  viewState?: RefObject<MemoViewState | null>;
 }
 
 interface CodeMirrorHostProps
-  extends Pick<MemoEditorProps, "buffer" | "onChange" | "onSave"> {
+  extends Pick<
+    MemoEditorProps,
+    "buffer" | "onChange" | "onSave" | "viewState"
+  > {
   /** Indent unit for Tab / Shift+Tab, shared with the clipboard-edit modal. */
   indent: IndentSetting;
   /** Reports the caret/selection readout on load and whenever the doc or selection changes. */
@@ -55,7 +68,10 @@ interface CodeMirrorHostProps
 /**
  * The editable CodeMirror instance for the Memo. Unlike the read-only Viewer, edits flow back out via
  * onChange, and Cmd-S saves. External updates (another client or an on-disk edit) swap the doc only
- * when it actually differs, so they don't disturb the cursor mid-edit.
+ * when it actually differs.
+ *
+ * Each mount reads viewState and each unmount writes it back, so a tab switch returns to the same
+ * scroll offset and caret instead of the top of the document.
  */
 function CodeMirrorHost({
   buffer,
@@ -63,6 +79,7 @@ function CodeMirrorHost({
   onChange,
   onSave,
   onStatusChange,
+  viewState,
 }: CodeMirrorHostProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -115,6 +132,29 @@ function CodeMirrorHost({
       }),
     });
     viewRef.current = view;
+    // Clamped against the built doc, not the text: CodeMirror collapses CRLF, so the string is the
+    // longer of the two and a selection taken from it can land past the end of the document.
+    const restored =
+      viewState?.current == null
+        ? null
+        : clampMemoViewState(viewState.current, view.state.doc.length);
+    // Held until the scroll lands, so an unmount before that hands back the offset this mount was
+    // given rather than the zero the scroller still reads (StrictMode's discarded first mount).
+    let unrestored = restored;
+    if (restored !== null) {
+      view.dispatch({
+        selection: { anchor: restored.anchor, head: restored.head },
+      });
+      // The scroller has no height until CodeMirror measures, so assigning the offset any earlier
+      // would clamp it to an un-laid-out document.
+      view.requestMeasure({
+        read: () => undefined,
+        write: () => {
+          view.scrollDOM.scrollTop = restored.scrollTop;
+          unrestored = null;
+        },
+      });
+    }
     onStatusChangeRef.current(readMemoStatus(view.state));
     const desc = LanguageDescription.matchFilename(languages, "memo.md");
     let cancelled = false;
@@ -126,10 +166,18 @@ function CodeMirrorHost({
     }
     return () => {
       cancelled = true;
+      if (viewState !== undefined) {
+        const { anchor, head } = view.state.selection.main;
+        viewState.current = {
+          scrollTop: unrestored?.scrollTop ?? view.scrollDOM.scrollTop,
+          anchor,
+          head,
+        };
+      }
       viewRef.current = null;
       view.destroy();
     };
-  }, []);
+  }, [viewState]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -153,6 +201,7 @@ export function MemoEditor({
   onChange,
   onSave,
   focusNonce = 0,
+  viewState,
 }: MemoEditorProps) {
   const { t } = useTranslation();
   const { setting: indent } = useClipboardIndentSetting();
@@ -160,9 +209,13 @@ export function MemoEditor({
   const [status, setStatus] = useState<MemoStatus | null>(null);
   const dirty = memoDirty(buffer);
 
+  // preventScroll keeps the restored scroll offset: focusing the full-height content element
+  // otherwise scrolls its top edge into view, landing back at the top of the document.
   // biome-ignore lint/correctness/useExhaustiveDependencies: focusNonce is a re-run trigger, not read in the body.
   useEffect(() => {
-    sectionRef.current?.querySelector<HTMLElement>(".cm-content")?.focus();
+    sectionRef.current
+      ?.querySelector<HTMLElement>(".cm-content")
+      ?.focus({ preventScroll: true });
   }, [focusNonce]);
 
   return (
@@ -190,6 +243,7 @@ export function MemoEditor({
           onChange={onChange}
           onSave={onSave}
           onStatusChange={setStatus}
+          viewState={viewState}
         />
       </div>
       <div className="memo-footer">

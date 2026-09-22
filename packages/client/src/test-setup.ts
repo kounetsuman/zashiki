@@ -14,3 +14,16 @@ if (
 ) {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// jsdom lacks Range's rect APIs (CodeMirror measures the caret with them, and logs the failure on
+// every measure); the Range guard skips the node environment. Layout is absent either way, so zero
+// rects are as truthful as it gets.
+if (typeof Range !== "undefined") {
+  if (typeof Range.prototype.getClientRects !== "function") {
+    Range.prototype.getClientRects = () =>
+      Object.assign([], { item: () => null }) as unknown as DOMRectList;
+  }
+  if (typeof Range.prototype.getBoundingClientRect !== "function") {
+    Range.prototype.getBoundingClientRect = () => new DOMRect();
+  }
+}
