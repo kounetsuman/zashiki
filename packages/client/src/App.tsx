@@ -62,6 +62,7 @@ import { pickAndReadFile } from "./lib/open-file-dialog.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
 import { createMemoSaver } from "./memo/memo-saver.js";
+import type { MemoViewState } from "./memo/memo-view-state.js";
 import {
   clampFiveHourWhenLimited,
   fmtResetClock,
@@ -481,6 +482,8 @@ export function App({
   useEffect(() => {
     if (activeMemoKey !== null) setMemoFocusNonce((n) => n + 1);
   }, [activeMemoKey]);
+  // The editor is mounted only while its tab is active, so where it was scrolled to is kept here.
+  const memoViewState = useRef<MemoViewState | null>(null);
   // Tab close removes both the tab and its viewer/diff buffer immediately (read-only, no prompt).
   const closeTabByKey = useCallback(
     (key: string): void => {
@@ -1268,6 +1271,7 @@ export function App({
                 onChange={onChangeMemo}
                 onSave={saveMemo}
                 focusNonce={memoFocusNonce}
+                viewState={memoViewState}
               />
             )}
           </div>
