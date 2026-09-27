@@ -12,6 +12,7 @@ import {
   fmtTokens,
   tokenSeverity,
 } from "../session/status-footer.js";
+import { BG_AGENT_GLYPH } from "./SessionStateIcons.js";
 import { StatusCell } from "./StatusCell.js";
 import { Tooltip } from "./Tooltip.js";
 import { useNow } from "./useNow.js";
@@ -30,8 +31,9 @@ export interface SessionStatusFooterProps {
 const DASH = "–";
 
 /**
- * Status area docked under the terminal for the active session: tokens and elapsed time (this turn /
- * this session). Elapsed re-ticks each second off the server-provided epoch anchors.
+ * Status area docked under the terminal for the active session: tokens (this turn / this session /
+ * its subagents) and elapsed time (this turn / this session). Elapsed re-ticks each second off the
+ * server-provided epoch anchors.
  */
 export function SessionStatusFooter({
   usage,
@@ -73,6 +75,16 @@ export function SessionStatusFooter({
               ? tokenSeverity(usage.sessionTokens, thresholds.sessionTokens)
               : undefined
           }
+        />
+      </Tooltip>
+
+      <Tooltip className="ss-group" label={t("footer.status.agentTokensTitle")}>
+        <span className="material-symbols-outlined ss-icon" aria-hidden="true">
+          {BG_AGENT_GLYPH}
+        </span>
+        <StatusCell
+          value={usage ? fmtTokens(usage.subagentTokens) : DASH}
+          caption={t("footer.status.agents")}
         />
       </Tooltip>
 

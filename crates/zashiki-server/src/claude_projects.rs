@@ -11,7 +11,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::jsonl::{
-    background_task_ids, claude_project_dir_name, session_usage, user_line_title, SessionUsageData,
+    background_task_ids, claude_project_dir_name, session_usage, subagent_tokens, user_line_title,
+    SessionUsageData,
 };
 use crate::status_poller::Slices;
 use zashiki_core::session_state::SubagentTranscript;
@@ -111,14 +112,17 @@ impl ClaudeProjectsAdapter {
     /// has no timestamped event). Like `background_task_ids`, it reads the whole file: session totals
     /// need every assistant `usage`, not just the tail slice.
     pub async fn session_usage(&self, cwd: &str, sid: &str) -> Option<SessionUsageData> {
-        let path = self
-            .root_dir
-            .join(claude_project_dir_name(cwd))
-            .join(format!("{sid}.jsonl"));
-        tokio::task::spawn_blocking(move || session_usage(&fs::read_to_string(&path).ok()?))
-            .await
-            .ok()
-            .flatten()
+        let project_dir = self.root_dir.join(claude_project_dir_name(cwd));
+        let path = project_dir.join(format!("{sid}.jsonl"));
+        let subagents_dir = project_dir.join(sid).join("subagents");
+        tokio::task::spawn_blocking(move || {
+            let mut data = session_usage(&fs::read_to_string(&path).ok()?)?;
+            data.subagent_tokens = subagent_tokens_sync(&subagents_dir);
+            Some(data)
+        })
+        .await
+        .ok()
+        .flatten()
     }
 
     /// The set of `toolUseResult.backgroundTaskId` in the transcript (empty when the file is missing
@@ -205,6 +209,20 @@ fn transcript_agent_id(name: &str) -> Option<&str> {
     name.strip_prefix("agent-")?.strip_suffix(".jsonl")
 }
 
+/// Tokens spent across every subagent transcript in the directory (0 when it is missing). Like the
+/// session transcript, each file is read whole: a total needs every assistant `usage`, not a slice.
+fn subagent_tokens_sync(dir: &Path) -> u64 {
+    let Ok(read_dir) = fs::read_dir(dir) else {
+        return 0;
+    };
+    read_dir
+        .flatten()
+        .filter(|entry| transcript_agent_id(&entry.file_name().to_string_lossy()).is_some())
+        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
+        .map(|content| subagent_tokens(&content))
+        .sum()
+}
+
 /// Every `agent-*.jsonl` file in the subagents directory, unordered.
 fn subagent_transcripts_sync(dir: &Path, now_ms_val: u64) -> Vec<SubagentTranscript> {
     let Ok(read_dir) = fs::read_dir(dir) else {
@@ -259,6 +277,12 @@ mod tests {
         set_file_mtime(&path, FileTime::from_unix_time(mtime_sec as i64, 0)).unwrap();
     }
 
+    fn write_subagent_content(root: &Path, sid: &str, name: &str, content: &str) {
+        let dir = root.join(PROJ_DIR).join(sid).join("subagents");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(name), content).unwrap();
+    }
+
     fn slices_path(root: &Path, sid: &str) -> PathBuf {
         root.join(PROJ_DIR).join(format!("{sid}.jsonl"))
     }
@@ -284,7 +308,27 @@ mod tests {
         let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
         let u = adapter.session_usage(CWD, SID).await.unwrap();
         assert_eq!(u.session_tokens, 15);
+        assert_eq!(u.subagent_tokens, 0);
         assert_eq!(u.session_started_at_ms, 946_684_800_000);
+    }
+
+    /// A subagent's replies live in its own transcript, so its tokens reach the footer only through
+    /// the `<sid>/subagents` directory — never through the session transcript's own totals.
+    #[tokio::test]
+    async fn session_usage_counts_every_subagent_transcript_apart_from_the_session() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"user\",\"timestamp\":\"2000-01-01T00:00:00Z\",\"message\":{\"content\":\"go\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        let reply = |tokens: u64| {
+            format!("{{\"type\":\"assistant\",\"message\":{{\"usage\":{{\"input_tokens\":{tokens}}}}}}}\n")
+        };
+        write_subagent_content(tmp.path(), SID, "agent-a1.jsonl", &reply(700));
+        write_subagent_content(tmp.path(), SID, "agent-a2.jsonl", &reply(40));
+        write_subagent_content(tmp.path(), SID, "agent-a1.meta.json", &reply(999));
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let u = adapter.session_usage(CWD, SID).await.unwrap();
+        assert_eq!(u.subagent_tokens, 740);
+        assert_eq!(u.session_tokens, 15);
     }
 
     #[tokio::test]

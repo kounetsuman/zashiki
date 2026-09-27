@@ -109,6 +109,8 @@ export type UsageLimits = z.infer<typeof usageLimitsSchema>;
 export const sessionUsageSchema = z.object({
   turnTokens: z.number().int().min(0),
   sessionTokens: z.number().int().min(0),
+  /** Tokens the session's subagents spent, apart from `sessionTokens` (a subagent has its own transcript). */
+  subagentTokens: z.number().int().min(0).default(0),
   turnStartedAt: z.number().int(),
   sessionStartedAt: z.number().int(),
 });

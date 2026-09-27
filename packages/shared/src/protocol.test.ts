@@ -154,6 +154,7 @@ describe("cockpitTerminalInfoSchema", () => {
       usage: {
         turnTokens: 1200,
         sessionTokens: 3400000,
+        subagentTokens: 2100000,
         turnStartedAt: 1700000000000,
         sessionStartedAt: 1699999000000,
       },
@@ -179,10 +180,21 @@ describe("cockpitTerminalInfoSchema", () => {
     const usage = {
       turnTokens: 0,
       sessionTokens: 0,
+      subagentTokens: 0,
       turnStartedAt: 1700000000000,
       sessionStartedAt: 1700000000000,
     };
     expect(sessionUsageSchema.parse(usage)).toEqual(usage);
+  });
+
+  it("reads a server that reports no subagent total as zero", () => {
+    const usage = {
+      turnTokens: 0,
+      sessionTokens: 0,
+      turnStartedAt: 1700000000000,
+      sessionStartedAt: 1700000000000,
+    };
+    expect(sessionUsageSchema.parse(usage).subagentTokens).toBe(0);
   });
 });
 

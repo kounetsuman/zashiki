@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The session status footer reports the tokens this session's subagents spent, beside the turn and session totals (#435)
+
 ## [0.21.0] - 2026-09-02
 
 ### Added

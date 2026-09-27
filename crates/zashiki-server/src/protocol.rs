@@ -232,6 +232,10 @@ pub struct DashboardSettings {
 pub struct SessionUsage {
     pub turn_tokens: u64,
     pub session_tokens: u64,
+    /// Tokens this session's subagents spent, counted apart from `session_tokens` because Claude Code
+    /// keeps a subagent's conversation in its own transcript. 0 for servers that did not report it.
+    #[serde(default)]
+    pub subagent_tokens: u64,
     pub turn_started_at: u64,
     pub session_started_at: u64,
 }
@@ -1158,13 +1162,21 @@ mod tests {
             usage: Some(SessionUsage {
                 turn_tokens: 0,
                 session_tokens: 500,
+                subagent_tokens: 300,
                 turn_started_at: 10,
                 session_started_at: 10,
             }),
         };
-        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"turnStartedAt":10,"sessionStartedAt":10}}"#;
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"subagentTokens":300,"turnStartedAt":10,"sessionStartedAt":10}}"#;
         assert_eq!(to_json(&info), json);
         assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_usage_reads_a_server_that_reports_no_subagent_tokens_as_zero() {
+        let json = r#"{"turnTokens":1,"sessionTokens":2,"turnStartedAt":3,"sessionStartedAt":4}"#;
+        let usage: SessionUsage = serde_json::from_str(json).unwrap();
+        assert_eq!(usage.subagent_tokens, 0);
     }
 
     #[test]

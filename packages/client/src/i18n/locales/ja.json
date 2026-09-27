@@ -269,6 +269,8 @@
       "percentElapsed": "{{percent}}% · 経過{{time}}",
       "percentStale": "{{percent}}% · 更新待ち",
       "tokensTitle": "API が扱ったトークン — 今ターン / セッション累計",
+      "agents": "エージェント",
+      "agentTokensTitle": "このセッションのサブエージェントで API が扱ったトークン",
       "elapsedTitle": "経過時間 — 今ターン / セッション累計",
       "model": "モデル",
       "modelTitle": "このターミナルが応答に使うモデル"

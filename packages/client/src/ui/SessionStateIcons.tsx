@@ -23,7 +23,7 @@ const FRESH_ICON = "start";
 const MENU_ICON = "settings";
 
 // Activity-chip glyphs. These sit beside the state glyph as chips, not overlaid on it.
-const BG_AGENT_GLYPH = "robot_2";
+export const BG_AGENT_GLYPH = "robot_2";
 const SHELL_GLYPH = "terminal";
 const VITEST_GLYPH = "science";
 

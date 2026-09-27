@@ -180,6 +180,10 @@ pub fn claude_project_dir_name(cwd: &str) -> String {
 pub struct SessionUsageData {
     pub turn_tokens: u64,
     pub session_tokens: u64,
+    /// Tokens this session's subagents spent. They write to `<sid>/subagents/agent-*.jsonl` rather
+    /// than the session transcript, so [`session_usage`] leaves this at 0 and the projects adapter
+    /// fills it from those files; `session_tokens` never includes it.
+    pub subagent_tokens: u64,
     pub turn_started_at_ms: u64,
     pub session_started_at_ms: u64,
     /// Model id of the newest main-session assistant reply (the model that answered); None until one
@@ -350,11 +354,29 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
     Some(SessionUsageData {
         turn_tokens,
         session_tokens,
+        subagent_tokens: 0,
         turn_started_at_ms: turn_started_at_ms.unwrap_or(session_started_at_ms),
         session_started_at_ms,
         model,
         model_at_ms,
     })
+}
+
+/// Sum of the tokens the API touched across one subagent transcript's assistant replies.
+/// Turn boundaries do not apply: a subagent runs to completion inside the turn that spawned it.
+pub fn subagent_tokens(content: &str) -> u64 {
+    content
+        .split('\n')
+        .filter(|line| line.contains("\"type\":\"assistant\""))
+        .filter_map(parse_line)
+        .filter(|event| event.get("type").and_then(Value::as_str) == Some("assistant"))
+        .filter_map(|event| {
+            event
+                .get("message")
+                .and_then(|message| message.get("usage"))
+                .map(usage_total)
+        })
+        .sum()
 }
 
 /// Collects every background shell launch ID (`toolUseResult.backgroundTaskId`) in the transcript
@@ -777,6 +799,34 @@ mod tests {
         assert_eq!(u.turn_tokens, 100 + 7);
         assert_eq!(u.session_started_at_ms, 946_684_800_000);
         assert_eq!(u.turn_started_at_ms, 946_684_800_000 + 60_000);
+    }
+
+    #[test]
+    fn subagent_tokens_sum_assistant_usage_only() {
+        let jsonl = [
+            json!({"type": "user", "isSidechain": true, "message": {"content": "調べて"}})
+                .to_string(),
+            assistant_usage("2000-01-01T00:00:05Z", 10, 20, 5),
+            "half-written line".to_string(),
+            assistant_usage("2000-01-01T00:00:09Z", 1, 0, 2),
+        ]
+        .join("\n");
+        assert_eq!(subagent_tokens(&jsonl), 10 + 20 + 5 + 1 + 2);
+    }
+
+    #[test]
+    fn subagent_tokens_of_a_transcript_without_replies_is_zero() {
+        assert_eq!(subagent_tokens(""), 0);
+        assert_eq!(
+            subagent_tokens(&user_at("2000-01-01T00:00:00Z", json!("調べて"))),
+            0
+        );
+    }
+
+    #[test]
+    fn session_usage_leaves_subagent_tokens_to_the_adapter() {
+        let u = session_usage(&assistant_usage("2000-01-01T00:00:05Z", 4, 0, 1)).unwrap();
+        assert_eq!(u.subagent_tokens, 0);
     }
 
     #[test]

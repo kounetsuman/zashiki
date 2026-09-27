@@ -269,6 +269,8 @@
       "percentElapsed": "{{percent}}% · {{time}} elapsed",
       "percentStale": "{{percent}}% · stale",
       "tokensTitle": "Tokens the API touched — this turn / this session",
+      "agents": "agents",
+      "agentTokensTitle": "Tokens the API touched for this session's subagents",
       "elapsedTitle": "Elapsed — this turn / this session",
       "model": "model",
       "modelTitle": "The model this terminal answers with"

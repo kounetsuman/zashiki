@@ -10,6 +10,7 @@ afterEach(cleanup);
 const base: SessionUsage = {
   turnTokens: 1_200,
   sessionTokens: 3_400_000,
+  subagentTokens: 0,
   turnStartedAt: 0,
   sessionStartedAt: 0,
 };
@@ -19,6 +20,13 @@ describe("SessionStatusFooter", () => {
     render(<SessionStatusFooter usage={base} />);
     expect(screen.getByText("1.2k")).toBeTruthy();
     expect(screen.getByText("3.4M").className).toContain("ss-crit");
+  });
+
+  it("reports the tokens the session's subagents spent", () => {
+    render(
+      <SessionStatusFooter usage={{ ...base, subagentTokens: 2_100_000 }} />,
+    );
+    expect(screen.getByText("2.1M")).toBeTruthy();
   });
 
   it("renders the current model label", () => {
@@ -49,7 +57,7 @@ describe("SessionStatusFooter", () => {
 
   it("shows dashes for every cell before a transcript is readable", () => {
     render(<SessionStatusFooter usage={null} />);
-    expect(screen.getAllByText("–").length).toBe(5);
+    expect(screen.getAllByText("–").length).toBe(6);
   });
 
   it("tints the top border with the org accent color", () => {
