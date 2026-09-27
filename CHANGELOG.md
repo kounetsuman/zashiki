@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The session status footer reports the tokens this session's subagents spent, beside the turn and session totals (#435)
 
+### Fixed
+
+- The footer's turn and session token totals no longer count a reply once per content block: a reply that thinks, calls a tool and answers was charged three times, reading roughly 1.75x the tokens the API touched (#436)
+
 ## [0.21.0] - 2026-09-02
 
 ### Added

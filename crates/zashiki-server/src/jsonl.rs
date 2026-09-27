@@ -2,6 +2,7 @@
 //! Since it involves JSON parsing, it lives in the server crate rather than core (which has zero dependencies).
 //! File I/O is infra's responsibility; this module only receives content strings and parses them.
 
+use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -209,6 +210,34 @@ fn main_session_model(event: &Value) -> Option<String> {
     Some(model.to_string())
 }
 
+/// Counts each assistant reply once while walking a transcript.
+///
+/// Claude Code writes one reply as several lines — its thinking, each tool call, its text — and every
+/// one of them repeats that reply's `message.id` and its `usage` as written so far. Adding the lines
+/// up would charge a reply once per content block, so a reply contributes its first reading and then
+/// only what a later line grew it by. A line without an id stands on its own.
+#[derive(Default)]
+struct ReplyUsage {
+    counted: HashMap<String, u64>,
+}
+
+impl ReplyUsage {
+    /// What this assistant event adds to a running total (0 when it carries no usage).
+    fn add(&mut self, event: &Value) -> u64 {
+        let Some(message) = event.get("message") else {
+            return 0;
+        };
+        let Some(total) = message.get("usage").map(usage_total) else {
+            return 0;
+        };
+        let Some(id) = message.get("id").and_then(Value::as_str) else {
+            return total;
+        };
+        let already_counted = self.counted.insert(id.to_string(), total).unwrap_or(0);
+        total.saturating_sub(already_counted)
+    }
+}
+
 /// Sum of the tokens the API touched for one assistant response
 /// (input + cache_creation + cache_read + output).
 fn usage_total(usage: &Value) -> u64 {
@@ -311,6 +340,7 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
     let mut turn_started_at_ms: Option<u64> = None;
     let mut model: Option<String> = None;
     let mut model_at_ms: Option<u64> = None;
+    let mut replies = ReplyUsage::default();
 
     for line in content.split('\n') {
         if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
@@ -338,11 +368,9 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
             continue;
         }
         if kind == Some("assistant") {
-            if let Some(usage) = event.get("message").and_then(|m| m.get("usage")) {
-                let t = usage_total(usage);
-                session_tokens += t;
-                turn_tokens += t;
-            }
+            let t = replies.add(&event);
+            session_tokens += t;
+            turn_tokens += t;
             if let Some(m) = main_session_model(&event) {
                 model = Some(m);
                 model_at_ms = ts;
@@ -365,17 +393,13 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
 /// Sum of the tokens the API touched across one subagent transcript's assistant replies.
 /// Turn boundaries do not apply: a subagent runs to completion inside the turn that spawned it.
 pub fn subagent_tokens(content: &str) -> u64 {
+    let mut replies = ReplyUsage::default();
     content
         .split('\n')
         .filter(|line| line.contains("\"type\":\"assistant\""))
         .filter_map(parse_line)
         .filter(|event| event.get("type").and_then(Value::as_str) == Some("assistant"))
-        .filter_map(|event| {
-            event
-                .get("message")
-                .and_then(|message| message.get("usage"))
-                .map(usage_total)
-        })
+        .map(|event| replies.add(&event))
         .sum()
 }
 
@@ -799,6 +823,56 @@ mod tests {
         assert_eq!(u.turn_tokens, 100 + 7);
         assert_eq!(u.session_started_at_ms, 946_684_800_000);
         assert_eq!(u.turn_started_at_ms, 946_684_800_000 + 60_000);
+    }
+
+    fn assistant_reply_block(id: &str, ts: &str, block: &str, input: u64, output: u64) -> String {
+        json!({
+            "type": "assistant",
+            "timestamp": ts,
+            "message": {
+                "id": id,
+                "content": [{"type": block}],
+                "usage": {"input_tokens": input, "output_tokens": output},
+            },
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn usage_counts_a_reply_written_as_several_blocks_once() {
+        let jsonl = [
+            user_at("2000-01-01T00:00:00Z", json!("お願い")),
+            assistant_reply_block("msg_1", "2000-01-01T00:00:05Z", "thinking", 40, 10),
+            assistant_reply_block("msg_1", "2000-01-01T00:00:06Z", "tool_use", 40, 10),
+            assistant_reply_block("msg_2", "2000-01-01T00:00:09Z", "text", 3, 1),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 50 + 4);
+        assert_eq!(u.turn_tokens, 50 + 4);
+    }
+
+    /// A reply's later lines report its usage as written so far, so the reply is worth the largest
+    /// reading rather than the first.
+    #[test]
+    fn usage_follows_a_reply_that_grows_across_its_lines() {
+        let jsonl = [
+            assistant_reply_block("msg_1", "2000-01-01T00:00:05Z", "thinking", 40, 10),
+            assistant_reply_block("msg_1", "2000-01-01T00:00:06Z", "text", 40, 25),
+        ]
+        .join("\n");
+        assert_eq!(session_usage(&jsonl).unwrap().session_tokens, 65);
+    }
+
+    #[test]
+    fn subagent_tokens_count_a_reply_written_as_several_blocks_once() {
+        let jsonl = [
+            assistant_reply_block("msg_1", "2000-01-01T00:00:05Z", "thinking", 40, 10),
+            assistant_reply_block("msg_1", "2000-01-01T00:00:06Z", "tool_use", 40, 10),
+            assistant_reply_block("msg_2", "2000-01-01T00:00:09Z", "text", 3, 1),
+        ]
+        .join("\n");
+        assert_eq!(subagent_tokens(&jsonl), 50 + 4);
     }
 
     #[test]
