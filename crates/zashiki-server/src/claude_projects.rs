@@ -4,10 +4,11 @@
 //! Parsing is the responsibility of the pure functions in `jsonl` / `status_poller`;
 //! this module only handles I/O (`spawn_blocking` + std::fs) and computing freshness in seconds.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::jsonl::{
@@ -26,11 +27,24 @@ const MAX_TITLE_SCAN_BYTES: u64 = 256 * 1024;
 
 type NowMs = Box<dyn Fn() -> u64 + Send + Sync>;
 
+/// What a subagent transcript was worth when it was last read, with the size and mtime it was read
+/// at. Transcripts are only ever appended to, so a file matching both is worth the same again.
+#[derive(Clone, Copy, Default)]
+struct CachedTotal {
+    len: u64,
+    mtime_ms: u64,
+    tokens: u64,
+}
+
+/// Per-subagents-directory file totals, so a poll re-reads only the transcripts that grew.
+type SubagentTotals = Arc<Mutex<HashMap<PathBuf, HashMap<PathBuf, CachedTotal>>>>;
+
 /// Adapter for reading jsonl slices plus subagents mtime.
 pub struct ClaudeProjectsAdapter {
     root_dir: PathBuf,
     max_slice_bytes: u64,
     now_ms: NowMs,
+    subagent_totals: SubagentTotals,
 }
 
 fn real_now_ms() -> u64 {
@@ -57,6 +71,7 @@ impl ClaudeProjectsAdapter {
     pub fn new(root_dir: PathBuf) -> Self {
         Self {
             root_dir,
+            subagent_totals: SubagentTotals::default(),
             max_slice_bytes: DEFAULT_MAX_SLICE_BYTES,
             now_ms: Box::new(real_now_ms),
         }
@@ -115,9 +130,10 @@ impl ClaudeProjectsAdapter {
         let project_dir = self.root_dir.join(claude_project_dir_name(cwd));
         let path = project_dir.join(format!("{sid}.jsonl"));
         let subagents_dir = project_dir.join(sid).join("subagents");
+        let totals = Arc::clone(&self.subagent_totals);
         tokio::task::spawn_blocking(move || {
             let mut data = session_usage(&fs::read_to_string(&path).ok()?)?;
-            data.subagent_tokens = subagent_tokens_sync(&subagents_dir);
+            data.subagent_tokens = subagent_tokens_sync(&subagents_dir, &totals);
             Some(data)
         })
         .await
@@ -209,18 +225,82 @@ fn transcript_agent_id(name: &str) -> Option<&str> {
     name.strip_prefix("agent-")?.strip_suffix(".jsonl")
 }
 
-/// Tokens spent across every subagent transcript in the directory (0 when it is missing). Like the
-/// session transcript, each file is read whole: a total needs every assistant `usage`, not a slice.
-fn subagent_tokens_sync(dir: &Path) -> u64 {
-    let Ok(read_dir) = fs::read_dir(dir) else {
-        return 0;
-    };
-    read_dir
-        .flatten()
-        .filter(|entry| transcript_agent_id(&entry.file_name().to_string_lossy()).is_some())
-        .filter_map(|entry| fs::read_to_string(entry.path()).ok())
-        .map(|content| subagent_tokens(&content))
-        .sum()
+/// Every subagent transcript at or below the subagents directory, with the size and mtime it was
+/// found at. A workflow keeps its agents in a `workflows/<run>/` directory of their own, so the walk
+/// descends rather than reading the top level alone. Symlinked directories are left alone (the file
+/// type is read without following them), so the walk cannot be sent in a circle.
+fn subagent_transcript_files(dir: &Path) -> Vec<(PathBuf, u64, u64)> {
+    let mut files = Vec::new();
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(read_dir) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in read_dir.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                pending.push(entry.path());
+                continue;
+            }
+            if !file_type.is_file()
+                || transcript_agent_id(&entry.file_name().to_string_lossy()).is_none()
+            {
+                continue;
+            }
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            files.push((entry.path(), meta.len(), mtime_ms(&meta)));
+        }
+    }
+    files
+}
+
+/// Tokens spent across every subagent transcript below the directory (0 when it is missing).
+///
+/// Like the session transcript, a file is read whole: a total needs every assistant `usage`, not a
+/// slice. A transcript is only appended to, so one whose size and mtime are unchanged since the last
+/// poll is taken from `cache` instead — without it, a session with a hundred agents re-reads tens of
+/// megabytes every poll. The cache is rebuilt from this walk, so files that are gone drop out of it.
+/// Bytes are decoded leniently: a poll can land mid-append, in the middle of a multi-byte character.
+fn subagent_tokens_sync(
+    dir: &Path,
+    cache: &Mutex<HashMap<PathBuf, HashMap<PathBuf, CachedTotal>>>,
+) -> u64 {
+    let files = subagent_transcript_files(dir);
+    let known = cache
+        .lock()
+        .ok()
+        .and_then(|totals| totals.get(dir).cloned())
+        .unwrap_or_default();
+    let mut fresh = HashMap::with_capacity(files.len());
+    for (path, len, mtime) in files {
+        let cached = known
+            .get(&path)
+            .filter(|c| c.len == len && c.mtime_ms == mtime)
+            .copied();
+        let total = match cached {
+            Some(total) => total,
+            None => match fs::read(&path) {
+                Ok(bytes) => CachedTotal {
+                    len,
+                    mtime_ms: mtime,
+                    tokens: subagent_tokens(&String::from_utf8_lossy(&bytes)),
+                },
+                // Hold the last good reading at the size it was read at, so a file that could not be
+                // opened this once keeps its tokens in the total and is read again next poll.
+                Err(_) => known.get(&path).copied().unwrap_or_default(),
+            },
+        };
+        fresh.insert(path, total);
+    }
+    let tokens = fresh.values().map(|c| c.tokens).sum();
+    if let Ok(mut totals) = cache.lock() {
+        totals.insert(dir.to_path_buf(), fresh);
+    }
+    tokens
 }
 
 /// Every `agent-*.jsonl` file in the subagents directory, unordered.
@@ -278,9 +358,20 @@ mod tests {
     }
 
     fn write_subagent_content(root: &Path, sid: &str, name: &str, content: &str) {
-        let dir = root.join(PROJ_DIR).join(sid).join("subagents");
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(dir.join(name), content).unwrap();
+        write_subagent_at(root, sid, Path::new(name), content);
+    }
+
+    fn write_subagent_at(root: &Path, sid: &str, rel: &Path, content: &str) {
+        let path = root.join(PROJ_DIR).join(sid).join("subagents").join(rel);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, content).unwrap();
+    }
+
+    /// One assistant reply spending `tokens`, as a subagent transcript line.
+    fn agent_reply(tokens: u64) -> String {
+        format!(
+            "{{\"type\":\"assistant\",\"message\":{{\"usage\":{{\"input_tokens\":{tokens}}}}}}}\n"
+        )
     }
 
     fn slices_path(root: &Path, sid: &str) -> PathBuf {
@@ -319,16 +410,106 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let content = "{\"type\":\"user\",\"timestamp\":\"2000-01-01T00:00:00Z\",\"message\":{\"content\":\"go\"}}\n{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"content\":[],\"usage\":{\"input_tokens\":10,\"output_tokens\":5}}}\n";
         write_jsonl(tmp.path(), SID, content, BASE_SEC);
-        let reply = |tokens: u64| {
-            format!("{{\"type\":\"assistant\",\"message\":{{\"usage\":{{\"input_tokens\":{tokens}}}}}}}\n")
-        };
-        write_subagent_content(tmp.path(), SID, "agent-a1.jsonl", &reply(700));
-        write_subagent_content(tmp.path(), SID, "agent-a2.jsonl", &reply(40));
-        write_subagent_content(tmp.path(), SID, "agent-a1.meta.json", &reply(999));
+        write_subagent_content(tmp.path(), SID, "agent-a1.jsonl", &agent_reply(700));
+        write_subagent_content(tmp.path(), SID, "agent-a2.jsonl", &agent_reply(40));
+        write_subagent_content(tmp.path(), SID, "agent-a1.meta.json", &agent_reply(999));
         let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
         let u = adapter.session_usage(CWD, SID).await.unwrap();
         assert_eq!(u.subagent_tokens, 740);
         assert_eq!(u.session_tokens, 15);
+    }
+
+    /// A workflow parks its agents one directory deeper, under `workflows/<run>/`.
+    #[tokio::test]
+    async fn session_usage_counts_subagents_a_workflow_ran() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        write_subagent_content(tmp.path(), SID, "agent-a1.jsonl", &agent_reply(700));
+        write_subagent_at(
+            tmp.path(),
+            SID,
+            Path::new("workflows/wf_1/agent-a2.jsonl"),
+            &agent_reply(40),
+        );
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert_eq!(
+            adapter
+                .session_usage(CWD, SID)
+                .await
+                .unwrap()
+                .subagent_tokens,
+            740
+        );
+    }
+
+    /// The poll can land mid-append, splitting a multi-byte character; the transcript still counts.
+    #[tokio::test]
+    async fn session_usage_counts_a_subagent_transcript_cut_mid_character() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        let dir = tmp.path().join(PROJ_DIR).join(SID).join("subagents");
+        fs::create_dir_all(&dir).unwrap();
+        let mut bytes = agent_reply(700).into_bytes();
+        bytes.extend_from_slice(&"日本語".as_bytes()[..4]);
+        fs::write(dir.join("agent-a1.jsonl"), bytes).unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert_eq!(
+            adapter
+                .session_usage(CWD, SID)
+                .await
+                .unwrap()
+                .subagent_tokens,
+            700
+        );
+    }
+
+    /// An unchanged transcript is not read again: the second poll answers from the first one's
+    /// reading, which a file rewritten behind the adapter's back (same size, same mtime) exposes.
+    #[tokio::test]
+    async fn session_usage_rereads_only_subagent_transcripts_that_changed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        write_subagent_content(tmp.path(), SID, "agent-a1.jsonl", &agent_reply(700));
+        let path = tmp
+            .path()
+            .join(PROJ_DIR)
+            .join(SID)
+            .join("subagents")
+            .join("agent-a1.jsonl");
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert_eq!(
+            adapter
+                .session_usage(CWD, SID)
+                .await
+                .unwrap()
+                .subagent_tokens,
+            700
+        );
+
+        let mtime = fs::metadata(&path).unwrap().modified().unwrap();
+        fs::write(&path, agent_reply(300)).unwrap();
+        set_file_mtime(&path, FileTime::from_system_time(mtime)).unwrap();
+        assert_eq!(
+            adapter
+                .session_usage(CWD, SID)
+                .await
+                .unwrap()
+                .subagent_tokens,
+            700
+        );
+
+        fs::write(&path, agent_reply(3000)).unwrap();
+        assert_eq!(
+            adapter
+                .session_usage(CWD, SID)
+                .await
+                .unwrap()
+                .subagent_tokens,
+            3000
+        );
     }
 
     #[tokio::test]
@@ -522,6 +703,7 @@ mod tests {
         write_jsonl(tmp.path(), SID, "{\"type\":\"user\"}\n", BASE_SEC);
         let adapter = ClaudeProjectsAdapter {
             root_dir: tmp.path().to_path_buf(),
+            subagent_totals: SubagentTotals::default(),
             max_slice_bytes: 64 * 1024,
             now_ms: Box::new(|| (BASE_SEC + 3) * 1000),
         };
