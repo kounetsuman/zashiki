@@ -477,6 +477,7 @@ impl StatusPoller {
         let usage = usage_data.map(|d| SessionUsage {
             turn_tokens: d.turn_tokens,
             session_tokens: d.session_tokens,
+            subagent_tokens: d.subagent_tokens,
             turn_started_at: d.turn_started_at_ms,
             session_started_at: d.session_started_at_ms,
         });
@@ -682,6 +683,7 @@ mod tests {
         crate::jsonl::SessionUsageData {
             turn_tokens: 10,
             session_tokens: 20,
+            subagent_tokens: 40,
             turn_started_at_ms: 1000,
             session_started_at_ms: 500,
             model: model.map(str::to_string),
@@ -789,6 +791,7 @@ mod tests {
         let (snap, _) = poller.evaluate(&ports, &config()).await;
         assert_eq!(snap.sessions[0].model.as_deref(), Some("claude-sonnet-5"));
         assert_eq!(snap.sessions[0].usage.as_ref().unwrap().session_tokens, 20);
+        assert_eq!(snap.sessions[0].usage.as_ref().unwrap().subagent_tokens, 40);
     }
 
     /// A reply that landed after the last report wins: the bridge stopped reporting and the transcript
