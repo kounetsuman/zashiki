@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The footer's turn and session token totals no longer count a reply once per content block: a reply that thinks, calls a tool and answers was charged three times, reading roughly 1.75x the tokens the API touched (#436)
+- The footer's turn and session token totals no longer count a reply once per content block: a reply that thinks, calls a tool and answers was charged three times, roughly doubling the tokens reported (#436)
 
 ## [0.21.0] - 2026-09-02
 

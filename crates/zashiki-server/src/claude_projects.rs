@@ -125,14 +125,16 @@ impl ClaudeProjectsAdapter {
 
     /// Token/timing rollup for the session status footer (None when the file is missing/unreadable or
     /// has no timestamped event). Like `background_task_ids`, it reads the whole file: session totals
-    /// need every assistant `usage`, not just the tail slice.
+    /// need every assistant `usage`, not just the tail slice. Bytes are decoded leniently, as they are
+    /// everywhere else here: a poll can land mid-append, in the middle of a multi-byte character, and
+    /// a whole footer of dashes is a poor answer to one split character.
     pub async fn session_usage(&self, cwd: &str, sid: &str) -> Option<SessionUsageData> {
         let project_dir = self.root_dir.join(claude_project_dir_name(cwd));
         let path = project_dir.join(format!("{sid}.jsonl"));
         let subagents_dir = project_dir.join(sid).join("subagents");
         let totals = Arc::clone(&self.subagent_totals);
         tokio::task::spawn_blocking(move || {
-            let mut data = session_usage(&fs::read_to_string(&path).ok()?)?;
+            let mut data = session_usage(&String::from_utf8_lossy(&fs::read(&path).ok()?))?;
             data.subagent_tokens = subagent_tokens_sync(&subagents_dir, &totals);
             Some(data)
         })
@@ -263,7 +265,8 @@ fn subagent_transcript_files(dir: &Path) -> Vec<(PathBuf, u64, u64)> {
 /// Like the session transcript, a file is read whole: a total needs every assistant `usage`, not a
 /// slice. A transcript is only appended to, so one whose size and mtime are unchanged since the last
 /// poll is taken from `cache` instead — without it, a session with a hundred agents re-reads tens of
-/// megabytes every poll. The cache is rebuilt from this walk, so files that are gone drop out of it.
+/// megabytes every poll. A directory's entry is rebuilt from this walk, so files that are gone drop
+/// out of it, and a directory left with nothing drops out itself.
 /// Bytes are decoded leniently: a poll can land mid-append, in the middle of a multi-byte character.
 fn subagent_tokens_sync(
     dir: &Path,
@@ -298,12 +301,19 @@ fn subagent_tokens_sync(
     }
     let tokens = fresh.values().map(|c| c.tokens).sum();
     if let Ok(mut totals) = cache.lock() {
-        totals.insert(dir.to_path_buf(), fresh);
+        // Most sessions run no subagents at all, and a terminal takes a new sid on every restart, so
+        // an entry per directory polled would grow for as long as the server is up.
+        if fresh.is_empty() {
+            totals.remove(dir);
+        } else {
+            totals.insert(dir.to_path_buf(), fresh);
+        }
     }
     tokens
 }
 
-/// Every `agent-*.jsonl` file in the subagents directory, unordered.
+/// Every `agent-*.jsonl` file in the subagents directory itself, unordered. A workflow's agents sit
+/// one directory deeper and are not reported here.
 fn subagent_transcripts_sync(dir: &Path, now_ms_val: u64) -> Vec<SubagentTranscript> {
     let Ok(read_dir) = fs::read_dir(dir) else {
         return Vec::new();
@@ -510,6 +520,28 @@ mod tests {
                 .subagent_tokens,
             3000
         );
+    }
+
+    /// The session transcript is appended to continuously, so a poll can read it mid-character.
+    /// The footer keeps its reading rather than falling back to a row of dashes.
+    #[tokio::test]
+    async fn session_usage_reads_a_transcript_cut_mid_character() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n";
+        let path = write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        let mut bytes = fs::read(&path).unwrap();
+        bytes.extend_from_slice(&"日本語".as_bytes()[..4]);
+        fs::write(&path, bytes).unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert_eq!(adapter.session_usage(CWD, SID).await.unwrap().session_tokens, 10);
+    }
+
+    #[test]
+    fn subagent_totals_forget_a_directory_that_holds_no_transcripts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cache = Mutex::new(HashMap::new());
+        assert_eq!(subagent_tokens_sync(tmp.path(), &cache), 0);
+        assert!(cache.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

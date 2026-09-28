@@ -181,9 +181,9 @@ pub fn claude_project_dir_name(cwd: &str) -> String {
 pub struct SessionUsageData {
     pub turn_tokens: u64,
     pub session_tokens: u64,
-    /// Tokens this session's subagents spent. They write to `<sid>/subagents/agent-*.jsonl` rather
-    /// than the session transcript, so [`session_usage`] leaves this at 0 and the projects adapter
-    /// fills it from those files; `session_tokens` never includes it.
+    /// Tokens this session's subagents spent. They write to their own transcripts under
+    /// `<sid>/subagents/` rather than the session transcript, so [`session_usage`] leaves this at 0
+    /// and the projects adapter fills it from those files; `session_tokens` never includes it.
     pub subagent_tokens: u64,
     pub turn_started_at_ms: u64,
     pub session_started_at_ms: u64,
@@ -215,7 +215,9 @@ fn main_session_model(event: &Value) -> Option<String> {
 /// Claude Code writes one reply as several lines — its thinking, each tool call, its text — and every
 /// one of them repeats that reply's `message.id` and its `usage` as written so far. Adding the lines
 /// up would charge a reply once per content block, so a reply contributes its first reading and then
-/// only what a later line grew it by. A line without an id stands on its own.
+/// only what a later line grew it by. A line without an id stands on its own. A transcript that
+/// replays lines it already holds can report a reply below its own high-water mark, which is why the
+/// mark only ever rises: otherwise the dip would be charged again on the way back up.
 #[derive(Default)]
 struct ReplyUsage {
     counted: HashMap<String, u64>,
@@ -233,8 +235,10 @@ impl ReplyUsage {
         let Some(id) = message.get("id").and_then(Value::as_str) else {
             return total;
         };
-        let already_counted = self.counted.insert(id.to_string(), total).unwrap_or(0);
-        total.saturating_sub(already_counted)
+        let counted = self.counted.entry(id.to_string()).or_default();
+        let growth = total.saturating_sub(*counted);
+        *counted = (*counted).max(total);
+        growth
     }
 }
 
@@ -340,7 +344,10 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
     let mut turn_started_at_ms: Option<u64> = None;
     let mut model: Option<String> = None;
     let mut model_at_ms: Option<u64> = None;
-    let mut replies = ReplyUsage::default();
+    let mut session_replies = ReplyUsage::default();
+    // A turn counts its replies on its own: Claude Code can inject a user line into the middle of a
+    // reply, and the turn that starts there must still be charged for the rest of that reply.
+    let mut turn_replies = ReplyUsage::default();
 
     for line in content.split('\n') {
         if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
@@ -362,15 +369,15 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
         }
         if is_human_prompt(&event) {
             turn_tokens = 0;
+            turn_replies = ReplyUsage::default();
             if let Some(ts) = ts {
                 turn_started_at_ms = Some(ts);
             }
             continue;
         }
         if kind == Some("assistant") {
-            let t = replies.add(&event);
-            session_tokens += t;
-            turn_tokens += t;
+            session_tokens += session_replies.add(&event);
+            turn_tokens += turn_replies.add(&event);
             if let Some(m) = main_session_model(&event) {
                 model = Some(m);
                 model_at_ms = ts;
@@ -859,6 +866,42 @@ mod tests {
         let jsonl = [
             assistant_reply_block("msg_1", "2000-01-01T00:00:05Z", "thinking", 40, 10),
             assistant_reply_block("msg_1", "2000-01-01T00:00:06Z", "text", 40, 25),
+        ]
+        .join("\n");
+        assert_eq!(session_usage(&jsonl).unwrap().session_tokens, 65);
+    }
+
+    /// Claude Code injects context as a user line, which can land between two lines of one reply.
+    /// The turn that starts there is still owed the rest of the reply.
+    #[test]
+    fn usage_charges_the_turn_for_a_reply_an_injected_line_split() {
+        let injected = json!({
+            "type": "user",
+            "isMeta": true,
+            "timestamp": "2000-01-01T00:00:06Z",
+            "message": {"content": [{"type": "text", "text": "<reminder>"}]},
+        })
+        .to_string();
+        let jsonl = [
+            user_at("2000-01-01T00:00:00Z", json!("お願い")),
+            assistant_reply_block("msg_1", "2000-01-01T00:00:05Z", "thinking", 40, 10),
+            injected,
+            assistant_reply_block("msg_1", "2000-01-01T00:00:07Z", "text", 40, 10),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 50);
+        assert_eq!(u.turn_tokens, 50);
+    }
+
+    /// A transcript can replay lines it already holds, reporting a reply below what it was last
+    /// worth; the reply keeps its high-water mark rather than being charged the climb back.
+    #[test]
+    fn usage_does_not_recharge_a_reply_that_is_replayed_lower() {
+        let jsonl = [
+            assistant_reply_block("msg_1", "2000-01-01T00:00:05Z", "text", 40, 25),
+            assistant_reply_block("msg_1", "2000-01-01T00:00:06Z", "thinking", 40, 10),
+            assistant_reply_block("msg_1", "2000-01-01T00:00:07Z", "text", 40, 25),
         ]
         .join("\n");
         assert_eq!(session_usage(&jsonl).unwrap().session_tokens, 65);
