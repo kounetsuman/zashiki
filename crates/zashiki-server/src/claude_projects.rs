@@ -151,8 +151,8 @@ impl ClaudeProjectsAdapter {
             .root_dir
             .join(claude_project_dir_name(cwd))
             .join(format!("{sid}.jsonl"));
-        tokio::task::spawn_blocking(move || match fs::read_to_string(&path) {
-            Ok(content) => background_task_ids(&content),
+        tokio::task::spawn_blocking(move || match fs::read(&path) {
+            Ok(bytes) => background_task_ids(&String::from_utf8_lossy(&bytes)),
             Err(_) => HashSet::new(),
         })
         .await
@@ -264,9 +264,10 @@ fn subagent_transcript_files(dir: &Path) -> Vec<(PathBuf, u64, u64)> {
 ///
 /// Like the session transcript, a file is read whole: a total needs every assistant `usage`, not a
 /// slice. A transcript is only appended to, so one whose size and mtime are unchanged since the last
-/// poll is taken from `cache` instead — without it, a session with a hundred agents re-reads tens of
-/// megabytes every poll. A directory's entry is rebuilt from this walk, so files that are gone drop
-/// out of it, and a directory left with nothing drops out itself.
+/// poll is taken from `cache` instead, which is what keeps a session whose agents have finished from
+/// re-reading tens of megabytes every poll; a transcript still being written is read again until it
+/// settles. A directory's entry is rebuilt from this walk, so files that are gone drop out of it, and
+/// a directory left with nothing drops out itself.
 /// Bytes are decoded leniently: a poll can land mid-append, in the middle of a multi-byte character.
 fn subagent_tokens_sync(
     dir: &Path,
@@ -301,8 +302,8 @@ fn subagent_tokens_sync(
     }
     let tokens = fresh.values().map(|c| c.tokens).sum();
     if let Ok(mut totals) = cache.lock() {
-        // Most sessions run no subagents at all, and a terminal takes a new sid on every restart, so
-        // an entry per directory polled would grow for as long as the server is up.
+        // Most sessions run no subagents at all, so without this every terminal polled would leave
+        // an empty entry behind for as long as the server is up.
         if fresh.is_empty() {
             totals.remove(dir);
         } else {
@@ -537,9 +538,15 @@ mod tests {
     }
 
     #[test]
-    fn subagent_totals_forget_a_directory_that_holds_no_transcripts() {
+    fn subagent_totals_forget_a_directory_once_its_transcripts_are_gone() {
         let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("agent-a1.jsonl");
+        fs::write(&path, agent_reply(700)).unwrap();
         let cache = Mutex::new(HashMap::new());
+        assert_eq!(subagent_tokens_sync(tmp.path(), &cache), 700);
+        assert_eq!(cache.lock().unwrap().len(), 1);
+
+        fs::remove_file(&path).unwrap();
         assert_eq!(subagent_tokens_sync(tmp.path(), &cache), 0);
         assert!(cache.lock().unwrap().is_empty());
     }
