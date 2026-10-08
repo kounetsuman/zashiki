@@ -14,6 +14,8 @@ use zashiki_core::session_state::{TranscriptEvent, TranscriptKind};
 const LAST_EVENT_TAIL_LINES: usize = 50;
 
 const INTERRUPT_MARKER: &str = "[Request interrupted by user]";
+/// Also covers the `[Request interrupted by user for tool use]` variant.
+const INTERRUPT_MARKER_PREFIX: &str = "[Request interrupted by user";
 
 /// Extracts text from message.content (arrays join only text elements with spaces; strings pass through as-is).
 fn text_of_content(content: &Value) -> String {
@@ -119,15 +121,16 @@ fn has_schedule_wakeup(event: &Value) -> bool {
     })
 }
 
-/// Strips meta tags emitted when running skills/slash commands (command-name keeps its inner /foo).
-/// The opening and closing local-command tags match independently.
+/// Strips meta tags emitted when running skills/slash commands (command-name keeps its inner /foo),
+/// along with whole local-command and `!` shell blocks, whose output may itself contain `<`.
+/// The opening and closing block tags match independently.
 fn strip_command_tags(text: &str) -> String {
     static COMMAND_ARGS: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"<command-args>[^<]*</command-args>").unwrap());
     static COMMAND_MESSAGE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"<command-message>[^<]*</command-message>").unwrap());
     static LOCAL_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"<local-command-(?:caveat|stdout|stderr)>[^<]*</local-command-(?:caveat|stdout|stderr)>")
+        Regex::new(r"(?s)<(?:local-command|bash)-(?:caveat|input|stdout|stderr)>.*?</(?:local-command|bash)-(?:caveat|input|stdout|stderr)>")
             .unwrap()
     });
     static COMMAND_NAME: LazyLock<Regex> =
@@ -139,34 +142,120 @@ fn strip_command_tags(text: &str) -> String {
     COMMAND_NAME.replace_all(&t, "").into_owned()
 }
 
-/// Builds a title from one jsonl line (collapses newlines/runs of spaces, takes the first max_chars characters).
-/// `None` when the line is not a parseable user event (the caller keeps scanning); `Some(None)` when it is a
-/// user event whose utterance is empty (the caller stops with no title); `Some(Some(t))` for the utterance title.
-pub(crate) fn user_line_title(line: &str, max_chars: usize) -> Option<Option<String>> {
-    if line.is_empty() || !line.contains(r#""type":"user""#) {
+/// A session title read from a transcript. `Ai` is the title Claude Code writes once it has summarized
+/// the conversation and never changes afterwards; the others stand in until it appears.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TranscriptTitle {
+    Ai(String),
+    TypedPrompt(String),
+    CommandPrompt(String),
+}
+
+impl TranscriptTitle {
+    pub fn into_text(self) -> String {
+        match self {
+            TranscriptTitle::Ai(t) | TranscriptTitle::TypedPrompt(t) | TranscriptTitle::CommandPrompt(t) => t,
+        }
+    }
+}
+
+/// Collects title candidates from transcript lines fed in file order, so a reader can feed only the
+/// lines appended since its last pass.
+#[derive(Debug)]
+pub struct TitleScan {
+    max_chars: usize,
+    ai: Option<String>,
+    typed_prompt: Option<String>,
+    command_prompt: Option<String>,
+}
+
+impl TitleScan {
+    pub fn new(max_chars: usize) -> Self {
+        Self {
+            max_chars,
+            ai: None,
+            typed_prompt: None,
+            command_prompt: None,
+        }
+    }
+
+    /// Whether the final title has been seen, after which further lines change nothing.
+    pub fn is_settled(&self) -> bool {
+        self.ai.is_some()
+    }
+
+    pub fn feed(&mut self, line: &str) {
+        if self.is_settled() {
+            return;
+        }
+        if let Some(title) = ai_line_title(line) {
+            self.ai = Some(title);
+            return;
+        }
+        if self.typed_prompt.is_some() {
+            return;
+        }
+        if let Some((title, is_command)) = prompt_line_title(line, self.max_chars) {
+            if !is_command {
+                self.typed_prompt = Some(title);
+            } else if self.command_prompt.is_none() {
+                self.command_prompt = Some(title);
+            }
+        }
+    }
+
+    pub fn title(&self) -> Option<TranscriptTitle> {
+        let ai = self.ai.clone().map(TranscriptTitle::Ai);
+        ai.or_else(|| self.typed_prompt.clone().map(TranscriptTitle::TypedPrompt))
+            .or_else(|| self.command_prompt.clone().map(TranscriptTitle::CommandPrompt))
+    }
+}
+
+fn collapse_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn ai_line_title(line: &str) -> Option<String> {
+    if !line.contains(r#""type":"ai-title""#) {
         return None;
     }
     let event = parse_line(line)?;
-    if event.get("type").and_then(Value::as_str) != Some("user") {
+    if event.get("type").and_then(Value::as_str) != Some("ai-title") {
+        return None;
+    }
+    let title = collapse_whitespace(event.get("aiTitle").and_then(Value::as_str)?);
+    (!title.is_empty()).then_some(title)
+}
+
+/// The title of a prompt the user sent, with whether it was a bare slash command. Records Claude Code
+/// inserts on its own (`isMeta`, tool results) and ones that strip to nothing are not prompts.
+fn prompt_line_title(line: &str, max_chars: usize) -> Option<(String, bool)> {
+    if !line.contains(r#""type":"user""#) {
+        return None;
+    }
+    let event = parse_line(line)?;
+    if !is_human_prompt(&event) || event.get("isMeta").and_then(Value::as_bool) == Some(true) {
         return None;
     }
     let raw = content_of(&event).map(text_of_content).unwrap_or_default();
-    let title = strip_command_tags(&raw)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    if title.is_empty() {
-        return Some(None);
+    let raw = raw.trim_start();
+    if raw.starts_with(INTERRUPT_MARKER_PREFIX) {
+        return None;
     }
-    Some(Some(title.chars().take(max_chars).collect()))
+    let title = collapse_whitespace(&strip_command_tags(raw));
+    if title.is_empty() {
+        return None;
+    }
+    let is_command = raw.starts_with("<command-name>") || raw.starts_with("<command-message>");
+    Some((title.chars().take(max_chars).collect(), is_command))
 }
 
-/// Builds a summary title from the first user utterance in the head slice.
-pub fn first_user_title(jsonl_head: &str, max_chars: usize) -> Option<String> {
-    jsonl_head
-        .split('\n')
-        .find_map(|line| user_line_title(line, max_chars))
-        .flatten()
+/// The session title of a whole transcript (or any prefix of one).
+#[cfg(test)]
+pub fn transcript_title(jsonl: &str, max_chars: usize) -> Option<TranscriptTitle> {
+    let mut scan = TitleScan::new(max_chars);
+    jsonl.split('\n').for_each(|line| scan.feed(line));
+    scan.title()
 }
 
 /// cwd -> the project directory name under ~/.claude/projects (replaces `/` with `-`).
@@ -643,14 +732,18 @@ mod tests {
         assert!(!loop_wakeup_pending(&assistant_line(json!([{"type": "text", "text": "done"}]))));
     }
 
-    // ---- first_user_title ----
+    // ---- transcript_title ----
+
+    fn title_text(content: &str) -> Option<String> {
+        transcript_title(content, 30).map(TranscriptTitle::into_text)
+    }
 
     #[test]
     fn title_takes_first_30_chars_of_first_user() {
         let long = "あ".repeat(40);
         let content = [user_line(json!(long)), assistant_line(json!("応答"))].join("\n");
         assert_eq!(
-            first_user_title(&content, 30).as_deref(),
+            title_text(&content).as_deref(),
             Some("あ".repeat(30).as_str())
         );
     }
@@ -661,14 +754,14 @@ mod tests {
             {"type": "text", "text": "前半"},
             {"type": "text", "text": "後半"}
         ]));
-        assert_eq!(first_user_title(&content, 30).as_deref(), Some("前半 後半"));
+        assert_eq!(title_text(&content).as_deref(), Some("前半 後半"));
     }
 
     #[test]
     fn title_collapses_newlines_and_runs_of_spaces() {
         let content = user_line(json!("一行目\n二行目   三行目"));
         assert_eq!(
-            first_user_title(&content, 30).as_deref(),
+            title_text(&content).as_deref(),
             Some("一行目 二行目 三行目")
         );
     }
@@ -679,7 +772,7 @@ mod tests {
             "<command-name>/day-closing</command-name>\n<command-message>day-closing</command-message>\n<command-args>今日の分</command-args>"
         ));
         assert_eq!(
-            first_user_title(&content, 30).as_deref(),
+            title_text(&content).as_deref(),
             Some("/day-closing")
         );
     }
@@ -690,7 +783,7 @@ mod tests {
             "<local-command-caveat>注意書き</local-command-caveat>実行結果を見て<local-command-stdout>出力</local-command-stdout><local-command-stderr>エラー</local-command-stderr>"
         ));
         assert_eq!(
-            first_user_title(&content, 30).as_deref(),
+            title_text(&content).as_deref(),
             Some("実行結果を見て")
         );
     }
@@ -703,21 +796,128 @@ mod tests {
         ]
         .join("\n");
         assert_eq!(
-            first_user_title(&content, 30).as_deref(),
+            title_text(&content).as_deref(),
             Some("本題の依頼")
         );
     }
 
     #[test]
     fn title_none_when_no_user() {
-        assert!(first_user_title(&assistant_line(json!("応答のみ")), 30).is_none());
-        assert!(first_user_title("", 30).is_none());
+        assert!(title_text(&assistant_line(json!("応答のみ"))).is_none());
+        assert!(title_text("").is_none());
     }
 
     #[test]
     fn title_none_when_stripped_to_empty() {
         let content = user_line(json!("<command-args>引数だけ</command-args>"));
-        assert!(first_user_title(&content, 30).is_none());
+        assert!(title_text(&content).is_none());
+    }
+
+    fn ai_title_line(title: &str) -> String {
+        json!({"type": "ai-title", "aiTitle": title, "sessionId": "s"}).to_string()
+    }
+
+    fn local_command_lines(name: &str) -> Vec<String> {
+        vec![
+            json!({"type": "user", "isMeta": true, "message": {"content":
+                "<local-command-caveat>The command below was run directly in Claude Code.</local-command-caveat>"}})
+            .to_string(),
+            user_line(json!(format!(
+                "<command-name>/{name}</command-name> <command-message>{name}</command-message> <command-args></command-args>"
+            ))),
+            user_line(json!("<local-command-stdout>Set model to Opus</local-command-stdout>")),
+        ]
+    }
+
+    #[test]
+    fn title_prefers_the_ai_title_over_the_first_prompt_wherever_it_appears() {
+        let content = [
+            user_line(json!("最初の依頼")),
+            assistant_line(json!("応答")),
+            ai_title_line("ダイエットランチの店探し"),
+        ]
+        .join("\n");
+        assert_eq!(
+            transcript_title(&content, 30),
+            Some(TranscriptTitle::Ai("ダイエットランチの店探し".to_string()))
+        );
+    }
+
+    #[test]
+    fn ai_title_is_kept_whole_and_the_first_one_wins() {
+        let long = "Session icon and title not updating on resume";
+        let content = [ai_title_line(long), ai_title_line("後から来た別名")].join("\n");
+        assert_eq!(title_text(&content).as_deref(), Some(long));
+    }
+
+    #[test]
+    fn title_reads_past_a_leading_local_command_to_the_typed_prompt() {
+        let mut lines = local_command_lines("model");
+        lines.push(user_line(json!("明日のランチの店を探して")));
+        assert_eq!(
+            transcript_title(&lines.join("\n"), 30),
+            Some(TranscriptTitle::TypedPrompt("明日のランチの店を探して".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_bare_command_titles_the_session_only_until_a_typed_prompt_appears() {
+        let lines = local_command_lines("model");
+        assert_eq!(
+            transcript_title(&lines.join("\n"), 30),
+            Some(TranscriptTitle::CommandPrompt("/model".to_string()))
+        );
+    }
+
+    #[test]
+    fn title_skips_meta_records_and_tool_results() {
+        let content = [
+            user_line(json!(
+                "<command-name>/food</command-name> <command-message>food</command-message> <command-args>パスタ</command-args>"
+            )),
+            json!({"type": "user", "isMeta": true, "message": {"content":
+                [{"type": "text", "text": "Base directory for this skill: /x"}]}})
+            .to_string(),
+            user_line(json!([{"type": "tool_result", "tool_use_id": "t", "content": "ok"}])),
+        ]
+        .join("\n");
+        assert_eq!(
+            transcript_title(&content, 30),
+            Some(TranscriptTitle::CommandPrompt("/food".to_string()))
+        );
+    }
+
+    #[test]
+    fn interrupt_markers_and_shell_blocks_are_not_prompts() {
+        let content = [
+            user_line(json!("<command-name>/review</command-name> <command-message>review</command-message>")),
+            user_line(json!([{"type": "text", "text": "[Request interrupted by user]"}])),
+            user_line(json!("[Request interrupted by user for tool use]")),
+            user_line(json!("<bash-input>git status</bash-input>")),
+            user_line(json!("<bash-stdout>On branch main</bash-stdout><bash-stderr></bash-stderr>")),
+            user_line(json!("<local-command-stdout>tokens < 200k\n</local-command-stdout>")),
+            user_line(json!("本題")),
+        ]
+        .join("\n");
+        assert_eq!(
+            transcript_title(&content, 30),
+            Some(TranscriptTitle::TypedPrompt("本題".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_typed_prompt_quoting_a_command_tag_is_not_a_command() {
+        let content = user_line(json!("`<command-name>/x</command-name>` のパースを直して"));
+        assert!(matches!(transcript_title(&content, 30), Some(TranscriptTitle::TypedPrompt(_))));
+    }
+
+    #[test]
+    fn title_scan_fed_in_pieces_picks_up_a_later_ai_title() {
+        let mut scan = TitleScan::new(30);
+        scan.feed(&user_line(json!("最初の依頼")));
+        assert_eq!(scan.title(), Some(TranscriptTitle::TypedPrompt("最初の依頼".to_string())));
+        scan.feed(&ai_title_line("要約タイトル"));
+        assert_eq!(scan.title(), Some(TranscriptTitle::Ai("要約タイトル".to_string())));
     }
 
     // ---- claude_project_dir_name ----
