@@ -214,6 +214,21 @@ pub(crate) fn is_executable_file(path: &std::path::Path) -> bool {
     path.is_file()
 }
 
+/// Names the Cockpit Terminal to the claude launched in it. Claude Code passes its environment on to
+/// its hooks, so `hooks/notify-event.sh` can say which terminal a hook came from.
+pub const COCKPIT_TERMINAL_ENV: &str = "ZK_COCKPIT_TERMINAL_ID";
+
+/// The environment every Cockpit Terminal process starts with. A terminal is named only when its id
+/// is a sid, which is what every terminal that runs claude is keyed by.
+pub(crate) fn terminal_env(cmd: &mut CommandBuilder, cockpit_terminal_id: &str) {
+    cmd.env("TERM", "xterm-256color");
+    if zashiki_core::save_file::is_uuid_sid(cockpit_terminal_id) {
+        cmd.env(COCKPIT_TERMINAL_ENV, cockpit_terminal_id.to_lowercase());
+    } else {
+        cmd.env_remove(COCKPIT_TERMINAL_ENV);
+    }
+}
+
 /// Builds a [`PtyConfig`] from the launch plan (same shape as [`crate::session_restore::plan_to_config`]).
 pub fn plan_to_config(plan: &NewSessionPlan) -> PtyConfig {
     let mut cmd = CommandBuilder::new(&plan.program);
@@ -221,7 +236,7 @@ pub fn plan_to_config(plan: &NewSessionPlan) -> PtyConfig {
         cmd.arg(arg);
     }
     cmd.cwd(&plan.cwd);
-    cmd.env("TERM", "xterm-256color");
+    terminal_env(&mut cmd, &plan.sid);
     PtyConfig::new(cmd)
 }
 
@@ -396,6 +411,59 @@ mod tests {
         .await
         .unwrap_or(false);
         assert!(alive, "shell should survive after claude(true) exits");
+    }
+
+    /// Prints the terminal id the launched process sees, standing in for claude passing it to a hook.
+    #[cfg(unix)]
+    async fn terminal_id_seen_by(config: crate::pty_host::PtyConfig) -> String {
+        use std::time::Duration;
+        let session = crate::pty_host::PtySession::spawn(config).unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let screen = session.screen_contents();
+                if let Some(rest) = screen.split("tid=").nth(1) {
+                    if rest.contains('.') {
+                        return rest.split('.').next().unwrap_or_default().to_string();
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap_or_default()
+    }
+
+    #[cfg(unix)]
+    const PRINT_TERMINAL_ID: &str = r#"printf 'tid=%s.' "$ZK_COCKPIT_TERMINAL_ID""#;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_new_or_resumed_terminal_names_itself_to_the_process_it_launches() {
+        let new_plan = NewSessionPlan {
+            sid: SID.to_string(),
+            wname: "x".to_string(),
+            cwd: "/".to_string(),
+            program: "/bin/sh".to_string(),
+            args: vec!["-c".to_string(), PRINT_TERMINAL_ID.to_string()],
+        };
+        assert_eq!(terminal_id_seen_by(plan_to_config(&new_plan)).await, SID.to_lowercase());
+
+        let resume_plan = crate::session_restore::ResumePlan {
+            sid: SID.to_lowercase(),
+            program: "/bin/sh".to_string(),
+            args: vec!["-c".to_string(), PRINT_TERMINAL_ID.to_string()],
+            cwd: "/".to_string(),
+        };
+        assert_eq!(
+            terminal_id_seen_by(crate::session_restore::plan_to_config(&resume_plan)).await,
+            SID.to_lowercase()
+        );
+
+        let shell_plan = NewSessionPlan {
+            sid: "shell-only".to_string(),
+            ..new_plan
+        };
+        assert_eq!(terminal_id_seen_by(plan_to_config(&shell_plan)).await, "");
     }
 
     #[test]

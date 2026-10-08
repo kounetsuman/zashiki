@@ -523,6 +523,10 @@ pub struct HookEventRequest {
     /// kind, and on a Claude Code old enough not to report it.
     #[serde(default)]
     pub agent_id: Option<String>,
+    /// The Cockpit Terminal the hook's claude runs in, inherited from the `ZK_COCKPIT_TERMINAL_ID`
+    /// zashiki sets at launch. Absent for a claude zashiki did not launch.
+    #[serde(default)]
+    pub cockpit_terminal_id: Option<String>,
 }
 
 /// Response for `POST /api/hooks/event`. `ok` is always true.

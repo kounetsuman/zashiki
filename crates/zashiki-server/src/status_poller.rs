@@ -130,7 +130,7 @@ pub struct StatusPoller {
     /// The most recent picked pane pid per window. The basis for detecting a window rebuild from restore/kill
     /// (a pid change under the same cockpit_terminal_id) and resetting the streak (closes the gap where stale carried-over state disables the grace).
     last_pid: HashMap<String, i64>,
-    /// The most recent sid seen per window (sid is stable across resume). When the pane-pid trace later
+    /// The most recent launch-argument sid seen per window (stable across a relaunch with `--resume`). When the pane-pid trace later
     /// fails to reach claude, this recovers the session as long as that sid is still live in the ps
     /// table (`ProcessMaps::has_sid`), so a stale pane pid does not misread a live session as no_claude.
     last_sid: HashMap<String, String>,
@@ -220,6 +220,7 @@ impl StatusPoller {
         // belongs to it and must not be recovered below.
         if self.last_pid.get(&win.cockpit_terminal_id) != Some(&pid) {
             self.last_sid.remove(&win.cockpit_terminal_id);
+            ports.forget_current_conversation(&win.cockpit_terminal_id).await;
         }
         // The pane-pid trace can miss a live claude when the recorded pane pid goes stale; fall back to
         // the last-seen sid only while its claude is still in the ps table (proof it is alive, not exited).
@@ -232,6 +233,20 @@ impl StatusPoller {
         if let Some(s) = &sid {
             self.last_sid.insert(win.cockpit_terminal_id.clone(), s.clone());
         }
+        // An in-session `/resume` or `/clear` moves claude to a sid its launch arguments never show;
+        // the terminal's hooks report it, and it holds only while that claude is still running.
+        let sid = match sid {
+            Some(launch_sid) => Some(
+                ports
+                    .current_conversation(&win.cockpit_terminal_id)
+                    .await
+                    .unwrap_or(launch_sid),
+            ),
+            None => {
+                ports.forget_current_conversation(&win.cockpit_terminal_id).await;
+                None
+            }
+        };
         let org = org_of_cwd(&cwd, &roots_ref(&config.repos_roots)).to_string();
 
         let title_key = sid.as_ref().map(|s| format!("{cwd}\u{0}{s}"));
@@ -555,6 +570,7 @@ mod tests {
         subagent_stops: HashMap<String, HashMap<String, f64>>,
         session_usages: HashMap<String, crate::jsonl::SessionUsageData>,
         active_models: HashMap<String, ModelReading>,
+        conversations: std::sync::Mutex<HashMap<String, String>>,
     }
 
     impl PollerPorts for FakePorts {
@@ -625,6 +641,12 @@ mod tests {
         }
         async fn active_model(&self, sid: &str) -> Option<ModelReading> {
             self.active_models.get(sid).cloned()
+        }
+        async fn current_conversation(&self, cockpit_terminal_id: &str) -> Option<String> {
+            self.conversations.lock().unwrap().get(cockpit_terminal_id).cloned()
+        }
+        async fn forget_current_conversation(&self, cockpit_terminal_id: &str) {
+            self.conversations.lock().unwrap().remove(cockpit_terminal_id);
         }
     }
 
@@ -1622,6 +1644,72 @@ mod tests {
             )]),
             ..Default::default()
         }
+    }
+
+    const RESUMED_SID: &str = "9f8e7d6c-5b4a-4c3d-8e2f-1a0b9c8d7e6f";
+
+    fn resumed_ports(pane_pid: i64, ps: String) -> FakePorts {
+        let mut ports = titled_ports(r#"{"type":"ai-title","aiTitle":"起動時の会話"}"#);
+        ports.windows[0].panes[0].pid = pane_pid;
+        ports.ps = ps;
+        ports.slices.insert(
+            format!("/repos/charlie/app\u{0}{RESUMED_SID}"),
+            Slices {
+                head: r#"{"type":"ai-title","aiTitle":"再開した会話"}"#.to_string(),
+                tail: String::new(),
+                mtime_age_sec: 1.0,
+            },
+        );
+        ports
+    }
+
+    fn report_conversation(ports: &FakePorts, sid: &str) {
+        ports
+            .conversations
+            .lock()
+            .unwrap()
+            .insert("@1".to_string(), sid.to_string());
+    }
+
+    #[tokio::test]
+    async fn a_conversation_the_hooks_report_replaces_the_launch_sid_while_claude_runs() {
+        let ports = resumed_ports(100, ps_with_claude(100));
+        let mut poller = StatusPoller::new();
+        let (before, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(before.sessions[0].sid.as_deref(), Some(SID));
+
+        report_conversation(&ports, RESUMED_SID);
+        let (after, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(after.sessions[0].sid.as_deref(), Some(RESUMED_SID));
+        assert_eq!(after.sessions[0].title.as_deref(), Some("再開した会話"));
+    }
+
+    #[tokio::test]
+    async fn a_relaunched_claude_drops_the_conversation_its_predecessor_reported() {
+        let ports = resumed_ports(100, ps_with_claude(100));
+        let mut poller = StatusPoller::new();
+        poller.evaluate(&ports, &config()).await;
+        report_conversation(&ports, RESUMED_SID);
+
+        let relaunched = resumed_ports(200, ps_with_claude(200));
+        *relaunched.conversations.lock().unwrap() = ports.conversations.lock().unwrap().clone();
+        let (snap, _) = poller.evaluate(&relaunched, &config()).await;
+        assert_eq!(snap.sessions[0].sid.as_deref(), Some(SID));
+        assert!(relaunched.conversations.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_exited_claude_drops_the_conversation_it_reported() {
+        let ports = resumed_ports(100, ps_with_claude(100));
+        let mut poller = StatusPoller::new();
+        poller.evaluate(&ports, &config()).await;
+        report_conversation(&ports, RESUMED_SID);
+
+        let exited = resumed_ports(100, "  100    1 -zsh\n".to_string());
+        *exited.conversations.lock().unwrap() = ports.conversations.lock().unwrap().clone();
+        let (snap, _) = poller.evaluate(&exited, &config()).await;
+        assert_eq!(snap.sessions[0].sid, None);
+        assert!(exited.conversations.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

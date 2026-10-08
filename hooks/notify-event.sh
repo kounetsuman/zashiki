@@ -65,11 +65,14 @@ if [ -r "$token_file" ]; then
   token="$(cat "$token_file" 2>/dev/null || true)"
   if [ -n "$token" ]; then
     if command -v jq >/dev/null 2>&1; then
+      # ZK_COCKPIT_TERMINAL_ID は zashiki が claude 起動時に渡し、hook へ継承される（どのターミナルの claude か）
       body="$(jq -cn --arg kind "$kind" --arg sid "$sid" --arg cwd "$cwd" --arg agent "$agent_id" \
+        --arg terminal "${ZK_COCKPIT_TERMINAL_ID:-}" \
         '{kind: $kind}
          + (if $sid != "" then {sid: $sid} else {} end)
          + (if $cwd != "" then {cwd: $cwd} else {} end)
-         + (if $agent != "" then {agent_id: $agent} else {} end)' 2>/dev/null)" ||
+         + (if $agent != "" then {agent_id: $agent} else {} end)
+         + (if $terminal != "" then {cockpit_terminal_id: $terminal} else {} end)' 2>/dev/null)" ||
       body="{\"kind\":\"$kind\"}"
     else
       # jq 不在時は sid/cwd を諦めて kind だけ送る（値のエスケープ問題を避ける）

@@ -52,6 +52,13 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
 
     // Record into the shared store before triggering the re-poll, so the immediate re-evaluation
     // reads it and event-authoritative state applies without waiting for the next tick.
+    // The sid names a transcript file the poller will open, so only a UUID is taken as one.
+    if let (Some(terminal), Some(sid)) = (
+        req.cockpit_terminal_id.as_deref().filter(|s| !s.is_empty()),
+        req.sid.as_deref().filter(|s| zashiki_core::save_file::is_uuid_sid(s)),
+    ) {
+        control.hook_events.record_conversation(terminal, sid, now_ms());
+    }
     if let Some(sid) = req.sid.as_deref().filter(|s| !s.is_empty()) {
         match req.kind {
             crate::protocol::HookKind::SubagentEnd => {
@@ -441,6 +448,32 @@ mod hooks_rest_tests {
                 "subagent_end must not notify on its own"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_hook_from_a_cockpit_terminal_records_the_conversation_it_is_on() {
+        let terminal = "11111111-2222-4333-8444-555555555555";
+        let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
+        let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+        let services = services(hub, NotifyMode::Web, Arc::new(Mutex::new(vec![])));
+        let store = services.hook_events.clone();
+        let app = app(services);
+        let (s, _) = send(
+            app.clone(),
+            "POST",
+            &format!(r#"{{"kind":"prompt","sid":"{sid}","cockpit_terminal_id":"{terminal}"}}"#),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(store.conversation(terminal).as_deref(), Some(sid));
+
+        send(
+            app,
+            "POST",
+            &format!(r#"{{"kind":"prompt","sid":"../../etc/passwd","cockpit_terminal_id":"{terminal}"}}"#),
+        )
+        .await;
+        assert_eq!(store.conversation(terminal).as_deref(), Some(sid), "a non-UUID sid is not taken");
     }
 
     /// A Claude Code that reports no agent leaves the stop uncounted rather than counted as an

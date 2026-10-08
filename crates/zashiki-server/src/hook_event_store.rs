@@ -4,7 +4,10 @@
 //! [`crate::poller_types::PollerPorts::last_hook_event`] to feed
 //! [`zashiki_core::session_state::resolve_state`], and which background agents have reported
 //! stopping and when, read through [`crate::poller_types::PollerPorts::stopped_subagent_ages_sec`] to tell a
-//! scraped agent tray from a leftover render. The canonical spec is the `tests` module.
+//! scraped agent tray from a leftover render. It also keeps which Claude Session each Cockpit Terminal
+//! is on now, read through [`crate::poller_types::PollerPorts::current_conversation`]: an in-session
+//! `/resume` or `/clear` moves claude to another sid while its launch arguments keep the old one.
+//! The canonical spec is the `tests` module.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -47,10 +50,18 @@ struct StoppedAgents {
     touched_ms: u64,
 }
 
+/// A sid a Cockpit Terminal's hooks reported, with when they last did.
+#[derive(Debug, Clone)]
+struct Conversation {
+    sid: String,
+    at_ms: u64,
+}
+
 #[derive(Default)]
 pub struct HookEventStore {
     inner: Mutex<HashMap<String, Recorded>>,
     stopped_agents: Mutex<HashMap<String, StoppedAgents>>,
+    conversations: Mutex<HashMap<String, Conversation>>,
 }
 
 impl HookEventStore {
@@ -120,6 +131,41 @@ impl HookEventStore {
     }
 }
 
+impl HookEventStore {
+    /// Records that the claude in `cockpit_terminal_id` is now on `sid` (lowercased like every other sid
+    /// here). Holds at most [`MAX_TRACKED_SIDS`] terminals, dropping the one heard from least recently.
+    pub fn record_conversation(&self, cockpit_terminal_id: &str, sid: &str, now_ms: u64) {
+        let mut map = self.conversations.lock().unwrap();
+        if map.len() >= MAX_TRACKED_SIDS && !map.contains_key(cockpit_terminal_id) {
+            if let Some(oldest) = map
+                .iter()
+                .min_by_key(|(_, c)| c.at_ms)
+                .map(|(id, _)| id.clone())
+            {
+                map.remove(&oldest);
+            }
+        }
+        map.insert(
+            cockpit_terminal_id.to_string(),
+            Conversation {
+                sid: sid.to_lowercase(),
+                at_ms: now_ms,
+            },
+        );
+    }
+
+    /// The sid the terminal's hooks last reported (None if they never did since it was forgotten).
+    pub fn conversation(&self, cockpit_terminal_id: &str) -> Option<String> {
+        let map = self.conversations.lock().unwrap();
+        map.get(cockpit_terminal_id).map(|c| c.sid.clone())
+    }
+
+    /// Drops what the terminal's hooks reported, for when the claude that reported it is gone.
+    pub fn forget_conversation(&self, cockpit_terminal_id: &str) {
+        self.conversations.lock().unwrap().remove(cockpit_terminal_id);
+    }
+}
+
 fn evict_coldest(map: &mut HashMap<String, StoppedAgents>) {
     if let Some(coldest) = map
         .iter()
@@ -135,6 +181,32 @@ mod tests {
     use super::*;
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
+
+    const TERMINAL: &str = "11111111-2222-4333-8444-555555555555";
+
+    #[test]
+    fn conversation_is_the_latest_reported_sid_until_forgotten() {
+        let store = HookEventStore::new();
+        assert_eq!(store.conversation(TERMINAL), None);
+        store.record_conversation(TERMINAL, TERMINAL, 1000);
+        store.record_conversation(TERMINAL, &SID.to_uppercase(), 2000);
+        assert_eq!(store.conversation(TERMINAL).as_deref(), Some(SID));
+        store.forget_conversation(TERMINAL);
+        assert_eq!(store.conversation(TERMINAL), None);
+    }
+
+    #[test]
+    fn conversations_are_bounded_by_dropping_the_least_recently_heard_terminal() {
+        let store = HookEventStore::new();
+        for i in 0..MAX_TRACKED_SIDS as u64 {
+            store.record_conversation(&format!("t{i}"), SID, 1000 + i);
+        }
+        store.record_conversation("t0", SID, 9000);
+        store.record_conversation("new", SID, 9001);
+        assert!(store.conversation("t1").is_none());
+        assert!(store.conversation("t0").is_some());
+        assert!(store.conversation("new").is_some());
+    }
 
     #[test]
     fn get_none_when_absent() {
