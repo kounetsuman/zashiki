@@ -8,6 +8,8 @@ A `SubagentStop` is forwarded as `subagent_end`, carrying the `agent_id` of the 
 
 A `Notification` is forwarded as `waiting` only when its `notification_type` puts a wizard / input dialog on screen (`permission_prompt`, `elicitation_dialog`); other types (`idle_prompt`, `auth_success`, elicitation completions) are dropped so an idle-but-finished session isn't marked waiting. A payload without `notification_type` (older Claude Code) is forwarded as before.
 
+When `jq` is available, each event also carries `cockpit_terminal_id` — the `ZK_COCKPIT_TERMINAL_ID` zashiki sets on the claude it launches, which Claude Code passes on to its hooks — and `hook_parent_pid`, from which the server finds the claude that fired the hook. Together they let a terminal follow its claude after an in-session `/resume` or `/clear`, which moves claude to a new session id, without being misled by another claude started inside it (such as `claude -p`). A claude zashiki did not launch sends neither.
+
 `statusline.sh` is the companion for Claude Code's `statusLine`: it forwards the payload to `POST /api/hooks/statusline` so the session status footer can show account usage limits and the model. Both reach the statusLine command only: `rate_limits` never appears in the transcript, and the model appears there no earlier than the session's first reply. It is optional — the footer's tokens and elapsed time work without it; the usage-limit segments need it, and without it the model cell stays a dash until the first reply.
 
 ## Design guarantees
@@ -95,4 +97,5 @@ To keep an existing statusLine as well, point `ZK_LEGACY_STATUSLINE` at it — a
 | `ZK_PORT` | `8790` | Port of the server to POST to |
 | `ZK_TOKEN_FILE` | `~/.zashiki/token` | Token file (override hook for testing) |
 | `ZK_LEGACY_NOTIFY` | (empty) | Existing notification script to merge into (executable files only) |
+| `ZK_COCKPIT_TERMINAL_ID` | (set by zashiki) | The Cockpit Terminal the claude runs in; forwarded as `cockpit_terminal_id` |
 | `ZK_LEGACY_STATUSLINE` | (empty) | Existing statusLine to merge into; run via `sh -c` (a bare path or an argumented command both work) and its stdout is rendered |

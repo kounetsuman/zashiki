@@ -8,6 +8,8 @@
 
 `Notification` を `waiting` として転送するのは、その `notification_type` が画面にウィザード／入力ダイアログを出すもの（`permission_prompt`・`elicitation_dialog`）のときだけ。他の型（`idle_prompt`・`auth_success`・elicitation の完了系）は落とし、アイドルで完了済みのセッションが応答待ちにならないようにする。`notification_type` を持たないペイロード（旧 Claude Code）は従来どおり転送する。
 
+`jq` がある場合、各イベントに `cockpit_terminal_id` と `hook_parent_pid` も付ける。前者は zashiki が起動した claude に渡す `ZK_COCKPIT_TERMINAL_ID` を Claude Code が hook へ受け継いだもの、後者はサーバがこの hook を発火した claude を辿るための親 pid。会話内で `/resume` や `/clear` をすると claude は新しいセッション id に移るが、これによりターミナルはその claude の会話に追従し、ターミナル内で起動された別の claude（`claude -p` など）には引きずられない。zashiki が起動していない claude からはどちらも送られない。
+
 `statusline.sh` は Claude Code の `statusLine` 用の相棒で、そのペイロードを `POST /api/hooks/statusline` へ転送し、セッション状態フッタが使用率とモデルを表示できるようにする。どちらも statusLine コマンドにのみ渡るもので、`rate_limits` は transcript に載らず、モデルも transcript には最初の応答以降しか現れない。任意設定であり、フッタのトークン・経過時間は無しでも動く。使用率のセグメントはこれを必要とし、無い場合はモデルの表示が最初の応答まで「–」のままになる。
 
 ## 設計上の約束
@@ -95,4 +97,5 @@ hooks/statusLine を保持する（既存 statusLine は `ZK_LEGACY_STATUSLINE` 
 | `ZK_PORT` | `8790` | POST 先サーバのポート |
 | `ZK_TOKEN_FILE` | `~/.zashiki/token` | トークンファイル（テスト用の差し替え口） |
 | `ZK_LEGACY_NOTIFY` | （空） | 合流先の既存通知スクリプト（実行可能ファイルのみ） |
+| `ZK_COCKPIT_TERMINAL_ID` | （zashiki が設定） | claude が動いている Cockpit Terminal。`cockpit_terminal_id` として転送する |
 | `ZK_LEGACY_STATUSLINE` | （空） | 合流先の既存 statusLine（`sh -c` 経由で実行＝パスも引数付きコマンドも可。stdout が描画される） |

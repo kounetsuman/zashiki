@@ -755,6 +755,10 @@ export const hookEventRequestSchema = z.object({
    * `cwd`: this body is written by hooks/notify-event.sh, not by the camelCase WS protocol.
    */
   agent_id: z.string().max(256).optional(),
+  /** The Cockpit Terminal the hook's claude runs in (`ZK_COCKPIT_TERMINAL_ID`, set by zashiki at launch). */
+  cockpit_terminal_id: z.string().max(256).optional(),
+  /** The parent of the hook command's process, from which the server finds the claude that fired it. */
+  hook_parent_pid: z.number().int().nullable().optional(),
 });
 
 export type HookEventRequest = z.infer<typeof hookEventRequestSchema>;

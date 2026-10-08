@@ -141,6 +141,11 @@ impl PollerPorts for PtyPollerPorts {
     async fn active_model(&self, sid: &str) -> Option<ModelReading> {
         self.session_models.get(sid, now_ms())
     }
+
+    async fn reported_claude_session(&self, cockpit_terminal_id: &str, claude_pid: i64) -> Option<String> {
+        self.hook_events
+            .reported_claude_session(cockpit_terminal_id, claude_pid)
+    }
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use zashiki_core::session_state::{
     CockpitTerminalState, DEFAULT_BG_AGENT_MARKER, DEFAULT_LIMIT_MARKERS, DEFAULT_MENU_MARKERS,
 };
 
-use zashiki_core::process_tree::find_sid_in_tree;
+use zashiki_core::process_tree::{find_claude_pid_in_tree, find_sid_in_tree};
 
 use crate::poller_types::ModelReading;
 use crate::protocol::CockpitTerminalInfo;
@@ -113,6 +113,8 @@ pub(crate) struct Picked {
     pub(crate) pane_id: String,
     pub(crate) cwd: String,
     pub(crate) sid: Option<String>,
+    /// The claude running the pane, which is the one whose reported Claude Session the pane follows.
+    pub(crate) claude_pid: Option<i64>,
     /// The root pid of the picked pane. Used to detect window rebuilds (pid change) from restore/kill.
     pub(crate) pid: i64,
 }
@@ -128,6 +130,7 @@ pub(crate) fn pick_pane(
                 pane_id: pane.pane_id.clone(),
                 cwd: pane.current_path.clone(),
                 sid: Some(sid),
+                claude_pid: find_claude_pid_in_tree(pane.pid, maps),
                 pid: pane.pid,
             });
         }
@@ -140,6 +143,7 @@ pub(crate) fn pick_pane(
         pane_id: p.pane_id.clone(),
         cwd: p.current_path.clone(),
         sid: None,
+        claude_pid: None,
         pid: p.pid,
     })
 }

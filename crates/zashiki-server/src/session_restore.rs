@@ -20,6 +20,8 @@ use crate::pty_host::PtyConfig;
 /// A launch plan for resuming one entry (pure data; makes it easy to test before building the CommandBuilder).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResumePlan {
+    /// The sid being resumed, which is also the id of the Cockpit Terminal it is resumed into.
+    pub sid: String,
     pub program: String,
     pub args: Vec<String>,
     pub cwd: String,
@@ -41,6 +43,7 @@ pub fn plan_resume(
         return None;
     }
     Some(ResumePlan {
+        sid: entry.sid.to_lowercase(),
         program: shell.to_string(),
         args: vec![
             "-lc".to_string(),
@@ -57,7 +60,7 @@ pub fn plan_to_config(plan: &ResumePlan) -> PtyConfig {
         cmd.arg(arg);
     }
     cmd.cwd(&plan.cwd);
-    cmd.env("TERM", "xterm-256color");
+    crate::session_launch::terminal_env(&mut cmd, &plan.sid);
     PtyConfig::new(cmd)
 }
 

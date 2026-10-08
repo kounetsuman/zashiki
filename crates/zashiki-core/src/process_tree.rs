@@ -121,6 +121,10 @@ pub struct ProcessMaps {
     pub children_of: HashMap<i64, Vec<i64>>,
     /// pids of running vitest processes (classified by `is_vitest`).
     pub vitest_pids: HashSet<i64>,
+    /// pids of claude itself (classified by `is_claude_command`), as opposed to a shell launching it.
+    pub claude_pids: HashSet<i64>,
+    /// pid -> ppid.
+    pub parent_of: HashMap<i64, i64>,
 }
 
 impl ProcessMaps {
@@ -129,6 +133,14 @@ impl ProcessMaps {
     /// pane pid no longer reaches it.
     pub fn has_sid(&self, sid: &str) -> bool {
         self.pid_to_sid.values().any(|s| s == sid)
+    }
+
+    /// The claude launched with this sid, found anywhere in the snapshot (see [`Self::has_sid`]).
+    pub fn claude_pid_with_sid(&self, sid: &str) -> Option<i64> {
+        self.pid_to_sid
+            .iter()
+            .find(|(pid, s)| s.as_str() == sid && self.claude_pids.contains(pid))
+            .map(|(pid, _)| *pid)
     }
 }
 
@@ -158,12 +170,30 @@ fn is_vitest_path(token: &str) -> bool {
     base == "vitest" || base == "vitest.mjs"
 }
 
+/// Whether a ps `args` string is claude itself: its command, or the script a `node` command runs, is
+/// named `claude`. A shell whose command line merely launches claude (`zsh -lc claude …`) is not.
+pub fn is_claude_command(args: &str) -> bool {
+    let mut tokens = args.split_whitespace();
+    let is_claude = |token: &str| token.rsplit('/').next() == Some("claude");
+    match tokens.next() {
+        Some(first) if is_claude(first) => true,
+        Some(first) if first.rsplit('/').next() == Some("node") => tokens.next().is_some_and(is_claude),
+        _ => false,
+    }
+}
+
 /// Build the sid map and the parent-child map from a ps snapshot (non-claude processes are not added to the sid map).
 pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
     let mut pid_to_sid = HashMap::new();
     let mut children_of: HashMap<i64, Vec<i64>> = HashMap::new();
     let mut vitest_pids = HashSet::new();
+    let mut claude_pids = HashSet::new();
+    let mut parent_of = HashMap::new();
     for e in entries {
+        if is_claude_command(&e.args) {
+            claude_pids.insert(e.pid);
+        }
+        parent_of.insert(e.pid, e.ppid);
         // case-insensitive match of `claude` in args
         if e.args.to_lowercase().contains("claude") {
             if let Some(sid) = sid_from_args(&e.args) {
@@ -179,6 +209,8 @@ pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
         pid_to_sid,
         children_of,
         vitest_pids,
+        claude_pids,
+        parent_of,
     }
 }
 
@@ -224,6 +256,25 @@ fn subtree(start: i64, maps: &ProcessMaps) -> Subtree<'_> {
 /// The sid of the first claude in the subtree rooted at `start_pid` (None if absent).
 pub fn find_sid_in_tree(start_pid: i64, maps: &ProcessMaps) -> Option<String> {
     subtree(start_pid, maps).find_map(|pid| maps.pid_to_sid.get(&pid).cloned())
+}
+
+/// The pid of the first claude in the subtree rooted at `start_pid` — the outermost one, so a claude
+/// that one launched (`claude -p` from a tool or hook) is not taken for it.
+pub fn find_claude_pid_in_tree(start_pid: i64, maps: &ProcessMaps) -> Option<i64> {
+    subtree(start_pid, maps).find(|pid| maps.claude_pids.contains(pid))
+}
+
+/// The nearest claude at or above `pid`: the claude a hook command, or a process it started, belongs to.
+pub fn claude_pid_owning(pid: i64, maps: &ProcessMaps) -> Option<i64> {
+    let mut current = pid;
+    let mut visited = HashSet::new();
+    while current > 0 && visited.insert(current) {
+        if maps.claude_pids.contains(&current) {
+            return Some(current);
+        }
+        current = *maps.parent_of.get(&current)?;
+    }
+    None
 }
 
 /// The number of vitest processes in the subtree rooted at `start_pid` (inclusive).
@@ -351,6 +402,34 @@ mod tests {
             find_sid_in_tree(200, &tree_maps()),
             Some("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeffff".to_string())
         );
+    }
+
+    #[test]
+    fn claude_command_is_claude_itself_not_a_shell_launching_it() {
+        assert!(is_claude_command("/Users/x/.local/bin/claude --settings {} --session-id abc"));
+        assert!(is_claude_command("claude -p summarize"));
+        assert!(is_claude_command("node /usr/local/lib/node_modules/.bin/claude --resume abc"));
+        assert!(!is_claude_command("/bin/zsh -lc /Users/x/.local/bin/claude --session-id abc"));
+        assert!(!is_claude_command("rg claude"));
+        assert!(!is_claude_command("node server.js"));
+    }
+
+    const NESTED: &str = "  100     1 -zsh\n  110   100 /bin/zsh -lc claude --session-id 579fa8cf-4901-45cb-b9ec-17e229231a37\n  120   110 claude --session-id 579fa8cf-4901-45cb-b9ec-17e229231a37\n  130   120 /bin/sh -c notify-event.sh prompt\n  140   120 /bin/zsh -c claude -p summarize\n  150   140 claude -p summarize\n  160   150 bash notify-event.sh prompt\n";
+
+    #[test]
+    fn the_terminal_claude_is_the_outermost_claude_under_the_pane() {
+        let maps = build_process_maps(&parse_ps_snapshot(NESTED));
+        assert_eq!(find_claude_pid_in_tree(100, &maps), Some(120));
+    }
+
+    #[test]
+    fn a_hook_belongs_to_the_nearest_claude_above_it() {
+        let maps = build_process_maps(&parse_ps_snapshot(NESTED));
+        assert_eq!(claude_pid_owning(130, &maps), Some(120));
+        assert_eq!(claude_pid_owning(160, &maps), Some(150));
+        assert_eq!(claude_pid_owning(120, &maps), Some(120));
+        assert_eq!(claude_pid_owning(100, &maps), None);
+        assert_eq!(claude_pid_owning(999, &maps), None);
     }
 
     #[test]

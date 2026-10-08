@@ -52,6 +52,22 @@ pub(crate) async fn hooks_event(State(state): State<AppState>, body: axum::body:
 
     // Record into the shared store before triggering the re-poll, so the immediate re-evaluation
     // reads it and event-authoritative state applies without waiting for the next tick.
+    // The sid names a transcript file the poller will open, so only a UUID is taken as one.
+    if let (Some(terminal), Some(sid), Some(hook_parent_pid)) = (
+        req.cockpit_terminal_id.as_deref().filter(|s| zashiki_core::save_file::is_uuid_sid(s)),
+        req.sid.as_deref().filter(|s| zashiki_core::save_file::is_uuid_sid(s)),
+        req.hook_parent_pid,
+    ) {
+        let ps = crate::ps::PsAdapter.snapshot().await;
+        let maps = zashiki_core::process_tree::build_process_maps(
+            &zashiki_core::process_tree::parse_ps_snapshot(&ps),
+        );
+        if let Some(claude_pid) = zashiki_core::process_tree::claude_pid_owning(hook_parent_pid, &maps) {
+            control
+                .hook_events
+                .record_claude_session(&terminal.to_lowercase(), claude_pid, sid, now_ms());
+        }
+    }
     if let Some(sid) = req.sid.as_deref().filter(|s| !s.is_empty()) {
         match req.kind {
             crate::protocol::HookKind::SubagentEnd => {
@@ -441,6 +457,52 @@ mod hooks_rest_tests {
                 "subagent_end must not notify on its own"
             );
         }
+    }
+
+    /// A process whose command is named `claude`, standing in for the claude a hook runs under.
+    #[cfg(unix)]
+    fn spawn_stand_in_claude(dir: &std::path::Path) -> std::process::Child {
+        // A link rather than a copy: nothing is written, so a concurrent fork cannot hold the file busy.
+        let claude = dir.join("claude");
+        std::os::unix::fs::symlink("/bin/sleep", &claude).unwrap();
+        std::process::Command::new(&claude).arg("30").spawn().unwrap()
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_hook_from_a_cockpit_terminal_records_the_session_of_the_claude_that_fired_it() {
+        let terminal = "11111111-2222-4333-8444-555555555555";
+        let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
+        let dir = tempfile::tempdir().unwrap();
+        let mut claude = spawn_stand_in_claude(dir.path());
+        let claude_pid = claude.id() as i64;
+        let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
+        let services = services(hub, NotifyMode::Web, Arc::new(Mutex::new(vec![])));
+        let store = services.hook_events.clone();
+        let app = app(services);
+        let post = |sid: &str, terminal: &str, pid: i64| {
+            format!(r#"{{"kind":"prompt","sid":"{sid}","cockpit_terminal_id":"{terminal}","hook_parent_pid":{pid}}}"#)
+        };
+
+        let (s, _) = send(app.clone(), "POST", &post(sid, &terminal.to_uppercase(), claude_pid)).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(store.reported_claude_session(terminal, claude_pid).as_deref(), Some(sid));
+
+        let other = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
+        send(app.clone(), "POST", &post("../../etc/passwd", terminal, claude_pid)).await;
+        send(app.clone(), "POST", &post(other, "shell:0:x", claude_pid)).await;
+        assert_eq!(
+            store.reported_claude_session(terminal, claude_pid).as_deref(),
+            Some(sid),
+            "a non-UUID sid or terminal is not taken"
+        );
+
+        let not_under_claude = i64::from(i32::MAX);
+        send(app, "POST", &post(other, terminal, not_under_claude)).await;
+        assert!(store.reported_claude_session(terminal, not_under_claude).is_none());
+
+        claude.kill().ok();
+        claude.wait().ok();
     }
 
     /// A Claude Code that reports no agent leaves the stop uncounted rather than counted as an
