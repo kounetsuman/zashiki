@@ -233,6 +233,8 @@ impl StatusPoller {
         if let Some(s) = &sid {
             self.last_sid.insert(win.cockpit_terminal_id.clone(), s.clone());
         }
+        let claude_pid =
+            claude_pid.or_else(|| sid.as_deref().and_then(|s| maps.claude_pid_with_sid(s)));
         // An in-session `/resume` or `/clear` moves claude to a sid its launch arguments never show.
         // Its hooks report it, and only what the claude running the pane reported counts: a relaunched
         // claude has another pid, and a claude it started (`claude -p`) is not the pane's.
@@ -1690,6 +1692,19 @@ mod tests {
         let ports = reporting(resumed_ports(100, ps), 310);
         let (snap, _) = StatusPoller::new().evaluate(&ports, &config()).await;
         assert_eq!(snap.sessions[0].sid.as_deref(), Some(SID));
+    }
+
+    #[tokio::test]
+    async fn a_pane_that_no_longer_reaches_its_claude_still_follows_what_that_claude_reported() {
+        let mut poller = StatusPoller::new();
+        poller
+            .evaluate(&resumed_ports(100, ps_with_claude(100)), &config())
+            .await;
+
+        let stale = format!("  100    1 -zsh\n  300  999 claude --session-id {SID}\n");
+        let ports = reporting(resumed_ports(100, stale), PANE_CLAUDE);
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].sid.as_deref(), Some(RESUMED_SID));
     }
 
     #[tokio::test]

@@ -134,6 +134,14 @@ impl ProcessMaps {
     pub fn has_sid(&self, sid: &str) -> bool {
         self.pid_to_sid.values().any(|s| s == sid)
     }
+
+    /// The claude launched with this sid, found anywhere in the snapshot (see [`Self::has_sid`]).
+    pub fn claude_pid_with_sid(&self, sid: &str) -> Option<i64> {
+        self.pid_to_sid
+            .iter()
+            .find(|(pid, s)| s.as_str() == sid && self.claude_pids.contains(pid))
+            .map(|(pid, _)| *pid)
+    }
 }
 
 /// Whether a ps `args` string is a running vitest *runner* process — the test-runner binary or its

@@ -166,7 +166,7 @@ impl HookEventStore {
     /// The sid the claude `claude_pid` in the terminal last reported (None if it never did).
     pub fn reported_claude_session(&self, cockpit_terminal_id: &str, claude_pid: i64) -> Option<String> {
         let map = self.reported_sessions.lock().unwrap();
-        map.get(cockpit_terminal_id)?
+        map.get(&cockpit_terminal_id.to_lowercase())?
             .get(&claude_pid)
             .map(|r| r.sid.clone())
     }

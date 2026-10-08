@@ -462,8 +462,9 @@ mod hooks_rest_tests {
     /// A process whose command is named `claude`, standing in for the claude a hook runs under.
     #[cfg(unix)]
     fn spawn_stand_in_claude(dir: &std::path::Path) -> std::process::Child {
+        // A link rather than a copy: nothing is written, so a concurrent fork cannot hold the file busy.
         let claude = dir.join("claude");
-        std::fs::copy("/bin/sleep", &claude).unwrap();
+        std::os::unix::fs::symlink("/bin/sleep", &claude).unwrap();
         std::process::Command::new(&claude).arg("30").spawn().unwrap()
     }
 
