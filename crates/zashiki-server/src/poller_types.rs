@@ -112,21 +112,15 @@ pub trait PollerPorts {
     fn last_hook_event(&self, _sid: &str) -> impl Future<Output = Option<HookEventAge>> + Send {
         async { None }
     }
-    /// The sid the claude in `cockpit_terminal_id` last reported through its hooks, which differs from
-    /// its launch-argument sid after an in-session `/resume` or `/clear`. Defaulted to None so stubs
-    /// that do not exercise it need not implement it.
-    fn current_conversation(
+    /// The sid the claude `claude_pid` in `cockpit_terminal_id` last reported through its hooks, which
+    /// differs from its launch-argument sid after an in-session `/resume` or `/clear`. Defaulted to
+    /// None so stubs that do not exercise it need not implement it.
+    fn reported_claude_session(
         &self,
         _cockpit_terminal_id: &str,
+        _claude_pid: i64,
     ) -> impl Future<Output = Option<String>> + Send {
         async { None }
-    }
-    /// Drops what [`Self::current_conversation`] reports, once the claude that reported it is gone.
-    fn forget_current_conversation(
-        &self,
-        _cockpit_terminal_id: &str,
-    ) -> impl Future<Output = ()> + Send {
-        async {}
     }
     /// How long ago each agent under `sid` reported stopping, matched against the subagent
     /// transcripts so a tray left drawn after its agents finished stops counting as one. Defaulted to

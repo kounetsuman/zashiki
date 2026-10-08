@@ -4,10 +4,11 @@
 //! [`crate::poller_types::PollerPorts::last_hook_event`] to feed
 //! [`zashiki_core::session_state::resolve_state`], and which background agents have reported
 //! stopping and when, read through [`crate::poller_types::PollerPorts::stopped_subagent_ages_sec`] to tell a
-//! scraped agent tray from a leftover render. It also keeps which Claude Session each Cockpit Terminal
-//! is on now, read through [`crate::poller_types::PollerPorts::current_conversation`]: an in-session
-//! `/resume` or `/clear` moves claude to another sid while its launch arguments keep the old one.
-//! The canonical spec is the `tests` module.
+//! scraped agent tray from a leftover render. It also keeps which Claude Session each claude in a
+//! Cockpit Terminal last reported, read through
+//! [`crate::poller_types::PollerPorts::reported_claude_session`]: an in-session `/resume` or `/clear`
+//! moves claude to another sid while its launch arguments keep the old one. The canonical spec is the
+//! `tests` module.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -50,18 +51,27 @@ struct StoppedAgents {
     touched_ms: u64,
 }
 
-/// A sid a Cockpit Terminal's hooks reported, with when they last did.
+/// The most Cockpit Terminals whose reported Claude Sessions are kept, and the most claude processes
+/// kept per terminal (one runs the terminal; others are claudes it started, such as `claude -p`).
+/// The least recently reported one goes first.
+const MAX_REPORTING_TERMINALS: usize = 512;
+const MAX_REPORTING_CLAUDES_PER_TERMINAL: usize = 16;
+
+/// The sid a claude process reported through its hooks, with when it last did.
 #[derive(Debug, Clone)]
-struct Conversation {
+struct ReportedSession {
     sid: String,
     at_ms: u64,
 }
+
+/// claude pid -> what it reported, for one Cockpit Terminal.
+type ReportingClaudes = HashMap<i64, ReportedSession>;
 
 #[derive(Default)]
 pub struct HookEventStore {
     inner: Mutex<HashMap<String, Recorded>>,
     stopped_agents: Mutex<HashMap<String, StoppedAgents>>,
-    conversations: Mutex<HashMap<String, Conversation>>,
+    reported_sessions: Mutex<HashMap<String, ReportingClaudes>>,
 }
 
 impl HookEventStore {
@@ -95,7 +105,7 @@ impl HookEventStore {
         let mut map = self.stopped_agents.lock().unwrap();
         let sid = sid.to_lowercase();
         if map.len() >= MAX_TRACKED_SIDS && !map.contains_key(&sid) {
-            evict_coldest(&mut map);
+            evict_oldest(&mut map, |agents: &StoppedAgents| Some(agents.touched_ms));
         }
         let agents = map.entry(sid).or_default();
         if agents.stops_ms.len() < MAX_AGENTS_PER_SID
@@ -132,47 +142,46 @@ impl HookEventStore {
 }
 
 impl HookEventStore {
-    /// Records that the claude in `cockpit_terminal_id` is now on `sid` (lowercased like every other sid
-    /// here). Holds at most [`MAX_TRACKED_SIDS`] terminals, dropping the one heard from least recently.
-    pub fn record_conversation(&self, cockpit_terminal_id: &str, sid: &str, now_ms: u64) {
-        let mut map = self.conversations.lock().unwrap();
-        if map.len() >= MAX_TRACKED_SIDS && !map.contains_key(cockpit_terminal_id) {
-            if let Some(oldest) = map
-                .iter()
-                .min_by_key(|(_, c)| c.at_ms)
-                .map(|(id, _)| id.clone())
-            {
-                map.remove(&oldest);
-            }
+    /// Records that the claude `claude_pid` in `cockpit_terminal_id` is now on `sid` (lowercased like
+    /// every other sid here).
+    pub fn record_claude_session(&self, cockpit_terminal_id: &str, claude_pid: i64, sid: &str, now_ms: u64) {
+        let mut map = self.reported_sessions.lock().unwrap();
+        if map.len() >= MAX_REPORTING_TERMINALS && !map.contains_key(cockpit_terminal_id) {
+            let last_report = |claudes: &ReportingClaudes| claudes.values().map(|r| r.at_ms).max();
+            evict_oldest(&mut map, last_report);
         }
-        map.insert(
-            cockpit_terminal_id.to_string(),
-            Conversation {
+        let claudes = map.entry(cockpit_terminal_id.to_string()).or_default();
+        if claudes.len() >= MAX_REPORTING_CLAUDES_PER_TERMINAL && !claudes.contains_key(&claude_pid) {
+            evict_oldest(claudes, |r: &ReportedSession| Some(r.at_ms));
+        }
+        claudes.insert(
+            claude_pid,
+            ReportedSession {
                 sid: sid.to_lowercase(),
                 at_ms: now_ms,
             },
         );
     }
 
-    /// The sid the terminal's hooks last reported (None if they never did since it was forgotten).
-    pub fn conversation(&self, cockpit_terminal_id: &str) -> Option<String> {
-        let map = self.conversations.lock().unwrap();
-        map.get(cockpit_terminal_id).map(|c| c.sid.clone())
-    }
-
-    /// Drops what the terminal's hooks reported, for when the claude that reported it is gone.
-    pub fn forget_conversation(&self, cockpit_terminal_id: &str) {
-        self.conversations.lock().unwrap().remove(cockpit_terminal_id);
+    /// The sid the claude `claude_pid` in the terminal last reported (None if it never did).
+    pub fn reported_claude_session(&self, cockpit_terminal_id: &str, claude_pid: i64) -> Option<String> {
+        let map = self.reported_sessions.lock().unwrap();
+        map.get(cockpit_terminal_id)?
+            .get(&claude_pid)
+            .map(|r| r.sid.clone())
     }
 }
 
-fn evict_coldest(map: &mut HashMap<String, StoppedAgents>) {
-    if let Some(coldest) = map
+fn evict_oldest<K: Clone + Eq + std::hash::Hash, V>(
+    map: &mut HashMap<K, V>,
+    reported_at: impl Fn(&V) -> Option<u64>,
+) {
+    if let Some(oldest) = map
         .iter()
-        .min_by_key(|(_, agents)| agents.touched_ms)
-        .map(|(sid, _)| sid.clone())
+        .min_by_key(|(_, v)| reported_at(v))
+        .map(|(k, _)| k.clone())
     {
-        map.remove(&coldest);
+        map.remove(&oldest);
     }
 }
 
@@ -185,27 +194,33 @@ mod tests {
     const TERMINAL: &str = "11111111-2222-4333-8444-555555555555";
 
     #[test]
-    fn conversation_is_the_latest_reported_sid_until_forgotten() {
+    fn each_claude_in_a_terminal_keeps_the_latest_session_it_reported() {
         let store = HookEventStore::new();
-        assert_eq!(store.conversation(TERMINAL), None);
-        store.record_conversation(TERMINAL, TERMINAL, 1000);
-        store.record_conversation(TERMINAL, &SID.to_uppercase(), 2000);
-        assert_eq!(store.conversation(TERMINAL).as_deref(), Some(SID));
-        store.forget_conversation(TERMINAL);
-        assert_eq!(store.conversation(TERMINAL), None);
+        assert_eq!(store.reported_claude_session(TERMINAL, 120), None);
+        store.record_claude_session(TERMINAL, 120, TERMINAL, 1000);
+        store.record_claude_session(TERMINAL, 120, &SID.to_uppercase(), 2000);
+        store.record_claude_session(TERMINAL, 150, TERMINAL, 3000);
+        assert_eq!(store.reported_claude_session(TERMINAL, 120).as_deref(), Some(SID));
+        assert_eq!(store.reported_claude_session(TERMINAL, 150).as_deref(), Some(TERMINAL));
+        assert_eq!(store.reported_claude_session("other", 120), None);
     }
 
     #[test]
-    fn conversations_are_bounded_by_dropping_the_least_recently_heard_terminal() {
+    fn reports_are_bounded_by_dropping_the_least_recently_reporting() {
         let store = HookEventStore::new();
-        for i in 0..MAX_TRACKED_SIDS as u64 {
-            store.record_conversation(&format!("t{i}"), SID, 1000 + i);
+        for pid in 0..MAX_REPORTING_CLAUDES_PER_TERMINAL as i64 {
+            store.record_claude_session(TERMINAL, pid, SID, 1000 + pid as u64);
         }
-        store.record_conversation("t0", SID, 9000);
-        store.record_conversation("new", SID, 9001);
-        assert!(store.conversation("t1").is_none());
-        assert!(store.conversation("t0").is_some());
-        assert!(store.conversation("new").is_some());
+        store.record_claude_session(TERMINAL, 0, SID, 9000);
+        store.record_claude_session(TERMINAL, 999, SID, 9001);
+        assert!(store.reported_claude_session(TERMINAL, 1).is_none());
+        assert!(store.reported_claude_session(TERMINAL, 0).is_some());
+
+        for i in 0..MAX_REPORTING_TERMINALS as u64 {
+            store.record_claude_session(&format!("t{i}"), 1, SID, 10_000 + i);
+        }
+        assert!(store.reported_claude_session(TERMINAL, 999).is_none());
+        assert!(store.reported_claude_session("t0", 1).is_some());
     }
 
     #[test]

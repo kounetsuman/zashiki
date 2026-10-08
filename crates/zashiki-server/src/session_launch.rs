@@ -459,11 +459,20 @@ mod tests {
             SID.to_lowercase()
         );
 
-        let shell_plan = NewSessionPlan {
-            sid: "shell-only".to_string(),
-            ..new_plan
-        };
-        assert_eq!(terminal_id_seen_by(plan_to_config(&shell_plan)).await, "");
+    }
+
+    #[test]
+    fn a_terminal_without_a_sid_drops_an_inherited_terminal_id() {
+        let mut cmd = CommandBuilder::new("/bin/sh");
+        cmd.env(COCKPIT_TERMINAL_ENV, "inherited");
+        terminal_env(&mut cmd, "shell:0:x");
+        assert_eq!(cmd.get_env(COCKPIT_TERMINAL_ENV), None);
+
+        terminal_env(&mut cmd, SID);
+        assert_eq!(
+            cmd.get_env(COCKPIT_TERMINAL_ENV).and_then(|v| v.to_str()),
+            Some(SID.to_lowercase().as_str())
+        );
     }
 
     #[test]

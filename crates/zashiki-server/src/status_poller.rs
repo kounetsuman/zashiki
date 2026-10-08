@@ -214,13 +214,13 @@ impl StatusPoller {
         config: &PollConfig,
     ) -> Option<CockpitTerminalInfo> {
         let picked = pick_pane(win, maps)?;
+        let claude_pid = picked.claude_pid;
         let cwd = picked.cwd;
         let pid = picked.pid;
         // A pane pid change means restore/kill rebuilt the window, so the remembered sid no longer
         // belongs to it and must not be recovered below.
         if self.last_pid.get(&win.cockpit_terminal_id) != Some(&pid) {
             self.last_sid.remove(&win.cockpit_terminal_id);
-            ports.forget_current_conversation(&win.cockpit_terminal_id).await;
         }
         // The pane-pid trace can miss a live claude when the recorded pane pid goes stale; fall back to
         // the last-seen sid only while its claude is still in the ps table (proof it is alive, not exited).
@@ -233,19 +233,17 @@ impl StatusPoller {
         if let Some(s) = &sid {
             self.last_sid.insert(win.cockpit_terminal_id.clone(), s.clone());
         }
-        // An in-session `/resume` or `/clear` moves claude to a sid its launch arguments never show;
-        // the terminal's hooks report it, and it holds only while that claude is still running.
-        let sid = match sid {
-            Some(launch_sid) => Some(
+        // An in-session `/resume` or `/clear` moves claude to a sid its launch arguments never show.
+        // Its hooks report it, and only what the claude running the pane reported counts: a relaunched
+        // claude has another pid, and a claude it started (`claude -p`) is not the pane's.
+        let sid = match (sid, claude_pid) {
+            (Some(launch_sid), Some(pid)) => Some(
                 ports
-                    .current_conversation(&win.cockpit_terminal_id)
+                    .reported_claude_session(&win.cockpit_terminal_id, pid)
                     .await
                     .unwrap_or(launch_sid),
             ),
-            None => {
-                ports.forget_current_conversation(&win.cockpit_terminal_id).await;
-                None
-            }
+            (sid, _) => sid,
         };
         let org = org_of_cwd(&cwd, &roots_ref(&config.repos_roots)).to_string();
 
@@ -570,7 +568,7 @@ mod tests {
         subagent_stops: HashMap<String, HashMap<String, f64>>,
         session_usages: HashMap<String, crate::jsonl::SessionUsageData>,
         active_models: HashMap<String, ModelReading>,
-        conversations: std::sync::Mutex<HashMap<String, String>>,
+        reported_sessions: HashMap<(String, i64), String>,
     }
 
     impl PollerPorts for FakePorts {
@@ -642,11 +640,10 @@ mod tests {
         async fn active_model(&self, sid: &str) -> Option<ModelReading> {
             self.active_models.get(sid).cloned()
         }
-        async fn current_conversation(&self, cockpit_terminal_id: &str) -> Option<String> {
-            self.conversations.lock().unwrap().get(cockpit_terminal_id).cloned()
-        }
-        async fn forget_current_conversation(&self, cockpit_terminal_id: &str) {
-            self.conversations.lock().unwrap().remove(cockpit_terminal_id);
+        async fn reported_claude_session(&self, cockpit_terminal_id: &str, claude_pid: i64) -> Option<String> {
+            self.reported_sessions
+                .get(&(cockpit_terminal_id.to_string(), claude_pid))
+                .cloned()
         }
     }
 
@@ -1663,53 +1660,44 @@ mod tests {
         ports
     }
 
-    fn report_conversation(ports: &FakePorts, sid: &str) {
+    /// `ps_with_claude` runs the pane's claude as pid 300.
+    const PANE_CLAUDE: i64 = 300;
+
+    fn reporting(mut ports: FakePorts, claude_pid: i64) -> FakePorts {
         ports
-            .conversations
-            .lock()
-            .unwrap()
-            .insert("@1".to_string(), sid.to_string());
+            .reported_sessions
+            .insert(("@1".to_string(), claude_pid), RESUMED_SID.to_string());
+        ports
     }
 
     #[tokio::test]
-    async fn a_conversation_the_hooks_report_replaces_the_launch_sid_while_claude_runs() {
-        let ports = resumed_ports(100, ps_with_claude(100));
+    async fn the_session_the_pane_claude_reports_replaces_its_launch_sid() {
         let mut poller = StatusPoller::new();
-        let (before, _) = poller.evaluate(&ports, &config()).await;
+        let (before, _) = poller
+            .evaluate(&resumed_ports(100, ps_with_claude(100)), &config())
+            .await;
         assert_eq!(before.sessions[0].sid.as_deref(), Some(SID));
 
-        report_conversation(&ports, RESUMED_SID);
+        let ports = reporting(resumed_ports(100, ps_with_claude(100)), PANE_CLAUDE);
         let (after, _) = poller.evaluate(&ports, &config()).await;
         assert_eq!(after.sessions[0].sid.as_deref(), Some(RESUMED_SID));
         assert_eq!(after.sessions[0].title.as_deref(), Some("再開した会話"));
     }
 
     #[tokio::test]
-    async fn a_relaunched_claude_drops_the_conversation_its_predecessor_reported() {
-        let ports = resumed_ports(100, ps_with_claude(100));
-        let mut poller = StatusPoller::new();
-        poller.evaluate(&ports, &config()).await;
-        report_conversation(&ports, RESUMED_SID);
-
-        let relaunched = resumed_ports(200, ps_with_claude(200));
-        *relaunched.conversations.lock().unwrap() = ports.conversations.lock().unwrap().clone();
-        let (snap, _) = poller.evaluate(&relaunched, &config()).await;
+    async fn a_session_reported_by_another_claude_is_not_the_pane_s() {
+        let ps = format!("{}  310  300 claude -p summarize\n", ps_with_claude(100));
+        let ports = reporting(resumed_ports(100, ps), 310);
+        let (snap, _) = StatusPoller::new().evaluate(&ports, &config()).await;
         assert_eq!(snap.sessions[0].sid.as_deref(), Some(SID));
-        assert!(relaunched.conversations.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn an_exited_claude_drops_the_conversation_it_reported() {
-        let ports = resumed_ports(100, ps_with_claude(100));
-        let mut poller = StatusPoller::new();
-        poller.evaluate(&ports, &config()).await;
-        report_conversation(&ports, RESUMED_SID);
-
-        let exited = resumed_ports(100, "  100    1 -zsh\n".to_string());
-        *exited.conversations.lock().unwrap() = ports.conversations.lock().unwrap().clone();
-        let (snap, _) = poller.evaluate(&exited, &config()).await;
-        assert_eq!(snap.sessions[0].sid, None);
-        assert!(exited.conversations.lock().unwrap().is_empty());
+    async fn a_relaunched_claude_does_not_inherit_its_predecessor_s_report() {
+        let relaunched = "  200    1 -zsh\n  301  200 claude --resume 0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f\n".to_string();
+        let ports = reporting(resumed_ports(200, relaunched), PANE_CLAUDE);
+        let (snap, _) = StatusPoller::new().evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].sid.as_deref(), Some(SID));
     }
 
     #[tokio::test]

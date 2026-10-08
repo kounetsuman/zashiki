@@ -142,12 +142,9 @@ impl PollerPorts for PtyPollerPorts {
         self.session_models.get(sid, now_ms())
     }
 
-    async fn current_conversation(&self, cockpit_terminal_id: &str) -> Option<String> {
-        self.hook_events.conversation(cockpit_terminal_id)
-    }
-
-    async fn forget_current_conversation(&self, cockpit_terminal_id: &str) {
-        self.hook_events.forget_conversation(cockpit_terminal_id);
+    async fn reported_claude_session(&self, cockpit_terminal_id: &str, claude_pid: i64) -> Option<String> {
+        self.hook_events
+            .reported_claude_session(cockpit_terminal_id, claude_pid)
     }
 }
 

@@ -527,6 +527,10 @@ pub struct HookEventRequest {
     /// zashiki sets at launch. Absent for a claude zashiki did not launch.
     #[serde(default)]
     pub cockpit_terminal_id: Option<String>,
+    /// The parent of the hook command's process, from which the server finds the claude that fired
+    /// it — the terminal's own, or one it started such as `claude -p`.
+    #[serde(default)]
+    pub hook_parent_pid: Option<i64>,
 }
 
 /// Response for `POST /api/hooks/event`. `ok` is always true.
