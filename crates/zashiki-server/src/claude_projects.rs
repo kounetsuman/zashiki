@@ -205,13 +205,13 @@ fn read_slices_sync(path: &Path, max_bytes: u64, now_ms_val: u64) -> Option<Slic
 /// Scans the lines appended since the last pass. Whole lines are read rather than the byte-capped head
 /// slice so a prompt inflated by inline base64 (pasted images) still parses, and a trailing line still
 /// being written is left for the next pass. A file shorter than the saved offset was replaced, so it is
-/// scanned again from the start.
+/// scanned again from the start. A failed read keeps what was found so far for the next pass.
 fn read_title_sync(
     path: &Path,
     max_chars: usize,
     scans: &Mutex<HashMap<PathBuf, TitleProgress>>,
 ) -> Option<TranscriptTitle> {
-    let mut file = fs::File::open(path).ok()?;
+    let file = fs::File::open(path).ok()?;
     let len = file.metadata().ok()?.len();
     let mut progress = scans
         .lock()
@@ -222,12 +222,14 @@ fn read_title_sync(
             offset: 0,
             scan: TitleScan::new(max_chars),
         });
-    file.seek(SeekFrom::Start(progress.offset)).ok()?;
     let mut reader = BufReader::new(file);
     let mut buf = Vec::new();
-    while !progress.scan.is_settled() {
+    let seeked = reader.seek(SeekFrom::Start(progress.offset)).is_ok();
+    while seeked && !progress.scan.is_settled() {
         buf.clear();
-        let read = reader.read_until(b'\n', &mut buf).ok()?;
+        let Ok(read) = reader.read_until(b'\n', &mut buf) else {
+            break;
+        };
         if buf.last() != Some(&b'\n') {
             break;
         }

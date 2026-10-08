@@ -14,6 +14,8 @@ use zashiki_core::session_state::{TranscriptEvent, TranscriptKind};
 const LAST_EVENT_TAIL_LINES: usize = 50;
 
 const INTERRUPT_MARKER: &str = "[Request interrupted by user]";
+/// Also covers the `[Request interrupted by user for tool use]` variant.
+const INTERRUPT_MARKER_PREFIX: &str = "[Request interrupted by user";
 
 /// Extracts text from message.content (arrays join only text elements with spaces; strings pass through as-is).
 fn text_of_content(content: &Value) -> String {
@@ -119,15 +121,16 @@ fn has_schedule_wakeup(event: &Value) -> bool {
     })
 }
 
-/// Strips meta tags emitted when running skills/slash commands (command-name keeps its inner /foo).
-/// The opening and closing local-command tags match independently.
+/// Strips meta tags emitted when running skills/slash commands (command-name keeps its inner /foo),
+/// along with whole local-command and `!` shell blocks, whose output may itself contain `<`.
+/// The opening and closing block tags match independently.
 fn strip_command_tags(text: &str) -> String {
     static COMMAND_ARGS: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"<command-args>[^<]*</command-args>").unwrap());
     static COMMAND_MESSAGE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"<command-message>[^<]*</command-message>").unwrap());
     static LOCAL_COMMAND: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"<local-command-(?:caveat|stdout|stderr)>[^<]*</local-command-(?:caveat|stdout|stderr)>")
+        Regex::new(r"(?s)<(?:local-command|bash)-(?:caveat|input|stdout|stderr)>.*?</(?:local-command|bash)-(?:caveat|input|stdout|stderr)>")
             .unwrap()
     });
     static COMMAND_NAME: LazyLock<Regex> =
@@ -149,10 +152,6 @@ pub enum TranscriptTitle {
 }
 
 impl TranscriptTitle {
-    pub fn is_final(&self) -> bool {
-        matches!(self, TranscriptTitle::Ai(_))
-    }
-
     pub fn into_text(self) -> String {
         match self {
             TranscriptTitle::Ai(t) | TranscriptTitle::TypedPrompt(t) | TranscriptTitle::CommandPrompt(t) => t,
@@ -162,7 +161,7 @@ impl TranscriptTitle {
 
 /// Collects title candidates from transcript lines fed in file order, so a reader can feed only the
 /// lines appended since its last pass.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TitleScan {
     max_chars: usize,
     ai: Option<String>,
@@ -239,14 +238,20 @@ fn prompt_line_title(line: &str, max_chars: usize) -> Option<(String, bool)> {
         return None;
     }
     let raw = content_of(&event).map(text_of_content).unwrap_or_default();
-    let title = collapse_whitespace(&strip_command_tags(&raw));
+    let raw = raw.trim_start();
+    if raw.starts_with(INTERRUPT_MARKER_PREFIX) {
+        return None;
+    }
+    let title = collapse_whitespace(&strip_command_tags(raw));
     if title.is_empty() {
         return None;
     }
-    Some((title.chars().take(max_chars).collect(), raw.contains("<command-name>")))
+    let is_command = raw.starts_with("<command-name>") || raw.starts_with("<command-message>");
+    Some((title.chars().take(max_chars).collect(), is_command))
 }
 
 /// The session title of a whole transcript (or any prefix of one).
+#[cfg(test)]
 pub fn transcript_title(jsonl: &str, max_chars: usize) -> Option<TranscriptTitle> {
     let mut scan = TitleScan::new(max_chars);
     jsonl.split('\n').for_each(|line| scan.feed(line));
@@ -880,6 +885,30 @@ mod tests {
             transcript_title(&content, 30),
             Some(TranscriptTitle::CommandPrompt("/food".to_string()))
         );
+    }
+
+    #[test]
+    fn interrupt_markers_and_shell_blocks_are_not_prompts() {
+        let content = [
+            user_line(json!("<command-name>/review</command-name> <command-message>review</command-message>")),
+            user_line(json!([{"type": "text", "text": "[Request interrupted by user]"}])),
+            user_line(json!("[Request interrupted by user for tool use]")),
+            user_line(json!("<bash-input>git status</bash-input>")),
+            user_line(json!("<bash-stdout>On branch main</bash-stdout><bash-stderr></bash-stderr>")),
+            user_line(json!("<local-command-stdout>tokens < 200k\n</local-command-stdout>")),
+            user_line(json!("本題")),
+        ]
+        .join("\n");
+        assert_eq!(
+            transcript_title(&content, 30),
+            Some(TranscriptTitle::TypedPrompt("本題".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_typed_prompt_quoting_a_command_tag_is_not_a_command() {
+        let content = user_line(json!("`<command-name>/x</command-name>` のパースを直して"));
+        assert!(matches!(transcript_title(&content, 30), Some(TranscriptTitle::TypedPrompt(_))));
     }
 
     #[test]
