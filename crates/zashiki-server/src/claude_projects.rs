@@ -12,18 +12,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::jsonl::{
-    background_task_ids, claude_project_dir_name, session_usage, subagent_tokens, user_line_title,
-    SessionUsageData,
+    background_task_ids, claude_project_dir_name, session_usage, subagent_tokens, SessionUsageData,
+    TitleScan, TranscriptTitle,
 };
 use crate::status_poller::Slices;
 use zashiki_core::session_state::SubagentTranscript;
 
 const DEFAULT_MAX_SLICE_BYTES: u64 = 64 * 1024;
-
-/// The first user event sits near the top of a transcript; stop scanning for its start past this much
-/// preamble so a transcript with no user event is not re-read whole every poll. This caps where the
-/// first user line may start, not its length — a matched user line is still read in full beyond it.
-const MAX_TITLE_SCAN_BYTES: u64 = 256 * 1024;
 
 type NowMs = Box<dyn Fn() -> u64 + Send + Sync>;
 
@@ -39,12 +34,22 @@ struct CachedTotal {
 /// Per-subagents-directory file totals, so a poll re-reads only the transcripts that grew.
 type SubagentTotals = Arc<Mutex<HashMap<PathBuf, HashMap<PathBuf, CachedTotal>>>>;
 
+/// How far a transcript has been scanned for its title. Transcripts only grow, so the next pass
+/// resumes at `offset` instead of re-reading the file until Claude Code writes its title.
+struct TitleProgress {
+    offset: u64,
+    scan: TitleScan,
+}
+
+type TitleScans = Arc<Mutex<HashMap<PathBuf, TitleProgress>>>;
+
 /// Adapter for reading jsonl slices plus subagents mtime.
 pub struct ClaudeProjectsAdapter {
     root_dir: PathBuf,
     max_slice_bytes: u64,
     now_ms: NowMs,
     subagent_totals: SubagentTotals,
+    title_scans: TitleScans,
 }
 
 fn real_now_ms() -> u64 {
@@ -72,6 +77,7 @@ impl ClaudeProjectsAdapter {
         Self {
             root_dir,
             subagent_totals: SubagentTotals::default(),
+            title_scans: TitleScans::default(),
             max_slice_bytes: DEFAULT_MAX_SLICE_BYTES,
             now_ms: Box::new(real_now_ms),
         }
@@ -91,19 +97,19 @@ impl ClaudeProjectsAdapter {
             .flatten()
     }
 
-    /// The first user-utterance title (None when the file is missing/unreadable or has no user event).
-    /// See `read_first_user_title_sync` for why this reads whole lines rather than the head slice.
-    pub async fn read_first_user_title(
+    /// The session title (None when the file is missing/unreadable or holds no title yet).
+    pub async fn read_title(
         &self,
         cwd: &str,
         sid: &str,
         max_chars: usize,
-    ) -> Option<String> {
+    ) -> Option<TranscriptTitle> {
         let path = self
             .root_dir
             .join(claude_project_dir_name(cwd))
             .join(format!("{sid}.jsonl"));
-        tokio::task::spawn_blocking(move || read_first_user_title_sync(&path, max_chars))
+        let scans = Arc::clone(&self.title_scans);
+        tokio::task::spawn_blocking(move || read_title_sync(&path, max_chars, &scans))
             .await
             .ok()
             .flatten()
@@ -196,29 +202,47 @@ fn read_slices_sync(path: &Path, max_bytes: u64, now_ms_val: u64) -> Option<Slic
     })
 }
 
-/// Returns the first user-utterance title, scanning whole lines from the file start (None at EOF, when
-/// the first user event is empty, or when no user event begins within `MAX_TITLE_SCAN_BYTES`). Reads a
-/// complete line rather than the byte-capped head slice so a first user line inflated past the slice cap
-/// by inline base64 (pasted images) still parses; `from_utf8_lossy` keeps the slice path's byte tolerance.
-fn read_first_user_title_sync(path: &Path, max_chars: usize) -> Option<String> {
-    let mut reader = BufReader::new(fs::File::open(path).ok()?);
+/// Scans the lines appended since the last pass. Whole lines are read rather than the byte-capped head
+/// slice so a prompt inflated by inline base64 (pasted images) still parses, and a trailing line still
+/// being written is left for the next pass. A file shorter than the saved offset was replaced, so it is
+/// scanned again from the start.
+fn read_title_sync(
+    path: &Path,
+    max_chars: usize,
+    scans: &Mutex<HashMap<PathBuf, TitleProgress>>,
+) -> Option<TranscriptTitle> {
+    let mut file = fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let mut progress = scans
+        .lock()
+        .ok()
+        .and_then(|mut scans| scans.remove(path))
+        .filter(|p| p.offset <= len)
+        .unwrap_or_else(|| TitleProgress {
+            offset: 0,
+            scan: TitleScan::new(max_chars),
+        });
+    file.seek(SeekFrom::Start(progress.offset)).ok()?;
+    let mut reader = BufReader::new(file);
     let mut buf = Vec::new();
-    let mut preamble_bytes = 0u64;
-    loop {
+    while !progress.scan.is_settled() {
         buf.clear();
         let read = reader.read_until(b'\n', &mut buf).ok()?;
-        if read == 0 {
-            return None;
+        if buf.last() != Some(&b'\n') {
+            break;
         }
-        let line = String::from_utf8_lossy(&buf);
-        if let Some(title) = user_line_title(line.trim_end_matches(['\r', '\n']), max_chars) {
-            return title;
-        }
-        preamble_bytes += read as u64;
-        if preamble_bytes > MAX_TITLE_SCAN_BYTES {
-            return None;
+        progress.offset += read as u64;
+        progress
+            .scan
+            .feed(String::from_utf8_lossy(&buf).trim_end_matches(['\r', '\n']));
+    }
+    let title = progress.scan.title();
+    if !progress.scan.is_settled() {
+        if let Ok(mut scans) = scans.lock() {
+            scans.insert(path.to_path_buf(), progress);
         }
     }
+    title
 }
 
 /// The agent id a subagent transcript is named for (`agent-<id>.jsonl`), which is the same id its
@@ -342,7 +366,7 @@ fn subagent_transcripts_sync(dir: &Path, now_ms_val: u64) -> Vec<SubagentTranscr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::jsonl::{first_user_title, last_user_or_assistant_event};
+    use crate::jsonl::{last_user_or_assistant_event, transcript_title};
     use filetime::{set_file_mtime, FileTime};
     use zashiki_core::session_state::TranscriptKind;
 
@@ -622,16 +646,27 @@ mod tests {
         let slices =
             read_slices_sync(&slices_path(tmp.path(), SID), 4096, BASE_SEC * 1000).unwrap();
         assert_eq!(
-            first_user_title(&slices.head, 30).as_deref(),
-            Some("最初の依頼タイトル")
+            transcript_title(&slices.head, 30),
+            Some(TranscriptTitle::TypedPrompt("最初の依頼タイトル".to_string()))
         );
         let ev = last_user_or_assistant_event(&slices.tail).expect("tail event");
         assert_eq!(ev.kind, TranscriptKind::User);
         assert!(!ev.interrupted);
     }
 
+    fn read_title_once(path: &Path) -> Option<TranscriptTitle> {
+        read_title_sync(path, 30, &Mutex::default())
+    }
+
+    fn append(path: &Path, text: &str) {
+        let mut file = fs::OpenOptions::new().append(true).open(path).unwrap();
+        std::io::Write::write_all(&mut file, text.as_bytes()).unwrap();
+    }
+
+    const AI_TITLE: &str = "{\"type\":\"ai-title\",\"aiTitle\":\"要約タイトル\"}\n";
+
     #[test]
-    fn first_user_title_survives_a_first_line_larger_than_the_slice_cap() {
+    fn title_survives_a_first_line_larger_than_the_slice_cap() {
         let tmp = tempfile::tempdir().unwrap();
         let meta: String = (0..80)
             .map(|_| format!("{{\"type\":\"summary\",\"summary\":\"{}\"}}\n", "s".repeat(180)))
@@ -645,42 +680,86 @@ mod tests {
         let head = read_slices_sync(&path, 64 * 1024, BASE_SEC * 1000)
             .unwrap()
             .head;
-        assert_eq!(first_user_title(&head, 30), None);
+        assert_eq!(transcript_title(&head, 30), None);
 
         assert_eq!(
-            read_first_user_title_sync(&path, 30).as_deref(),
-            Some("状態の正当性を確認")
+            read_title_once(&path),
+            Some(TranscriptTitle::TypedPrompt("状態の正当性を確認".to_string()))
         );
     }
 
     #[tokio::test]
-    async fn read_first_user_title_missing_transcript_is_none() {
+    async fn read_title_missing_transcript_is_none() {
         let tmp = tempfile::tempdir().unwrap();
         let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
-        assert!(adapter.read_first_user_title(CWD, SID, 30).await.is_none());
+        assert!(adapter.read_title(CWD, SID, 30).await.is_none());
     }
 
     #[test]
-    fn first_user_title_stops_at_an_empty_first_user_utterance() {
+    fn title_reads_past_an_empty_first_user_utterance() {
         let tmp = tempfile::tempdir().unwrap();
         let content = "{\"type\":\"summary\",\"summary\":\"s\"}\n{\"type\":\"user\",\"message\":{\"content\":\"\"}}\n{\"type\":\"user\",\"message\":{\"content\":\"後の依頼\"}}\n";
         let path = write_jsonl(tmp.path(), SID, content, BASE_SEC);
-        assert_eq!(read_first_user_title_sync(&path, 30), None);
+        assert_eq!(
+            read_title_once(&path),
+            Some(TranscriptTitle::TypedPrompt("後の依頼".to_string()))
+        );
     }
 
     #[test]
-    fn first_user_title_is_none_when_no_user_event_starts_within_the_scan_bound() {
+    fn a_later_pass_reads_only_the_appended_lines_and_picks_up_the_ai_title() {
         let tmp = tempfile::tempdir().unwrap();
-        let filler = format!(
-            "{{\"type\":\"summary\",\"summary\":\"{}\"}}\n",
-            "s".repeat(1024)
+        let path = write_jsonl(
+            tmp.path(),
+            SID,
+            "{\"type\":\"user\",\"message\":{\"content\":\"最初の依頼\"}}\n",
+            BASE_SEC,
         );
-        let preamble: String = std::iter::repeat(filler)
-            .take((MAX_TITLE_SCAN_BYTES as usize / 1024) + 8)
-            .collect();
-        let content = format!("{preamble}{{\"type\":\"user\",\"message\":{{\"content\":\"届かない\"}}}}\n");
-        let path = write_jsonl(tmp.path(), SID, &content, BASE_SEC);
-        assert_eq!(read_first_user_title_sync(&path, 30), None);
+        let scans = Mutex::default();
+        assert_eq!(
+            read_title_sync(&path, 30, &scans),
+            Some(TranscriptTitle::TypedPrompt("最初の依頼".to_string()))
+        );
+
+        append(&path, AI_TITLE);
+        assert_eq!(
+            read_title_sync(&path, 30, &scans),
+            Some(TranscriptTitle::Ai("要約タイトル".to_string()))
+        );
+        assert!(scans.lock().unwrap().is_empty(), "a settled transcript is not tracked any further");
+    }
+
+    #[test]
+    fn a_line_still_being_written_is_read_once_it_is_complete() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (written, rest) = AI_TITLE.split_at(20);
+        let path = write_jsonl(tmp.path(), SID, written, BASE_SEC);
+        let scans = Mutex::default();
+        assert_eq!(read_title_sync(&path, 30, &scans), None);
+
+        append(&path, rest);
+        assert_eq!(
+            read_title_sync(&path, 30, &scans),
+            Some(TranscriptTitle::Ai("要約タイトル".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_transcript_shorter_than_the_saved_offset_is_scanned_again_from_the_start() {
+        let tmp = tempfile::tempdir().unwrap();
+        let long_prompt = format!(
+            "{{\"type\":\"user\",\"message\":{{\"content\":\"{}\"}}}}\n",
+            "長".repeat(200)
+        );
+        let path = write_jsonl(tmp.path(), SID, &long_prompt, BASE_SEC);
+        let scans = Mutex::default();
+        read_title_sync(&path, 30, &scans);
+
+        fs::write(&path, AI_TITLE).unwrap();
+        assert_eq!(
+            read_title_sync(&path, 30, &scans),
+            Some(TranscriptTitle::Ai("要約タイトル".to_string()))
+        );
     }
 
     #[test]
@@ -743,6 +822,7 @@ mod tests {
         let adapter = ClaudeProjectsAdapter {
             root_dir: tmp.path().to_path_buf(),
             subagent_totals: SubagentTotals::default(),
+            title_scans: TitleScans::default(),
             max_slice_bytes: 64 * 1024,
             now_ms: Box::new(|| (BASE_SEC + 3) * 1000),
         };

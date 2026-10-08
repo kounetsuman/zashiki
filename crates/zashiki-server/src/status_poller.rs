@@ -14,7 +14,7 @@ use zashiki_core::session_state::{
     all_subagents_stopped, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
 
-use crate::jsonl::{last_user_or_assistant_event, loop_wakeup_pending};
+use crate::jsonl::{last_user_or_assistant_event, loop_wakeup_pending, TranscriptTitle};
 use crate::hooks::NotifyEvent;
 use crate::protocol::{CockpitTerminalInfo, NotifyKind, SessionUsage};
 use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
@@ -134,7 +134,7 @@ pub struct StatusPoller {
     /// fails to reach claude, this recovers the session as long as that sid is still live in the ps
     /// table (`ProcessMaps::has_sid`), so a stale pane pid does not misread a live session as no_claude.
     last_sid: HashMap<String, String>,
-    /// `cwd\0sid` → the first user-utterance title (cached since it is immutable).
+    /// `cwd\0sid` → the title Claude Code wrote for the session (cached since it never changes).
     title_cache: HashMap<String, String>,
 }
 
@@ -390,11 +390,11 @@ impl StatusPoller {
             title = match self.title_cache.get(key) {
                 Some(cached) => Some(cached.clone()),
                 None => {
-                    let fresh = ports.read_first_user_title(&cwd, sid, TITLE_MAX_CHARS).await;
-                    if let Some(t) = &fresh {
+                    let read = ports.read_title(&cwd, sid, TITLE_MAX_CHARS).await;
+                    if let Some(TranscriptTitle::Ai(t)) = &read {
                         self.title_cache.insert(key.clone(), t.clone());
                     }
-                    fresh
+                    read.map(TranscriptTitle::into_text)
                 }
             };
         }
@@ -515,7 +515,7 @@ impl StatusPoller {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::jsonl::first_user_title;
+    use crate::jsonl::transcript_title;
     use std::collections::{BTreeMap, HashSet};
 
     const SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
@@ -576,15 +576,15 @@ mod tests {
                     mtime_age_sec: s.mtime_age_sec,
                 })
         }
-        async fn read_first_user_title(
+        async fn read_title(
             &self,
             cwd: &str,
             sid: &str,
             max_chars: usize,
-        ) -> Option<String> {
+        ) -> Option<TranscriptTitle> {
             self.slices
                 .get(&format!("{cwd}\u{0}{sid}"))
-                .and_then(|s| first_user_title(&s.head, max_chars))
+                .and_then(|s| transcript_title(&s.head, max_chars))
         }
         async fn stopped_subagent_ages_sec(&self, sid: &str) -> HashMap<String, f64> {
             self.subagent_stops.get(sid).cloned().unwrap_or_default()
@@ -1603,10 +1603,8 @@ mod tests {
         assert_eq!(snap.sessions[0].state, "waiting_input");
     }
 
-    #[tokio::test]
-    async fn title_is_taken_from_first_user_and_cached() {
-        let head = r#"{"type":"user","message":{"content":"最初の依頼だよ"}}"#;
-        let ports = FakePorts {
+    fn titled_ports(head: &str) -> FakePorts {
+        FakePorts {
             windows: vec![window(
                 "@1",
                 "work",
@@ -1623,13 +1621,23 @@ mod tests {
                 },
             )]),
             ..Default::default()
-        };
+        }
+    }
+
+    #[tokio::test]
+    async fn first_prompt_titles_the_session_until_the_ai_title_replaces_it() {
+        let prompt = r#"{"type":"user","message":{"content":"最初の依頼だよ"}}"#;
+        let key = format!("/repos/charlie/app\u{0}{SID}");
         let mut poller = StatusPoller::new();
-        let (snap, _) = poller.evaluate(&ports, &config()).await;
-        assert_eq!(snap.sessions[0].title.as_deref(), Some("最初の依頼だよ"));
-        assert!(poller
-            .title_cache
-            .contains_key(&format!("/repos/charlie/app\u{0}{SID}")));
+
+        let (snap1, _) = poller.evaluate(&titled_ports(prompt), &config()).await;
+        assert_eq!(snap1.sessions[0].title.as_deref(), Some("最初の依頼だよ"));
+        assert!(!poller.title_cache.contains_key(&key));
+
+        let with_ai = format!("{prompt}\n{}", r#"{"type":"ai-title","aiTitle":"要約タイトル"}"#);
+        let (snap2, _) = poller.evaluate(&titled_ports(&with_ai), &config()).await;
+        assert_eq!(snap2.sessions[0].title.as_deref(), Some("要約タイトル"));
+        assert!(poller.title_cache.contains_key(&key));
     }
 
     #[tokio::test]
@@ -1753,7 +1761,7 @@ mod tests {
 
     #[tokio::test]
     async fn cached_title_survives_without_rereading_slices() {
-        let head = r#"{"type":"user","message":{"content":"最初の依頼"}}"#;
+        let head = r#"{"type":"ai-title","aiTitle":"最初の依頼"}"#;
         let key = format!("/repos/charlie/app\u{0}{SID}");
         let ports1 = FakePorts {
             windows: vec![window(

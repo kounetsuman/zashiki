@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::app_state::now_ms;
 use crate::claude_projects::ClaudeProjectsAdapter;
+use crate::jsonl::TranscriptTitle;
 use crate::hook_event_store::HookEventStore;
 use crate::lsof::LsofAdapter;
 use crate::poller_types::{HookEventAge, ModelReading};
@@ -105,10 +106,8 @@ impl PollerPorts for PtyPollerPorts {
         self.projects.read_slices(cwd, sid).await
     }
 
-    async fn read_first_user_title(&self, cwd: &str, sid: &str, max_chars: usize) -> Option<String> {
-        self.projects
-            .read_first_user_title(cwd, sid, max_chars)
-            .await
+    async fn read_title(&self, cwd: &str, sid: &str, max_chars: usize) -> Option<TranscriptTitle> {
+        self.projects.read_title(cwd, sid, max_chars).await
     }
 
     async fn subagent_transcripts(&self, cwd: &str, sid: &str) -> Vec<SubagentTranscript> {

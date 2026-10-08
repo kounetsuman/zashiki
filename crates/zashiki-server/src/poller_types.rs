@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
 
-use crate::jsonl::SessionUsageData;
+use crate::jsonl::{SessionUsageData, TranscriptTitle};
 use crate::protocol::CockpitTerminalInfo;
 use zashiki_core::session_state::SubagentTranscript;
 
@@ -68,14 +68,14 @@ pub trait PollerPorts {
     fn ps_snapshot(&self) -> impl Future<Output = String> + Send;
     /// The head/tail slices of jsonl (None if the sid is unresolved or unread).
     fn read_slices(&self, cwd: &str, sid: &str) -> impl Future<Output = Option<Slices>> + Send;
-    /// The first user-utterance title (None if unresolved). Defaulted to None so stubs that do not
-    /// exercise titling need not implement it.
-    fn read_first_user_title(
+    /// The session title (None if unresolved). Defaulted to None so stubs that do not exercise
+    /// titling need not implement it.
+    fn read_title(
         &self,
         _cwd: &str,
         _sid: &str,
         _max_chars: usize,
-    ) -> impl Future<Output = Option<String>> + Send {
+    ) -> impl Future<Output = Option<TranscriptTitle>> + Send {
         async { None }
     }
     /// Each subagents/*.jsonl file: the agent that wrote it and how long ago it last did (material
