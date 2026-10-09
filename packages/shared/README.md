@@ -17,7 +17,7 @@ For each module, **the source of truth for its behavior is the `*.test.ts` next 
 | `repos.ts` | `repos.conf`-compatible parser + org colors (`orgColor`/`resolveOrgColor`/`DEFAULT_ORG_PALETTE`) | `repos.test.ts` |
 | `git.ts` | `git status --porcelain` parser | `git.test.ts` |
 | `process-tree.ts` | Builds a process tree from ps output and looks up a pane by `--session-id` | `process-tree.test.ts` |
-| `save-file.ts` | TSV (`widx\twname\tcwd\tsid`) serialization/parsing for save/restore | `save-file.test.ts` |
+| `save-file.ts` | TSV (`widx\twname\tcwd\tsid[\tresumeSid]`) serialization/parsing for save/restore | `save-file.test.ts` |
 | `fs-tree.ts` | Explorer display formatting (`sortFsEntries`/`joinRepoRelative`/`fileIconKind`) | `fs-tree.test.ts` |
 | `search.ts` | ripgrep argument assembly / `rg --json` output parsing | `search.test.ts` |
 | `session-state.ts`/`flow.ts` | Pure logic for state transitions and flow control | the respective `*.test.ts` |

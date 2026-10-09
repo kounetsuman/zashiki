@@ -118,7 +118,7 @@ mod tests {
     }
 
     #[test]
-    fn a_window_that_switched_session_resumes_that_session_under_its_own_id() {
+    fn a_terminal_that_switched_session_resumes_that_session_under_its_own_id() {
         let mut switched = entry("a", "/tmp", UUID_A);
         switched.resume_sid = Some(UUID_B.to_string());
         let plan = plan_resume(&switched, "/bin/zsh", "/abs/claude", None).unwrap();

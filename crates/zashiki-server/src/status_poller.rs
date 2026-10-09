@@ -134,6 +134,9 @@ pub struct StatusPoller {
     /// fails to reach claude, this recovers the session as long as that sid is still live in the ps
     /// table (`ProcessMaps::has_sid`), so a stale pane pid does not misread a live session as no_claude.
     last_sid: HashMap<String, String>,
+    /// The Claude Session last handed to `remember_claude_session` per window, so the registry is
+    /// written only when it changes.
+    remembered_sid: HashMap<String, String>,
     /// `cwd\0sid` → the title Claude Code wrote for the session (cached since it never changes).
     title_cache: HashMap<String, String>,
 }
@@ -193,6 +196,7 @@ impl StatusPoller {
             .retain(|id, _| live.contains(id.as_str()));
         self.last_pid.retain(|id, _| live.contains(id.as_str()));
         self.last_sid.retain(|id, _| live.contains(id.as_str()));
+        self.remembered_sid.retain(|id, _| live.contains(id.as_str()));
 
         let snapshot = StateSnapshot {
             orgs: build_orgs(&config.repos_roots, &sessions),
@@ -248,7 +252,11 @@ impl StatusPoller {
             (sid, _) => sid,
         };
         if let Some(sid) = &sid {
-            ports.remember_claude_session(&win.cockpit_terminal_id, sid).await;
+            if self.remembered_sid.get(&win.cockpit_terminal_id) != Some(sid) {
+                ports.remember_claude_session(&win.cockpit_terminal_id, sid).await;
+                self.remembered_sid
+                    .insert(win.cockpit_terminal_id.clone(), sid.clone());
+            }
         }
         let org = org_of_cwd(&cwd, &roots_ref(&config.repos_roots)).to_string();
 

@@ -1,13 +1,18 @@
 // Parse/serialize the save/restore save file (saves/last.tsv).
-// The format is TSV of `widx\twname\tcwd\tsid`.
+// The format is TSV of `widx\twname\tcwd\tsid`, with an optional fifth `resumeSid` column.
 
-/** One line of the save file = one window. */
+/** One line of the save file = one Cockpit Terminal. */
 export interface SaveEntry {
   /** Window ordinal (for display/compatibility; not used when restoring). */
   widx: string;
   wname: string;
   cwd: string;
   sid: string;
+  /**
+   * The Claude Session to resume when it is no longer `sid` (an in-session `/resume` or `/clear`
+   * moved claude on). `sid` stays the terminal's id.
+   */
+  resumeSid?: string;
 }
 
 const UUID_RE =
@@ -25,8 +30,8 @@ export function isUuidSid(sid: string): boolean {
 
 /**
  * Parse the save file. Malformed lines (fewer than 4 columns, empty cwd/sid)
- * are skipped and extra columns are ignored (the same leniency as how
- * cw-restore reads it).
+ * are skipped, a fifth column is taken as `resumeSid` only when it is a UUID,
+ * and extra columns are ignored (the same leniency as how cw-restore reads it).
  */
 export function parseSaveFile(text: string): SaveEntry[] {
   const entries: SaveEntry[] = [];
@@ -34,9 +39,13 @@ export function parseSaveFile(text: string): SaveEntry[] {
     if (line.trim().length === 0) continue;
     const fields = line.split("\t");
     if (fields.length < 4) continue;
-    const [widx = "", wname = "", cwd = "", sid = ""] = fields;
+    const [widx = "", wname = "", cwd = "", sid = "", resumeSid = ""] = fields;
     if (cwd.length === 0 || sid.length === 0) continue;
-    entries.push({ widx, wname, cwd, sid });
+    entries.push(
+      isUuidSid(resumeSid)
+        ? { widx, wname, cwd, sid, resumeSid }
+        : { widx, wname, cwd, sid },
+    );
   }
   return entries;
 }
@@ -51,7 +60,9 @@ export function serializeSaveFile(entries: readonly SaveEntry[]): string {
   return entries
     .map(
       (e) =>
-        `${sanitizeField(e.widx)}\t${sanitizeField(e.wname)}\t${sanitizeField(e.cwd)}\t${sanitizeField(e.sid)}\n`,
+        `${sanitizeField(e.widx)}\t${sanitizeField(e.wname)}\t${sanitizeField(e.cwd)}\t${sanitizeField(e.sid)}${
+          e.resumeSid === undefined ? "" : `\t${sanitizeField(e.resumeSid)}`
+        }\n`,
     )
     .join("");
 }

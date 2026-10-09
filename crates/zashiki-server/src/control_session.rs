@@ -264,7 +264,7 @@ fn relaunch_entry(id: &str, meta: &SessionMeta) -> SaveEntry {
         wname: meta.wname.clone(),
         cwd: meta.cwd.clone(),
         sid: id.to_string(),
-        resume_sid: Some(meta.sid_to_resume(id).to_string()),
+        resume_sid: meta.claude_session.clone().filter(|s| is_uuid_sid(s)),
     }
 }
 
@@ -293,6 +293,16 @@ pub(crate) async fn restart_in_place(
         return RestartOutcome::CwdMissing;
     }
     let cwd = meta.cwd.clone();
+    // Read now rather than taken from the caller: an account-switch pass holds metas read before a long
+    // run of restarts, and the session may have moved on since.
+    let claude_session = match services.sessions.meta(id).await {
+        Some(current) => current.claude_session,
+        None => meta.claude_session.clone(),
+    };
+    let meta = &SessionMeta {
+        claude_session,
+        ..meta.clone()
+    };
     let entry = relaunch_entry(id, meta);
     // `plan_resume` declines only a non-UUID sid, which the check above already refused.
     let plan = crate::session_restore::plan_resume(&entry, shell, claude, settings)
@@ -403,6 +413,9 @@ mod tests {
         let entry = relaunch_entry(id, &meta);
         assert_eq!(entry.sid, id);
         assert_eq!(entry.sid_to_resume(), switched);
+
+        meta.claude_session = Some("not-a-uuid".to_string());
+        assert_eq!(relaunch_entry(id, &meta).sid_to_resume(), id);
     }
 
     const SID: &str = "579fa8cf-4901-45cb-b9ec-17e229231a37";

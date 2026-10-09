@@ -171,6 +171,21 @@ describe("serializeSaveFile", () => {
     ];
     expect(parseSaveFile(serializeSaveFile(entries))).toEqual(entries);
   });
+
+  it("round-trips the session a terminal switched to as a fifth column", () => {
+    const line =
+      "1\ta\t/tmp/a\t11111111-1111-1111-1111-111111111111\t22222222-2222-2222-2222-222222222222\n";
+    const entries = parseSaveFile(line);
+    expect(entries[0]?.resumeSid).toBe("22222222-2222-2222-2222-222222222222");
+    expect(serializeSaveFile(entries)).toBe(line);
+  });
+
+  it("ignores a fifth column that is not a UUID", () => {
+    const entries = parseSaveFile(
+      "1\ta\t/tmp/a\t11111111-1111-1111-1111-111111111111\textra\n",
+    );
+    expect(entries[0]).not.toHaveProperty("resumeSid");
+  });
 });
 
 describe("isUuidSid", () => {

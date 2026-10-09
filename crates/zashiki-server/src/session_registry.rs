@@ -67,12 +67,6 @@ pub struct SessionMeta {
     pub claude_session: Option<String>,
 }
 
-impl SessionMeta {
-    /// The Claude Session a relaunch of terminal `id` resumes.
-    pub fn sid_to_resume<'a>(&'a self, id: &'a str) -> &'a str {
-        self.claude_session.as_deref().unwrap_or(id)
-    }
-}
 
 /// A map of id → single-owner PTY session (plus meta).
 struct Entry {
@@ -152,7 +146,11 @@ impl SessionRegistry {
     }
 
     /// Records the Claude Session seen running in terminal `id` (nothing if `id` is not registered).
+    /// Only a UUID is kept, since a relaunch passes it to `claude --resume`.
     pub async fn remember_claude_session(&self, id: &str, sid: &str) {
+        if !zashiki_core::save_file::is_uuid_sid(sid) {
+            return;
+        }
         if let Some(entry) = self.sessions.lock().await.get_mut(id) {
             if entry.meta.claude_session.as_deref() != Some(sid) {
                 entry.meta.claude_session = Some(sid.to_string());

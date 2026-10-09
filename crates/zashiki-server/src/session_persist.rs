@@ -1,9 +1,10 @@
 //! Save/restore usecase for the session list (owned mode).
 //!
 //! Implements `POST /api/sessions/save` / `/restore` on the owned-mode `SessionRegistry`.
-//! **The registry id itself is the sid (UUID)** claude was launched with, and meta holds wname/cwd plus the
-//! Claude Session the terminal was last seen on (which differs after an in-session `/resume`), so no
-//! process-tree walk is needed.
+//! **The registry id is the sid (UUID) the terminal was created with** and never changes. meta holds
+//! wname/cwd plus the Claude Session the terminal was last seen on, which a relaunch resumes and which
+//! differs from the id once an in-session `/resume` or `/clear` moved claude on. No process-tree walk is
+//! needed.
 //! The destructive sequence (backup → remove all → rebuild) assumes it is serialized within the server (`persist_lock`).
 //! The save format (`saves/last.tsv` = `widx\twname\tcwd\tsid[\tresume_sid]` TSV) reuses [`zashiki_core::save_file`].
 //! The source of truth for behavior is the `tests` at the end.
@@ -821,7 +822,7 @@ mod tests {
             .await
             .unwrap();
         let meta_a = reg2.meta(UUID_A).await.unwrap();
-        assert_eq!(meta_a.sid_to_resume(UUID_A), SWITCHED);
+        assert_eq!(meta_a.claude_session.as_deref(), Some(SWITCHED));
         assert_eq!(reg2.meta(UUID_B).await.unwrap().claude_session, None);
 
         cleanup(&reg2).await;

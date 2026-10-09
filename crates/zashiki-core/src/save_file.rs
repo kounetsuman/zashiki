@@ -10,7 +10,7 @@ pub struct SaveEntry {
     pub cwd: String,
     pub sid: String,
     /// The Claude Session to resume when it is no longer `sid`: an in-session `/resume` or `/clear`
-    /// moved the window's claude to another one. `sid` stays the window's id.
+    /// moved the Cockpit Terminal's claude to another one. `sid` stays the terminal's id.
     pub resume_sid: Option<String>,
 }
 
@@ -147,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn without_a_uuid_fifth_column_the_window_resumes_its_own_sid() {
+    fn without_a_uuid_fifth_column_the_terminal_resumes_its_own_sid() {
         let entries = parse_save_file("1\ta\t/tmp/a\t11111111-1111-1111-1111-111111111111\textra\n");
         assert_eq!(entries[0].resume_sid, None);
         assert_eq!(entries[0].sid_to_resume(), "11111111-1111-1111-1111-111111111111");
