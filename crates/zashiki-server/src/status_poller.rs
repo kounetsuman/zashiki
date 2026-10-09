@@ -134,6 +134,9 @@ pub struct StatusPoller {
     /// fails to reach claude, this recovers the session as long as that sid is still live in the ps
     /// table (`ProcessMaps::has_sid`), so a stale pane pid does not misread a live session as no_claude.
     last_sid: HashMap<String, String>,
+    /// The Claude Session last handed to `remember_claude_session` per Cockpit Terminal, so the registry is
+    /// written only when it changes.
+    remembered_sid: HashMap<String, String>,
     /// `cwd\0sid` → the title Claude Code wrote for the session (cached since it never changes).
     title_cache: HashMap<String, String>,
 }
@@ -193,6 +196,7 @@ impl StatusPoller {
             .retain(|id, _| live.contains(id.as_str()));
         self.last_pid.retain(|id, _| live.contains(id.as_str()));
         self.last_sid.retain(|id, _| live.contains(id.as_str()));
+        self.remembered_sid.retain(|id, _| live.contains(id.as_str()));
 
         let snapshot = StateSnapshot {
             orgs: build_orgs(&config.repos_roots, &sessions),
@@ -247,6 +251,13 @@ impl StatusPoller {
             ),
             (sid, _) => sid,
         };
+        if let Some(sid) = &sid {
+            if self.remembered_sid.get(&win.cockpit_terminal_id) != Some(sid) {
+                ports.remember_claude_session(&win.cockpit_terminal_id, sid).await;
+                self.remembered_sid
+                    .insert(win.cockpit_terminal_id.clone(), sid.clone());
+            }
+        }
         let org = org_of_cwd(&cwd, &roots_ref(&config.repos_roots)).to_string();
 
         let title_key = sid.as_ref().map(|s| format!("{cwd}\u{0}{s}"));
@@ -571,6 +582,7 @@ mod tests {
         session_usages: HashMap<String, crate::jsonl::SessionUsageData>,
         active_models: HashMap<String, ModelReading>,
         reported_sessions: HashMap<(String, i64), String>,
+        remembered_sessions: std::sync::Mutex<Vec<(String, String)>>,
     }
 
     impl PollerPorts for FakePorts {
@@ -641,6 +653,12 @@ mod tests {
         }
         async fn active_model(&self, sid: &str) -> Option<ModelReading> {
             self.active_models.get(sid).cloned()
+        }
+        async fn remember_claude_session(&self, cockpit_terminal_id: &str, sid: &str) {
+            self.remembered_sessions
+                .lock()
+                .unwrap()
+                .push((cockpit_terminal_id.to_string(), sid.to_string()));
         }
         async fn reported_claude_session(&self, cockpit_terminal_id: &str, claude_pid: i64) -> Option<String> {
             self.reported_sessions
@@ -1684,6 +1702,11 @@ mod tests {
         let (after, _) = poller.evaluate(&ports, &config()).await;
         assert_eq!(after.sessions[0].sid.as_deref(), Some(RESUMED_SID));
         assert_eq!(after.sessions[0].title.as_deref(), Some("再開した会話"));
+        assert_eq!(
+            ports.remembered_sessions.lock().unwrap().last(),
+            Some(&("@1".to_string(), RESUMED_SID.to_string())),
+            "the session a relaunch resumes follows it too"
+        );
     }
 
     #[tokio::test]

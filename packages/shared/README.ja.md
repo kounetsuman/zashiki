@@ -17,7 +17,7 @@
 | `repos.ts` | `repos.conf` 互換パーサ + org 配色（`orgColor`/`resolveOrgColor`/`DEFAULT_ORG_PALETTE`） | `repos.test.ts` |
 | `git.ts` | `git status --porcelain` パーサ | `git.test.ts` |
 | `process-tree.ts` | ps 出力からプロセス木を組み `--session-id` でペインを引く | `process-tree.test.ts` |
-| `save-file.ts` | save/restore の TSV（`widx\twname\tcwd\tsid`）シリアライズ/パース | `save-file.test.ts` |
+| `save-file.ts` | save/restore の TSV（`widx\twname\tcwd\tsid[\tresumeSid]`）シリアライズ/パース | `save-file.test.ts` |
 | `fs-tree.ts` | explorer 表示整形（`sortFsEntries`/`joinRepoRelative`/`fileIconKind`） | `fs-tree.test.ts` |
 | `search.ts` | ripgrep 引数組み立て・`rg --json` 出力パース | `search.test.ts` |
 | `session-state.ts`/`flow.ts` | 状態遷移・フロー制御の純ロジック | 各 `*.test.ts` |

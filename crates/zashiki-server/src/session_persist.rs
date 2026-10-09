@@ -1,9 +1,12 @@
 //! Save/restore usecase for the session list (owned mode).
 //!
 //! Implements `POST /api/sessions/save` / `/restore` on the owned-mode `SessionRegistry`.
-//! **The registry id itself is the sid (UUID)** and meta holds wname/cwd, so no process-tree walk is needed.
+//! **The registry id is the sid (UUID) the terminal was created with** and never changes. meta holds
+//! wname/cwd plus the Claude Session the terminal was last seen on, which a relaunch resumes and which
+//! differs from the id once an in-session `/resume` or `/clear` moved claude on. No process-tree walk is
+//! needed.
 //! The destructive sequence (backup → remove all → rebuild) assumes it is serialized within the server (`persist_lock`).
-//! The save format (`saves/last.tsv` = `widx\twname\tcwd\tsid` TSV) reuses [`zashiki_core::save_file`].
+//! The save format (`saves/last.tsv` = `widx\twname\tcwd\tsid[\tresume_sid]` TSV) reuses [`zashiki_core::save_file`].
 //! The source of truth for behavior is the `tests` at the end.
 
 use std::fs;
@@ -74,11 +77,15 @@ async fn collect_entries(registry: &SessionRegistry) -> (Vec<SaveEntry>, Vec<Str
     let mut skipped = Vec::new();
     for (i, (id, _session, meta)) in registry.entries().await.into_iter().enumerate() {
         if is_uuid_sid(&id) {
+            let resume_sid = meta
+                .claude_session
+                .filter(|s| *s != id && is_uuid_sid(s));
             entries.push(SaveEntry {
                 widx: (i + 1).to_string(),
                 wname: meta.wname,
                 cwd: meta.cwd,
                 sid: id,
+                resume_sid,
             });
         } else {
             skipped.push(meta.wname);
@@ -178,6 +185,7 @@ async fn rebuild(
         let meta = SessionMeta {
             cwd: cwd.clone(),
             wname: entry.wname.clone(),
+            claude_session: entry.resume_sid.as_ref().map(|s| s.to_lowercase()),
         };
         let (id, config) = if launch_claude && is_uuid_sid(&entry.sid) {
             let mut plan = plan_resume(entry, shell, &claude, settings).expect("uuid sid plans a resume");
@@ -365,6 +373,7 @@ mod tests {
             SessionMeta {
                 cwd: cwd.to_string(),
                 wname: wname.to_string(),
+                claude_session: None,
             },
         )
         .await
@@ -785,6 +794,36 @@ mod tests {
             .unwrap();
         assert_eq!(out.restored, 2);
         assert_eq!(reg2.list().await, vec![UUID_B.to_string(), UUID_A.to_string()]);
+
+        cleanup(&reg2).await;
+    }
+
+    /// A terminal moved to another Claude Session by an in-session `/resume` keeps its id across a save
+    /// and restore, and comes back on the session it moved to.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_switched_session_survives_save_and_restore_under_the_same_terminal() {
+        const SWITCHED: &str = "99999999-8888-4777-8666-555555555555";
+        let dir = tempfile::tempdir().unwrap();
+        let reg1 = SessionRegistry::new();
+        seed(&reg1, UUID_A, "alpha", "/tmp").await;
+        seed(&reg1, UUID_B, "beta", "/tmp").await;
+        reg1.remember_claude_session(UUID_A, SWITCHED).await;
+        reg1.remember_claude_session(UUID_B, UUID_B).await;
+        save_sessions(&reg1, dir.path()).await.unwrap();
+        cleanup(&reg1).await;
+
+        let saved = std::fs::read_to_string(dir.path().join("last.tsv")).unwrap();
+        assert!(saved.contains(&format!("{UUID_A}\t{SWITCHED}\n")), "{saved}");
+        assert!(saved.contains(&format!("{UUID_B}\n")), "{saved}");
+
+        let reg2 = SessionRegistry::new();
+        restore_sessions(&reg2, dir.path(), None, true, "/bin/sh", None)
+            .await
+            .unwrap();
+        let meta_a = reg2.meta(UUID_A).await.unwrap();
+        assert_eq!(meta_a.claude_session.as_deref(), Some(SWITCHED));
+        assert_eq!(reg2.meta(UUID_B).await.unwrap().claude_session, None);
 
         cleanup(&reg2).await;
     }

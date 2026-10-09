@@ -558,6 +558,7 @@ mod hooks_rest_tests {
                 SessionMeta {
                     cwd: "/tmp".to_string(),
                     wname: "repo-a".to_string(),
+                    claude_session: None,
                 },
             )
             .await
@@ -641,6 +642,7 @@ mod hooks_rest_tests {
                 SessionMeta {
                     cwd: "/tmp".to_string(),
                     wname: "repo-a".to_string(),
+                    claude_session: None,
                 },
             )
             .await

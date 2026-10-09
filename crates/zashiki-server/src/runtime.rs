@@ -294,6 +294,7 @@ mod tests {
                 SessionMeta {
                     cwd: "/repos/charlie".to_string(),
                     wname: "charlie".to_string(),
+                    claude_session: None,
                 },
             )
             .await

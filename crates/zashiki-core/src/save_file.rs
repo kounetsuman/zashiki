@@ -1,7 +1,7 @@
 //! Parse/serialize the save/restore save file (`saves/last.tsv`).
-//! The format is TSV of `widx\twname\tcwd\tsid`.
+//! The format is TSV of `widx\twname\tcwd\tsid`, with an optional fifth `resume_sid` column.
 
-/// One line of the save file = one window.
+/// One line of the save file = one Cockpit Terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveEntry {
     /// Window ordinal (for display / compatibility; not used during restore).
@@ -9,6 +9,16 @@ pub struct SaveEntry {
     pub wname: String,
     pub cwd: String,
     pub sid: String,
+    /// The Claude Session to resume when it is no longer `sid`: an in-session `/resume` or `/clear`
+    /// moved the Cockpit Terminal's claude to another one. `sid` stays the terminal's id.
+    pub resume_sid: Option<String>,
+}
+
+impl SaveEntry {
+    /// The Claude Session a restore resumes.
+    pub fn sid_to_resume(&self) -> &str {
+        self.resume_sid.as_deref().unwrap_or(&self.sid)
+    }
 }
 
 /// Whether it has the UUID shape (`8-4-4-4-12` hex with fixed dash positions). Uppercase is also allowed.
@@ -41,8 +51,9 @@ pub fn is_uuid_sid(sid: &str) -> bool {
     is_uuid_shape(sid.as_bytes())
 }
 
-/// Parses the save file. Broken lines (fewer than 4 columns, empty cwd/sid) are skipped, and
-/// surplus columns are ignored (the same leniency as how cw-restore reads it).
+/// Parses the save file. Broken lines (fewer than 4 columns, empty cwd/sid) are skipped, a fifth column
+/// is taken as `resume_sid` only when it is a UUID, and surplus columns are ignored (the same leniency
+/// as how cw-restore reads it).
 pub fn parse_save_file(text: &str) -> Vec<SaveEntry> {
     let mut entries = Vec::new();
     for line in text.split('\n') {
@@ -62,6 +73,10 @@ pub fn parse_save_file(text: &str) -> Vec<SaveEntry> {
             wname: wname.to_string(),
             cwd: cwd.to_string(),
             sid: sid.to_string(),
+            resume_sid: fields
+                .get(4)
+                .filter(|s| is_uuid_sid(s))
+                .map(|s| s.to_string()),
         });
     }
     entries
@@ -97,6 +112,10 @@ pub fn serialize_save_file(entries: &[SaveEntry]) -> String {
         out.push_str(&sanitize_field(&e.cwd));
         out.push('\t');
         out.push_str(&sanitize_field(&e.sid));
+        if let Some(resume_sid) = &e.resume_sid {
+            out.push('\t');
+            out.push_str(&sanitize_field(resume_sid));
+        }
         out.push('\n');
     }
     out
@@ -112,7 +131,26 @@ mod tests {
             wname: wname.to_string(),
             cwd: cwd.to_string(),
             sid: sid.to_string(),
+            resume_sid: None,
         }
+    }
+
+    const RESUMED: &str = "22222222-2222-2222-2222-222222222222";
+
+    #[test]
+    fn a_fifth_column_names_the_session_to_resume_and_round_trips() {
+        let line = format!("1\ta\t/tmp/a\t11111111-1111-1111-1111-111111111111\t{RESUMED}\n");
+        let entries = parse_save_file(&line);
+        assert_eq!(entries[0].resume_sid.as_deref(), Some(RESUMED));
+        assert_eq!(entries[0].sid_to_resume(), RESUMED);
+        assert_eq!(serialize_save_file(&entries), line);
+    }
+
+    #[test]
+    fn without_a_uuid_fifth_column_the_terminal_resumes_its_own_sid() {
+        let entries = parse_save_file("1\ta\t/tmp/a\t11111111-1111-1111-1111-111111111111\textra\n");
+        assert_eq!(entries[0].resume_sid, None);
+        assert_eq!(entries[0].sid_to_resume(), "11111111-1111-1111-1111-111111111111");
     }
 
     #[test]
