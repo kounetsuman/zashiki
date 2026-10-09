@@ -67,7 +67,6 @@ pub struct SessionMeta {
     pub claude_session: Option<String>,
 }
 
-
 /// A map of id → single-owner PTY session (plus meta).
 struct Entry {
     session: Arc<PtySession>,

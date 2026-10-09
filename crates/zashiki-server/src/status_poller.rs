@@ -134,7 +134,7 @@ pub struct StatusPoller {
     /// fails to reach claude, this recovers the session as long as that sid is still live in the ps
     /// table (`ProcessMaps::has_sid`), so a stale pane pid does not misread a live session as no_claude.
     last_sid: HashMap<String, String>,
-    /// The Claude Session last handed to `remember_claude_session` per window, so the registry is
+    /// The Claude Session last handed to `remember_claude_session` per Cockpit Terminal, so the registry is
     /// written only when it changes.
     remembered_sid: HashMap<String, String>,
     /// `cwd\0sid` → the title Claude Code wrote for the session (cached since it never changes).

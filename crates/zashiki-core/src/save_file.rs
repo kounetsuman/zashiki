@@ -1,7 +1,7 @@
 //! Parse/serialize the save/restore save file (`saves/last.tsv`).
 //! The format is TSV of `widx\twname\tcwd\tsid`, with an optional fifth `resume_sid` column.
 
-/// One line of the save file = one window.
+/// One line of the save file = one Cockpit Terminal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SaveEntry {
     /// Window ordinal (for display / compatibility; not used during restore).
