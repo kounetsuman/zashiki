@@ -142,6 +142,12 @@ impl PollerPorts for PtyPollerPorts {
         self.session_models.get(sid, now_ms())
     }
 
+    async fn remember_claude_session(&self, cockpit_terminal_id: &str, sid: &str) {
+        self.registry
+            .remember_claude_session(cockpit_terminal_id, sid)
+            .await;
+    }
+
     async fn reported_claude_session(&self, cockpit_terminal_id: &str, claude_pid: i64) -> Option<String> {
         self.hook_events
             .reported_claude_session(cockpit_terminal_id, claude_pid)
@@ -179,6 +185,7 @@ mod tests {
                 SessionMeta {
                     cwd: cwd.to_string(),
                     wname: id.to_string(),
+                    claude_session: None,
                 },
             )
             .await

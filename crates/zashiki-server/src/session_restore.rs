@@ -20,16 +20,16 @@ use crate::pty_host::PtyConfig;
 /// A launch plan for resuming one entry (pure data; makes it easy to test before building the CommandBuilder).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResumePlan {
-    /// The sid being resumed, which is also the id of the Cockpit Terminal it is resumed into.
-    pub sid: String,
+    /// The Cockpit Terminal the session is resumed into.
+    pub cockpit_terminal_id: String,
     pub program: String,
     pub args: Vec<String>,
     pub cwd: String,
 }
 
-/// Builds a resume launch plan from a save entry (pure function). Returns `None` if the sid is not a UUID
-/// (claude is not launched). It launches `<claude> --resume <sid>` via the shell, **falling back to a fresh
-/// session with the same sid if resume fails** and then to the shell after claude exits (see
+/// Builds a resume launch plan from a save entry (pure function). Returns `None` if the sid or the session to
+/// resume is not a UUID (claude is not launched). It launches `<claude> --resume <session to resume>` via the
+/// shell, **falling back to a fresh session with the same id if resume fails** and then to the shell after claude exits (see
 /// [`crate::session_launch::claude_resume_payload`]). Pass a resolved absolute path as `claude_program` to guard
 /// against a thin PATH. UUID validation of the sid also defends against mixing arbitrary strings into a shell
 /// command ([`is_uuid_sid`]). cwd resolution is done by the caller (the rebuild in [`crate::session_persist`]).
@@ -39,15 +39,19 @@ pub fn plan_resume(
     claude_program: &str,
     settings: Option<&str>,
 ) -> Option<ResumePlan> {
-    if !is_uuid_sid(&entry.sid) {
+    if !is_uuid_sid(&entry.sid) || !is_uuid_sid(entry.sid_to_resume()) {
         return None;
     }
     Some(ResumePlan {
-        sid: entry.sid.to_lowercase(),
+        cockpit_terminal_id: entry.sid.to_lowercase(),
         program: shell.to_string(),
         args: vec![
             "-lc".to_string(),
-            crate::session_launch::claude_resume_payload(claude_program, &entry.sid, settings),
+            crate::session_launch::claude_resume_payload(
+                claude_program,
+                entry.sid_to_resume(),
+                settings,
+            ),
         ],
         cwd: entry.cwd.clone(),
     })
@@ -60,7 +64,7 @@ pub fn plan_to_config(plan: &ResumePlan) -> PtyConfig {
         cmd.arg(arg);
     }
     cmd.cwd(&plan.cwd);
-    crate::session_launch::terminal_env(&mut cmd, &plan.sid);
+    crate::session_launch::terminal_env(&mut cmd, &plan.cockpit_terminal_id);
     PtyConfig::new(cmd)
 }
 
@@ -109,7 +113,21 @@ mod tests {
             wname: wname.to_string(),
             cwd: cwd.to_string(),
             sid: sid.to_string(),
+            resume_sid: None,
         }
+    }
+
+    #[test]
+    fn a_window_that_switched_session_resumes_that_session_under_its_own_id() {
+        let mut switched = entry("a", "/tmp", UUID_A);
+        switched.resume_sid = Some(UUID_B.to_string());
+        let plan = plan_resume(&switched, "/bin/zsh", "/abs/claude", None).unwrap();
+        assert_eq!(plan.cockpit_terminal_id, UUID_A);
+        assert!(plan.args[1].contains(&format!("--resume {UUID_B}")), "{}", plan.args[1]);
+        assert!(!plan.args[1].contains(UUID_A), "{}", plan.args[1]);
+
+        switched.resume_sid = Some("not-a-uuid".to_string());
+        assert!(plan_resume(&switched, "/bin/zsh", "/abs/claude", None).is_none());
     }
 
     const UUID_A: &str = "579fa8cf-4901-45cb-b9ec-17e229231a37";

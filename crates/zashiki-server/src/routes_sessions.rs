@@ -246,6 +246,7 @@ mod sessions_persist_rest_tests {
                 SessionMeta {
                     cwd: "/tmp".to_string(),
                     wname: "alpha".to_string(),
+                    claude_session: None,
                 },
             )
             .await

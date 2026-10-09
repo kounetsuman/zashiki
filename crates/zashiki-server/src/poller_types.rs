@@ -122,6 +122,15 @@ pub trait PollerPorts {
     ) -> impl Future<Output = Option<String>> + Send {
         async { None }
     }
+    /// Records the Claude Session seen running in the terminal, which a relaunch resumes. Defaulted to
+    /// nothing so stubs that do not exercise it need not implement it.
+    fn remember_claude_session(
+        &self,
+        _cockpit_terminal_id: &str,
+        _sid: &str,
+    ) -> impl Future<Output = ()> + Send {
+        async {}
+    }
     /// How long ago each agent under `sid` reported stopping, matched against the subagent
     /// transcripts so a tray left drawn after its agents finished stops counting as one. Defaulted to
     /// nothing heard so stubs that do not exercise the event layer need not implement it.

@@ -62,6 +62,16 @@ const TERMINATE_GRACE: Duration = Duration::from_millis(300);
 pub struct SessionMeta {
     pub cwd: String,
     pub wname: String,
+    /// The Claude Session last seen running in the terminal, which a relaunch resumes. It differs from
+    /// the id once an in-session `/resume` or `/clear` moved claude on; None until a session is seen.
+    pub claude_session: Option<String>,
+}
+
+impl SessionMeta {
+    /// The Claude Session a relaunch of terminal `id` resumes.
+    pub fn sid_to_resume<'a>(&'a self, id: &'a str) -> &'a str {
+        self.claude_session.as_deref().unwrap_or(id)
+    }
 }
 
 /// A map of id → single-owner PTY session (plus meta).
@@ -139,6 +149,15 @@ impl SessionRegistry {
     /// Gets the meta (cwd / wname) for `id`.
     pub async fn meta(&self, id: &str) -> Option<SessionMeta> {
         self.sessions.lock().await.get(id).map(|e| e.meta.clone())
+    }
+
+    /// Records the Claude Session seen running in terminal `id` (nothing if `id` is not registered).
+    pub async fn remember_claude_session(&self, id: &str, sid: &str) {
+        if let Some(entry) = self.sessions.lock().await.get_mut(id) {
+            if entry.meta.claude_session.as_deref() != Some(sid) {
+                entry.meta.claude_session = Some(sid.to_string());
+            }
+        }
     }
 
     /// The list of registered ids (ascending).
@@ -379,6 +398,7 @@ mod tests {
             SessionMeta {
                 cwd: "/repos/org/b".to_string(),
                 wname: "beta".to_string(),
+                claude_session: None,
             },
         )
         .await
@@ -389,6 +409,7 @@ mod tests {
             SessionMeta {
                 cwd: "/repos/org/a".to_string(),
                 wname: "alpha".to_string(),
+                claude_session: None,
             },
         )
         .await

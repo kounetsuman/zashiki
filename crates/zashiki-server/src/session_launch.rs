@@ -245,6 +245,7 @@ pub fn plan_to_meta(plan: &NewSessionPlan) -> SessionMeta {
     SessionMeta {
         cwd: plan.cwd.clone(),
         wname: plan.wname.clone(),
+        claude_session: None,
     }
 }
 
@@ -362,6 +363,7 @@ mod tests {
             SessionMeta {
                 cwd: "/repos/charlie".to_string(),
                 wname: "charlie".to_string(),
+                claude_session: None,
             }
         );
     }
@@ -449,7 +451,7 @@ mod tests {
         assert_eq!(terminal_id_seen_by(plan_to_config(&new_plan)).await, SID.to_lowercase());
 
         let resume_plan = crate::session_restore::ResumePlan {
-            sid: SID.to_lowercase(),
+            cockpit_terminal_id: SID.to_lowercase(),
             program: "/bin/sh".to_string(),
             args: vec!["-c".to_string(), PRINT_TERMINAL_ID.to_string()],
             cwd: "/".to_string(),

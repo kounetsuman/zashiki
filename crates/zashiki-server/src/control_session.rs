@@ -257,8 +257,19 @@ fn restartable(has_no_process: bool, reported: Option<&str>, starting_up: bool) 
     has_no_process || (reported == Some("no_claude") && !starting_up)
 }
 
-/// Swaps in a fresh PTY for a registered Cockpit Terminal, launched with `claude --resume <sid>` so
-/// the conversation continues under the same id, and points attached terms at it. The caller reports
+/// What a relaunch of terminal `id` resumes: the Claude Session it was last seen on, under its own id.
+fn relaunch_entry(id: &str, meta: &SessionMeta) -> SaveEntry {
+    SaveEntry {
+        widx: String::new(),
+        wname: meta.wname.clone(),
+        cwd: meta.cwd.clone(),
+        sid: id.to_string(),
+        resume_sid: Some(meta.sid_to_resume(id).to_string()),
+    }
+}
+
+/// Swaps in a fresh PTY for a registered Cockpit Terminal, launched with `claude --resume` on the
+/// Claude Session it was last seen on so the conversation continues under the same id, and points attached terms at it. The caller reports
 /// the refresh.
 pub(crate) async fn restart_in_place(
     services: &ControlServices,
@@ -282,12 +293,7 @@ pub(crate) async fn restart_in_place(
         return RestartOutcome::CwdMissing;
     }
     let cwd = meta.cwd.clone();
-    let entry = SaveEntry {
-        widx: String::new(),
-        wname: meta.wname.clone(),
-        cwd: cwd.clone(),
-        sid: id.to_string(),
-    };
+    let entry = relaunch_entry(id, meta);
     // `plan_resume` declines only a non-UUID sid, which the check above already refused.
     let plan = crate::session_restore::plan_resume(&entry, shell, claude, settings)
         .expect("a uuid sid always plans a resume");
@@ -306,6 +312,7 @@ pub(crate) async fn restart_in_place(
             SessionMeta {
                 cwd,
                 wname: meta.wname.clone(),
+                claude_session: meta.claude_session.clone(),
             },
         )
         .await;
@@ -381,6 +388,23 @@ mod tests {
     use crate::session_registry::SessionRegistry;
     use crate::term_registry::TermRegistry;
 
+    #[test]
+    fn a_relaunch_resumes_the_session_the_terminal_was_last_seen_on() {
+        let id = "579fa8cf-4901-45cb-b9ec-17e229231a37";
+        let switched = "99999999-8888-4777-8666-555555555555";
+        let mut meta = SessionMeta {
+            cwd: "/tmp".to_string(),
+            wname: "w".to_string(),
+            claude_session: None,
+        };
+        assert_eq!(relaunch_entry(id, &meta).sid_to_resume(), id);
+
+        meta.claude_session = Some(switched.to_string());
+        let entry = relaunch_entry(id, &meta);
+        assert_eq!(entry.sid, id);
+        assert_eq!(entry.sid_to_resume(), switched);
+    }
+
     const SID: &str = "579fa8cf-4901-45cb-b9ec-17e229231a37";
 
     fn sleep_cfg() -> PtyConfig {
@@ -402,6 +426,7 @@ mod tests {
         SessionMeta {
             cwd: "/tmp".to_string(),
             wname: "work".to_string(),
+            claude_session: None,
         }
     }
 
@@ -658,6 +683,7 @@ mod tests {
         let gone = SessionMeta {
             cwd: "/nonexistent/worktree".to_string(),
             wname: "work".to_string(),
+            claude_session: None,
         };
         sessions
             .create_with_meta(SID.to_string(), sleep_cfg(), gone.clone())
