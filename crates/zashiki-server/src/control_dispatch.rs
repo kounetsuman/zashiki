@@ -295,7 +295,7 @@ pub(crate) async fn handle_client_message(
                 .await;
                 true
             } else {
-                send_unknown_term(socket, &services.hub, &term_id).await
+                send_unknown_term(socket, &term_id).await
             }
         }
         // Since switching the view changes the window size and visible content, re-evaluate immediately after select.
@@ -311,7 +311,7 @@ pub(crate) async fn handle_client_message(
                 trigger_refresh(services).await;
                 true
             } else {
-                send_unknown_term(socket, &services.hub, &term_id).await
+                send_unknown_term(socket, &term_id).await
             }
         }
         ClientMessage::TermClose { term_id } => {
@@ -320,7 +320,7 @@ pub(crate) async fn handle_client_message(
                 // The PTY lifecycle is owned by the SessionRegistry on the CockpitTerminalClose side, so
                 // here we only tear down the term registry (no double-free).
                 Some(_) => true,
-                None => send_unknown_term(socket, &services.hub, &term_id).await,
+                None => send_unknown_term(socket, &term_id).await,
             }
         }
         // An ack to an already-closed term is a normal case (no-op). If present, update the flow state.
@@ -394,8 +394,9 @@ async fn send_internal_error(
     report_error(socket, hub, "internal", &err.to_string()).await
 }
 
-pub(crate) async fn send_unknown_term(socket: &mut WebSocket, hub: &ControlHub, term_id: &str) -> bool {
-    report_error(socket, hub, "unknown_term", &format!("termId {term_id} is not open")).await
+/// The client reattaches on its own when this names its term, so it is a refusal, not a notification.
+pub(crate) async fn send_unknown_term(socket: &mut WebSocket, term_id: &str) -> bool {
+    reply_refusal(socket, "unknown_term", &format!("termId {term_id} is not open")).await
 }
 
 /// Returns a creation failure to the requester. If it stems from PTY exhaustion, enqueue a single

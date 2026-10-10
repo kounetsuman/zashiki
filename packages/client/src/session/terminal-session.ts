@@ -60,7 +60,10 @@ export class TerminalSession {
   private socket: TermSocketHandle | null = null;
   private pendingAck = 0;
   private attempt = 0;
+  private sameTermReattaches = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The scheduled retry opens a new termId (false while reattaching the same termId on 4404). */
+  private retryReopens = false;
   private started = false;
   /** State where no terminal is attached because there are 0 cockpit terminals (suppresses respawn). */
   private suspended = false;
@@ -179,7 +182,12 @@ export class TerminalSession {
 
   /** Window switch. Carried over via cockpitTerminalId across reconnects too. */
   select(cockpitTerminalId: string): void {
+    const switched = cockpitTerminalId !== this.cockpitTerminalId;
     this.cockpitTerminalId = cockpitTerminalId;
+    if (switched && this.retryTimer && this.retryReopens) {
+      this.reconnect();
+      return;
+    }
     if (this.termId && this.status === "attached") {
       this.options.control.send({
         t: "term.select",
@@ -210,6 +218,20 @@ export class TerminalSession {
     socket?.close();
     this.attempt = 0;
     this.tryOpen();
+  }
+
+  /**
+   * Answer to unknown_term for this term. Reopens with a new termId through the backoff without
+   * resetting the attempt count: a term lost on every reopen would otherwise loop at round-trip speed.
+   */
+  retryLostTerm(): void {
+    if (this.status === "disposed" || !this.started || this.suspended) return;
+    if (this.retryTimer) return;
+    const socket = this.socket;
+    this.socket = null;
+    socket?.close();
+    this.clearScreen();
+    this.scheduleRetry(null);
   }
 
   dispose(): void {
@@ -244,6 +266,7 @@ export class TerminalSession {
       this.options.generateTermId ?? (() => crypto.randomUUID())
     )();
     this.termId = termId;
+    this.sameTermReattaches = 0;
     this.pendingAck = 0;
     this.openedCols = this.cols;
     this.openedRows = this.rows;
@@ -310,17 +333,20 @@ export class TerminalSession {
         // would cause term_exists, so re-attach only the WS with the same termId
         // (with a limit).
         const reattach =
-          code === 4404 && this.attempt < MAX_SAME_TERM_REATTACHES;
+          code === 4404 && this.sameTermReattaches < MAX_SAME_TERM_REATTACHES;
+        if (reattach) this.sameTermReattaches += 1;
         // When the session leaves the alternate screen, the old display (initial
         // screen, etc.) lingers. Clear the visible screen so it isn't shown while
         // waiting to reconnect. For an immediate 4404 re-attach, the PTY is still
         // alive, so keep the display valid.
-        if (!reattach) {
-          for (const fn of this.dataListeners) fn("\x1b[H\x1b[2J");
-        }
+        if (!reattach) this.clearScreen();
         this.scheduleRetry(reattach ? termId : null);
       },
     });
+  }
+
+  private clearScreen(): void {
+    for (const fn of this.dataListeners) fn("\x1b[H\x1b[2J");
   }
 
   private scheduleRetry(reattachTermId: string | null): void {
@@ -329,6 +355,7 @@ export class TerminalSession {
     const delayFn = this.options.retryDelayMs ?? reconnectDelayMs;
     const delay = delayFn(this.attempt);
     this.attempt += 1;
+    this.retryReopens = reattachTermId === null;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       if (reattachTermId !== null && this.termId === reattachTermId) {

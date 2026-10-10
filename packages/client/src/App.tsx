@@ -166,6 +166,8 @@ export interface AppSession extends TerminalViewSession {
   getTermId(): string | null;
   /** Re-attaches the pty on term.reconnect (e.g. after a restore). */
   reconnect(): void;
+  /** Re-attaches with backoff when the server reports the term as unknown. */
+  retryLostTerm(): void;
   /** Releases the terminal while there are 0 cockpit terminals to stop respawn. */
   suspend(): void;
   /** Re-attaches the terminal when cockpit terminals revive. */

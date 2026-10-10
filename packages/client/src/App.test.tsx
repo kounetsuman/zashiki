@@ -137,11 +137,13 @@ const fakeReposApi: ReposApi = {
 function fakeAppSession() {
   const selected: string[] = [];
   const reconnect = vi.fn();
+  const retryLostTerm = vi.fn();
   const suspend = vi.fn();
   const resume = vi.fn();
   return {
     selected,
     reconnect,
+    retryLostTerm,
     suspend,
     resume,
     session: {
@@ -164,6 +166,7 @@ function fakeAppSession() {
         void selected.push(cockpitTerminalId),
       getTermId: () => "term-current",
       reconnect,
+      retryLostTerm,
       suspend,
       resume,
     },
@@ -1268,9 +1271,9 @@ describe("App", () => {
     expect(screen.queryByRole("alertdialog", { name: "エラー" })).toBeNull();
   });
 
-  it("unknown_term does not show a dialog and reattaches the terminal (recovery from server restart)", () => {
+  it("unknown_term does not show a dialog and retries the terminal (recovery from server restart)", () => {
     const control = createFakeAppControl();
-    const { session, reconnect } = fakeAppSession();
+    const { session, retryLostTerm } = fakeAppSession();
     render(
       <App
         control={control}
@@ -1291,7 +1294,7 @@ describe("App", () => {
       }),
     );
     expect(screen.queryByRole("alertdialog", { name: "エラー" })).toBeNull();
-    expect(reconnect).toHaveBeenCalledTimes(1);
+    expect(retryLostTerm).toHaveBeenCalledTimes(1);
   });
 
   it("with 0 cockpitTerminals the main area shows the empty state, which clears when cockpitTerminals arrive", () => {

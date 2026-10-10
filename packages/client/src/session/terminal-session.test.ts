@@ -449,3 +449,165 @@ describe("TerminalSession.reconnect (term.reconnect)", () => {
     expect(sentOfType(control, "term.open")).toHaveLength(2);
   });
 });
+
+describe("TerminalSession.retryLostTerm (unknown_term)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("closes the old socket and reopens with a new termId only after the backoff", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    session.select("@5");
+
+    session.retryLostTerm();
+    expect(sockets[0]?.handle.closed).toBe(true);
+    expect(session.getStatus()).toBe("reconnecting");
+    expect(sentOfType(control, "term.open")).toHaveLength(1);
+
+    vi.advanceTimersByTime(500);
+    expect(sentOfType(control, "term.open")).toEqual([
+      { t: "term.open", termId: "term-1", cols: 80, rows: 24 },
+      {
+        t: "term.open",
+        termId: "term-2",
+        cockpitTerminalId: "@5",
+        cols: 80,
+        rows: 24,
+      },
+    ]);
+  });
+
+  it("clears the lost term's screen while waiting", () => {
+    const { sockets, session } = setup();
+    const received: string[] = [];
+    session.onData((d) => received.push(d));
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    sockets[0]?.handlers.onData?.("old screen");
+
+    session.retryLostTerm();
+    expect(received).toEqual(["old screen", "\x1b[H\x1b[2J"]);
+  });
+
+  it("waits longer each time the reopened term is lost again before any output", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    const waits: number[] = [];
+    for (let round = 0; round < 3; round++) {
+      sockets.at(-1)?.handlers.onOpen?.();
+      session.retryLostTerm();
+      const opensBefore = sentOfType(control, "term.open").length;
+      let waited = 0;
+      while (
+        sentOfType(control, "term.open").length === opensBefore &&
+        waited < 20_000
+      ) {
+        vi.advanceTimersByTime(100);
+        waited += 100;
+      }
+      waits.push(waited);
+    }
+    expect(waits).toEqual([500, 1000, 2000]);
+  });
+
+  it("still reattaches the same termId on 4404 after several lost-term retries", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    for (let round = 0; round < 5; round++) {
+      sockets.at(-1)?.handlers.onOpen?.();
+      session.retryLostTerm();
+      vi.advanceTimersByTime(10_000);
+    }
+    const opens = sentOfType(control, "term.open").length;
+    const reopened = sockets.at(-1);
+
+    // The WS upgrade can beat term.open on the server; that term.open still lands, so keep its termId.
+    reopened?.handlers.onClose?.(4404);
+    vi.advanceTimersByTime(10_000);
+    expect(sockets.at(-1)?.termId).toBe(reopened?.termId);
+    expect(sentOfType(control, "term.open")).toHaveLength(opens);
+  });
+
+  it("selecting another window during the wait reopens on it at once", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    session.select("@dead");
+    for (let round = 0; round < 5; round++) {
+      sockets.at(-1)?.handlers.onOpen?.();
+      session.retryLostTerm();
+      vi.advanceTimersByTime(10_000);
+    }
+    sockets.at(-1)?.handlers.onOpen?.();
+    session.retryLostTerm();
+    const opens = sentOfType(control, "term.open").length;
+
+    session.select("@ok");
+    expect(sentOfType(control, "term.open").slice(opens)).toEqual([
+      expect.objectContaining({ cockpitTerminalId: "@ok" }),
+    ]);
+    vi.advanceTimersByTime(60_000);
+    expect(sentOfType(control, "term.open")).toHaveLength(opens + 1);
+  });
+
+  it("selecting during a same-termId 4404 wait keeps that termId", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    sockets[0]?.handlers.onClose?.(4404);
+
+    session.select("@7");
+    expect(sentOfType(control, "term.open")).toHaveLength(1);
+    vi.advanceTimersByTime(10_000);
+    expect(sockets.at(-1)?.termId).toBe("term-1");
+  });
+
+  it("output from the reopened term resets the wait", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    session.retryLostTerm();
+    vi.advanceTimersByTime(500);
+    sockets[1]?.handlers.onOpen?.();
+    sockets[1]?.handlers.onData?.("prompt");
+
+    session.retryLostTerm();
+    vi.advanceTimersByTime(500);
+    expect(sentOfType(control, "term.open")).toHaveLength(3);
+  });
+
+  it("keeps the retry already scheduled by a disconnect instead of adding another", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    sockets[0]?.handlers.onClose?.(1011);
+
+    session.retryLostTerm();
+    vi.advanceTimersByTime(60_000);
+    expect(sentOfType(control, "term.open")).toHaveLength(2);
+  });
+
+  it("is a no-op before start, while suspended and after dispose", () => {
+    const { sockets, session } = setup();
+    session.retryLostTerm();
+    vi.advanceTimersByTime(60_000);
+    expect(sockets).toHaveLength(0);
+    expect(session.getStatus()).toBe("idle");
+
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    session.suspend();
+    session.retryLostTerm();
+    vi.advanceTimersByTime(60_000);
+    expect(sockets).toHaveLength(1);
+    expect(session.getStatus()).toBe("idle");
+
+    session.dispose();
+    session.retryLostTerm();
+    expect(session.getStatus()).toBe("disposed");
+  });
+});
