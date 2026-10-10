@@ -6,8 +6,9 @@
 //! free, then runs the bundled `install.sh` in self-update mode (download → verify signature → atomic
 //! bundle swap) and reopens the app. Detaching keeps the helper out of the sidecar process group that
 //! the quit tears down; `install.sh` is copied to a temp path first so swapping the bundle can't pull
-//! the running script out from under it. Detection stays on the GitHub Releases API (see
-//! `update_checker`); installation is likewise tap-free, so a lagging Homebrew tap never blocks updates.
+//! the running script out from under it. The release is resolved from GitHub Releases (see
+//! `update_checker::resolve_latest_tag`); installation is likewise tap-free, so a lagging Homebrew tap
+//! never blocks updates.
 //! Steps and installer output append to `~/Library/Logs/zashiki/update.log`.
 //!
 //! The gating decisions are pure and unit-tested below; the process orchestration around them is thin.
@@ -213,8 +214,8 @@ pub async fn perform_update(hub: Arc<ControlHub>, app_version_present: bool) {
             // Unwrap is safe: Swap implies bundle is Some, so its parent produced install_dir.
             let install_dir = install_dir.expect("swap mode has a bundle parent");
             hub.broadcast(status(UpdateStatusState::Running, None));
-            // Resolve the release while the app is still alive so an offline / rate-limited GitHub is
-            // reported in-app, not discovered only after the app has been torn down. The installer is
+            // Resolve the release while the app is still alive so an unreachable GitHub is reported
+            // in-app, not discovered only after the app has been torn down. The installer is
             // then pinned to this exact tag so it installs what detection resolved.
             let Some(version) = crate::update_checker::resolve_latest_tag().await else {
                 hub.broadcast(status(
