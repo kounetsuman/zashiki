@@ -333,8 +333,7 @@ export class TerminalSession {
         // would cause term_exists, so re-attach only the WS with the same termId
         // (with a limit).
         const reattach =
-          code === 4404 &&
-          this.sameTermReattaches < MAX_SAME_TERM_REATTACHES;
+          code === 4404 && this.sameTermReattaches < MAX_SAME_TERM_REATTACHES;
         if (reattach) this.sameTermReattaches += 1;
         // When the session leaves the alternate screen, the old display (initial
         // screen, etc.) lingers. Clear the visible screen so it isn't shown while
