@@ -591,8 +591,13 @@ describe("TerminalSession.retryLostTerm (unknown_term)", () => {
     expect(sentOfType(control, "term.open")).toHaveLength(2);
   });
 
-  it("is a no-op while suspended and after dispose", () => {
+  it("is a no-op before start, while suspended and after dispose", () => {
     const { sockets, session } = setup();
+    session.retryLostTerm();
+    vi.advanceTimersByTime(60_000);
+    expect(sockets).toHaveLength(0);
+    expect(session.getStatus()).toBe("idle");
+
     session.start(80, 24);
     sockets[0]?.handlers.onOpen?.();
     session.suspend();
