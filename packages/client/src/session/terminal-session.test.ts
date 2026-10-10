@@ -503,7 +503,10 @@ describe("TerminalSession.retryLostTerm (unknown_term)", () => {
       session.retryLostTerm();
       const opensBefore = sentOfType(control, "term.open").length;
       let waited = 0;
-      while (sentOfType(control, "term.open").length === opensBefore) {
+      while (
+        sentOfType(control, "term.open").length === opensBefore &&
+        waited < 20_000
+      ) {
         vi.advanceTimersByTime(100);
         waited += 100;
       }
