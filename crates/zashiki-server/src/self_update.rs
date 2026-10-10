@@ -219,7 +219,7 @@ pub async fn perform_update(hub: Arc<ControlHub>, app_version_present: bool) {
             let Some(version) = crate::update_checker::resolve_latest_tag().await else {
                 hub.broadcast(status(
                     UpdateStatusState::Failed,
-                    Some("could not reach GitHub to resolve the latest release".to_string()),
+                    Some("could not resolve the latest release from GitHub".to_string()),
                 ));
                 return;
             };
