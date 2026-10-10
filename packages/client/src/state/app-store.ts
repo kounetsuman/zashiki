@@ -324,8 +324,6 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
         setState({ lastError: i18n.t(restartAnswer) });
         return;
       }
-      // Clear the pending flag so a failed session.new request does not linger and mis-select another window.
-      pendingNew = false;
       if (m.code === "unknown_term") {
         // A desync where the term registry was lost (e.g. server restart) and term.*
         // targeting an existing termId is rejected. It cannot be fixed by user action,
@@ -338,6 +336,8 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
         }
         return;
       }
+      // Clear the pending flag so a failed session.new request does not linger and mis-select another window.
+      pendingNew = false;
       // invalid_message means the server could not parse a message this client sent —
       // in practice a client/server version skew (an outdated resident server). Replace the
       // cryptic wire code with an actionable hint instead of showing "invalid_message: ...".

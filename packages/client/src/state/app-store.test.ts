@@ -456,6 +456,31 @@ describe("createAppStore", () => {
     expect(t.selected).toEqual(["@5"]);
   });
 
+  it("still auto-selects the added window when an unknown_term arrives while the new request is pending", () => {
+    const t = setup();
+    t.control.emit({
+      t: "state.sync",
+      cockpitTerminals: [session],
+      orgs: ["o"],
+      orgColors: {},
+      orgAliases: {},
+    });
+    t.store.markNewRequested();
+    t.control.emit({
+      t: "error",
+      code: "unknown_term",
+      message: "termId term-current is not open",
+    });
+    t.control.emit({
+      t: "state.sync",
+      cockpitTerminals: [session, sessionWith("@5")],
+      orgs: ["o"],
+      orgColors: {},
+      orgAliases: {},
+    });
+    expect(t.store.getSnapshot().selectedCockpitTerminalId).toBe("@5");
+  });
+
   it("selects the largest @N (newest) when multiple windows are added at once", () => {
     const t = setup();
     t.control.emit({
