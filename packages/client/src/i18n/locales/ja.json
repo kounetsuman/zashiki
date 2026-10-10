@@ -294,6 +294,7 @@
     "tooltip": "バージョン {{version}} にアップデート",
     "opened": "リリースページを開きました",
     "failed": "アップデートに失敗しました",
+    "failedWithDetail": "アップデートに失敗しました: {{detail}}",
     "saveFailed": "メモを保存できなかったため、アップデートを中止しました: {{error}}"
   },
   "nav": {

@@ -39,13 +39,15 @@ function Harness({
   flashToast,
   onState,
   flushUnsaved = async () => {},
+  t = (k) => k,
 }: {
   ctl: ReturnType<typeof makeControl>["control"];
   flashToast: (m: string) => void;
   onState: (s: { updating: boolean; perform: () => void }) => void;
   flushUnsaved?: () => Promise<void>;
+  t?: (key: string, opts?: Record<string, unknown>) => string;
 }) {
-  const s = useSelfUpdate(ctl, flashToast, (k) => k, flushUnsaved);
+  const s = useSelfUpdate(ctl, flashToast, t, flushUnsaved);
   onState(s);
   return null;
 }
@@ -197,9 +199,29 @@ describe("useSelfUpdate", () => {
     expect(flashToast).toHaveBeenCalledWith("update.opened");
 
     act(() => h.emit({ t: "update.status", state: "running", detail: null }));
-    act(() => h.emit({ t: "update.status", state: "failed", detail: "boom" }));
+    act(() => h.emit({ t: "update.status", state: "failed", detail: null }));
     expect(latest.updating).toBe(false);
     expect(flashToast).toHaveBeenCalledWith("update.failed");
+  });
+
+  it("includes the server's failure reason in the toast", () => {
+    const h = makeControl();
+    const flashToast = vi.fn();
+    render(
+      <Harness
+        ctl={h.control}
+        flashToast={flashToast}
+        onState={() => {}}
+        t={(k, opts) => (opts ? `${k} ${JSON.stringify(opts)}` : k)}
+      />,
+    );
+
+    act(() =>
+      h.emit({ t: "update.status", state: "failed", detail: "offline" }),
+    );
+    expect(flashToast).toHaveBeenCalledWith(
+      'update.failedWithDetail {"detail":"offline"}',
+    );
   });
 
   it("keeps the spinner for another client's running update when the local flush fails", async () => {

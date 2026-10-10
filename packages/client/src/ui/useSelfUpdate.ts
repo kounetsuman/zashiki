@@ -66,7 +66,12 @@ export function useSelfUpdate(
         setServerUpdating(false);
         setPerforming(false);
         if (m.state === "opened") flashToast(t("update.opened"));
-        else if (m.state === "failed") flashToast(t("update.failed"));
+        else if (m.state === "failed")
+          flashToast(
+            m.detail
+              ? t("update.failedWithDetail", { detail: m.detail })
+              : t("update.failed"),
+          );
       }),
     [control, flashToast, t, flushUnsaved],
   );

@@ -294,6 +294,7 @@
     "tooltip": "Update to version {{version}}",
     "opened": "Opened the releases page",
     "failed": "Update failed",
+    "failedWithDetail": "Update failed: {{detail}}",
     "saveFailed": "Could not save the memo — update canceled: {{error}}"
   },
   "nav": {
