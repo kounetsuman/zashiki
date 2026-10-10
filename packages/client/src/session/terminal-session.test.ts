@@ -449,3 +449,94 @@ describe("TerminalSession.reconnect (term.reconnect)", () => {
     expect(sentOfType(control, "term.open")).toHaveLength(2);
   });
 });
+
+describe("TerminalSession.retryLostTerm (unknown_term)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("closes the old socket and reopens with a new termId only after the backoff", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    session.select("@5");
+
+    session.retryLostTerm();
+    expect(sockets[0]?.handle.closed).toBe(true);
+    expect(session.getStatus()).toBe("reconnecting");
+    expect(sentOfType(control, "term.open")).toHaveLength(1);
+
+    vi.advanceTimersByTime(500);
+    expect(sentOfType(control, "term.open")).toEqual([
+      { t: "term.open", termId: "term-1", cols: 80, rows: 24 },
+      {
+        t: "term.open",
+        termId: "term-2",
+        cockpitTerminalId: "@5",
+        cols: 80,
+        rows: 24,
+      },
+    ]);
+  });
+
+  it("waits longer each time the reopened term is lost again before any output", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    const waits: number[] = [];
+    for (let round = 0; round < 3; round++) {
+      sockets.at(-1)?.handlers.onOpen?.();
+      session.retryLostTerm();
+      const opensBefore = sentOfType(control, "term.open").length;
+      let waited = 0;
+      while (sentOfType(control, "term.open").length === opensBefore) {
+        vi.advanceTimersByTime(100);
+        waited += 100;
+      }
+      waits.push(waited);
+    }
+    expect(waits).toEqual([500, 1000, 2000]);
+  });
+
+  it("output from the reopened term resets the wait", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    session.retryLostTerm();
+    vi.advanceTimersByTime(500);
+    sockets[1]?.handlers.onOpen?.();
+    sockets[1]?.handlers.onData?.("prompt");
+
+    session.retryLostTerm();
+    vi.advanceTimersByTime(500);
+    expect(sentOfType(control, "term.open")).toHaveLength(3);
+  });
+
+  it("keeps the retry already scheduled by a disconnect instead of adding another", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    sockets[0]?.handlers.onClose?.(1011);
+
+    session.retryLostTerm();
+    vi.advanceTimersByTime(60_000);
+    expect(sentOfType(control, "term.open")).toHaveLength(2);
+  });
+
+  it("is a no-op while suspended and after dispose", () => {
+    const { sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    session.suspend();
+    session.retryLostTerm();
+    vi.advanceTimersByTime(60_000);
+    expect(sockets).toHaveLength(1);
+    expect(session.getStatus()).toBe("idle");
+
+    session.dispose();
+    session.retryLostTerm();
+    expect(session.getStatus()).toBe("disposed");
+  });
+});

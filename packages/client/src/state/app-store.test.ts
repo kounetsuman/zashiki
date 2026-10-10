@@ -55,12 +55,14 @@ function setup() {
   const selected: string[] = [];
   const focused: number[] = [];
   const reconnects: number[] = [];
+  const lostTermRetries: number[] = [];
   let currentTermId: string | null = "term-current";
   const store = createAppStore({
     control,
     session: {
       select: (id) => void selected.push(id),
       reconnect: () => void reconnects.push(1),
+      retryLostTerm: () => void lostTermRetries.push(1),
       getTermId: () => currentTermId,
     },
     notifier,
@@ -75,6 +77,7 @@ function setup() {
     selected,
     focused,
     reconnects,
+    lostTermRetries,
     store,
     changes,
     unsubscribe,
@@ -183,7 +186,7 @@ describe("createAppStore", () => {
     expect(shown).not.toContain("invalid_message");
   });
 
-  it("does not surface unknown_term in a dialog and reattaches if it targets the current term", () => {
+  it("does not surface unknown_term in a dialog and retries the current term with backoff", () => {
     const t = setup();
     t.control.emit({
       t: "error",
@@ -192,8 +195,9 @@ describe("createAppStore", () => {
     });
     // A desync caused by a server restart cannot be fixed by user action, so it is not surfaced in a dialog.
     expect(t.store.getSnapshot().lastError).toBeNull();
-    // If it targets the current term, reattach with a new termId to recover.
-    expect(t.reconnects).toEqual([1]);
+    // Retried with backoff: an immediate reattach loops when the term is lost again on every reopen.
+    expect(t.lostTermRetries).toEqual([1]);
+    expect(t.reconnects).toEqual([]);
   });
 
   it("ignores unknown_term targeting an already-reattached stale term (prevents double reattach)", () => {
@@ -205,7 +209,7 @@ describe("createAppStore", () => {
       message: "termId term-stale is not open",
     });
     expect(t.store.getSnapshot().lastError).toBeNull();
-    expect(t.reconnects).toEqual([]);
+    expect(t.lostTermRetries).toEqual([]);
   });
 
   it("clearError clears lastError and notifies subscribers", () => {
@@ -703,6 +707,7 @@ describe("createAppStore", () => {
       session: {
         select: () => undefined,
         reconnect: () => undefined,
+        retryLostTerm: () => undefined,
         getTermId: () => null,
       },
       notifier,

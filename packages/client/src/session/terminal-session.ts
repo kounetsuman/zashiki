@@ -212,6 +212,19 @@ export class TerminalSession {
     this.tryOpen();
   }
 
+  /**
+   * Answer to unknown_term for this term. Reopens with a new termId through the backoff without
+   * resetting the attempt count: a term lost on every reopen would otherwise loop at round-trip speed.
+   */
+  retryLostTerm(): void {
+    if (this.status === "disposed" || !this.started || this.suspended) return;
+    if (this.retryTimer) return;
+    const socket = this.socket;
+    this.socket = null;
+    socket?.close();
+    this.scheduleRetry(null);
+  }
+
   dispose(): void {
     if (this.status === "disposed") return;
     this.offControlStatus();

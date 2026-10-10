@@ -90,6 +90,7 @@ export interface AppStoreDeps {
   session: {
     select(cockpitTerminalId: string): void;
     reconnect(): void;
+    retryLostTerm(): void;
     /** Id of the currently attached term (null if not open). Used to match against unknown_term. */
     getTermId(): string | null;
   };
@@ -328,12 +329,12 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
       if (m.code === "unknown_term") {
         // A desync where the term registry was lost (e.g. server restart) and term.*
         // targeting an existing termId is rejected. It cannot be fixed by user action,
-        // so it is not shown in a dialog; if it targets the current term, reattach with
+        // so it is not shown in a dialog; if it targets the current term, retry with
         // a new termId to re-attach to the restored PTY. A late error targeting the old
         // term after reattaching is ignored to prevent a double reattach.
         const termId = deps.session.getTermId();
         if (termId !== null && m.message.includes(termId)) {
-          deps.session.reconnect();
+          deps.session.retryLostTerm();
         }
         return;
       }
