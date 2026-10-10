@@ -48,7 +48,7 @@ pub(crate) async fn activity(State(state): State<AppState>) -> Json<crate::contr
 #[cfg(test)]
 mod ws_control_tests {
     use crate::control::{ConfigView, ControlHub, ControlServices};
-    use crate::protocol::{Notification, NotificationLevel};
+    use crate::protocol::{Notification, NotificationLevel, ServerMessage};
     use crate::runtime::{spawn_control_runtime, ControlRuntimeConfig};
     use crate::status_poller::StateSnapshot;
     use crate::term_registry::{TermEntry, TermRegistry};
@@ -504,7 +504,7 @@ mod ws_control_tests {
     #[tokio::test]
     async fn term_ops_on_unknown_term_are_unknown_term() {
         let hub = ControlHub::new(ConfigView::default(), vec![], snapshot("@1"));
-        let port = serve(Some(test_services(hub, vec![]))).await;
+        let port = serve(Some(test_services(hub.clone(), vec![]))).await;
         let mut ws = connect(port).await;
         drain_handshake(&mut ws).await;
 
@@ -520,6 +520,11 @@ mod ws_control_tests {
                 "expected unknown_term for {msg}, got {err}"
             );
         }
+        // The client reattaches on its own, so the refusal is not something to keep in the list.
+        let [_, ServerMessage::NotificationsSync { items }, ..] = hub.connect_messages() else {
+            panic!("connect messages must carry notifications.sync second");
+        };
+        assert!(items.is_empty(), "unknown_term must not be recorded: {items:?}");
     }
 
     #[tokio::test]
