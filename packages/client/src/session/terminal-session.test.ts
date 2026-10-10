@@ -512,6 +512,24 @@ describe("TerminalSession.retryLostTerm (unknown_term)", () => {
     expect(waits).toEqual([500, 1000, 2000]);
   });
 
+  it("still reattaches the same termId on 4404 after several lost-term retries", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    for (let round = 0; round < 5; round++) {
+      sockets.at(-1)?.handlers.onOpen?.();
+      session.retryLostTerm();
+      vi.advanceTimersByTime(10_000);
+    }
+    const opens = sentOfType(control, "term.open").length;
+    const reopened = sockets.at(-1);
+
+    // The WS upgrade can beat term.open on the server; that term.open still lands, so keep its termId.
+    reopened?.handlers.onClose?.(4404);
+    vi.advanceTimersByTime(10_000);
+    expect(sockets.at(-1)?.termId).toBe(reopened?.termId);
+    expect(sentOfType(control, "term.open")).toHaveLength(opens);
+  });
+
   it("output from the reopened term resets the wait", () => {
     const { control, sockets, session } = setup();
     session.start(80, 24);

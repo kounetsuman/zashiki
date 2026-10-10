@@ -60,6 +60,7 @@ export class TerminalSession {
   private socket: TermSocketHandle | null = null;
   private pendingAck = 0;
   private attempt = 0;
+  private sameTermReattaches = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
   /** State where no terminal is attached because there are 0 cockpit terminals (suppresses respawn). */
@@ -258,6 +259,7 @@ export class TerminalSession {
       this.options.generateTermId ?? (() => crypto.randomUUID())
     )();
     this.termId = termId;
+    this.sameTermReattaches = 0;
     this.pendingAck = 0;
     this.openedCols = this.cols;
     this.openedRows = this.rows;
@@ -324,7 +326,9 @@ export class TerminalSession {
         // would cause term_exists, so re-attach only the WS with the same termId
         // (with a limit).
         const reattach =
-          code === 4404 && this.attempt < MAX_SAME_TERM_REATTACHES;
+          code === 4404 &&
+          this.sameTermReattaches < MAX_SAME_TERM_REATTACHES;
+        if (reattach) this.sameTermReattaches += 1;
         // When the session leaves the alternate screen, the old display (initial
         // screen, etc.) lingers. Clear the visible screen so it isn't shown while
         // waiting to reconnect. For an immediate 4404 re-attach, the PTY is still
