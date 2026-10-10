@@ -62,6 +62,8 @@ export class TerminalSession {
   private attempt = 0;
   private sameTermReattaches = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The scheduled retry opens a new termId (false while reattaching the same termId on 4404). */
+  private retryReopens = false;
   private started = false;
   /** State where no terminal is attached because there are 0 cockpit terminals (suppresses respawn). */
   private suspended = false;
@@ -180,7 +182,12 @@ export class TerminalSession {
 
   /** Window switch. Carried over via cockpitTerminalId across reconnects too. */
   select(cockpitTerminalId: string): void {
+    const switched = cockpitTerminalId !== this.cockpitTerminalId;
     this.cockpitTerminalId = cockpitTerminalId;
+    if (switched && this.retryTimer && this.retryReopens) {
+      this.reconnect();
+      return;
+    }
     if (this.termId && this.status === "attached") {
       this.options.control.send({
         t: "term.select",
@@ -349,6 +356,7 @@ export class TerminalSession {
     const delayFn = this.options.retryDelayMs ?? reconnectDelayMs;
     const delay = delayFn(this.attempt);
     this.attempt += 1;
+    this.retryReopens = reattachTermId === null;
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null;
       if (reattachTermId !== null && this.termId === reattachTermId) {

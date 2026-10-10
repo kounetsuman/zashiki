@@ -530,6 +530,39 @@ describe("TerminalSession.retryLostTerm (unknown_term)", () => {
     expect(sentOfType(control, "term.open")).toHaveLength(opens);
   });
 
+  it("selecting another window during the wait reopens on it at once", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    session.select("@dead");
+    for (let round = 0; round < 5; round++) {
+      sockets.at(-1)?.handlers.onOpen?.();
+      session.retryLostTerm();
+      vi.advanceTimersByTime(10_000);
+    }
+    sockets.at(-1)?.handlers.onOpen?.();
+    session.retryLostTerm();
+    const opens = sentOfType(control, "term.open").length;
+
+    session.select("@ok");
+    expect(sentOfType(control, "term.open").slice(opens)).toEqual([
+      expect.objectContaining({ cockpitTerminalId: "@ok" }),
+    ]);
+    vi.advanceTimersByTime(60_000);
+    expect(sentOfType(control, "term.open")).toHaveLength(opens + 1);
+  });
+
+  it("selecting during a same-termId 4404 wait keeps that termId", () => {
+    const { control, sockets, session } = setup();
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    sockets[0]?.handlers.onClose?.(4404);
+
+    session.select("@7");
+    expect(sentOfType(control, "term.open")).toHaveLength(1);
+    vi.advanceTimersByTime(10_000);
+    expect(sockets.at(-1)?.termId).toBe("term-1");
+  });
+
   it("output from the reopened term resets the wait", () => {
     const { control, sockets, session } = setup();
     session.start(80, 24);
