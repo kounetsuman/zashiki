@@ -69,12 +69,39 @@ pub fn latest_release_tag(body: &str) -> Option<String> {
     json.get("tag_name")?.as_str().map(str::to_string)
 }
 
-/// Resolve the latest stable release tag over the network (blocking fetch on a blocking thread). None on
-/// offline / non-2xx / unparseable, so the self-updater can report the failure while the app is still alive
-/// rather than tearing it down for an update that cannot proceed.
+/// The tag from the `Location` of the `releases/latest` web redirect (`…/releases/tag/v0.33.0`). Pure, for
+/// testability.
+pub fn release_tag_from_redirect(location: &str) -> Option<String> {
+    let (_, tag) = location.split_once("/releases/tag/")?;
+    let tag = tag.split(['?', '#']).next()?.trim_end_matches('/');
+    (!tag.is_empty() && !tag.contains('/')).then(|| tag.to_string())
+}
+
+/// Blocking read of the `releases/latest` web redirect target without following it. The web endpoint is not
+/// subject to the unauthenticated API rate limit (60/h per IP, shared with every other tool on the network).
+fn fetch_latest_tag_via_redirect() -> Option<String> {
+    let response = ureq::builder()
+        .redirects(0)
+        .timeout(REQUEST_TIMEOUT)
+        .build()
+        .head(RELEASES_URL)
+        .set("User-Agent", "zashiki-update-check")
+        .call()
+        .ok()?;
+    release_tag_from_redirect(response.header("Location")?)
+}
+
+fn fetch_latest_tag() -> Option<String> {
+    fetch_latest_release()
+        .and_then(|body| latest_release_tag(&body))
+        .or_else(fetch_latest_tag_via_redirect)
+}
+
+/// Resolve the latest stable release tag over the network (blocking fetch on a blocking thread), falling back
+/// to the web redirect when the API is unavailable. None when both fail, so the self-updater can report the
+/// failure while the app is still alive rather than tearing it down for an update that cannot proceed.
 pub async fn resolve_latest_tag() -> Option<String> {
-    let body = tokio::task::spawn_blocking(fetch_latest_release).await.ok().flatten()?;
-    latest_release_tag(&body)
+    tokio::task::spawn_blocking(fetch_latest_tag).await.ok().flatten()
 }
 
 /// Outcome of a single check, distinguishing "up to date" from "the fetch failed" so a manual
@@ -205,6 +232,21 @@ mod tests {
         assert_eq!(latest_release_tag(r#"{"tag_name":"v0.14.0"}"#), Some("v0.14.0".to_string()));
         assert_eq!(latest_release_tag(r#"{"foo":1}"#), None);
         assert_eq!(latest_release_tag("not json"), None);
+    }
+
+    #[test]
+    fn release_tag_from_redirect_reads_the_tag_segment() {
+        let tag = |l: &str| release_tag_from_redirect(l);
+        assert_eq!(
+            tag("https://github.com/kounetsuman/zashiki/releases/tag/v0.33.0"),
+            Some("v0.33.0".to_string())
+        );
+        assert_eq!(tag("/kounetsuman/zashiki/releases/tag/v0.1.1-rc.1/"), Some("v0.1.1-rc.1".to_string()));
+        assert_eq!(tag("https://github.com/kounetsuman/zashiki/releases/tag/v1.0.0?x=1"), Some("v1.0.0".to_string()));
+        // No published release redirects to the releases list instead of a tag.
+        assert_eq!(tag("https://github.com/kounetsuman/zashiki/releases"), None);
+        assert_eq!(tag("https://github.com/kounetsuman/zashiki/releases/tag/"), None);
+        assert_eq!(tag("https://github.com/kounetsuman/zashiki/releases/tag/v1/extra"), None);
     }
 
     #[test]
