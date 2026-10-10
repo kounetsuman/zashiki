@@ -524,7 +524,7 @@ mod ws_control_tests {
         let [_, ServerMessage::NotificationsSync { items }, ..] = hub.connect_messages() else {
             panic!("connect messages must carry notifications.sync second");
         };
-        assert!(items.is_empty(), "unknown_term must not be recorded: {items:?}");
+        assert!(items.is_empty(), "unknown_term must not be recorded");
     }
 
     #[tokio::test]
