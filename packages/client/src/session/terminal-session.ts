@@ -222,6 +222,7 @@ export class TerminalSession {
     const socket = this.socket;
     this.socket = null;
     socket?.close();
+    this.clearScreen();
     this.scheduleRetry(null);
   }
 
@@ -328,12 +329,14 @@ export class TerminalSession {
         // screen, etc.) lingers. Clear the visible screen so it isn't shown while
         // waiting to reconnect. For an immediate 4404 re-attach, the PTY is still
         // alive, so keep the display valid.
-        if (!reattach) {
-          for (const fn of this.dataListeners) fn("\x1b[H\x1b[2J");
-        }
+        if (!reattach) this.clearScreen();
         this.scheduleRetry(reattach ? termId : null);
       },
     });
+  }
+
+  private clearScreen(): void {
+    for (const fn of this.dataListeners) fn("\x1b[H\x1b[2J");
   }
 
   private scheduleRetry(reattachTermId: string | null): void {

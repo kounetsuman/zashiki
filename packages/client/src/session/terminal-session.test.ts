@@ -482,6 +482,18 @@ describe("TerminalSession.retryLostTerm (unknown_term)", () => {
     ]);
   });
 
+  it("clears the lost term's screen while waiting", () => {
+    const { sockets, session } = setup();
+    const received: string[] = [];
+    session.onData((d) => received.push(d));
+    session.start(80, 24);
+    sockets[0]?.handlers.onOpen?.();
+    sockets[0]?.handlers.onData?.("old screen");
+
+    session.retryLostTerm();
+    expect(received).toEqual(["old screen", "\x1b[H\x1b[2J"]);
+  });
+
   it("waits longer each time the reopened term is lost again before any output", () => {
     const { control, sockets, session } = setup();
     session.start(80, 24);
