@@ -4,10 +4,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  type IdleTerminalRow,
-  IdleTerminalWarningModal,
-} from "./IdleTerminalWarningModal.js";
+import type { IdleTerminalRow } from "../lib/idle-terminal-warning.js";
+import { IdleTerminalWarningModal } from "./IdleTerminalWarningModal.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 9, 20, 12);
@@ -97,5 +95,18 @@ describe("IdleTerminalWarningModal", () => {
     expect(
       screen.getByRole("button", { name: "title-a を閉じる" }),
     ).toBeTruthy();
+  });
+
+  it("Escape cancels a pending close instead of dismissing the warning", () => {
+    const { onClose, onCloseTerminal } = renderModal([row("a", 1)]);
+    fireEvent.click(screen.getByRole("button", { name: "title-a を閉じる" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onCloseTerminal).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "title-a を閉じる" }),
+    ).toBeTruthy();
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

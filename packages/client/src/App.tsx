@@ -57,6 +57,7 @@ import {
   saveFirstRunWizardSeen,
   shouldShowFirstRunWizard,
 } from "./lib/first-run-wizard.js";
+import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
 import { pickAndReadFile } from "./lib/open-file-dialog.js";
@@ -317,32 +318,23 @@ export function App({
     cockpitTerminalsApi,
     viewStorage,
     cockpitTerminals,
-    // Waits behind the other unsolicited overlays rather than stacking on them.
-    !crashChecked ||
-      crashLog !== null ||
-      dashboardFrame !== null ||
-      onboardingStep !== "done",
   );
-  const idleWarningRows =
-    idleWarning.idle === null
-      ? []
-      : cockpitTerminals.flatMap((terminal) => {
-          const lastActivityAt = idleWarning.idle?.get(
-            terminal.cockpitTerminalId,
-          );
-          return lastActivityAt === undefined
-            ? []
-            : [
-                {
-                  terminal,
-                  title: resolveTitle(
-                    effectiveCustomTitle(conversationTitles, terminal),
-                    terminal,
-                  ),
-                  lastActivityAt,
-                },
-              ];
-        });
+  const idleWarningRows = idleTerminalRows(
+    idleWarning.idle,
+    cockpitTerminals,
+    (terminal) =>
+      resolveTitle(
+        effectiveCustomTitle(conversationTitles, terminal),
+        terminal,
+      ),
+  );
+  // Yields to the other unsolicited overlays and comes up once they are gone, rather than stacking.
+  const idleWarningVisible =
+    idleWarningRows.length > 0 &&
+    crashChecked &&
+    crashLog === null &&
+    dashboardFrame === null &&
+    onboardingStep === "done";
 
   const { seenIds, markRead } = useSeenNotifications(
     notifications,
@@ -1462,7 +1454,7 @@ export function App({
       {crashLog !== null && (
         <CrashReportModal log={crashLog} onClose={dismissCrash} />
       )}
-      {cockpitTerminalsApi !== undefined && idleWarningRows.length > 0 && (
+      {idleWarningVisible && cockpitTerminalsApi !== undefined && (
         <IdleTerminalWarningModal
           rows={idleWarningRows}
           nowMs={Date.now()}

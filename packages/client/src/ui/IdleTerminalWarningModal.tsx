@@ -1,19 +1,14 @@
-import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CockpitTerminalsApi } from "../api/cockpit-terminals.js";
-import { idleDays } from "../lib/idle-terminal-warning.js";
+import {
+  type IdleTerminalRow,
+  idleDays,
+} from "../lib/idle-terminal-warning.js";
 import { Modal } from "./Modal.js";
 import { useConfirmClose } from "./useConfirmClose.js";
 import "./IdleTerminalWarningModal.css";
-
-export interface IdleTerminalRow {
-  terminal: CockpitTerminalInfo;
-  /** The label the Cockpit Terminal list shows for it. */
-  title: string;
-  lastActivityAt: number;
-}
 
 export interface IdleTerminalWarningModalProps {
   rows: IdleTerminalRow[];
@@ -53,7 +48,8 @@ export function IdleTerminalWarningModal({
     <Modal
       title={t("idleWarning.title")}
       closeLabel={t("common.close")}
-      onClose={onClose}
+      // Escape backs out of a pending close before it dismisses the whole warning.
+      onClose={confirmingClose === null ? onClose : cancelClose}
       className="idle-warning-modal"
     >
       <div className="idle-warning-body scrollbar-persistent">

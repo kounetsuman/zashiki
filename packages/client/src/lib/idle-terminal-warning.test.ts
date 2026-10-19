@@ -4,6 +4,7 @@ import {
   IDLE_THRESHOLD_MS,
   IDLE_WARNING_SHOWN_DAY_KEY,
   idleDays,
+  idleTerminalRows,
   idleTerminals,
   loadIdleWarningShownDay,
   saveIdleWarningShownDay,
@@ -62,5 +63,46 @@ describe("shown day storage", () => {
     };
     expect(loadIdleWarningShownDay(storage)).toBeNull();
     expect(() => saveIdleWarningShownDay(storage, "2026-10-20")).not.toThrow();
+  });
+});
+
+describe("idleTerminalRows", () => {
+  const terminal = (id: string) => ({
+    cockpitTerminalId: id,
+    name: id,
+    org: "org",
+    repo: "repo",
+    state: "idle" as const,
+    title: null,
+    active: false,
+  });
+  const idle = new Map([
+    ["b", NOW - 30 * HOUR],
+    ["a", NOW - 48 * HOUR],
+  ]);
+
+  it("follows the list order and labels each row", () => {
+    const rows = idleTerminalRows(
+      idle,
+      [terminal("a"), terminal("x"), terminal("b")],
+      (t) => `label-${t.name}`,
+    );
+    expect(rows.map((r) => [r.title, r.lastActivityAt])).toEqual([
+      ["label-a", NOW - 48 * HOUR],
+      ["label-b", NOW - 30 * HOUR],
+    ]);
+  });
+
+  it("drops a terminal that is no longer listed, down to nothing", () => {
+    expect(
+      idleTerminalRows(idle, [terminal("b")], (t) => t.name).map(
+        (r) => r.terminal.cockpitTerminalId,
+      ),
+    ).toEqual(["b"]);
+    expect(idleTerminalRows(idle, [], (t) => t.name)).toEqual([]);
+  });
+
+  it("has no rows while the warning is not up", () => {
+    expect(idleTerminalRows(null, [terminal("a")], (t) => t.name)).toEqual([]);
   });
 });

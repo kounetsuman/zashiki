@@ -1,4 +1,7 @@
-import type { CockpitTerminalLastActivityResponse } from "@zashiki/shared";
+import type {
+  CockpitTerminalInfo,
+  CockpitTerminalLastActivityResponse,
+} from "@zashiki/shared";
 
 type StoragePart = Pick<Storage, "getItem" | "setItem">;
 
@@ -22,6 +25,31 @@ export function idleTerminals(
       .filter((t) => nowMs - t.lastActivityAt >= IDLE_THRESHOLD_MS)
       .map((t) => [t.cockpitTerminalId, t.lastActivityAt]),
   );
+}
+
+export interface IdleTerminalRow {
+  terminal: CockpitTerminalInfo;
+  /** The label the Cockpit Terminal list shows for it. */
+  title: string;
+  lastActivityAt: number;
+}
+
+/**
+ * The warning's rows, in list order. A terminal closed since the check is no longer listed, so its
+ * row drops out; once none are left the warning has nothing to show.
+ */
+export function idleTerminalRows(
+  idle: IdleTerminals | null,
+  terminals: readonly CockpitTerminalInfo[],
+  titleOf: (terminal: CockpitTerminalInfo) => string,
+): IdleTerminalRow[] {
+  if (idle === null) return [];
+  return terminals.flatMap((terminal) => {
+    const lastActivityAt = idle.get(terminal.cockpitTerminalId);
+    return lastActivityAt === undefined
+      ? []
+      : [{ terminal, title: titleOf(terminal), lastActivityAt }];
+  });
 }
 
 /** Whole days since `lastActivityAt`, as the warning states it. */

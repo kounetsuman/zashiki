@@ -66,34 +66,27 @@ function mount(
   api: CockpitTerminalsApi,
   storage: ReturnType<typeof memoryStorage>,
   terminals: CockpitTerminalInfo[],
-  blocked = false,
 ) {
   const state: { idle: IdleTerminals | null; dismiss(): void } = {
     idle: null,
     dismiss: () => undefined,
   };
-  function Probe(props: {
-    terminals: CockpitTerminalInfo[];
-    blocked: boolean;
-  }) {
+  function Probe(props: { terminals: CockpitTerminalInfo[] }) {
     const warning = useIdleTerminalWarning(
       api,
       storage,
       props.terminals,
-      props.blocked,
       () => NOW,
     );
     state.idle = warning.idle;
     state.dismiss = warning.dismiss;
     return null;
   }
-  const { rerender } = render(
-    <Probe terminals={terminals} blocked={blocked} />,
-  );
+  const { rerender } = render(<Probe terminals={terminals} />);
   return {
     state,
-    rerender: (next: CockpitTerminalInfo[], nextBlocked = false) =>
-      act(() => rerender(<Probe terminals={next} blocked={nextBlocked} />)),
+    rerender: (next: CockpitTerminalInfo[]) =>
+      act(() => rerender(<Probe terminals={next} />)),
     wake: async () => {
       const handler = listen.mock.calls.at(-1)?.[1];
       if (handler === undefined) throw new Error("not subscribed");
@@ -182,23 +175,6 @@ describe("useIdleTerminalWarning", () => {
       vi.advanceTimersByTime(IDLE_CHECK_INTERVAL_MS);
     });
     expect(api.lastActivity).toHaveBeenCalledTimes(2);
-  });
-
-  it("does not check while blocked and runs the launch check once unblocked", async () => {
-    const api = apiReturning([
-      { cockpitTerminalId: "a", lastActivityAt: STALE },
-    ]);
-    const { state, rerender } = mount(
-      api,
-      memoryStorage(),
-      [terminal("a")],
-      true,
-    );
-    await flush();
-    expect(api.lastActivity).not.toHaveBeenCalled();
-    rerender([terminal("a")], false);
-    await flush();
-    expect(state.idle?.has("a")).toBe(true);
   });
 
   it("dismiss hides the warning", async () => {

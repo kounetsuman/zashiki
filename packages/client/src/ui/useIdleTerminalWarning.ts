@@ -25,27 +25,24 @@ export interface IdleTerminalWarning {
 /**
  * Warns at most once per local day about Cockpit Terminals left without input or output, checking at
  * launch (once the terminal list has arrived), on wake from sleep, and hourly. The day is spent only
- * when there is something to show. While `blocked`, no check runs and the launch check waits.
+ * when there is something to show; the caller holds the warning back while another overlay is up.
  */
 export function useIdleTerminalWarning(
   api: CockpitTerminalsApi | undefined,
   storage: StoragePart | null,
   cockpitTerminals: CockpitTerminalInfo[],
-  blocked = false,
   now: () => Date = () => new Date(),
 ): IdleTerminalWarning {
   const [idle, setIdle] = useState<IdleTerminals | null>(null);
   const terminalsRef = useRef(cockpitTerminals);
   terminalsRef.current = cockpitTerminals;
-  const blockedRef = useRef(blocked);
-  blockedRef.current = blocked;
   const nowRef = useRef(now);
   nowRef.current = now;
   const pendingCheck = useRef<AbortController | null>(null);
   const launchHandled = useRef(false);
 
   const check = useCallback((): void => {
-    if (api === undefined || blockedRef.current) return;
+    if (api === undefined) return;
     const today = dashboardDayKey(nowRef.current());
     if (loadIdleWarningShownDay(storage) === today) return;
     pendingCheck.current?.abort();
@@ -53,7 +50,7 @@ export function useIdleTerminalWarning(
     pendingCheck.current = pending;
     void api.lastActivity(pending.signal).then(
       (response) => {
-        if (pending.signal.aborted || blockedRef.current) return;
+        if (pending.signal.aborted) return;
         const listed = new Set(
           terminalsRef.current.map((t) => t.cockpitTerminalId),
         );
@@ -70,10 +67,10 @@ export function useIdleTerminalWarning(
 
   const hasTerminals = cockpitTerminals.length > 0;
   useEffect(() => {
-    if (!hasTerminals || blocked || launchHandled.current) return;
+    if (!hasTerminals || launchHandled.current) return;
     launchHandled.current = true;
     check();
-  }, [hasTerminals, blocked, check]);
+  }, [hasTerminals, check]);
 
   useWakeEvent(check);
 
