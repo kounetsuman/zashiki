@@ -26,6 +26,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
+import type { CockpitTerminalsApi } from "./api/cockpit-terminals.js";
 import type { CrashApi } from "./api/crash.js";
 import type { DashboardApi } from "./api/dashboard.js";
 import type { FilesApi } from "./api/files.js";
@@ -87,6 +88,7 @@ import { ErrorDialog } from "./ui/ErrorDialog.js";
 import { ExplorerView } from "./ui/ExplorerView.js";
 import { FirstRunSetupWizard } from "./ui/FirstRunSetupWizard.js";
 import { HelpModal } from "./ui/HelpModal.js";
+import { IdleTerminalWarningModal } from "./ui/IdleTerminalWarningModal.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
 import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
 import { MemoEditor } from "./ui/MemoEditor.js";
@@ -116,6 +118,7 @@ import { useDiff } from "./ui/useDiff.js";
 import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
 import { useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
+import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
@@ -190,6 +193,8 @@ export interface AppProps {
   crashApi?: CrashApi;
   /** Reads a local dashboard file for the launch/wake overlay (omitted in tests that don't exercise it). */
   dashboardApi?: DashboardApi;
+  /** Reads terminal activity and screens for the idle-terminal warning (omitted in tests that don't exercise it). */
+  cockpitTerminalsApi?: CockpitTerminalsApi;
   /** Notification service (defaults to the real Web Notification + synthesized sound). */
   notifier?: Notifier;
   /** Persistence target for view selection state (defaults to localStorage). */
@@ -207,6 +212,7 @@ export function App({
   reposApi,
   crashApi,
   dashboardApi,
+  cockpitTerminalsApi,
   notifier: notifierProp,
   viewStorage: viewStorageProp,
 }: AppProps) {
@@ -306,6 +312,37 @@ export function App({
     focusNonce,
     resizeNonce,
   } = useSyncExternalStore(store.subscribe, store.getSnapshot);
+
+  const idleWarning = useIdleTerminalWarning(
+    cockpitTerminalsApi,
+    viewStorage,
+    cockpitTerminals,
+    // Waits behind the other unsolicited overlays rather than stacking on them.
+    !crashChecked ||
+      crashLog !== null ||
+      dashboardFrame !== null ||
+      onboardingStep !== "done",
+  );
+  const idleWarningRows =
+    idleWarning.idle === null
+      ? []
+      : cockpitTerminals.flatMap((terminal) => {
+          const lastActivityAt = idleWarning.idle?.get(
+            terminal.cockpitTerminalId,
+          );
+          return lastActivityAt === undefined
+            ? []
+            : [
+                {
+                  terminal,
+                  title: resolveTitle(
+                    effectiveCustomTitle(conversationTitles, terminal),
+                    terminal,
+                  ),
+                  lastActivityAt,
+                },
+              ];
+        });
 
   const { seenIds, markRead } = useSeenNotifications(
     notifications,
@@ -1424,6 +1461,17 @@ export function App({
         )}
       {crashLog !== null && (
         <CrashReportModal log={crashLog} onClose={dismissCrash} />
+      )}
+      {cockpitTerminalsApi !== undefined && idleWarningRows.length > 0 && (
+        <IdleTerminalWarningModal
+          rows={idleWarningRows}
+          nowMs={Date.now()}
+          api={cockpitTerminalsApi}
+          onCloseTerminal={(id) =>
+            control.send({ t: "cockpitTerminal.close", cockpitTerminalId: id })
+          }
+          onClose={idleWarning.dismiss}
+        />
       )}
       {dashboardFrame !== null && (
         <DashboardOverlay

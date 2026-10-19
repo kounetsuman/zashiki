@@ -1,0 +1,124 @@
+.modal-box.idle-warning-modal {
+  width: min(90vw, 720px);
+  height: auto;
+  max-height: min(88vh, 680px);
+}
+
+.idle-warning-body {
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+.idle-warning-lead {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--modal-text-dim);
+}
+
+.idle-warning-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.idle-warning-item {
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  background: var(--modal-control-bg);
+}
+
+.idle-warning-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.idle-warning-toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  color: var(--modal-text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.idle-warning-toggle:hover {
+  background: var(--modal-control-bg-hover);
+}
+
+.idle-warning-arrow {
+  flex: none;
+  font-size: 16px;
+  color: var(--modal-text-dim);
+}
+
+.idle-warning-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.idle-warning-meta {
+  flex: none;
+  color: var(--modal-text-muted);
+}
+
+.idle-warning-age {
+  flex: none;
+  margin-left: auto;
+  color: #e0af68;
+}
+
+.idle-warning-delete {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 4px;
+  padding: 3px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  color: #666;
+  cursor: pointer;
+}
+
+.idle-warning-delete:hover {
+  background: #3a2020;
+  color: #e06c75;
+}
+
+.idle-warning-delete .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.idle-warning-tail {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  border-top: 1px solid var(--modal-border);
+  background: #141414;
+  color: #ccc;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.idle-warning-note {
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--modal-border);
+  font-size: 11px;
+  color: var(--modal-text-muted);
+}

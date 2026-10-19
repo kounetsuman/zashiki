@@ -6,6 +6,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider, Trans } from "react-i18next";
 import { App } from "./App.js";
+import { createCockpitTerminalsApi } from "./api/cockpit-terminals.js";
 import { createCrashApi } from "./api/crash.js";
 import { createDashboardApi } from "./api/dashboard.js";
 import { createFilesApi } from "./api/files.js";
@@ -74,6 +75,7 @@ if (token === null) {
   const reposApi = createReposApi(base, token);
   const crashApi = createCrashApi(base, token);
   const dashboardApi = createDashboardApi(base, token);
+  const cockpitTerminalsApi = createCockpitTerminalsApi(base, token);
   root.render(
     <StrictMode>
       <I18nextProvider i18n={i18n}>
@@ -104,6 +106,7 @@ if (token === null) {
             reposApi={reposApi}
             crashApi={crashApi}
             dashboardApi={dashboardApi}
+            cockpitTerminalsApi={cockpitTerminalsApi}
           />
         </ErrorBoundary>
       </I18nextProvider>

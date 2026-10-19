@@ -480,6 +480,16 @@
     "notify": "利用不可まであと {{percent}}% · {{time}} に解除",
     "close": "閉じる"
   },
+  "idleWarning": {
+    "title": "放置されている端末",
+    "lead": "以下の端末は1日以上、入力も出力もありません。端末ごとにプロセスと全履歴がメモリに残っています。不要なものは閉じてください。",
+    "idleDays_one": "{{count}} 日放置",
+    "idleDays_other": "{{count}} 日放置",
+    "close": "{{name}} を閉じる",
+    "closeConfirm": "{{name}} を閉じる（確認）",
+    "tailFailed": "画面を読み取れませんでした。",
+    "tailEmpty": "画面は空です。"
+  },
   "firstRun": {
     "title": "Claude Code 連携をセットアップ",
     "body": "zashiki の hooks と statusLine を ~/.claude/settings.json に登録し、プッシュ通知・状態の即時更新・アカウント使用率フッタを有効にします。冪等で、既存の設定は保持されます。",
