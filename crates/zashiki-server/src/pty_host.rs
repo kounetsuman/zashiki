@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+use crate::app_state::now_ms;
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use tokio::sync::broadcast;
 
@@ -81,6 +82,8 @@ struct Inner {
     /// session's history again, and a reader that outlives the teardown would otherwise grow a buffer
     /// the scrollback-memory monitor no longer sums.
     retain: bool,
+    /// Wall-clock epoch ms of the last input written or output read, starting at the spawn.
+    last_activity_ms: u64,
 }
 
 impl Inner {
@@ -218,6 +221,7 @@ impl PtySession {
             tx: Some(tx),
             reader_done: false,
             retain: true,
+            last_activity_ms: now_ms(),
         }));
 
         let handle = {
@@ -267,8 +271,14 @@ impl PtySession {
         lock_recover(&self.inner).scrollback.len()
     }
 
+    /// Epoch ms of the last input or output, which is how long the terminal has been left alone.
+    pub fn last_activity_ms(&self) -> u64 {
+        lock_recover(&self.inner).last_activity_ms
+    }
+
     /// Aggregates input from all views and writes to the PTY (the sole writer owner).
     pub fn write_input(&self, data: &[u8]) -> std::io::Result<()> {
+        lock_recover(&self.inner).last_activity_ms = now_ms();
         let mut writer = lock_recover(&self.writer);
         writer.write_all(data)?;
         writer.flush()
@@ -295,6 +305,12 @@ impl PtySession {
     /// Plain text of the headless-reconstructed visible screen (passed to state detection).
     pub fn screen_contents(&self) -> String {
         lock_recover(&self.inner).parser.screen().contents()
+    }
+
+    /// The last `max_lines` lines of the visible screen above its blank bottom rows: where the terminal
+    /// was left, readable without attaching to it.
+    pub fn screen_tail(&self, max_lines: usize) -> Vec<String> {
+        tail_lines(&self.screen_contents(), max_lines)
     }
 
     /// A redraw escape sequence that restores the current visible screen and its input modes (colors,
@@ -572,6 +588,7 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
             // Torn down: whatever still holds the pty open is no longer this terminal's history.
             continue;
         }
+        guard.last_activity_ms = now_ms();
         guard.scrollback.push(chunk.as_ref());
         guard.parser.process(chunk.as_ref());
         // Err if there are no subscribers. Dropped output is handled on the subscriber side via
@@ -581,6 +598,15 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
         }
     }
     // `MarkDone` records the finish; see `close_output` for what waits on it.
+}
+
+/// The last `max_lines` lines of `contents` once the blank rows below the cursor are dropped, each
+/// without its trailing padding.
+fn tail_lines(contents: &str, max_lines: usize) -> Vec<String> {
+    let lines: Vec<&str> = contents.lines().map(str::trim_end).collect();
+    let end = lines.iter().rposition(|l| !l.is_empty()).map_or(0, |i| i + 1);
+    let start = end.saturating_sub(max_lines);
+    lines[start..end].iter().map(|l| l.to_string()).collect()
 }
 
 /// An append-only buffer that retains the full raw output of a session (the scrollback).
@@ -1094,5 +1120,40 @@ mod tests {
 
         assert_eq!(opened, Err("unavailable"));
         assert_eq!(attempts.get(), OPENPTY_ATTEMPTS);
+    }
+    #[test]
+    fn tail_lines_drops_the_blank_bottom_rows_and_keeps_the_last_lines() {
+        let screen = "one\ntwo  \n\nthree\nfour\n   \n\n";
+        assert_eq!(tail_lines(screen, 3), vec!["", "three", "four"]);
+        assert_eq!(tail_lines(screen, 10), vec!["one", "two", "", "three", "four"]);
+    }
+
+    #[test]
+    fn tail_lines_of_a_blank_screen_is_empty() {
+        assert!(tail_lines("\n  \n\n", 10).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn output_advances_the_last_activity() {
+        let session = PtySession::spawn(sh("sleep 0.3; echo LATE-OUTPUT; sleep 5")).unwrap();
+        let spawned = session.last_activity_ms();
+        let mut sub = session.subscribe();
+        let seen = drain_until(&mut sub, "LATE-OUTPUT", 3000).await;
+        assert!(seen.contains("LATE-OUTPUT"));
+        assert!(session.last_activity_ms() >= spawned + 200);
+        session.shutdown();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn input_advances_the_last_activity() {
+        let session = PtySession::spawn(sh("stty -echo; sleep 5")).unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let before = session.last_activity_ms();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        session.write_input(b"x").unwrap();
+        assert!(session.last_activity_ms() >= before + 50);
+        session.shutdown();
     }
 }

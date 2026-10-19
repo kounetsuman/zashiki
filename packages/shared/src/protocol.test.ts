@@ -14,6 +14,8 @@ import {
   clientMessageSchema,
   cockpitTerminalIdSchema,
   cockpitTerminalInfoSchema,
+  cockpitTerminalLastActivityResponseSchema,
+  cockpitTerminalTailResponseSchema,
   focusRequestSchema,
   focusResponseSchema,
   hookEventKindSchema,
@@ -686,5 +688,20 @@ describe("hooks integration messages", () => {
       statusLineRegistered: false,
       statusLineConflict: false,
     });
+  });
+});
+
+describe("cockpit terminal REST responses", () => {
+  it("parses the server's last-activity body", () => {
+    const body = {
+      terminals: [{ cockpitTerminalId: "@1", lastActivityAt: 1700000000000 }],
+    };
+    expect(cockpitTerminalLastActivityResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it("parses the tail body", () => {
+    expect(
+      cockpitTerminalTailResponseSchema.parse({ lines: ["a", ""] }),
+    ).toEqual({ lines: ["a", ""] });
   });
 });
