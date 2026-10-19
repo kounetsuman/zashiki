@@ -16,7 +16,7 @@
 //! the `tests` at the end of this file.
 
 use std::io::{Read, Write};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -82,8 +82,6 @@ struct Inner {
     /// session's history again, and a reader that outlives the teardown would otherwise grow a buffer
     /// the scrollback-memory monitor no longer sums.
     retain: bool,
-    /// Wall-clock epoch ms of the last input written or output read, starting at the spawn.
-    last_activity_ms: u64,
 }
 
 impl Inner {
@@ -122,6 +120,9 @@ pub struct PtySession {
     /// When the child was launched, which separates a claude that is still coming up from one that is
     /// not coming at all.
     started_at: Instant,
+    /// Wall-clock epoch ms of the last input written or output read, starting at the spawn. Kept off
+    /// the `inner` lock so a keystroke never waits behind output parsing.
+    last_activity_ms: Arc<AtomicU64>,
 }
 
 #[cfg(unix)]
@@ -221,12 +222,13 @@ impl PtySession {
             tx: Some(tx),
             reader_done: false,
             retain: true,
-            last_activity_ms: now_ms(),
         }));
+        let last_activity_ms = Arc::new(AtomicU64::new(now_ms()));
 
         let handle = {
             let inner = inner.clone();
-            thread::spawn(move || reader_loop(reader, inner))
+            let last_activity_ms = last_activity_ms.clone();
+            thread::spawn(move || reader_loop(reader, inner, last_activity_ms))
         };
 
         Ok(Self {
@@ -240,6 +242,7 @@ impl PtySession {
             child_reaped: AtomicBool::new(false),
             reader_handle: Mutex::new(Some(handle)),
             started_at: Instant::now(),
+            last_activity_ms,
         })
     }
 
@@ -273,12 +276,12 @@ impl PtySession {
 
     /// Epoch ms of the last input or output, which is how long the terminal has been left alone.
     pub fn last_activity_ms(&self) -> u64 {
-        lock_recover(&self.inner).last_activity_ms
+        self.last_activity_ms.load(Ordering::Relaxed)
     }
 
     /// Aggregates input from all views and writes to the PTY (the sole writer owner).
     pub fn write_input(&self, data: &[u8]) -> std::io::Result<()> {
-        lock_recover(&self.inner).last_activity_ms = now_ms();
+        self.last_activity_ms.store(now_ms(), Ordering::Relaxed);
         let mut writer = lock_recover(&self.writer);
         writer.write_all(data)?;
         writer.flush()
@@ -310,7 +313,11 @@ impl PtySession {
     /// The last `max_lines` lines of the visible screen above its blank bottom rows: where the terminal
     /// was left, readable without attaching to it.
     pub fn screen_tail(&self, max_lines: usize) -> Vec<String> {
-        tail_lines(&self.screen_contents(), max_lines)
+        let inner = lock_recover(&self.inner);
+        let screen = inner.parser.screen();
+        let (_, cols) = screen.size();
+        let rows: Vec<String> = screen.rows(0, cols).collect();
+        tail_lines(&rows, max_lines)
     }
 
     /// A redraw escape sequence that restores the current visible screen and its input modes (colors,
@@ -565,7 +572,11 @@ fn lock_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// Reads PTY output and performs the ring append, vt100 feed, and broadcast together under the lock.
 /// When read returns 0 (EOF) or Err (= child process exit), it breaks out of the loop.
-fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
+fn reader_loop(
+    mut reader: Box<dyn Read + Send>,
+    inner: Arc<Mutex<Inner>>,
+    last_activity_ms: Arc<AtomicU64>,
+) {
     /// Marks the reader finished however the thread leaves — including a panic, which would otherwise
     /// leave the stream unclosable and every attached bridge waiting on output that can never come.
     struct MarkDone(Arc<Mutex<Inner>>);
@@ -588,7 +599,7 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
             // Torn down: whatever still holds the pty open is no longer this terminal's history.
             continue;
         }
-        guard.last_activity_ms = now_ms();
+        last_activity_ms.store(now_ms(), Ordering::Relaxed);
         guard.scrollback.push(chunk.as_ref());
         guard.parser.process(chunk.as_ref());
         // Err if there are no subscribers. Dropped output is handled on the subscriber side via
@@ -600,10 +611,10 @@ fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
     // `MarkDone` records the finish; see `close_output` for what waits on it.
 }
 
-/// The last `max_lines` lines of `contents` once the blank rows below the cursor are dropped, each
-/// without its trailing padding.
-fn tail_lines(contents: &str, max_lines: usize) -> Vec<String> {
-    let lines: Vec<&str> = contents.lines().map(str::trim_end).collect();
+/// The last `max_lines` of the screen `rows` once the blank bottom rows are dropped, each without its
+/// trailing padding.
+fn tail_lines(rows: &[String], max_lines: usize) -> Vec<String> {
+    let lines: Vec<&str> = rows.iter().map(|r| r.trim_end()).collect();
     let end = lines.iter().rposition(|l| !l.is_empty()).map_or(0, |i| i + 1);
     let start = end.saturating_sub(max_lines);
     lines[start..end].iter().map(|l| l.to_string()).collect()
@@ -1123,14 +1134,24 @@ mod tests {
     }
     #[test]
     fn tail_lines_drops_the_blank_bottom_rows_and_keeps_the_last_lines() {
-        let screen = "one\ntwo  \n\nthree\nfour\n   \n\n";
-        assert_eq!(tail_lines(screen, 3), vec!["", "three", "four"]);
-        assert_eq!(tail_lines(screen, 10), vec!["one", "two", "", "three", "four"]);
+        let rows = |r: &[&str]| r.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let screen = rows(&["one", "two  ", "", "three", "four", "   ", ""]);
+        assert_eq!(tail_lines(&screen, 3), vec!["", "three", "four"]);
+        assert_eq!(tail_lines(&screen, 10), vec!["one", "two", "", "three", "four"]);
+        assert!(tail_lines(&rows(&["", "  ", ""]), 10).is_empty());
     }
 
-    #[test]
-    fn tail_lines_of_a_blank_screen_is_empty() {
-        assert!(tail_lines("\n  \n\n", 10).is_empty());
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn screen_tail_counts_wrapped_rows_as_separate_lines() {
+        let mut config = sh("printf '%050d' 0; sleep 5");
+        config.cols = 10;
+        let session = PtySession::spawn(config).unwrap();
+        let mut sub = session.subscribe();
+        drain_until(&mut sub, "0000000000", 3000).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(session.screen_tail(3), vec!["0000000000"; 3]);
+        session.shutdown();
     }
 
     #[cfg(unix)]
