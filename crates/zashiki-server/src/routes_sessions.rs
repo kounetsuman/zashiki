@@ -1,7 +1,10 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, response::Response, Json};
+use axum::{extract::Query, extract::State, http::StatusCode, response::IntoResponse, response::Response, Json};
 use serde::Deserialize;
 
 use crate::app_state::AppState;
+use crate::protocol::{
+    CockpitTerminalLastActivity, CockpitTerminalLastActivityResponse, CockpitTerminalTailResponse,
+};
 use crate::session_persist;
 use crate::wire_support::{json_error, parse_json_body, persist_error_response};
 
@@ -74,6 +77,55 @@ pub(crate) async fn sessions_restore(
         }))
         .into_response(),
         Err(e) => persist_error_response(e),
+    }
+}
+
+/// How many screen lines `GET /api/cockpit-terminals/tail` returns.
+const TAIL_LINES: usize = 10;
+
+#[derive(Deserialize)]
+pub(crate) struct TailQuery {
+    id: String,
+}
+
+/// `GET /api/cockpit-terminals/last-activity`. When each owned Cockpit Terminal last saw input or output.
+pub(crate) async fn cockpit_terminals_last_activity(State(state): State<AppState>) -> Response {
+    let Some(control) = state.control.as_ref() else {
+        return json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "session services not available",
+        );
+    };
+    let terminals = control
+        .sessions
+        .entries()
+        .await
+        .into_iter()
+        .map(|(id, session, _)| CockpitTerminalLastActivity {
+            cockpit_terminal_id: id,
+            last_activity_at: session.last_activity_ms(),
+        })
+        .collect();
+    Json(CockpitTerminalLastActivityResponse { terminals }).into_response()
+}
+
+/// `GET /api/cockpit-terminals/tail?id=`. The last lines of a Cockpit Terminal's visible screen.
+pub(crate) async fn cockpit_terminal_tail(
+    State(state): State<AppState>,
+    Query(query): Query<TailQuery>,
+) -> Response {
+    let Some(control) = state.control.as_ref() else {
+        return json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "session services not available",
+        );
+    };
+    match control.sessions.get(&query.id).await {
+        Some(session) => Json(CockpitTerminalTailResponse {
+            lines: session.screen_tail(TAIL_LINES),
+        })
+        .into_response(),
+        None => json_error(StatusCode::NOT_FOUND, "no such cockpit terminal"),
     }
 }
 
@@ -269,5 +321,78 @@ mod sessions_persist_rest_tests {
         for id in sessions.list().await {
             sessions.remove(&id).await;
         }
+    }
+
+    async fn sessions_running(script: &str) -> Arc<SessionRegistry> {
+        let sessions = Arc::new(SessionRegistry::new());
+        let mut cmd = portable_pty::CommandBuilder::new("sh");
+        cmd.arg("-c");
+        cmd.arg(script);
+        cmd.env("TERM", "xterm-256color");
+        sessions
+            .create("t1".to_string(), crate::pty_host::PtyConfig::new(cmd))
+            .await
+            .unwrap();
+        sessions
+    }
+
+    #[tokio::test]
+    async fn last_activity_lists_each_terminal_with_its_epoch_ms() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = sessions_running("sleep 5").await;
+        let (s, b) = send(
+            app(dir.path(), sessions.clone()),
+            "GET",
+            "/api/cockpit-terminals/last-activity",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&b).unwrap();
+        let terminals = body["terminals"].as_array().unwrap();
+        assert_eq!(terminals.len(), 1);
+        assert_eq!(terminals[0]["cockpitTerminalId"], "t1");
+        assert!(terminals[0]["lastActivityAt"].as_u64().unwrap() > 1_600_000_000_000);
+        sessions.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn tail_returns_the_last_screen_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions =
+            sessions_running("for i in $(seq 1 15); do echo line-$i; done; sleep 5").await;
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        let (s, b) = send(
+            app(dir.path(), sessions.clone()),
+            "GET",
+            "/api/cockpit-terminals/tail?id=t1",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&b).unwrap();
+        let lines: Vec<&str> = body["lines"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| l.as_str().unwrap())
+            .collect();
+        let expected: Vec<String> = (6..=15).map(|i| format!("line-{i}")).collect();
+        assert_eq!(lines, expected);
+        sessions.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn tail_of_an_unknown_terminal_is_404() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Arc::new(SessionRegistry::new());
+        let (s, _b) = send(
+            app(dir.path(), sessions),
+            "GET",
+            "/api/cockpit-terminals/tail?id=missing",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
     }
 }

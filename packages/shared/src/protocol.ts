@@ -796,6 +796,30 @@ export const focusResponseSchema = z.object({
 
 export type FocusResponse = z.infer<typeof focusResponseSchema>;
 
+/** `GET /api/cockpit-terminals/last-activity`: when each Cockpit Terminal last saw input or output. */
+export const cockpitTerminalLastActivityResponseSchema = z.object({
+  terminals: z.array(
+    z.object({
+      cockpitTerminalId: cockpitTerminalIdSchema,
+      /** Epoch ms. */
+      lastActivityAt: z.number(),
+    }),
+  ),
+});
+
+export type CockpitTerminalLastActivityResponse = z.infer<
+  typeof cockpitTerminalLastActivityResponseSchema
+>;
+
+/** `GET /api/cockpit-terminals/tail?id=`: the last lines of the terminal's visible screen. */
+export const cockpitTerminalTailResponseSchema = z.object({
+  lines: z.array(z.string()),
+});
+
+export type CockpitTerminalTailResponse = z.infer<
+  typeof cockpitTerminalTailResponseSchema
+>;
+
 // ---- REST（save / restore）----
 
 export const sessionsSaveResponseSchema = z.object({

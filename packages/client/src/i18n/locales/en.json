@@ -480,6 +480,16 @@
     "notify": "{{percent}}% left before lockout · unlocks at {{time}}",
     "close": "Close"
   },
+  "idleWarning": {
+    "title": "Terminals left idle",
+    "lead": "These terminals have had no input or output for a day or more. Each one keeps its process and full history in memory — close the ones you no longer need.",
+    "idleDays_one": "idle {{count}} day",
+    "idleDays_other": "idle {{count}} days",
+    "close": "Close {{name}}",
+    "closeConfirm": "Close {{name}} (confirm)",
+    "tailFailed": "Could not read the screen.",
+    "tailEmpty": "The screen is empty."
+  },
   "firstRun": {
     "title": "Set up Claude Code integration",
     "body": "Register zashiki's hooks and statusLine in ~/.claude/settings.json to enable push notifications, instant state refresh, and the account-usage footer. It is idempotent and preserves your existing settings.",

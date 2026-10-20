@@ -558,6 +558,27 @@ pub struct FocusResponse {
     pub cockpit_terminal_id: Option<String>,
 }
 
+/// One entry of `GET /api/cockpit-terminals/last-activity`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CockpitTerminalLastActivity {
+    pub cockpit_terminal_id: String,
+    /// Epoch ms of the last input or output.
+    pub last_activity_at: u64,
+}
+
+/// Response for `GET /api/cockpit-terminals/last-activity`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CockpitTerminalLastActivityResponse {
+    pub terminals: Vec<CockpitTerminalLastActivity>,
+}
+
+/// Response for `GET /api/cockpit-terminals/tail?id=`: the last lines of the visible screen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CockpitTerminalTailResponse {
+    pub lines: Vec<String>,
+}
+
 /// In-app notification level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -924,6 +945,19 @@ mod tests {
             assert_eq!(to_json(&msg), json);
             assert_eq!(serde_json::from_str::<ServerMessage>(json).unwrap(), msg);
         }
+    }
+
+    #[test]
+    fn cockpit_terminal_last_activity_is_camel_case() {
+        assert_eq!(
+            to_json(&CockpitTerminalLastActivityResponse {
+                terminals: vec![CockpitTerminalLastActivity {
+                    cockpit_terminal_id: "@1".into(),
+                    last_activity_at: 1_700_000_000_000,
+                }],
+            }),
+            r#"{"terminals":[{"cockpitTerminalId":"@1","lastActivityAt":1700000000000}]}"#
+        );
     }
 
     #[test]
