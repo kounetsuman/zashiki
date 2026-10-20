@@ -328,13 +328,6 @@ export function App({
         terminal,
       ),
   );
-  // Yields to the other unsolicited overlays and comes up once they are gone, rather than stacking.
-  const idleWarningVisible =
-    idleWarningRows.length > 0 &&
-    crashChecked &&
-    crashLog === null &&
-    dashboardFrame === null &&
-    onboardingStep === "done";
 
   const { seenIds, markRead } = useSeenNotifications(
     notifications,
@@ -378,6 +371,17 @@ export function App({
       }),
     }),
   });
+  const usageWarningShown =
+    usageWarning.open && accountLimits?.fiveHour?.resetsAt !== undefined;
+  // Yields to the other unsolicited overlays and comes up once they are gone, rather than stacking.
+  const idleWarningVisible =
+    idleWarningRows.length > 0 &&
+    crashChecked &&
+    crashLog === null &&
+    dashboardFrame === null &&
+    onboardingStep === "done" &&
+    !shouldShowFirstRunWizard(wizardSeen, hooksStatus) &&
+    !usageWarningShown;
 
   const controlStatus = useSyncExternalStore(
     useCallback((cb: () => void) => control.onStatus(() => cb()), [control]),
@@ -1419,7 +1423,7 @@ export function App({
           onClose={() => setAccountUsageModalOpen(false)}
         />
       )}
-      {usageWarning.open && accountLimits?.fiveHour?.resetsAt !== undefined && (
+      {usageWarningShown && accountLimits?.fiveHour?.resetsAt !== undefined && (
         <UsageLimitWarningDialog
           remainingPercent={usageRemainingPercent(
             accountLimits.fiveHour.usedPercent,
