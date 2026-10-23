@@ -21,30 +21,33 @@ export function exitKeyOf(
 }
 
 export interface ClaudeExitGuard {
-  /** Records a press and returns true when it is the repeat that would exit Claude Code. */
-  hold(key: ExitKey): boolean;
+  /**
+   * Records a press in the Cockpit Terminal whose Claude Session it would reach (null when none runs)
+   * and returns true when it is the repeat that would exit Claude Code there.
+   */
+  hold(key: ExitKey, claudeTerminalId: string | null): boolean;
 }
 
-export function createClaudeExitGuard({
-  isClaudeRunning,
-  now,
-}: {
-  isClaudeRunning(): boolean;
-  now(): number;
-}): ClaudeExitGuard {
-  let last: { key: ExitKey; at: number } | null = null;
+export function createClaudeExitGuard(now: () => number): ClaudeExitGuard {
+  let last: { key: ExitKey; at: number; claudeTerminalId: string } | null =
+    null;
   return {
-    hold(key) {
+    hold(key, claudeTerminalId) {
+      if (claudeTerminalId === null) {
+        last = null;
+        return false;
+      }
       const at = now();
       const isRepeat =
         last !== null &&
         last.key === key &&
+        last.claudeTerminalId === claudeTerminalId &&
         at - last.at <= CLAUDE_EXIT_DOUBLE_PRESS_MS;
-      if (isRepeat && isClaudeRunning()) {
+      if (isRepeat) {
         last = null;
         return true;
       }
-      last = { key, at };
+      last = { key, at, claudeTerminalId };
       return false;
     },
   };

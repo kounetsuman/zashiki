@@ -536,15 +536,31 @@ describe("TerminalView", () => {
       vi.useRealTimers();
     });
 
-    function renderClaudeTerminal(claudeRunning = true) {
+    function renderClaudeTerminal(claudeTerminalId: string | null = "A") {
       const f = fakeSession();
       const input = vi.spyOn(f.session, "input");
-      render(
-        <TerminalView session={f.session} claudeRunning={claudeRunning} />,
+      const view = render(
+        <TerminalView
+          session={f.session}
+          claudeTerminalId={claudeTerminalId}
+        />,
       );
       const term = MockTerminal.instances[0];
       if (!term) throw new Error("terminal not created");
-      return { term, input };
+      const switchTo = (next: string | null): void =>
+        view.rerender(
+          <TerminalView session={f.session} claudeTerminalId={next} />,
+        );
+      return { term, input, switchTo };
+    }
+
+    function openExitConfirm(term: {
+      emitKey(e: Partial<KeyboardEvent>): boolean;
+    }) {
+      term.emitKey({ key: "c", ctrlKey: true });
+      act(() => {
+        term.emitKey({ key: "c", ctrlKey: true });
+      });
     }
 
     function dialogButton(selector: string): Element {
@@ -600,8 +616,44 @@ describe("TerminalView", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
+    it("drops the confirmation when another Cockpit Terminal is selected", () => {
+      const { term, input, switchTo } = renderClaudeTerminal();
+      openExitConfirm(term);
+      switchTo("B");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      switchTo("A");
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(input).not.toHaveBeenCalled();
+    });
+
+    it("drops the confirmation once the Claude Session has ended", () => {
+      const { term, switchTo } = renderClaudeTerminal();
+      openExitConfirm(term);
+      switchTo(null);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("does not replay into a terminal selected right after confirming", () => {
+      const { term, input, switchTo } = renderClaudeTerminal();
+      openExitConfirm(term);
+      fireEvent.click(dialogButton(".confirm-dialog-confirm"));
+      switchTo("B");
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(input.mock.calls).toEqual([["\x03"]]);
+    });
+
+    it("does not pair a press with one made in another Cockpit Terminal", () => {
+      const { term, switchTo } = renderClaudeTerminal();
+      term.emitKey({ key: "c", ctrlKey: true });
+      switchTo("B");
+      expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
     it("never asks in a terminal without a Claude Session", () => {
-      const { term } = renderClaudeTerminal(false);
+      const { term } = renderClaudeTerminal(null);
       term.emitKey({ key: "c", ctrlKey: true });
       expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
       expect(screen.queryByRole("dialog")).toBeNull();

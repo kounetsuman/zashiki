@@ -1249,9 +1249,11 @@ export function App({
                 renderer={terminalRenderer.renderer}
                 clipboardEditEnabled={clipboardEdit.enabled}
                 onSetClipboardEditEnabled={clipboardEdit.setEnabled}
-                claudeRunning={
+                claudeTerminalId={
                   activeSession !== undefined &&
                   isClaudeRunning(activeSession.state)
+                    ? activeSession.cockpitTerminalId
+                    : null
                 }
               />
             </ErrorBoundary>

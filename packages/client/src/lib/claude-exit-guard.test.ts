@@ -41,14 +41,12 @@ describe("exitKeyOf", () => {
 });
 
 describe("createClaudeExitGuard", () => {
-  function guard(claudeRunning = true) {
+  function guard() {
     let now = 0;
-    const g = createClaudeExitGuard({
-      isClaudeRunning: () => claudeRunning,
-      now: () => now,
-    });
+    const g = createClaudeExitGuard(() => now);
     return {
-      hold: g.hold,
+      hold: (key: "\x03" | "\x04", claudeTerminalId: string | null = "A") =>
+        g.hold(key, claudeTerminalId),
       advance: (ms: number) => {
         now += ms;
       },
@@ -85,6 +83,12 @@ describe("createClaudeExitGuard", () => {
     expect(g.hold("\x04")).toBe(false);
   });
 
+  it("does not pair presses in different Cockpit Terminals", () => {
+    const g = guard();
+    g.hold("\x03", "A");
+    expect(g.hold("\x03", "B")).toBe(false);
+  });
+
   it("starts over after a held press, so a third press is a first press again", () => {
     const g = guard();
     g.hold("\x03");
@@ -93,8 +97,8 @@ describe("createClaudeExitGuard", () => {
   });
 
   it("never holds without a running Claude Session", () => {
-    const g = guard(false);
-    g.hold("\x03");
-    expect(g.hold("\x03")).toBe(false);
+    const g = guard();
+    g.hold("\x03", null);
+    expect(g.hold("\x03", null)).toBe(false);
   });
 });

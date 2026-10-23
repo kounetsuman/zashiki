@@ -1,6 +1,6 @@
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal } from "@xterm/xterm";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   CLAUDE_EXIT_REPLAY_GAP_MS,
@@ -47,7 +47,7 @@ export function TerminalView({
   renderer = DEFAULT_XTERM_RENDERER,
   clipboardEditEnabled = true,
   onSetClipboardEditEnabled,
-  claudeRunning = false,
+  claudeTerminalId = null,
 }: {
   session: TerminalViewSession;
   /**
@@ -74,8 +74,11 @@ export function TerminalView({
   /** Whether a multi-line Cmd+C opens the clipboard-edit modal. */
   clipboardEditEnabled?: boolean;
   onSetClipboardEditEnabled?(enabled: boolean): void;
-  /** Whether a Claude Session runs in this terminal; only then does a double Ctrl+C / Ctrl+D ask first. */
-  claudeRunning?: boolean;
+  /**
+   * The Cockpit Terminal whose Claude Session a double Ctrl+C / Ctrl+D would exit, null when none
+   * runs. A pending confirmation belongs to it and is dropped once this changes.
+   */
+  claudeTerminalId?: string | null;
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -92,18 +95,46 @@ export function TerminalView({
     setClipEdit({ open: true, text });
   }, []);
 
-  const [pendingExitKey, setPendingExitKey] = useState<ExitKey | null>(null);
+  const [pendingExit, setPendingExit] = useState<{
+    key: ExitKey;
+    claudeTerminalId: string;
+  } | null>(null);
+  const replayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const requestExitConfirm = useCallback(
+    (key: ExitKey, target: string): void =>
+      setPendingExit({ key, claudeTerminalId: target }),
+    [],
+  );
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: leaving the terminal is what drops its pending exit.
+  useEffect(
+    () => () => {
+      setPendingExit(null);
+      if (replayTimerRef.current !== null) clearTimeout(replayTimerRef.current);
+      replayTimerRef.current = null;
+    },
+    [claudeTerminalId],
+  );
 
   const closeExitConfirm = (): void => {
-    setPendingExitKey(null);
+    setPendingExit(null);
     termRef.current?.focus();
   };
 
   const confirmExit = (key: ExitKey): void => {
     closeExitConfirm();
     session.input(key);
-    setTimeout(() => session.input(key), CLAUDE_EXIT_REPLAY_GAP_MS);
+    replayTimerRef.current = setTimeout(() => {
+      replayTimerRef.current = null;
+      session.input(key);
+    }, CLAUDE_EXIT_REPLAY_GAP_MS);
   };
+
+  const exitConfirm =
+    pendingExit !== null && pendingExit.claudeTerminalId === claudeTerminalId
+      ? pendingExit
+      : null;
 
   useXtermTerminal({
     session,
@@ -115,10 +146,10 @@ export function TerminalView({
     focusNonce,
     resizeNonce,
     clipboardEditEnabled,
-    claudeRunning,
+    claudeTerminalId,
     toggleFind: find.toggleFind,
     openClipboardEdit,
-    confirmClaudeExit: setPendingExitKey,
+    confirmClaudeExit: requestExitConfirm,
     resetFind: find.reset,
     setFindResults: find.setResults,
   });
@@ -147,16 +178,16 @@ export function TerminalView({
           }}
         />
       )}
-      {pendingExitKey !== null && (
+      {exitConfirm !== null && (
         <ConfirmDialog
           title={t("terminal.exitClaudeConfirm.title")}
           message={t(
-            pendingExitKey === "\x03"
+            exitConfirm.key === "\x03"
               ? "terminal.exitClaudeConfirm.messageCtrlC"
               : "terminal.exitClaudeConfirm.messageCtrlD",
           )}
           confirmLabel={t("terminal.exitClaudeConfirm.confirm")}
-          onConfirm={() => confirmExit(pendingExitKey)}
+          onConfirm={() => confirmExit(exitConfirm.key)}
           onCancel={closeExitConfirm}
         />
       )}

@@ -48,11 +48,11 @@ export interface XtermTerminalDeps {
   focusNonce: number;
   resizeNonce: number;
   clipboardEditEnabled: boolean;
-  /** Whether a Claude Session runs in this terminal; only then is a double Ctrl+C / Ctrl+D held. */
-  claudeRunning: boolean;
+  /** The Cockpit Terminal whose Claude Session a double Ctrl+C / Ctrl+D would exit, null when none runs. */
+  claudeTerminalId: string | null;
   toggleFind(): void;
   openClipboardEdit(text: string): void;
-  confirmClaudeExit(key: ExitKey): void;
+  confirmClaudeExit(key: ExitKey, claudeTerminalId: string): void;
   resetFind(): void;
   setFindResults(results: SearchResults): void;
 }
@@ -72,7 +72,7 @@ export function useXtermTerminal({
   focusNonce,
   resizeNonce,
   clipboardEditEnabled,
-  claudeRunning,
+  claudeTerminalId,
   toggleFind,
   openClipboardEdit,
   confirmClaudeExit,
@@ -87,8 +87,8 @@ export function useXtermTerminal({
   const webglAddonRef = useRef<WebglAddon | null>(null);
   const clipboardEditEnabledRef = useRef(clipboardEditEnabled);
   clipboardEditEnabledRef.current = clipboardEditEnabled;
-  const claudeRunningRef = useRef(claudeRunning);
-  claudeRunningRef.current = claudeRunning;
+  const claudeTerminalIdRef = useRef(claudeTerminalId);
+  claudeTerminalIdRef.current = claudeTerminalId;
 
   // Under WKWebView the DOM renderer intermittently drops the first paint on attach (rows exist but
   // stay empty while the buffer holds the content, and a later resize does not reliably repaint); the
@@ -197,10 +197,7 @@ export function useXtermTerminal({
     applySize();
     term.focus();
 
-    const exitGuard = createClaudeExitGuard({
-      isClaudeRunning: () => claudeRunningRef.current,
-      now: () => Date.now(),
-    });
+    const exitGuard = createClaudeExitGuard(() => Date.now());
     term.attachCustomKeyEventHandler((e) =>
       handleTerminalKey(e, {
         getSelection: () => term.getSelection(),
@@ -209,8 +206,9 @@ export function useXtermTerminal({
         toggleFind,
         openClipboardEdit,
         holdClaudeExit: (key) => {
-          if (!exitGuard.hold(key)) return false;
-          confirmClaudeExit(key);
+          const target = claudeTerminalIdRef.current;
+          if (!exitGuard.hold(key, target) || target === null) return false;
+          confirmClaudeExit(key, target);
           return true;
         },
       }),
