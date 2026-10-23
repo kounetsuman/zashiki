@@ -11,6 +11,7 @@ function deps(overrides: Partial<TerminalKeyDeps> = {}): TerminalKeyDeps {
     clipboardEditEnabled: true,
     toggleFind: vi.fn(),
     openClipboardEdit: vi.fn(),
+    holdClaudeExit: () => false,
     ...overrides,
   };
 }
@@ -101,6 +102,22 @@ describe("handleTerminalKey", () => {
       handleTerminalKey(key({ key: "ArrowLeft", metaKey: true }), left),
     ).toBe(false);
     expect(left.input).toHaveBeenCalledWith("\x01");
+  });
+
+  it("intercepts Ctrl+C / Ctrl+D the exit guard takes over", () => {
+    const holdClaudeExit = vi.fn(() => true);
+    const d = deps({ holdClaudeExit });
+    const e = key({ key: "c", ctrlKey: true });
+    expect(handleTerminalKey(e, d)).toBe(false);
+    expect(e.preventDefault).toHaveBeenCalledOnce();
+    expect(handleTerminalKey(key({ key: "d", ctrlKey: true }), d)).toBe(false);
+    expect(holdClaudeExit.mock.calls).toEqual([["\x03"], ["\x04"]]);
+  });
+
+  it("passes Ctrl+C / Ctrl+D through when the exit guard lets them go", () => {
+    const d = deps();
+    expect(handleTerminalKey(key({ key: "c", ctrlKey: true }), d)).toBe(true);
+    expect(handleTerminalKey(key({ key: "d", ctrlKey: true }), d)).toBe(true);
   });
 
   it("passes ordinary keys through", () => {

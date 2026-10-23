@@ -528,6 +528,86 @@ describe("TerminalView", () => {
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
+  describe("double Ctrl+C / Ctrl+D with a running Claude Session", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function renderClaudeTerminal(claudeRunning = true) {
+      const f = fakeSession();
+      const input = vi.spyOn(f.session, "input");
+      render(
+        <TerminalView session={f.session} claudeRunning={claudeRunning} />,
+      );
+      const term = MockTerminal.instances[0];
+      if (!term) throw new Error("terminal not created");
+      return { term, input };
+    }
+
+    function dialogButton(selector: string): Element {
+      const button = document.querySelector(selector);
+      if (!button) throw new Error(`${selector} not rendered`);
+      return button;
+    }
+
+    it("holds the second press and asks first", () => {
+      const { term } = renderClaudeTerminal();
+      expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
+      let handled = true;
+      act(() => {
+        handled = term.emitKey({ key: "c", ctrlKey: true });
+      });
+      expect(handled).toBe(false);
+      expect(screen.getByRole("dialog")).toBeTruthy();
+    });
+
+    it("sends nothing on cancel and keeps the Claude Session", () => {
+      const { term, input } = renderClaudeTerminal();
+      term.emitKey({ key: "c", ctrlKey: true });
+      act(() => {
+        term.emitKey({ key: "c", ctrlKey: true });
+      });
+      fireEvent.click(dialogButton(".confirm-dialog-cancel"));
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(input).not.toHaveBeenCalled();
+    });
+
+    it("sends the press twice on confirm so Claude Code exits", () => {
+      const { term, input } = renderClaudeTerminal();
+      term.emitKey({ key: "d", ctrlKey: true });
+      act(() => {
+        term.emitKey({ key: "d", ctrlKey: true });
+      });
+      fireEvent.click(dialogButton(".confirm-dialog-confirm"));
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(input.mock.calls).toEqual([["\x04"], ["\x04"]]);
+    });
+
+    it("lets a second press through once the window has passed", () => {
+      const { term } = renderClaudeTerminal();
+      term.emitKey({ key: "c", ctrlKey: true });
+      vi.advanceTimersByTime(2000);
+      expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    it("never asks in a terminal without a Claude Session", () => {
+      const { term } = renderClaudeTerminal(false);
+      term.emitKey({ key: "c", ctrlKey: true });
+      expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+  });
+
   it("Cmd+C does not open the modal when the setting is disabled", () => {
     const f = fakeSession();
     render(<TerminalView session={f.session} clipboardEditEnabled={false} />);

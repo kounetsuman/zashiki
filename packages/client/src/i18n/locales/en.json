@@ -61,6 +61,12 @@
   "terminal": {
     "renderError": "An error occurred while rendering the terminal",
     "connectionProblem": "Connection problem ({{detail}})",
+    "exitClaudeConfirm": {
+      "title": "Exit the Claude Session?",
+      "messageCtrlC": "Ctrl+C was pressed twice in a row, which exits Claude Code.",
+      "messageCtrlD": "Ctrl+D was pressed twice in a row, which exits Claude Code.",
+      "confirm": "Exit"
+    },
     "find": {
       "placeholder": "Find in session",
       "next": "Next match (Enter)",

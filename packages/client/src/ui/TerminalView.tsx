@@ -1,7 +1,13 @@
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal } from "@xterm/xterm";
 import { useCallback, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  CLAUDE_EXIT_REPLAY_GAP_MS,
+  type ExitKey,
+} from "../lib/claude-exit-guard.js";
 import { ClipboardEditModal } from "./ClipboardEditModal.js";
+import { ConfirmDialog } from "./ConfirmDialog.js";
 import { TerminalFindBar } from "./TerminalFindBar.js";
 import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
 import { useTerminalFind } from "./useTerminalFind.js";
@@ -41,6 +47,7 @@ export function TerminalView({
   renderer = DEFAULT_XTERM_RENDERER,
   clipboardEditEnabled = true,
   onSetClipboardEditEnabled,
+  claudeRunning = false,
 }: {
   session: TerminalViewSession;
   /**
@@ -67,7 +74,10 @@ export function TerminalView({
   /** Whether a multi-line Cmd+C opens the clipboard-edit modal. */
   clipboardEditEnabled?: boolean;
   onSetClipboardEditEnabled?(enabled: boolean): void;
+  /** Whether a Claude Session runs in this terminal; only then does a double Ctrl+C / Ctrl+D ask first. */
+  claudeRunning?: boolean;
 }) {
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const termRef = useRef<Terminal | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
@@ -82,6 +92,19 @@ export function TerminalView({
     setClipEdit({ open: true, text });
   }, []);
 
+  const [pendingExitKey, setPendingExitKey] = useState<ExitKey | null>(null);
+
+  const closeExitConfirm = (): void => {
+    setPendingExitKey(null);
+    termRef.current?.focus();
+  };
+
+  const confirmExit = (key: ExitKey): void => {
+    closeExitConfirm();
+    session.input(key);
+    setTimeout(() => session.input(key), CLAUDE_EXIT_REPLAY_GAP_MS);
+  };
+
   useXtermTerminal({
     session,
     containerRef,
@@ -92,8 +115,10 @@ export function TerminalView({
     focusNonce,
     resizeNonce,
     clipboardEditEnabled,
+    claudeRunning,
     toggleFind: find.toggleFind,
     openClipboardEdit,
+    confirmClaudeExit: setPendingExitKey,
     resetFind: find.reset,
     setFindResults: find.setResults,
   });
@@ -120,6 +145,19 @@ export function TerminalView({
             setClipEdit({ open: false, text: "" });
             termRef.current?.focus();
           }}
+        />
+      )}
+      {pendingExitKey !== null && (
+        <ConfirmDialog
+          title={t("terminal.exitClaudeConfirm.title")}
+          message={t(
+            pendingExitKey === "\x03"
+              ? "terminal.exitClaudeConfirm.messageCtrlC"
+              : "terminal.exitClaudeConfirm.messageCtrlD",
+          )}
+          confirmLabel={t("terminal.exitClaudeConfirm.confirm")}
+          onConfirm={() => confirmExit(pendingExitKey)}
+          onCancel={closeExitConfirm}
         />
       )}
     </>

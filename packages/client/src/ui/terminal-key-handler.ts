@@ -1,3 +1,4 @@
+import { type ExitKey, exitKeyOf } from "../lib/claude-exit-guard.js";
 import { shouldOpenClipboardEditModal } from "../lib/clipboard-edit-modal.js";
 
 export interface TerminalKeyDeps {
@@ -6,6 +7,8 @@ export interface TerminalKeyDeps {
   clipboardEditEnabled: boolean;
   toggleFind(): void;
   openClipboardEdit(text: string): void;
+  /** Returns true when it takes over the press (to confirm before Claude Code exits). */
+  holdClaudeExit(key: ExitKey): boolean;
 }
 
 /** Cmd+F on its own: the terminal's find shortcut, shared with the find bar's own key handling. */
@@ -47,6 +50,11 @@ export function handleTerminalKey(
       return false;
     }
     return true;
+  }
+  const exitKey = exitKeyOf(e);
+  if (exitKey !== null && deps.holdClaudeExit(exitKey)) {
+    e.preventDefault();
+    return false;
   }
   if (
     e.key === "Enter" &&

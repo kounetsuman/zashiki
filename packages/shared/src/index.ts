@@ -215,6 +215,7 @@ export {
   hookEventResponseSchema,
   type InstallMethod,
   installMethodSchema,
+  isClaudeRunning,
   type NotificationDismissMessage,
   type NotificationsSyncMessage,
   type NotifyKind,

@@ -61,6 +61,12 @@
   "terminal": {
     "renderError": "ターミナルの描画でエラーが発生しました",
     "connectionProblem": "接続に問題があります（{{detail}}）",
+    "exitClaudeConfirm": {
+      "title": "Claude セッションを終了しますか？",
+      "messageCtrlC": "Ctrl+C が続けて押されたため、Claude Code を終了する前に確認しています。",
+      "messageCtrlD": "Ctrl+D が続けて押されたため、Claude Code を終了する前に確認しています。",
+      "confirm": "終了する"
+    },
     "find": {
       "placeholder": "セッション内を検索",
       "next": "次の一致（Enter）",
