@@ -91,6 +91,14 @@ describe("QuickOpen", () => {
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
+  it("returns the selection to the first row when the results change", async () => {
+    const { input, rows } = await renderPalette();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.change(input, { target: { value: "app" } });
+    expect(rows()[0]?.getAttribute("data-selected")).toBe("true");
+  });
+
   it("keeps an arrow-key move made the moment the results appear", async () => {
     const { container } = render(
       <QuickOpen
