@@ -43,12 +43,8 @@ export function createClaudeExitGuard(now: () => number): ClaudeExitGuard {
         last.key === key &&
         last.claudeTerminalId === claudeTerminalId &&
         at - last.at <= CLAUDE_EXIT_DOUBLE_PRESS_MS;
-      if (isRepeat) {
-        last = null;
-        return true;
-      }
       last = { key, at, claudeTerminalId };
-      return false;
+      return isRepeat;
     },
   };
 }

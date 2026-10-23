@@ -89,11 +89,13 @@ describe("createClaudeExitGuard", () => {
     expect(g.hold("\x03", "B")).toBe(false);
   });
 
-  it("starts over after a held press, so a third press is a first press again", () => {
+  it("keeps holding while Claude Code may still be armed by an earlier press", () => {
     const g = guard();
     g.hold("\x03");
+    g.advance(200);
     g.hold("\x03");
-    expect(g.hold("\x03")).toBe(false);
+    g.advance(400);
+    expect(g.hold("\x03")).toBe(true);
   });
 
   it("never holds without a running Claude Session", () => {
