@@ -8,6 +8,7 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
   type FooterThresholds,
   type HooksStatusMessage,
+  isClaudeRunning,
   isSinglePathSegment,
   type NotificationSettings,
   partitionNotifications,
@@ -1248,6 +1249,12 @@ export function App({
                 renderer={terminalRenderer.renderer}
                 clipboardEditEnabled={clipboardEdit.enabled}
                 onSetClipboardEditEnabled={clipboardEdit.setEnabled}
+                claudeTerminalId={
+                  activeSession !== undefined &&
+                  isClaudeRunning(activeSession.state)
+                    ? activeSession.cockpitTerminalId
+                    : null
+                }
               />
             </ErrorBoundary>
             {controlStatus === "open" &&

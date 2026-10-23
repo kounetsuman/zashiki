@@ -1,0 +1,117 @@
+import { describe, expect, it } from "vitest";
+import {
+  CLAUDE_EXIT_DOUBLE_PRESS_MS,
+  createClaudeExitGuard,
+  exitKeyOf,
+} from "./claude-exit-guard.js";
+
+const C = 67;
+const D = 68;
+const X = 88;
+
+function keyEvent(
+  init: Partial<KeyboardEvent>,
+): Pick<
+  KeyboardEvent,
+  "keyCode" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+> {
+  return {
+    keyCode: 0,
+    ctrlKey: false,
+    metaKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...init,
+  };
+}
+
+describe("exitKeyOf", () => {
+  it.each([
+    [C, "\x03"],
+    [D, "\x04"],
+  ])("Ctrl with keyCode %i maps to its control byte", (keyCode, byte) => {
+    expect(exitKeyOf(keyEvent({ keyCode, ctrlKey: true }))).toBe(byte);
+  });
+
+  it("follows the physical key on a non-Latin layout, as xterm does", () => {
+    expect(exitKeyOf(keyEvent({ key: "с", keyCode: C, ctrlKey: true }))).toBe(
+      "\x03",
+    );
+  });
+
+  it.each([
+    { keyCode: C },
+    { keyCode: C, metaKey: true },
+    { keyCode: C, ctrlKey: true, shiftKey: true },
+    { keyCode: C, ctrlKey: true, altKey: true },
+    { keyCode: C, ctrlKey: true, metaKey: true },
+    { keyCode: X, ctrlKey: true },
+  ])("is null for anything but a bare Ctrl+C / Ctrl+D (%o)", (init) => {
+    expect(exitKeyOf(keyEvent(init))).toBeNull();
+  });
+});
+
+describe("createClaudeExitGuard", () => {
+  function guard() {
+    let now = 0;
+    const g = createClaudeExitGuard(() => now);
+    return {
+      hold: (key: "\x03" | "\x04", claudeTerminalId: string | null = "A") =>
+        g.hold(key, claudeTerminalId),
+      advance: (ms: number) => {
+        now += ms;
+      },
+    };
+  }
+
+  it("lets the first press through", () => {
+    expect(guard().hold("\x03")).toBe(false);
+  });
+
+  it("holds a second press of the same key inside the window", () => {
+    const g = guard();
+    g.hold("\x03");
+    g.advance(CLAUDE_EXIT_DOUBLE_PRESS_MS);
+    expect(g.hold("\x03")).toBe(true);
+  });
+
+  it("lets a second press through once the window has passed", () => {
+    const g = guard();
+    g.hold("\x03");
+    g.advance(CLAUDE_EXIT_DOUBLE_PRESS_MS + 1);
+    expect(g.hold("\x03")).toBe(false);
+  });
+
+  it("holds a double Ctrl+D the same way", () => {
+    const g = guard();
+    g.hold("\x04");
+    expect(g.hold("\x04")).toBe(true);
+  });
+
+  it("does not pair Ctrl+C with Ctrl+D", () => {
+    const g = guard();
+    g.hold("\x03");
+    expect(g.hold("\x04")).toBe(false);
+  });
+
+  it("does not pair presses in different Cockpit Terminals", () => {
+    const g = guard();
+    g.hold("\x03", "A");
+    expect(g.hold("\x03", "B")).toBe(false);
+  });
+
+  it("keeps holding while Claude Code may still be armed by an earlier press", () => {
+    const g = guard();
+    g.hold("\x03");
+    g.advance(200);
+    g.hold("\x03");
+    g.advance(400);
+    expect(g.hold("\x03")).toBe(true);
+  });
+
+  it("never holds without a running Claude Session", () => {
+    const g = guard();
+    g.hold("\x03", null);
+    expect(g.hold("\x03", null)).toBe(false);
+  });
+});

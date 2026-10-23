@@ -20,6 +20,7 @@ import {
   focusResponseSchema,
   hookEventKindSchema,
   hookEventRequestSchema,
+  isClaudeRunning,
   serverMessageSchema,
   sessionUsageSchema,
   termIdSchema,
@@ -231,6 +232,24 @@ describe("canRestartCockpitTerminal", () => {
         state: "exited",
       }),
     ).toBe(false);
+  });
+});
+
+describe("isClaudeRunning", () => {
+  it.each(["exited", "no_claude"] as const)("is false once %s", (state) => {
+    expect(isClaudeRunning(state)).toBe(false);
+  });
+
+  it.each([
+    "waiting_input",
+    "running",
+    "running_bg_agent",
+    "idle",
+    "watching",
+    "starting",
+    "unknown",
+  ] as const)("is true while %s", (state) => {
+    expect(isClaudeRunning(state)).toBe(true);
   });
 });
 

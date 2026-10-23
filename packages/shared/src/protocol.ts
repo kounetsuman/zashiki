@@ -197,6 +197,11 @@ export function claudeSessionId(session: {
   return sid;
 }
 
+/** False once the terminal's process has ended or fallen through to a bare shell. */
+export function isClaudeRunning(state: CockpitTerminalState): boolean {
+  return state !== "exited" && state !== "no_claude";
+}
+
 /**
  * Whether a terminal can be relaunched in place. It offers a way back whenever claude is not running
  * there — the process ended, or it fell through to a bare shell — provided the id is one claude can
@@ -207,9 +212,9 @@ export function canRestartCockpitTerminal(session: {
   cockpitTerminalId: string;
   state: CockpitTerminalState;
 }): boolean {
-  const claudeIsGone =
-    session.state === "exited" || session.state === "no_claude";
-  return claudeIsGone && isUuidSid(session.cockpitTerminalId);
+  return (
+    !isClaudeRunning(session.state) && isUuidSid(session.cockpitTerminalId)
+  );
 }
 
 const colsSchema = z.number().int().min(1).max(10000);

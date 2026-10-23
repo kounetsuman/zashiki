@@ -11,7 +11,7 @@ export interface ConfirmDialogProps {
   onCancel(): void;
 }
 
-/** A small yes/no modal for a destructive action (currently the explorer's move-to-trash). */
+/** A small yes/no modal for a destructive action. */
 export function ConfirmDialog({
   title,
   message,

@@ -5,6 +5,10 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { type RefObject, useCallback, useEffect, useRef } from "react";
+import {
+  createClaudeExitGuard,
+  type ExitKey,
+} from "../lib/claude-exit-guard.js";
 import { stripFocusReports } from "../lib/focus-report.js";
 import {
   isValidSize,
@@ -44,8 +48,11 @@ export interface XtermTerminalDeps {
   focusNonce: number;
   resizeNonce: number;
   clipboardEditEnabled: boolean;
+  /** The Cockpit Terminal whose Claude Session a double Ctrl+C / Ctrl+D would exit, null when none runs. */
+  claudeTerminalId: string | null;
   toggleFind(): void;
   openClipboardEdit(text: string): void;
+  confirmClaudeExit(key: ExitKey, claudeTerminalId: string): void;
   resetFind(): void;
   setFindResults(results: SearchResults): void;
 }
@@ -65,8 +72,10 @@ export function useXtermTerminal({
   focusNonce,
   resizeNonce,
   clipboardEditEnabled,
+  claudeTerminalId,
   toggleFind,
   openClipboardEdit,
+  confirmClaudeExit,
   resetFind,
   setFindResults,
 }: XtermTerminalDeps): void {
@@ -78,6 +87,8 @@ export function useXtermTerminal({
   const webglAddonRef = useRef<WebglAddon | null>(null);
   const clipboardEditEnabledRef = useRef(clipboardEditEnabled);
   clipboardEditEnabledRef.current = clipboardEditEnabled;
+  const claudeTerminalIdRef = useRef(claudeTerminalId);
+  claudeTerminalIdRef.current = claudeTerminalId;
 
   // Under WKWebView the DOM renderer intermittently drops the first paint on attach (rows exist but
   // stay empty while the buffer holds the content, and a later resize does not reliably repaint); the
@@ -186,6 +197,7 @@ export function useXtermTerminal({
     applySize();
     term.focus();
 
+    const exitGuard = createClaudeExitGuard(() => Date.now());
     term.attachCustomKeyEventHandler((e) =>
       handleTerminalKey(e, {
         getSelection: () => term.getSelection(),
@@ -193,6 +205,12 @@ export function useXtermTerminal({
         clipboardEditEnabled: clipboardEditEnabledRef.current,
         toggleFind,
         openClipboardEdit,
+        holdClaudeExit: (key) => {
+          const target = claudeTerminalIdRef.current;
+          if (!exitGuard.hold(key, target) || target === null) return false;
+          confirmClaudeExit(key, target);
+          return true;
+        },
       }),
     );
 
@@ -305,6 +323,7 @@ export function useXtermTerminal({
     enableWebgl,
     toggleFind,
     openClipboardEdit,
+    confirmClaudeExit,
     resetFind,
     setFindResults,
   ]);
