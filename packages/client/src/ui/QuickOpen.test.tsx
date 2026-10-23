@@ -91,6 +91,39 @@ describe("QuickOpen", () => {
     expect(onOpen).toHaveBeenCalledOnce();
   });
 
+  it("returns the selection to the first row when the results change", async () => {
+    const { input, rows } = await renderPalette();
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.change(input, { target: { value: "app" } });
+    expect(rows()[0]?.getAttribute("data-selected")).toBe("true");
+  });
+
+  it("keeps an arrow-key move made the moment the results appear", async () => {
+    const { container } = render(
+      <QuickOpen
+        api={fakeApi()}
+        activeCwd="/ws/org1/repo-a/src"
+        onOpen={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const rows = (): Element[] =>
+      Array.from(container.querySelectorAll(".quickopen-row"));
+    // Press as soon as the rows are in the DOM, before React runs this render's effects.
+    await new Promise<void>((resolve) => {
+      const observer = new MutationObserver(() => {
+        if (rows().length === 0) return;
+        observer.disconnect();
+        resolve();
+      });
+      observer.observe(container, { childList: true, subtree: true });
+    });
+    const input = container.querySelector(".quickopen-input") as HTMLElement;
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(rows()[1]?.getAttribute("data-selected")).toBe("true");
+  });
+
   it("opens a row on click with no line when none was typed", async () => {
     const { rows, onOpen } = await renderPalette();
     fireEvent.click(rows()[0] as HTMLElement);

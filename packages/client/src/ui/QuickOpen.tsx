@@ -192,8 +192,13 @@ export function QuickOpen({
     [listing, name, activeCwd],
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset selection whenever the result set changes.
-  useEffect(() => setSelected(0), [results]);
+  // Reset during render, not in an effect: an effect can run after a keystroke that already moved
+  // the selection in the new results, and would throw it away.
+  const [selectionResults, setSelectionResults] = useState(results);
+  if (selectionResults !== results) {
+    setSelectionResults(results);
+    setSelected(0);
+  }
 
   useEffect(() => {
     const el = listRef.current?.children[selected] as HTMLElement | undefined;
