@@ -5,11 +5,18 @@ import {
   exitKeyOf,
 } from "./claude-exit-guard.js";
 
+const C = 67;
+const D = 68;
+const X = 88;
+
 function keyEvent(
   init: Partial<KeyboardEvent>,
-): Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"> {
+): Pick<
+  KeyboardEvent,
+  "keyCode" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+> {
   return {
-    key: "",
+    keyCode: 0,
     ctrlKey: false,
     metaKey: false,
     altKey: false,
@@ -20,21 +27,25 @@ function keyEvent(
 
 describe("exitKeyOf", () => {
   it.each([
-    ["c", "\x03"],
-    ["C", "\x03"],
-    ["d", "\x04"],
-    ["D", "\x04"],
-  ])("Ctrl+%s maps to its control byte", (key, byte) => {
-    expect(exitKeyOf(keyEvent({ key, ctrlKey: true }))).toBe(byte);
+    [C, "\x03"],
+    [D, "\x04"],
+  ])("Ctrl with keyCode %i maps to its control byte", (keyCode, byte) => {
+    expect(exitKeyOf(keyEvent({ keyCode, ctrlKey: true }))).toBe(byte);
+  });
+
+  it("follows the physical key on a non-Latin layout, as xterm does", () => {
+    expect(exitKeyOf(keyEvent({ key: "с", keyCode: C, ctrlKey: true }))).toBe(
+      "\x03",
+    );
   });
 
   it.each([
-    { key: "c" },
-    { key: "c", metaKey: true },
-    { key: "c", ctrlKey: true, shiftKey: true },
-    { key: "c", ctrlKey: true, altKey: true },
-    { key: "c", ctrlKey: true, metaKey: true },
-    { key: "x", ctrlKey: true },
+    { keyCode: C },
+    { keyCode: C, metaKey: true },
+    { keyCode: C, ctrlKey: true, shiftKey: true },
+    { keyCode: C, ctrlKey: true, altKey: true },
+    { keyCode: C, ctrlKey: true, metaKey: true },
+    { keyCode: X, ctrlKey: true },
   ])("is null for anything but a bare Ctrl+C / Ctrl+D (%o)", (init) => {
     expect(exitKeyOf(keyEvent(init))).toBeNull();
   });

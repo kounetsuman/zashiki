@@ -557,9 +557,9 @@ describe("TerminalView", () => {
     function openExitConfirm(term: {
       emitKey(e: Partial<KeyboardEvent>): boolean;
     }) {
-      term.emitKey({ key: "c", ctrlKey: true });
+      term.emitKey({ key: "c", keyCode: 67, ctrlKey: true });
       act(() => {
-        term.emitKey({ key: "c", ctrlKey: true });
+        term.emitKey({ key: "c", keyCode: 67, ctrlKey: true });
       });
     }
 
@@ -571,10 +571,10 @@ describe("TerminalView", () => {
 
     it("holds the second press and asks first", () => {
       const { term } = renderClaudeTerminal();
-      expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
+      expect(term.emitKey({ key: "c", keyCode: 67, ctrlKey: true })).toBe(true);
       let handled = true;
       act(() => {
-        handled = term.emitKey({ key: "c", ctrlKey: true });
+        handled = term.emitKey({ key: "c", keyCode: 67, ctrlKey: true });
       });
       expect(handled).toBe(false);
       expect(screen.getByRole("dialog")).toBeTruthy();
@@ -582,9 +582,9 @@ describe("TerminalView", () => {
 
     it("sends nothing on cancel and keeps the Claude Session", () => {
       const { term, input } = renderClaudeTerminal();
-      term.emitKey({ key: "c", ctrlKey: true });
+      term.emitKey({ key: "c", keyCode: 67, ctrlKey: true });
       act(() => {
-        term.emitKey({ key: "c", ctrlKey: true });
+        term.emitKey({ key: "c", keyCode: 67, ctrlKey: true });
       });
       fireEvent.click(dialogButton(".confirm-dialog-cancel"));
       act(() => {
@@ -596,9 +596,9 @@ describe("TerminalView", () => {
 
     it("sends the press twice on confirm so Claude Code exits", () => {
       const { term, input } = renderClaudeTerminal();
-      term.emitKey({ key: "d", ctrlKey: true });
+      term.emitKey({ key: "d", keyCode: 68, ctrlKey: true });
       act(() => {
-        term.emitKey({ key: "d", ctrlKey: true });
+        term.emitKey({ key: "d", keyCode: 68, ctrlKey: true });
       });
       fireEvent.click(dialogButton(".confirm-dialog-confirm"));
       act(() => {
@@ -610,9 +610,9 @@ describe("TerminalView", () => {
 
     it("lets a second press through once the window has passed", () => {
       const { term } = renderClaudeTerminal();
-      term.emitKey({ key: "c", ctrlKey: true });
+      term.emitKey({ key: "c", keyCode: 67, ctrlKey: true });
       vi.advanceTimersByTime(2000);
-      expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
+      expect(term.emitKey({ key: "c", keyCode: 67, ctrlKey: true })).toBe(true);
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
@@ -646,16 +646,16 @@ describe("TerminalView", () => {
 
     it("does not pair a press with one made in another Cockpit Terminal", () => {
       const { term, switchTo } = renderClaudeTerminal();
-      term.emitKey({ key: "c", ctrlKey: true });
+      term.emitKey({ key: "c", keyCode: 67, ctrlKey: true });
       switchTo("B");
-      expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
+      expect(term.emitKey({ key: "c", keyCode: 67, ctrlKey: true })).toBe(true);
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
     it("never asks in a terminal without a Claude Session", () => {
       const { term } = renderClaudeTerminal(null);
-      term.emitKey({ key: "c", ctrlKey: true });
-      expect(term.emitKey({ key: "c", ctrlKey: true })).toBe(true);
+      term.emitKey({ key: "c", keyCode: 67, ctrlKey: true });
+      expect(term.emitKey({ key: "c", keyCode: 67, ctrlKey: true })).toBe(true);
       expect(screen.queryByRole("dialog")).toBeNull();
     });
   });

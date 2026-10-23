@@ -107,17 +107,23 @@ describe("handleTerminalKey", () => {
   it("intercepts Ctrl+C / Ctrl+D the exit guard takes over", () => {
     const holdClaudeExit = vi.fn(() => true);
     const d = deps({ holdClaudeExit });
-    const e = key({ key: "c", ctrlKey: true });
+    const e = key({ key: "c", keyCode: 67, ctrlKey: true });
     expect(handleTerminalKey(e, d)).toBe(false);
     expect(e.preventDefault).toHaveBeenCalledOnce();
-    expect(handleTerminalKey(key({ key: "d", ctrlKey: true }), d)).toBe(false);
+    expect(
+      handleTerminalKey(key({ key: "d", keyCode: 68, ctrlKey: true }), d),
+    ).toBe(false);
     expect(holdClaudeExit.mock.calls).toEqual([["\x03"], ["\x04"]]);
   });
 
   it("passes Ctrl+C / Ctrl+D through when the exit guard lets them go", () => {
     const d = deps();
-    expect(handleTerminalKey(key({ key: "c", ctrlKey: true }), d)).toBe(true);
-    expect(handleTerminalKey(key({ key: "d", ctrlKey: true }), d)).toBe(true);
+    expect(
+      handleTerminalKey(key({ key: "c", keyCode: 67, ctrlKey: true }), d),
+    ).toBe(true);
+    expect(
+      handleTerminalKey(key({ key: "d", keyCode: 68, ctrlKey: true }), d),
+    ).toBe(true);
   });
 
   it("passes ordinary keys through", () => {

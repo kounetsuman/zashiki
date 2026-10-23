@@ -10,13 +10,22 @@ export const CLAUDE_EXIT_DOUBLE_PRESS_MS = 1000;
  */
 export const CLAUDE_EXIT_REPLAY_GAP_MS = 100;
 
-/** Bare Ctrl+C / Ctrl+D as the control byte xterm would send for it, otherwise null. */
+const KEY_CODE_C = 67;
+const KEY_CODE_D = 68;
+
+/**
+ * Bare Ctrl+C / Ctrl+D as the control byte xterm would send for it, otherwise null. Matched on
+ * keyCode as xterm does, so a non-Latin layout (where `key` is another letter) is still caught.
+ */
 export function exitKeyOf(
-  e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">,
+  e: Pick<
+    KeyboardEvent,
+    "keyCode" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey"
+  >,
 ): ExitKey | null {
   if (!e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return null;
-  if (e.key === "c" || e.key === "C") return "\x03";
-  if (e.key === "d" || e.key === "D") return "\x04";
+  if (e.keyCode === KEY_CODE_C) return "\x03";
+  if (e.keyCode === KEY_CODE_D) return "\x04";
   return null;
 }
 
