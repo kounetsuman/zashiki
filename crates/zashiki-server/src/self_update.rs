@@ -49,10 +49,14 @@ pub fn decide_update_mode(
 
 /// Install only a release strictly newer than the running app, so a replaced or rolled-back release can't
 /// downgrade it. The `Err` is the user-facing reason.
+/// Build metadata is ignored: it carries no precedence, so `v0.36.0+1` is the running `0.36.0`.
 pub fn check_upgrade(running: &semver::Version, tag: &str) -> Result<(), String> {
-    match crate::update_checker::newer_release(running, tag) {
-        Some(_) => Ok(()),
-        None => Err(format!("release {tag} is not newer than the running version {running}")),
+    let newer = semver::Version::parse(tag.trim().trim_start_matches('v'))
+        .is_ok_and(|release| release.cmp_precedence(running).is_gt());
+    if newer {
+        Ok(())
+    } else {
+        Err(format!("release {tag} is not newer than the running version {running}"))
     }
 }
 
@@ -276,6 +280,13 @@ mod tests {
             check_upgrade(&v("0.36.0"), "v0.36.0"),
             Err("release v0.36.0 is not newer than the running version 0.36.0".to_string()),
         );
+    }
+
+    #[test]
+    fn upgrade_refuses_the_running_version_with_only_build_metadata_added() {
+        assert!(check_upgrade(&v("0.36.0"), "v0.36.0+1").is_err());
+        assert!(check_upgrade(&v("0.36.0+build.5"), "v0.36.0+build.6").is_err());
+        assert_eq!(check_upgrade(&v("0.36.0"), "v0.36.1+1"), Ok(()));
     }
 
     #[test]
