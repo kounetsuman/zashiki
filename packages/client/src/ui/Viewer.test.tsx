@@ -372,4 +372,23 @@ describe("Viewer", () => {
     expect(frame?.getAttribute("src")).toBe("blob:pdf-1");
     expect(frame?.getAttribute("title")).toBe("docs/spec.pdf");
   });
+
+  it("keeps focus on the section when a pdf opens, so app shortcuts still reach the window", () => {
+    const { container } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "docs/spec.pdf",
+          content: null,
+          media: { kind: "pdf", url: "blob:pdf-1" },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        focusNonce={1}
+      />,
+    );
+    expect(document.activeElement).toBe(
+      container.querySelector(".viewer-view"),
+    );
+  });
 });

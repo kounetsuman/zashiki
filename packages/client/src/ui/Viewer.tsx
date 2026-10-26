@@ -190,7 +190,7 @@ export function Viewer({
   const focusTarget = useCallback(
     () =>
       sectionRef.current?.querySelector<HTMLElement>(
-        ".cm-content, .delimited-table, .viewer-html-frame, .viewer-pdf-frame",
+        ".cm-content, .delimited-table, .viewer-html-frame",
       ) ?? null,
     [],
   );
