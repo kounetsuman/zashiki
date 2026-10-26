@@ -851,14 +851,17 @@ mod git_file_rest_tests {
     #[tokio::test]
     async fn media_read_rejects_missing_directory_and_outside_allowlist() {
         let fx = fixture();
-        let (s, _, _) = media_req(app(&fx), &fx.repo_a, "nope.png", &[]).await;
+        let (s, h, _) = media_req(app(&fx), &fx.repo_a, "nope.png", &[]).await;
         assert_eq!(s, StatusCode::NOT_FOUND);
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
         std::fs::create_dir_all(Path::new(&fx.repo_a).join("shots.png")).unwrap();
-        let (s, _, _) = media_req(app(&fx), &fx.repo_a, "shots.png", &[]).await;
+        let (s, h, _) = media_req(app(&fx), &fx.repo_a, "shots.png", &[]).await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
         let org1 = Path::new(&fx.repo_a).parent().unwrap().to_string_lossy();
-        let (s, _, _) = media_req(app(&fx), &org1, "logo.png", &[]).await;
+        let (s, h, _) = media_req(app(&fx), &org1, "logo.png", &[]).await;
         assert_eq!(s, StatusCode::FORBIDDEN);
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
     }
 
     #[tokio::test]
@@ -872,6 +875,7 @@ mod git_file_rest_tests {
             let (s, h, _) = media_req(app(&fx), &fx.repo_a, file, &[]).await;
             assert_eq!(s, StatusCode::UNSUPPORTED_MEDIA_TYPE, "{file}");
             assert_eq!(h.get("content-type").unwrap(), "application/json", "{file}");
+            assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff", "{file}");
         }
     }
 

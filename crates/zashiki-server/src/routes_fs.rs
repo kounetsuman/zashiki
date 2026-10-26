@@ -43,17 +43,27 @@ pub(crate) async fn file_read(
 
 /// `GET /api/media`: streams a repo image/video/PDF for `<img>` / `<video>` / `<iframe>`; any other file
 /// type is 415. Delegates to ServeFile so Range requests get 206 partial responses (video seeking), then
-/// replaces its guessed content type with ours and adds nosniff plus (except for PDF) a sandbox CSP, so
-/// a repo file opened as a page cannot run script on the app's origin.
+/// replaces its guessed content type with ours and adds (except for PDF) a sandbox CSP, so
+/// a repo file opened as a page cannot run script on the app's origin. Every response, errors included,
+/// carries nosniff.
 /// The raw Request is forwarded to ServeFile so it can read the Range header.
 pub(crate) async fn media_read(
     State(state): State<AppState>,
     Query(params): Query<FileReadParams>,
     req: Request,
 ) -> Response {
+    let mut res = serve_media(&state, params, req).await;
+    res.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    res
+}
+
+async fn serve_media(state: &AppState, params: FileReadParams, req: Request) -> Response {
     let repo_path = params.repo_path.unwrap_or_default();
     let file = params.file.unwrap_or_default();
-    if let Err((status, msg)) = guard_file_path(&state, &repo_path, &file).await {
+    if let Err((status, msg)) = guard_file_path(state, &repo_path, &file).await {
         return json_error(status, &msg);
     }
     let Some(media_type) = media_type_for(&file) else {
@@ -83,10 +93,6 @@ pub(crate) async fn media_read(
     headers.insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static(media_type.content_type),
-    );
-    headers.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
     );
     if !media_type.is_pdf {
         headers.insert(
