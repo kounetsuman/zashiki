@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-dashboard-origin"
+description = "Enables the set_dashboard_origin command without any pre-configured scope."
+commands.allow = ["set_dashboard_origin"]
+
+[[permission]]
+identifier = "deny-set-dashboard-origin"
+description = "Denies the set_dashboard_origin command without any pre-configured scope."
+commands.deny = ["set_dashboard_origin"]

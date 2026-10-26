@@ -44,6 +44,25 @@ describe("renderMarkdown", () => {
     expect(html).not.toContain("]: https");
   });
 
+  it("opens web links in a new window, which the desktop app hands to the browser", () => {
+    for (const source of [
+      "[site](https://example.com/a)",
+      "Visit https://example.com/b today",
+      "[plain](http://example.com/c)",
+      "[relative to the scheme](//example.com/d)",
+    ]) {
+      const html = renderMarkdown(source);
+      expect(html).toContain('target="_blank"');
+      expect(html).toContain('rel="noopener noreferrer"');
+    }
+  });
+
+  it("keeps in-document and relative links in place", () => {
+    for (const source of ["[top](#heading)", "[next](./other.md)"]) {
+      expect(renderMarkdown(source)).not.toContain("target=");
+    }
+  });
+
   it("does not emit raw HTML from the source", () => {
     const html = renderMarkdown("<script>alert(1)</script>");
     expect(html).not.toContain("<script>");

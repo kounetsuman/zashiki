@@ -14,13 +14,16 @@ import {
 } from "../lib/dashboard.js";
 import { useDashboard } from "./useDashboard.js";
 
-const { isTauri } = vi.hoisted(() => ({ isTauri: vi.fn(() => true) }));
+const { isTauri, invoke } = vi.hoisted(() => ({
+  isTauri: vi.fn(() => true),
+  invoke: vi.fn((_command: string, _args?: unknown) => Promise.resolve()),
+}));
 const { listen } = vi.hoisted(() => ({
   listen: vi.fn((_event: string, _handler: () => void) =>
     Promise.resolve(vi.fn()),
   ),
 }));
-vi.mock("@tauri-apps/api/core", () => ({ isTauri }));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri, invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -43,12 +46,13 @@ interface Harness {
   dismiss(): void;
 }
 
-function mount(
+/** Renders the hook and lets the shell's registration of the dashboard address settle. */
+async function mount(
   settings: DashboardSettings | null,
   storage: ReturnType<typeof memoryStorage> | null,
   api?: DashboardApi,
   blocked = false,
-): { state: Harness; wake(): void; unblock(): void } {
+): Promise<{ state: Harness; wake(): void; unblock(): void }> {
   const state: Harness = { frame: null, dismiss: () => undefined };
   function Probe({ blocked }: { blocked: boolean }) {
     const { frame, dismiss } = useDashboard(
@@ -63,6 +67,7 @@ function mount(
     return null;
   }
   const { rerender } = render(<Probe blocked={blocked} />);
+  await act(async () => {});
   return {
     state,
     wake: () => {
@@ -87,23 +92,24 @@ const configured = (
 beforeEach(() => {
   isTauri.mockReturnValue(true);
   listen.mockClear();
+  invoke.mockClear();
 });
 afterEach(cleanup);
 
 describe("useDashboard", () => {
-  it("shows nothing before the settings arrive", () => {
-    const { state } = mount(null, memoryStorage());
+  it("shows nothing before the settings arrive", async () => {
+    const { state } = await mount(null, memoryStorage());
     expect(state.frame).toBeNull();
   });
 
-  it("shows nothing when no page is configured", () => {
-    const { state } = mount(configured({ url: "" }), memoryStorage());
+  it("shows nothing when no page is configured", async () => {
+    const { state } = await mount(configured({ url: "" }), memoryStorage());
     expect(state.frame).toBeNull();
   });
 
-  it("frames the configured page at launch and records the day", () => {
+  it("frames the configured page at launch and records the day", async () => {
     const storage = memoryStorage();
-    const { state } = mount(configured(), storage);
+    const { state } = await mount(configured(), storage);
     expect(state.frame).toEqual({
       kind: "remote",
       url: "https://dash.example/board",
@@ -113,8 +119,73 @@ describe("useDashboard", () => {
     );
   });
 
-  it("stays out of the way until the wake it was configured for", () => {
-    const { state, wake } = mount(
+  it("frames a web page only once the shell has registered its address", async () => {
+    let registered: () => void = () => undefined;
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          registered = resolve;
+        }),
+    );
+    const storage = memoryStorage();
+    const state: { frame: DashboardFrame | null } = { frame: null };
+    function Probe() {
+      state.frame = useDashboard(
+        configured(),
+        undefined,
+        storage,
+        false,
+        () => NOW,
+      ).frame;
+      return null;
+    }
+    render(<Probe />);
+    expect(invoke).toHaveBeenCalledWith("set_dashboard_origin", {
+      url: "https://dash.example/board",
+    });
+    expect(state.frame).toBeNull();
+    expect(storage.getItem(DASHBOARD_LAST_SHOWN_KEY)).not.toBeNull();
+
+    await act(async () => registered());
+    expect(state.frame).toEqual({
+      kind: "remote",
+      url: "https://dash.example/board",
+    });
+  });
+
+  it("still frames the page when the shell could not be told", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    invoke.mockImplementationOnce(() => Promise.reject(new Error("ipc down")));
+    const { state } = await mount(configured(), memoryStorage());
+    expect(state.frame).not.toBeNull();
+    warn.mockRestore();
+  });
+
+  it("withdraws the framed address when the setting stops naming a web page", async () => {
+    await mount(configured({ url: "" }), memoryStorage());
+    expect(invoke).toHaveBeenCalledWith("set_dashboard_origin", { url: "" });
+  });
+
+  it("says so when the shell could not be told", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    invoke.mockImplementationOnce(() => Promise.reject(new Error("ipc down")));
+    await mount(configured(), memoryStorage());
+    expect(warn).toHaveBeenCalledWith(
+      "could not tell the shell the dashboard address",
+      expect.any(Error),
+    );
+    warn.mockRestore();
+  });
+
+  it("has nothing to tell outside the desktop app", async () => {
+    isTauri.mockReturnValue(false);
+    const { state } = await mount(configured(), memoryStorage());
+    expect(state.frame).not.toBeNull();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("stays out of the way until the wake it was configured for", async () => {
+    const { state, wake } = await mount(
       configured({ showOn: "wake" }),
       memoryStorage(),
     );
@@ -126,8 +197,8 @@ describe("useDashboard", () => {
     });
   });
 
-  it("skips a wake that is already the day's second showing at once_per_day", () => {
-    const { state, wake } = mount(
+  it("skips a wake that is already the day's second showing at once_per_day", async () => {
+    const { state, wake } = await mount(
       configured({ showOn: "wake", frequency: "once_per_day" }),
       memoryStorage({
         [DASHBOARD_LAST_SHOWN_KEY]: shownOn(
@@ -140,8 +211,8 @@ describe("useDashboard", () => {
     expect(state.frame).toBeNull();
   });
 
-  it("shows again on a later wake at every_time", () => {
-    const { state, wake } = mount(
+  it("shows again on a later wake at every_time", async () => {
+    const { state, wake } = await mount(
       configured({ showOn: "both", frequency: "every_time" }),
       memoryStorage(),
     );
@@ -155,7 +226,7 @@ describe("useDashboard", () => {
     const api: DashboardApi = {
       read: vi.fn(async () => "<h1>goals</h1>"),
     };
-    const { state } = mount(
+    const { state } = await mount(
       configured({ url: "~/board.html" }),
       memoryStorage(),
       api,
@@ -169,7 +240,7 @@ describe("useDashboard", () => {
     const api: DashboardApi = {
       read: vi.fn(() => Promise.reject(new Error("file not found"))),
     };
-    const { state } = mount(
+    const { state } = await mount(
       configured({ url: "/Users/me/gone.html" }),
       memoryStorage(),
       api,
@@ -192,7 +263,7 @@ describe("useDashboard", () => {
       ),
     };
     const storage = memoryStorage();
-    const { state } = mount(
+    const { state } = await mount(
       configured({ url: "~/board.html", frequency: "once_per_day" }),
       storage,
       api,
@@ -204,9 +275,9 @@ describe("useDashboard", () => {
     expect(storage.getItem(DASHBOARD_LAST_SHOWN_KEY)).toBeNull();
   });
 
-  it("leaves the day free when it has no way to read the local file", () => {
+  it("leaves the day free when it has no way to read the local file", async () => {
     const storage = memoryStorage();
-    const { state } = mount(
+    const { state } = await mount(
       configured({ url: "~/board.html", frequency: "once_per_day" }),
       storage,
     );
@@ -226,7 +297,7 @@ describe("useDashboard", () => {
       ),
     };
     const storage = memoryStorage();
-    const { state } = mount(
+    const { state } = await mount(
       configured({ url: "~/board.txt", frequency: "once_per_day" }),
       storage,
       api,
@@ -248,7 +319,7 @@ describe("useDashboard", () => {
         Promise.reject(new DashboardReadError(404, "file not found")),
       ),
     };
-    const { state, wake } = mount(
+    const { state, wake } = await mount(
       configured({
         url: "~/board.html",
         showOn: "both",
@@ -269,7 +340,7 @@ describe("useDashboard", () => {
       read: vi.fn(() => Promise.reject(new Error("file not found"))),
     };
     const storage = memoryStorage();
-    const { state } = mount(
+    const { state } = await mount(
       configured({ url: "~/board.html", frequency: "once_per_day" }),
       storage,
       api,
@@ -279,8 +350,8 @@ describe("useDashboard", () => {
     expect(storage.getItem(DASHBOARD_LAST_SHOWN_KEY)).toBeNull();
   });
 
-  it("shows a newly configured address today, even after another one was shown", () => {
-    const { state, wake } = mount(
+  it("shows a newly configured address today, even after another one was shown", async () => {
+    const { state, wake } = await mount(
       configured({
         showOn: "wake",
         frequency: "once_per_day",
@@ -300,9 +371,9 @@ describe("useDashboard", () => {
     });
   });
 
-  it("waits rather than spending the day while something more urgent is up", () => {
+  it("waits rather than spending the day while something more urgent is up", async () => {
     const storage = memoryStorage();
-    const { state, unblock } = mount(
+    const { state, unblock } = await mount(
       configured({ frequency: "once_per_day" }),
       storage,
       undefined,
@@ -318,8 +389,8 @@ describe("useDashboard", () => {
     });
   });
 
-  it("dismisses the page it is showing", () => {
-    const { state } = mount(configured(), memoryStorage());
+  it("dismisses the page it is showing", async () => {
+    const { state } = await mount(configured(), memoryStorage());
     act(() => state.dismiss());
     expect(state.frame).toBeNull();
   });

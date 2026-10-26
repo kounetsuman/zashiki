@@ -2,8 +2,10 @@
 
 // Compiled everywhere, wired up only on macOS: CI checks and tests this crate on Linux, and the
 // test that pins the menu's event names to the page has to run there too.
+mod ipc_capability;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod menu;
+mod navigation;
 mod pages;
 mod quit_log;
 mod sidecar;
@@ -38,6 +40,17 @@ fn base_url(cfg: &Config) -> String {
 fn open_devtools(webview: tauri::WebviewWindow) {
     webview.open_devtools();
 }
+
+/// The dashboard overlay frames the configured page inside the window, so the navigation guard lets
+/// that page's origin through as well. The app reports the configured address whenever it changes;
+/// one that is not an http(s) address clears the allowance.
+#[tauri::command]
+fn set_dashboard_origin(dashboard: tauri::State<'_, DashboardOrigin>, url: String) {
+    *dashboard.0.lock().unwrap() = navigation::dashboard_origin(&url);
+}
+
+#[derive(Default)]
+struct DashboardOrigin(Mutex<Option<String>>);
 
 /// A file chosen via the native open dialog, already read into memory.
 #[derive(serde::Serialize)]
@@ -167,11 +180,13 @@ fn main() {
     let builder = builder.menu(menu::build).on_menu_event(menu::on_event);
     let build_result = builder
         .manage(QuitBridge::default())
+        .manage(DashboardOrigin::default())
         .invoke_handler(tauri::generate_handler![
             open_devtools,
             pick_and_read_file,
             report_memo_status,
-            report_memo_saved
+            report_memo_saved,
+            set_dashboard_origin
         ])
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -193,8 +208,14 @@ fn main() {
             // Tauri v2 internally converts an Err from setup into a panic, and because this runs inside
             // did_finish_launching (extern "C") it cannot unwind, resulting in SIGABRT.
             // So we must not return an Err from here on sidecar-startup failure.
+            grant_app_commands(app, &base);
             // Show the loading page immediately and start the sidecar on a background thread
             // (not blocking the main thread = resolving the perceived "hang").
+            let guard = Arc::new(navigation::Guard::new(navigation::app_origins(
+                &base, cfg.port,
+            )));
+            let new_window_guard = Arc::clone(&guard);
+            let guard_handle = app.handle().clone();
             let loading: tauri::Url = pages::data_url(&pages::loading_html())
                 .parse()
                 .expect("data URL は常にパース可能");
@@ -206,7 +227,18 @@ fn main() {
                     .devtools(true)
                     // WKWebView's OS-level drag-drop handler swallows HTML5 dragover/drop events,
                     // which breaks in-page tab reordering. Disable it so DOM drag-and-drop works.
-                    .disable_drag_drop_handler();
+                    .disable_drag_drop_handler()
+                    .on_navigation(move |url| {
+                        let dashboard = guard_handle.state::<DashboardOrigin>();
+                        let dashboard_origin = dashboard.0.lock().unwrap().clone();
+                        guard.allows(url, dashboard_origin)
+                    })
+                    .on_new_window(move |url, _features| {
+                        if navigation::opens_in_browser(&url, new_window_guard.app_origins()) {
+                            navigation::open_in_browser(&url);
+                        }
+                        tauri::webview::NewWindowResponse::Deny
+                    });
             // Overlay the title bar so the webview reaches into it; the account indicator sits there,
             // right of the native traffic lights. macOS-only builder method.
             #[cfg(target_os = "macos")]
@@ -314,6 +346,20 @@ fn main() {
         tauri::RunEvent::Exit => shutdown_owned(&owned_on_exit),
         _ => {}
     });
+}
+
+/// Grants the app commands to the origin the window is about to be served from, and to nothing else.
+fn grant_app_commands(app: &tauri::App, base: &str) {
+    let Some(origin) = navigation::web_origin_of(base) else {
+        eprintln!("zashiki: no web origin in {base}; the app commands stay unreachable");
+        return;
+    };
+    let configured = ipc_capability::configured_app_origin(app.config(), tauri::is_dev());
+    let capability =
+        ipc_capability::for_origin(ipc_capability::TEMPLATE, &origin, configured.as_deref());
+    if let Err(e) = app.add_capability(capability) {
+        eprintln!("zashiki: could not grant the app commands to {origin}: {e}");
+    }
 }
 
 /// What to do about a quit request, given the server's activity (`None` = server unreachable / token

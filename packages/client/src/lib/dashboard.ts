@@ -1,5 +1,7 @@
 import type { DashboardSettings, DashboardShowOn } from "@zashiki/shared";
 
+import { isHttpUrl } from "./web-url.js";
+
 type StoragePart = Pick<Storage, "getItem" | "setItem">;
 
 /** localStorage key for the address last shown and the calendar day it was shown on. */
@@ -17,9 +19,7 @@ export type DashboardTarget =
 export function dashboardTarget(url: string): DashboardTarget {
   const value = url.trim();
   if (value === "") return { kind: "off" };
-  return /^https?:\/\//i.test(value)
-    ? { kind: "remote", url: value }
-    : { kind: "local" };
+  return isHttpUrl(value) ? { kind: "remote", url: value } : { kind: "local" };
 }
 
 /** What the overlay has to draw: the page itself, or why it could not be read. */

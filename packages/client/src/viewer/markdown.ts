@@ -1,5 +1,7 @@
 import MarkdownIt from "markdown-it";
 
+import { isWebLink } from "../lib/web-url.js";
+
 type Markdown = InstanceType<typeof MarkdownIt>;
 
 const TASK_MARKER = /^\[([ xX])\][ \u00A0]/;
@@ -54,6 +56,25 @@ const mermaidFences = (md: Markdown) => {
     return `<div class="viewer-mermaid"><pre><code class="language-mermaid">${md.utils.escapeHtml(
       token.content,
     )}</code></pre></div>\n`;
+  };
+};
+
+/**
+ * The desktop window refuses to leave the app in place, so a web link has to ask for a new window,
+ * which the shell hands to the default browser.
+ */
+const webLinksInNewWindow = (md: Markdown) => {
+  const defaultLinkOpen =
+    md.renderer.rules.link_open ??
+    ((tokens, idx, options, _env, self) =>
+      self.renderToken(tokens, idx, options));
+  md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    if (token !== undefined && isWebLink(String(token.attrGet("href") ?? ""))) {
+      token.attrSet("target", "_blank");
+      token.attrSet("rel", "noopener noreferrer");
+    }
+    return defaultLinkOpen(tokens, idx, options, env, self);
   };
 };
 
@@ -141,6 +162,7 @@ const renderer = new MarkdownIt({
 })
   .use(taskLists)
   .use(mermaidFences)
+  .use(webLinksInNewWindow)
   .use(remoteImages);
 
 export function renderMarkdown(
