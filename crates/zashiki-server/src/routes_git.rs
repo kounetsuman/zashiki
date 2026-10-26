@@ -834,7 +834,10 @@ mod git_file_rest_tests {
         assert_eq!(h.get("content-range").unwrap(), "bytes 0-3/20");
         assert_eq!(h.get("content-type").unwrap(), "video/mp4");
         assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
-        assert!(h.get("content-security-policy").is_some());
+        assert_eq!(
+            h.get("content-security-policy").unwrap(),
+            crate::media_type::MEDIA_CSP
+        );
         assert_eq!(body, vec![0, 1, 2, 3]);
     }
 
