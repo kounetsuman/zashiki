@@ -57,13 +57,35 @@ const mermaidFences = (md: Markdown) => {
   };
 };
 
+const WEB_LINK = /^https?:\/\//i;
+
+/**
+ * The desktop window refuses to leave the app in place, so a web link has to ask for a new window,
+ * which the shell hands to the default browser.
+ */
+const webLinksInNewWindow = (md: Markdown) => {
+  const defaultLinkOpen =
+    md.renderer.rules.link_open ??
+    ((tokens, idx, options, _env, self) =>
+      self.renderToken(tokens, idx, options));
+  md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+    const token = tokens[idx];
+    if (token !== undefined && WEB_LINK.test(token.attrGet("href") ?? "")) {
+      token.attrSet("target", "_blank");
+      token.attrSet("rel", "noopener noreferrer");
+    }
+    return defaultLinkOpen(tokens, idx, options, env, self);
+  };
+};
+
 const renderer = new MarkdownIt({
   html: false,
   linkify: true,
   breaks: false,
 })
   .use(taskLists)
-  .use(mermaidFences);
+  .use(mermaidFences)
+  .use(webLinksInNewWindow);
 
 export function renderMarkdown(source: string): string {
   return renderer.render(source);

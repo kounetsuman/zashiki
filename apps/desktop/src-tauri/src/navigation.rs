@@ -3,34 +3,25 @@
 
 use tauri::Url;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Navigation {
-    Stay,
-    OpenInBrowser,
-    Refuse,
-}
-
-/// `allowed` holds serialized web origins (`scheme://host:port`, see [`web_origin`]). The shell's own
-/// startup and error pages are `data:` URLs, which are let through only while `showing_shell_page`.
-pub fn decide(url: &Url, allowed: &[String], showing_shell_page: bool) -> Navigation {
+/// Whether the window (or a frame in it) may go to `url` in place. `allowed` holds serialized web
+/// origins (`scheme://host:port`, see [`web_origin`]). The shell's own startup and error pages are
+/// `data:` URLs, which are let through only while `showing_shell_page`. Everything else is refused
+/// rather than handed to the browser: a navigation here may be a script's, not the user's click.
+pub fn may_navigate(url: &Url, allowed: &[String], showing_shell_page: bool) -> bool {
     let is_allowed = || web_origin(url).is_some_and(|origin| allowed.contains(&origin));
     match url.scheme() {
-        "http" | "https" if is_allowed() => Navigation::Stay,
-        "http" | "https" => Navigation::OpenInBrowser,
-        "blob" if is_allowed() => Navigation::Stay,
-        "about" if matches!(url.path(), "blank" | "srcdoc") => Navigation::Stay,
-        "data" if showing_shell_page => Navigation::Stay,
-        _ => Navigation::Refuse,
+        "http" | "https" | "blob" => is_allowed(),
+        "about" => matches!(url.path(), "blank" | "srcdoc"),
+        "data" => showing_shell_page,
+        _ => false,
     }
 }
 
 /// Requests to open a new window never get one: a second WebView would sit outside the
-/// navigation guard. Web links go to the default browser instead.
-pub fn decide_new_window(url: &Url) -> Navigation {
-    match url.scheme() {
-        "http" | "https" => Navigation::OpenInBrowser,
-        _ => Navigation::Refuse,
-    }
+/// navigation guard. Web links go to the default browser instead; WebKit asks for a new window
+/// only from a user gesture, so this is the one place a link reaches the browser.
+pub fn opens_in_browser(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https")
 }
 
 /// The origins the window is served from: the page's own origin, and the server's, which differs
@@ -105,16 +96,12 @@ mod tests {
             "http://127.0.0.1:8790/api/media?path=a.pdf",
             "http://127.0.0.1:8790/#memo",
         ] {
-            assert_eq!(
-                decide(&url(target), &allowed, false),
-                Navigation::Stay,
-                "{target}"
-            );
+            assert!(may_navigate(&url(target), &allowed, false), "{target}");
         }
     }
 
     #[test]
-    fn sends_other_web_origins_to_the_browser() {
+    fn refuses_other_web_origins_in_place() {
         let allowed = served_from("http://127.0.0.1:8790");
         for target in [
             "https://example.com/",
@@ -124,47 +111,44 @@ mod tests {
             "https://127.0.0.1:8790/",
             "http://evil.example/http://127.0.0.1:8790/",
         ] {
-            assert_eq!(
-                decide(&url(target), &allowed, false),
-                Navigation::OpenInBrowser,
-                "{target}"
-            );
+            assert!(!may_navigate(&url(target), &allowed, false), "{target}");
         }
     }
 
     #[test]
     fn development_serves_the_page_from_vite_and_media_from_the_server() {
         let allowed = served_from("http://localhost:5173");
-        assert_eq!(
-            decide(&url("http://localhost:5173/"), &allowed, false),
-            Navigation::Stay
-        );
-        assert_eq!(
-            decide(
-                &url("http://127.0.0.1:8790/api/media?path=a.pdf"),
-                &allowed,
-                false
-            ),
-            Navigation::Stay
-        );
-        assert_eq!(
-            decide(&url("http://localhost:3000/"), &allowed, false),
-            Navigation::OpenInBrowser
-        );
+        assert!(may_navigate(
+            &url("http://localhost:5173/"),
+            &allowed,
+            false
+        ));
+        assert!(may_navigate(
+            &url("http://127.0.0.1:8790/api/media?path=a.pdf"),
+            &allowed,
+            false
+        ));
+        assert!(!may_navigate(
+            &url("http://localhost:3000/"),
+            &allowed,
+            false
+        ));
     }
 
     #[test]
     fn an_extra_allowed_origin_is_stayed_on() {
         let mut allowed = served_from("http://127.0.0.1:8790");
         allowed.extend(dashboard_origin("https://dash.example/board?x=1"));
-        assert_eq!(
-            decide(&url("https://dash.example/board"), &allowed, false),
-            Navigation::Stay
-        );
-        assert_eq!(
-            decide(&url("https://other.example/"), &allowed, false),
-            Navigation::OpenInBrowser
-        );
+        assert!(may_navigate(
+            &url("https://dash.example/board"),
+            &allowed,
+            false
+        ));
+        assert!(!may_navigate(
+            &url("https://other.example/"),
+            &allowed,
+            false
+        ));
     }
 
     #[test]
@@ -175,16 +159,12 @@ mod tests {
             "about:srcdoc",
             "blob:http://127.0.0.1:8790/5d1f0f3e-2b8c-4a43-9d9a-3f1c2b7e6a10",
         ] {
-            assert_eq!(
-                decide(&url(target), &allowed, false),
-                Navigation::Stay,
-                "{target}"
-            );
+            assert!(may_navigate(&url(target), &allowed, false), "{target}");
         }
     }
 
     #[test]
-    fn refuses_everything_else_without_opening_it() {
+    fn refuses_every_other_scheme() {
         let allowed = served_from("http://127.0.0.1:8790");
         for target in [
             "blob:https://example.com/5d1f0f3e-2b8c-4a43-9d9a-3f1c2b7e6a10",
@@ -195,11 +175,7 @@ mod tests {
             "vscode://file/a",
             "ftp://example.com/",
         ] {
-            assert_eq!(
-                decide(&url(target), &allowed, false),
-                Navigation::Refuse,
-                "{target}"
-            );
+            assert!(!may_navigate(&url(target), &allowed, false), "{target}");
         }
     }
 
@@ -207,26 +183,18 @@ mod tests {
     fn shell_pages_are_shown_only_before_the_app_is_loaded() {
         let allowed = served_from("http://127.0.0.1:8790");
         let page = url("data:text/html;charset=utf-8,%3Ch1%3E");
-        assert_eq!(decide(&page, &allowed, true), Navigation::Stay);
-        assert_eq!(decide(&page, &allowed, false), Navigation::Refuse);
+        assert!(may_navigate(&page, &allowed, true));
+        assert!(!may_navigate(&page, &allowed, false));
     }
 
     #[test]
     fn new_windows_open_web_links_in_the_browser_and_nothing_else() {
-        assert_eq!(
-            decide_new_window(&url("https://github.com/kounetsuman/zashiki/issues/new")),
-            Navigation::OpenInBrowser
-        );
-        assert_eq!(
-            decide_new_window(&url("http://127.0.0.1:8790/")),
-            Navigation::OpenInBrowser
-        );
+        assert!(opens_in_browser(&url(
+            "https://github.com/kounetsuman/zashiki/issues/new"
+        )));
+        assert!(opens_in_browser(&url("http://127.0.0.1:8790/")));
         for target in ["about:blank", "file:///etc/passwd", "javascript:alert(1)"] {
-            assert_eq!(
-                decide_new_window(&url(target)),
-                Navigation::Refuse,
-                "{target}"
-            );
+            assert!(!opens_in_browser(&url(target)), "{target}");
         }
     }
 

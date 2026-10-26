@@ -18,7 +18,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Duration;
 
-use navigation::Navigation;
 use sidecar::Config;
 use tauri::{Emitter, Manager};
 
@@ -249,10 +248,12 @@ fn main() {
                             .state::<QuitBridge>()
                             .app_loaded
                             .load(Ordering::SeqCst);
-                        follow(navigation::decide(url, &allowed, showing_shell_page), url)
+                        navigation::may_navigate(url, &allowed, showing_shell_page)
                     })
                     .on_new_window(|url, _features| {
-                        follow(navigation::decide_new_window(&url), &url);
+                        if navigation::opens_in_browser(&url) {
+                            navigation::open_in_browser(&url);
+                        }
                         tauri::webview::NewWindowResponse::Deny
                     });
             // Overlay the title bar so the webview reaches into it; the account indicator sits there,
@@ -375,18 +376,6 @@ fn grant_app_commands(app: &tauri::App, base: &str) {
         ipc_capability::for_origin(ipc_capability::TEMPLATE, &origin, configured.as_deref());
     if let Err(e) = app.add_capability(capability) {
         eprintln!("zashiki: could not grant the app commands to {origin}: {e}");
-    }
-}
-
-/// Carries out a navigation decision; true lets the WebView go there.
-fn follow(decision: Navigation, url: &tauri::Url) -> bool {
-    match decision {
-        Navigation::Stay => true,
-        Navigation::OpenInBrowser => {
-            navigation::open_in_browser(url);
-            false
-        }
-        Navigation::Refuse => false,
     }
 }
 
