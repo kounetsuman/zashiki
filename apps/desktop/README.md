@@ -219,7 +219,9 @@ One-time setup (maintainer):
    | `APPLE_TEAM_ID` | 10-character Team ID |
 
    Signing with a different Team ID also requires updating `RELEASE_TEAM_ID` in
-   `scripts/install.sh`; otherwise installs and in-app updates refuse the new build.
+   `scripts/install.sh`, or fresh installs refuse the new build. Already-installed apps verify
+   updates with the `install.sh` bundled inside them, so they keep refusing builds from the new
+   team: their users must reinstall once with the updated `install.sh`.
 
 ### Homebrew tap auto-bump
 

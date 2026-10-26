@@ -196,7 +196,9 @@ Gatekeeper の右クリック回避なしで起動する。secret が無いと�
    | `APPLE_TEAM_ID` | 10 文字の Team ID |
 
    別の Team ID で署名する場合は `scripts/install.sh` の `RELEASE_TEAM_ID` も更新する（更新しないと
-   インストールとアプリ内アップデートが新ビルドを拒否する）。
+   新規インストールが新ビルドを拒否する）。インストール済みのアプリは自身に同梱された `install.sh` で
+   アップデートを検証するため、新しい Team ID のビルドを拒否し続ける。その利用者は更新後の
+   `install.sh` で一度手動で入れ直す必要がある。
 
 ### Homebrew tap の自動更新
 
