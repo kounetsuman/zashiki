@@ -479,6 +479,8 @@ mod tests {
         // Comparison shares update_checker::newer_release, so a v-prefixed id compares, not deletes.
         assert!(!is_stale_update_notification(&note("update-available:v0.31.0", 1), &current));
         assert!(is_stale_update_notification(&note("update-available:v0.30.0", 1), &current));
+        assert!(is_stale_update_notification(&note("update-available:v0.30.0+1", 1), &current));
+        assert!(is_stale_update_notification(&note("update-available:vv0.31.0", 1), &current));
         // Unparseable versions carry nothing actionable and would otherwise stick forever.
         assert!(is_stale_update_notification(&note("update-available:", 1), &current));
         assert!(is_stale_update_notification(&note("update-available:garbage", 1), &current));
