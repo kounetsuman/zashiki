@@ -370,7 +370,9 @@ fn grant_app_commands(app: &tauri::App, base: &str) {
         eprintln!("zashiki: no web origin in {base}; the app commands stay unreachable");
         return;
     };
-    let capability = ipc_capability::for_origin(ipc_capability::TEMPLATE, &origin);
+    let configured = ipc_capability::configured_app_origin(app.config(), tauri::is_dev());
+    let capability =
+        ipc_capability::for_origin(ipc_capability::TEMPLATE, &origin, configured.as_deref());
     if let Err(e) = app.add_capability(capability) {
         eprintln!("zashiki: could not grant the app commands to {origin}: {e}");
     }
