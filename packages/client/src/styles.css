@@ -1552,6 +1552,34 @@ textarea {
   margin: 8px 0;
 }
 
+.viewer-preview .viewer-remote-image {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px dashed #555;
+  border-radius: 4px;
+  background: #171717;
+  color: #aaa;
+  font: inherit;
+  cursor: pointer;
+}
+
+.viewer-preview .viewer-remote-image:hover {
+  border-color: #6cb6ff;
+  color: #ddd;
+}
+
+.viewer-preview .viewer-remote-image .material-symbols-outlined {
+  font-size: 18px;
+}
+
+.viewer-preview .viewer-remote-image-host {
+  color: #777;
+  font-size: 0.85em;
+}
+
 .viewer-preview li.task-list-item {
   list-style: none;
 }

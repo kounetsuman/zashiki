@@ -2,7 +2,14 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  type MouseEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 
 import { isDelimitedText } from "../viewer/delimited.js";
@@ -26,6 +33,17 @@ const TOGGLE_LABEL: Record<AlternateView, { show: string; hide: string }> = {
   htmlPreview: { show: "viewer.preview", hide: "viewer.code" },
   table: { show: "viewer.table", hide: "viewer.text" },
 };
+
+const NO_REMOTE_IMAGES: ReadonlySet<string> = new Set();
+
+function clickedRemoteImageSrc(event: MouseEvent): string | null {
+  if (!(event.target instanceof Element)) return null;
+  return (
+    event.target
+      .closest(".viewer-remote-image")
+      ?.getAttribute("data-remote-src") ?? null
+  );
+}
 
 function alternateView(relPath: string): AlternateView | null {
   if (isMarkdown(relPath)) return "markdownPreview";
@@ -179,12 +197,35 @@ export function Viewer({
   const previewRef = useRef<HTMLDivElement | null>(null);
   const alternate = alternateView(buffer.relPath);
   const showAlternate = alternate !== null && buffer.preview;
+  const fileKey = `${buffer.repoPath}\0${buffer.relPath}`;
+  const [loadedRemote, setLoadedRemote] = useState({
+    fileKey,
+    srcs: NO_REMOTE_IMAGES,
+  });
+  const loadedRemoteImages =
+    loadedRemote.fileKey === fileKey ? loadedRemote.srcs : NO_REMOTE_IMAGES;
   const previewHtml = useMemo(
     () =>
       showAlternate && alternate === "markdownPreview"
-        ? renderMarkdown(buffer.content ?? "")
+        ? renderMarkdown(buffer.content ?? "", {
+            loadedRemoteImages,
+            remoteImageLabel: (host) => t("viewer.loadRemoteImage", { host }),
+          })
         : "",
-    [showAlternate, alternate, buffer.content],
+    [showAlternate, alternate, buffer.content, loadedRemoteImages, t],
+  );
+
+  const loadClickedRemoteImage = useCallback(
+    (event: MouseEvent) => {
+      const src = clickedRemoteImageSrc(event);
+      if (src === null) return;
+      event.preventDefault();
+      setLoadedRemote((prev) => ({
+        fileKey,
+        srcs: new Set([...(prev.fileKey === fileKey ? prev.srcs : []), src]),
+      }));
+    },
+    [fileKey],
   );
 
   const focusTarget = useCallback(
@@ -227,9 +268,12 @@ export function Viewer({
     if (showAlternate && alternate === "markdownPreview")
       return (
         // markdown-it escapes raw HTML with html:false (mitigates XSS).
+        // biome-ignore lint/a11y/useKeyWithClickEvents: delegates clicks from the rendered load buttons, which handle the keyboard themselves
+        // biome-ignore lint/a11y/noStaticElementInteractions: same delegation; the div itself is not interactive
         <div
           ref={previewRef}
           className="viewer-preview markdown-body"
+          onClick={loadClickedRemoteImage}
           // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
           dangerouslySetInnerHTML={{ __html: previewHtml }}
         />

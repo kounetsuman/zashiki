@@ -391,4 +391,68 @@ describe("Viewer", () => {
       container.querySelector(".viewer-view"),
     );
   });
+
+  describe("remote images in the Markdown preview", () => {
+    const md: ViewerBuffer = {
+      ...base,
+      relPath: "README.md",
+      content:
+        "![chart](https://img.example/a.png)\n\n![other](https://img.example/b.png)\n\n![local](docs/c.png)\n",
+      preview: true,
+    };
+
+    function remoteSrcs(container: HTMLElement) {
+      return Array.from(container.querySelectorAll("img")).map((img) =>
+        img.getAttribute("src"),
+      );
+    }
+
+    it("shows a load button instead of fetching a remote image", () => {
+      const { container } = render(
+        <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      expect(remoteSrcs(container)).toEqual(["docs/c.png"]);
+      expect(
+        screen.getByRole("button", { name: /chart/ }).getAttribute("title"),
+      ).toBe("img.example から画像を読み込む");
+    });
+
+    it("loads only the clicked image, and keeps it loaded when the file changes", () => {
+      const { container, rerender } = render(
+        <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /chart/ }));
+      expect(remoteSrcs(container)).toEqual([
+        "https://img.example/a.png",
+        "docs/c.png",
+      ]);
+
+      rerender(
+        <Viewer
+          buffer={{ ...md, content: `${md.content}\nmore\n` }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      expect(remoteSrcs(container)).toEqual([
+        "https://img.example/a.png",
+        "docs/c.png",
+      ]);
+    });
+
+    it("forgets loaded images when another file opens", () => {
+      const { container, rerender } = render(
+        <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /chart/ }));
+      rerender(
+        <Viewer
+          buffer={{ ...md, relPath: "docs/OTHER.md" }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      expect(remoteSrcs(container)).toEqual(["docs/c.png"]);
+    });
+  });
 });

@@ -198,6 +198,7 @@
     "copyPathLabel": "Copy path",
     "code": "Code",
     "preview": "Preview",
+    "loadRemoteImage": "Load image from {{host}}",
     "openFailed": "Could not open: {{error}}",
     "readTimeout": "Reading timed out",
     "dropTooLarge": "{{name}} is too large to preview (max 2 MB)",
