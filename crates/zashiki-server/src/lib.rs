@@ -32,6 +32,7 @@ pub mod protocol;
 pub mod ps;
 pub mod shells;
 pub mod pty_host;
+pub mod media_type;
 pub mod memo;
 pub mod memo_watch;
 pub mod notes;

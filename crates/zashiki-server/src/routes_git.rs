@@ -831,8 +831,31 @@ mod git_file_rest_tests {
         let (s, h, body) =
             media_req(app(&fx), &fx.repo_a, "clip.mp4", &[("range", "bytes=0-3")]).await;
         assert_eq!(s, StatusCode::PARTIAL_CONTENT);
-        assert!(h.get("content-range").is_some());
+        assert_eq!(h.get("content-range").unwrap(), "bytes 0-3/20");
+        assert_eq!(h.get("content-type").unwrap(), "video/mp4");
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+        assert_eq!(
+            h.get("content-security-policy").unwrap(),
+            crate::media_type::MEDIA_CSP
+        );
         assert_eq!(body, vec![0, 1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn media_read_leaves_bodyless_not_modified_responses_untyped() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("logo.png"), [1u8, 2, 3]).unwrap();
+        let (s, h, body) = media_req(
+            app(&fx),
+            &fx.repo_a,
+            "logo.png",
+            &[("if-modified-since", "Fri, 01 Jan 2100 00:00:00 GMT")],
+        )
+        .await;
+        assert_eq!(s, StatusCode::NOT_MODIFIED);
+        assert!(body.is_empty());
+        assert!(h.get("content-type").is_none());
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
     }
 
     /// A media file above the text max still streams (no size cap), unlike /api/file which 413s.
@@ -848,13 +871,61 @@ mod git_file_rest_tests {
     #[tokio::test]
     async fn media_read_rejects_missing_directory_and_outside_allowlist() {
         let fx = fixture();
-        let (s, _, _) = media_req(app(&fx), &fx.repo_a, "nope.png", &[]).await;
+        let (s, h, _) = media_req(app(&fx), &fx.repo_a, "nope.png", &[]).await;
         assert_eq!(s, StatusCode::NOT_FOUND);
-        let (s, _, _) = media_req(app(&fx), &fx.repo_a, "src", &[]).await;
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+        std::fs::create_dir_all(Path::new(&fx.repo_a).join("shots.png")).unwrap();
+        let (s, h, _) = media_req(app(&fx), &fx.repo_a, "shots.png", &[]).await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
         let org1 = Path::new(&fx.repo_a).parent().unwrap().to_string_lossy();
-        let (s, _, _) = media_req(app(&fx), &org1, "README.md", &[]).await;
+        let (s, h, _) = media_req(app(&fx), &org1, "logo.png", &[]).await;
         assert_eq!(s, StatusCode::FORBIDDEN);
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+    }
+
+    #[tokio::test]
+    async fn media_read_rejects_files_that_are_not_image_video_or_pdf() {
+        let fx = fixture();
+        let repo = Path::new(&fx.repo_a);
+        std::fs::write(repo.join("page.html"), "<script>alert(1)</script>").unwrap();
+        std::fs::write(repo.join("app.js"), "alert(1)").unwrap();
+        std::fs::write(repo.join("LICENSE"), "MIT").unwrap();
+        for file in ["page.html", "app.js", "LICENSE", "README.md"] {
+            let (s, h, _) = media_req(app(&fx), &fx.repo_a, file, &[]).await;
+            assert_eq!(s, StatusCode::UNSUPPORTED_MEDIA_TYPE, "{file}");
+            assert_eq!(h.get("content-type").unwrap(), "application/json", "{file}");
+            assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff", "{file}");
+        }
+    }
+
+    #[tokio::test]
+    async fn media_read_fixes_the_content_type_and_sends_nosniff_and_a_sandbox_csp() {
+        let fx = fixture();
+        let repo = Path::new(&fx.repo_a);
+        std::fs::write(repo.join("icon.svg"), "<svg><script>alert(1)</script></svg>").unwrap();
+        std::fs::write(repo.join("SHOT.JPG"), [0xffu8, 0xd8, 0xff]).unwrap();
+        for (file, content_type) in [("icon.svg", "image/svg+xml"), ("SHOT.JPG", "image/jpeg")] {
+            let (s, h, _) = media_req(app(&fx), &fx.repo_a, file, &[]).await;
+            assert_eq!(s, StatusCode::OK, "{file}");
+            assert_eq!(h.get("content-type").unwrap(), content_type, "{file}");
+            assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff", "{file}");
+            let csp = h.get("content-security-policy").unwrap().to_str().unwrap();
+            assert!(csp.split(';').any(|d| d.trim() == "sandbox"), "{file}: {csp}");
+            assert!(csp.contains("default-src 'none'"), "{file}: {csp}");
+        }
+    }
+
+    /// The sandbox CSP is left off PDFs because it could stop the WebView's built-in PDF viewer.
+    #[tokio::test]
+    async fn media_read_serves_pdf_with_nosniff_and_without_a_sandbox() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("doc.pdf"), b"%PDF-1.4").unwrap();
+        let (s, h, _) = media_req(app(&fx), &fx.repo_a, "doc.pdf", &[]).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(h.get("content-type").unwrap(), "application/pdf");
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+        assert!(h.get("content-security-policy").is_none());
     }
 
     #[tokio::test]

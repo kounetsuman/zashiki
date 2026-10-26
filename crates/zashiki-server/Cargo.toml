@@ -21,6 +21,8 @@ regex = "1"
 tower-http = { version = "0.6", features = ["fs", "cors"] }
 # ServeFile を認証・パス検証の後段でリクエスト単位に呼ぶ（Range/206 の動画配信）ための oneshot。
 tower = { version = "0.5", features = ["util"] }
+# ServeFile::new_with_mime に渡す型。/api/media は拡張子推測でなく自前の対応表で Content-Type を決める。
+mime = "0.3"
 # git status のパース等、server ロジックを寄せる先。
 zashiki-core = { path = "../zashiki-core" }
 # サーバが各セッションの PTY を単一所有するための PTY 管理。
@@ -50,6 +52,8 @@ trash = "5"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
+# ServeFile::new_with_mime に渡す型。/api/media は拡張子推測でなく自前の対応表で Content-Type を決める。
+mime = "0.3"
 tempfile = "3"
 # テストでファイルの mtime を決定的に設定する（鮮度秒の検証）。
 filetime = "0.2"
