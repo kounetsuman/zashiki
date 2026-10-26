@@ -142,54 +142,66 @@ fn read_only_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
     out
 }
 
-/// Blanking overrides for every filter driver defined outside the user's own system/global
-/// config, from `git config --show-scope -z --get-regexp '^filter\.'`. An empty
-/// `clean`/`smudge`/`process` disables that step, and `required=false` keeps git from failing.
-fn repo_filter_overrides(listing: &str) -> Vec<(String, String)> {
+/// Disabling overrides for every filter driver and config-defined hook that comes from outside
+/// the user's own system/global config, from
+/// `git config --show-scope -z --get-regexp '^(filter|hook)\.'`. An empty
+/// `clean`/`smudge`/`process` disables that filter step, `required=false` keeps git from
+/// failing, and `enabled=false` turns a `hook.<name>` off.
+fn repo_config_overrides(listing: &str) -> Vec<(String, String)> {
     let mut drivers: Vec<&str> = Vec::new();
+    let mut hooks: Vec<&str> = Vec::new();
     let mut fields = listing.split('\0');
     while let (Some(scope), Some(entry)) = (fields.next(), fields.next()) {
         if matches!(scope, "system" | "global") {
             continue;
         }
         let key = entry.split('\n').next().unwrap_or("");
-        let Some(driver) = key
-            .strip_prefix("filter.")
-            .and_then(|rest| rest.rsplit_once('.'))
-            .map(|(driver, _)| driver)
-        else {
+        let (names, rest) = if let Some(rest) = key.strip_prefix("filter.") {
+            (&mut drivers, rest)
+        } else if let Some(rest) = key.strip_prefix("hook.") {
+            (&mut hooks, rest)
+        } else {
             continue;
         };
-        if !drivers.contains(&driver) {
-            drivers.push(driver);
+        if let Some((name, _)) = rest.rsplit_once('.') {
+            if !names.contains(&name) {
+                names.push(name);
+            }
         }
     }
-    drivers
+    let filter_overrides = drivers.into_iter().flat_map(|d| {
+        [
+            (format!("filter.{d}.clean"), String::new()),
+            (format!("filter.{d}.smudge"), String::new()),
+            (format!("filter.{d}.process"), String::new()),
+            (format!("filter.{d}.required"), "false".to_string()),
+        ]
+    });
+    let hook_overrides = hooks
         .into_iter()
-        .flat_map(|d| {
-            [
-                (format!("filter.{d}.clean"), String::new()),
-                (format!("filter.{d}.smudge"), String::new()),
-                (format!("filter.{d}.process"), String::new()),
-                (format!("filter.{d}.required"), "false".to_string()),
-            ]
-        })
-        .collect()
+        .map(|h| (format!("hook.{h}.enabled"), "false".to_string()));
+    filter_overrides.chain(hook_overrides).collect()
 }
 
 /// git for commands Zashiki runs on a repo by itself, which must not execute any program the
-/// repo's own config names. Filter overrides go through `GIT_CONFIG_KEY_n` rather than `-c`
-/// because a driver name may contain `=`, which `-c` would split on.
+/// repo's own config names. Config overrides go through `GIT_CONFIG_KEY_n` rather than `-c`
+/// because a driver or hook name may contain `=`, which `-c` would split on.
 struct ReadOnlyGit<'a> {
     path: &'a Path,
-    filter_overrides: Vec<(String, String)>,
+    config_overrides: Vec<(String, String)>,
 }
 
 impl<'a> ReadOnlyGit<'a> {
     async fn open(path: &'a Path) -> Self {
         let listing = git_command(
             path,
-            &["config", "--show-scope", "-z", "--get-regexp", r"^filter\."],
+            &[
+                "config",
+                "--show-scope",
+                "-z",
+                "--get-regexp",
+                r"^(filter|hook)\.",
+            ],
         )
         .output()
         .await
@@ -197,7 +209,7 @@ impl<'a> ReadOnlyGit<'a> {
         .unwrap_or_default();
         Self {
             path,
-            filter_overrides: repo_filter_overrides(&listing),
+            config_overrides: repo_config_overrides(&listing),
         }
     }
 
@@ -210,15 +222,15 @@ impl<'a> ReadOnlyGit<'a> {
             .ok()
             .and_then(|n| n.parse().ok())
             .unwrap_or(0);
-        for (i, (key, value)) in self.filter_overrides.iter().enumerate() {
+        for (i, (key, value)) in self.config_overrides.iter().enumerate() {
             let n = inherited + i;
             cmd.env(format!("GIT_CONFIG_KEY_{n}"), key)
                 .env(format!("GIT_CONFIG_VALUE_{n}"), value);
         }
-        if !self.filter_overrides.is_empty() {
+        if !self.config_overrides.is_empty() {
             cmd.env(
                 "GIT_CONFIG_COUNT",
-                (inherited + self.filter_overrides.len()).to_string(),
+                (inherited + self.config_overrides.len()).to_string(),
             );
         }
         cmd
@@ -1122,13 +1134,23 @@ mod tests {
             let hooks = repo.join(".git/hooks");
             std::fs::create_dir_all(&hooks).unwrap();
             marker_script(&hooks, "post-index-change", &marker);
+            let config_hook = marker_script(&bin, "config-hook", &marker);
+            git(&repo, &["config", "hook.evil.command", &config_hook]);
+            git(&repo, &["config", "hook.evil.event", "post-index-change"]);
             std::fs::write(
                 repo.join(".git/info/attributes"),
                 "* filter=evil diff=evil\n",
             )
             .unwrap();
-            // Same content, new mtime: the index entry is stat-dirty, so git must re-read the file.
+            // Same content, older mtime: the index entry is stat-dirty but not racy, so git
+            // re-reads the file and would refresh the index entry.
             std::fs::write(repo.join("base.txt"), "base\n").unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(repo.join("base.txt"))
+                .unwrap()
+                .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60))
+                .unwrap();
             std::fs::write(repo.join("untracked.txt"), "u\n").unwrap();
             Self {
                 _dir: dir,
@@ -1204,6 +1226,10 @@ mod tests {
     #[tokio::test]
     async fn diff_runs_no_program_from_repo_config() {
         let h = HostileRepo::new();
+        let stat_dirty = diff(&h.repo, "base.txt", false, false).await;
+        assert_eq!(h.ran(), "");
+        assert_eq!((stat_dirty.added, stat_dirty.removed), (0, 0));
+
         std::fs::write(h.repo.join("staged.txt"), "s\n").unwrap();
         git(&h.repo, &["-c", "filter.evil.clean=cat", "add", "staged.txt"]);
         std::fs::write(h.repo.join("base.txt"), "base\nagain\n").unwrap();
@@ -1264,14 +1290,17 @@ mod tests {
     }
 
     #[test]
-    fn repo_filter_overrides_blank_only_filters_the_repo_itself_defines() {
+    fn repo_config_overrides_disable_only_filters_and_hooks_the_repo_itself_defines() {
         let listing = "global\0filter.lfs.process\ngit-lfs filter-process\0\
                        local\0filter.evil.clean\n/x/clean\0\
                        local\0filter.evil.smudge\n/x/smudge\0\
                        worktree\0filter.a=b.c.process\n/x/p\0\
                        local\0filter.evil.required\ntrue\0\
-                       system\0filter.sys.clean\nsys\0";
-        let overrides = repo_filter_overrides(listing);
+                       system\0filter.sys.clean\nsys\0\
+                       local\0hook.lint.command\n/x/h\0\
+                       local\0hook.lint.event\npost-index-change\0\
+                       global\0hook.mine.command\n/x/mine\0";
+        let overrides = repo_config_overrides(listing);
         let keys: Vec<&str> = overrides.iter().map(|(k, _)| k.as_str()).collect();
         assert_eq!(
             keys,
@@ -1284,10 +1313,14 @@ mod tests {
                 "filter.a=b.c.smudge",
                 "filter.a=b.c.process",
                 "filter.a=b.c.required",
+                "hook.lint.enabled",
             ]
         );
-        assert!(overrides
-            .iter()
-            .all(|(k, v)| v == if k.ends_with(".required") { "false" } else { "" }));
+        assert!(overrides.iter().all(|(k, v)| v
+            == if k.ends_with(".required") || k.ends_with(".enabled") {
+                "false"
+            } else {
+                ""
+            }));
     }
 }
