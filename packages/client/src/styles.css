@@ -1495,6 +1495,10 @@ textarea {
   line-height: 1.6;
 }
 
+.viewer-preview:focus {
+  outline: none;
+}
+
 .viewer-preview pre {
   background: #171717;
   border: 1px solid #333;
