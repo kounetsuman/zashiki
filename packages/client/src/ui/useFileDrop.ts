@@ -12,7 +12,7 @@ export interface FileDropHandlers {
 }
 
 /**
- * Opens files dropped from Finder in the Viewer. Images/videos go to `onMedia` (rendered from an
+ * Opens files dropped from Finder in the Viewer. Images/videos/PDFs go to `onMedia` (rendered from an
  * object URL, no size cap); other files are read as text via `onFile`. Only acts on drags carrying
  * OS files, so in-page drags (e.g. tab reordering) pass through untouched.
  */

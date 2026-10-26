@@ -75,6 +75,18 @@ describe("useFileDrop", () => {
     expect(onFile).not.toHaveBeenCalled();
   });
 
+  it("routes a dropped pdf to onMedia instead of reading it as text", () => {
+    const onFile = vi.fn();
+    const onMedia = vi.fn();
+    render(<Harness onFile={onFile} onMedia={onMedia} onError={vi.fn()} />);
+    const pdf = new File(["%PDF"], "spec.pdf");
+    fireEvent.drop(screen.getByTestId("zone"), {
+      dataTransfer: transfer(["Files"], [pdf]),
+    });
+    expect(onMedia).toHaveBeenCalledWith("spec.pdf", pdf, "pdf");
+    expect(onFile).not.toHaveBeenCalled();
+  });
+
   it("routes an oversize video to onMedia (media has no size cap)", () => {
     const onMedia = vi.fn();
     const onError = vi.fn();
