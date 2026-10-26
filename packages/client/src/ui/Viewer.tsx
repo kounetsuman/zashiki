@@ -198,12 +198,13 @@ export function Viewer({
   const alternate = alternateView(buffer.relPath);
   const showAlternate = alternate !== null && buffer.preview;
   const fileKey = `${buffer.repoPath}\0${buffer.relPath}`;
-  const [loadedRemote, setLoadedRemote] = useState({
-    fileKey,
-    srcs: NO_REMOTE_IMAGES,
-  });
-  const loadedRemoteImages =
-    loadedRemote.fileKey === fileKey ? loadedRemote.srcs : NO_REMOTE_IMAGES;
+  const [loadedRemoteImages, setLoadedRemoteImages] =
+    useState(NO_REMOTE_IMAGES);
+  const [loadedRemoteImagesFile, setLoadedRemoteImagesFile] = useState(fileKey);
+  if (loadedRemoteImagesFile !== fileKey) {
+    setLoadedRemoteImagesFile(fileKey);
+    setLoadedRemoteImages(NO_REMOTE_IMAGES);
+  }
   const previewHtml = useMemo(
     () =>
       showAlternate && alternate === "markdownPreview"
@@ -215,18 +216,12 @@ export function Viewer({
     [showAlternate, alternate, buffer.content, loadedRemoteImages, t],
   );
 
-  const loadClickedRemoteImage = useCallback(
-    (event: MouseEvent) => {
-      const src = clickedRemoteImageSrc(event);
-      if (src === null) return;
-      event.preventDefault();
-      setLoadedRemote((prev) => ({
-        fileKey,
-        srcs: new Set([...(prev.fileKey === fileKey ? prev.srcs : []), src]),
-      }));
-    },
-    [fileKey],
-  );
+  const loadClickedRemoteImage = useCallback((event: MouseEvent) => {
+    const src = clickedRemoteImageSrc(event);
+    if (src === null) return;
+    event.preventDefault();
+    setLoadedRemoteImages((prev) => new Set([...prev, src]));
+  }, []);
 
   const focusTarget = useCallback(
     () =>

@@ -440,7 +440,7 @@ describe("Viewer", () => {
       ]);
     });
 
-    it("forgets loaded images when another file opens", () => {
+    it("forgets loaded images when another file opens, even on returning to the first", () => {
       const { container, rerender } = render(
         <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
       );
@@ -452,6 +452,8 @@ describe("Viewer", () => {
           onCopyPath={noop}
         />,
       );
+      expect(remoteSrcs(container)).toEqual(["docs/c.png"]);
+      rerender(<Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />);
       expect(remoteSrcs(container)).toEqual(["docs/c.png"]);
     });
   });
