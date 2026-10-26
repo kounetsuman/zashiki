@@ -96,6 +96,7 @@ export async function renderMermaidBlocks(
   }
 
   for (const block of blocks) {
+    if (!block.isConnected) continue;
     const source = block.dataset.mermaidSource ?? "";
     const id = `viewer-mermaid-${crypto.randomUUID()}`;
     try {

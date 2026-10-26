@@ -96,6 +96,19 @@ describe("renderMermaidBlocks", () => {
     ).toHaveLength(2);
   });
 
+  it("skips a block removed while an earlier one was rendering", async () => {
+    const host = previewWith(
+      '<div class="viewer-mermaid"><pre><code>graph TD;</code></pre></div>' +
+        '<div class="viewer-mermaid" id="later"><pre><code>sequenceDiagram</code></pre></div>',
+    );
+    probe.probeMermaid.mockImplementationOnce(async () => {
+      document.getElementById("later")?.remove();
+      return { kind: "rendered", svg: "<svg data-diagram></svg>" };
+    });
+    await renderMermaidBlocks(host);
+    expect(probe.probeMermaid).toHaveBeenCalledTimes(1);
+  });
+
   describe("a diagram that loads remote content", () => {
     const source = 'flowchart TD\n  A@{ img: "https://img.example/a.png" }';
     const remoteBlock = `<div class="viewer-mermaid"><pre><code>${source}</code></pre></div>`;
