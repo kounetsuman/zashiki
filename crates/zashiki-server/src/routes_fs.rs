@@ -1,6 +1,6 @@
 use axum::{
     extract::{Query, Request, State},
-    http::StatusCode,
+    http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
@@ -9,6 +9,7 @@ use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
 use crate::app_state::{scan, AppState};
+use crate::media_type::{media_type_for, MEDIA_CSP};
 use crate::wire_support::{guard_file_path, json_error, json_ok, parse_json_body};
 use crate::{dashboard, file, fs};
 
@@ -40,8 +41,10 @@ pub(crate) async fn file_read(
     }
 }
 
-/// `GET /api/media`: streams a repo image/video/PDF for `<img>` / `<video>` / `<iframe>`. Delegates to ServeFile so
-/// Range requests get 206 partial responses (video seeking) with a content type inferred from the path.
+/// `GET /api/media`: streams a repo image/video/PDF for `<img>` / `<video>` / `<iframe>`; any other file
+/// type is 415. Delegates to ServeFile so Range requests get 206 partial responses (video seeking), then
+/// replaces its guessed content type with ours and adds nosniff plus (except for PDF) a sandbox CSP, so
+/// a repo file opened as a page cannot run script on the app's origin.
 /// The raw Request is forwarded to ServeFile so it can read the Range header.
 pub(crate) async fn media_read(
     State(state): State<AppState>,
@@ -53,6 +56,12 @@ pub(crate) async fn media_read(
     if let Err((status, msg)) = guard_file_path(&state, &repo_path, &file).await {
         return json_error(status, &msg);
     }
+    let Some(media_type) = media_type_for(&file) else {
+        return json_error(
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "only image, video and PDF files can be served as media",
+        );
+    };
     let resolved = tokio::task::spawn_blocking({
         let repo_path = repo_path.clone();
         let file = file.clone();
@@ -66,10 +75,26 @@ pub(crate) async fn media_read(
         Ok(abs) => abs,
         Err((status, msg)) => return json_error(status, &msg),
     };
-    match ServeFile::new(abs).oneshot(req).await {
+    let mut res = match ServeFile::new(abs).oneshot(req).await {
         Ok(res) => res.into_response(),
         Err(unreachable) => match unreachable {},
+    };
+    let headers = res.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(media_type.content_type),
+    );
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    if !media_type.is_pdf {
+        headers.insert(
+            header::CONTENT_SECURITY_POLICY,
+            HeaderValue::from_static(MEDIA_CSP),
+        );
     }
+    res
 }
 
 /// `GET /api/dashboard`: returns the text of the configured dashboard file for the overlay's frame.
