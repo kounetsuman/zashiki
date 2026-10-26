@@ -76,13 +76,16 @@ export function diagramFrameSize(svg: string): DiagramFrameSize {
 
 /**
  * Shows a drawn diagram in a frame of its own that runs no script and may fetch nothing, so
- * whatever the diagram refers to stays unloaded, even on hover.
+ * whatever the diagram refers to stays unloaded. The frame takes neither focus nor the pointer,
+ * so the app's keys keep working and nothing in the read-only diagram can be followed.
  */
 export function diagramFrame(svg: string, title: string): HTMLIFrameElement {
   const frame = document.createElement("iframe");
   frame.className = "viewer-mermaid-frame";
   frame.setAttribute("sandbox", "");
   frame.title = title;
+  frame.tabIndex = -1;
+  frame.style.pointerEvents = "none";
   frame.srcdoc = diagramFrameDocument(svg);
   const { maxWidth, aspectRatio, height } = diagramFrameSize(svg);
   if (maxWidth !== null) frame.style.maxWidth = maxWidth;

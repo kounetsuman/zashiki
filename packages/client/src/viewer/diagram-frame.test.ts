@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { diagramFrameDocument, diagramFrameSize } from "./diagram-frame.js";
+import {
+  diagramFrame,
+  diagramFrameDocument,
+  diagramFrameSize,
+} from "./diagram-frame.js";
 
 describe("diagramFrameDocument", () => {
   it("forbids every fetch except inline images before the diagram", () => {
@@ -38,5 +42,13 @@ describe("diagramFrameSize", () => {
       aspectRatio: null,
       height: "80px",
     });
+  });
+});
+
+describe("diagramFrame", () => {
+  it("takes neither keyboard focus nor the pointer", () => {
+    const frame = diagramFrame("<svg></svg>", "Diagram");
+    expect(frame.tabIndex).toBe(-1);
+    expect(frame.style.pointerEvents).toBe("none");
   });
 });
