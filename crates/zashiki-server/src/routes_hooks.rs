@@ -464,8 +464,7 @@ mod hooks_rest_tests {
     #[cfg(unix)]
     fn spawn_stand_in_claude() -> std::process::Child {
         use std::os::unix::process::CommandExt;
-        // Renaming a shell through argv[0] rather than a link to /bin/sleep: the Rust coreutils on
-        // ubuntu-26.04 refuse to run under a name other than their own.
+        // The Rust coreutils on ubuntu-26.04 refuse to run under a name other than their own.
         std::process::Command::new("/bin/sh")
             .arg0("claude")
             .args(["-c", "read _"])
