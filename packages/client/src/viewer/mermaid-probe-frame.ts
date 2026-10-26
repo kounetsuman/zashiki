@@ -1,11 +1,10 @@
 import mermaid from "mermaid";
-
-import { remoteImageHost } from "./markdown.js";
 import { MERMAID_CONFIG } from "./mermaid-config.js";
 import type {
   MermaidProbeResult,
   MermaidProbeWindow,
 } from "./mermaid-probe.js";
+import { remoteImageHost } from "./remote-host.js";
 import { remoteHostsIn } from "./remote-references.js";
 
 mermaid.initialize(MERMAID_CONFIG);

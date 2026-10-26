@@ -1,4 +1,4 @@
-import { remoteImageHost } from "./markdown.js";
+import { remoteImageHost } from "./remote-host.js";
 
 const NAVIGATION_ONLY_ELEMENTS = new Set(["a", "area"]);
 const URL_ATTRIBUTES = new Set([
