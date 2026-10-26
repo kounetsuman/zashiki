@@ -77,24 +77,16 @@ impl From<zashiki_core::git::GitFileEntry> for GitFileEntry {
     }
 }
 
-/// The stdout of `git -C <path> <args...>` (empty string on failure or non-UTF8; not via a shell).
-async fn git_output(path: &Path, args: &[&str]) -> String {
-    Command::new("git")
-        .arg("-C")
-        .arg(path)
-        .args(args)
-        .stdin(Stdio::null())
-        .output()
-        .await
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default()
-}
-
-// ---- Write-side git execution ----
+// ---- git execution ----
 //
-// We execute without a shell, with `core.quotepath=false` and
-// `GIT_LITERAL_PATHSPECS=1`. File arguments are always passed after `--`, disabling
-// pathspec magic (leading `:`, `*` globs) to guarantee "that one file only".
+// Every git process starts from `git_base`: no shell, `core.quotepath=false`,
+// `GIT_LITERAL_PATHSPECS=1` (file arguments always follow `--`, so pathspec magic such as a
+// leading `:` or `*` globs never widens "that one file"), and `core.fsmonitor=false`.
+//
+// Commands Zashiki runs without the user asking for a repo change (status, diff view) go through
+// `ReadOnlyGit`, which also refuses every other program a repo's own config can name. Write
+// commands (stage, commit, worktree remove) keep the repo's hooks and filters: they are explicit
+// user actions, and skipping a clean filter there would stage the wrong content.
 
 /// Timeout for commit (so it doesn't hang even while a GPG signing tool is locked).
 const COMMIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
@@ -113,18 +105,171 @@ impl std::fmt::Display for GitError {
 
 impl std::error::Error for GitError {}
 
-fn git_command(path: &Path, args: &[&str]) -> Command {
+fn git_base(path: &Path) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C")
         .arg(path)
-        .arg("-c")
-        .arg("core.quotepath=false")
-        .args(args)
+        .args(["-c", "core.quotepath=false", "-c", "core.fsmonitor=false"])
         .env("GIT_LITERAL_PATHSPECS", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     cmd
+}
+
+fn git_command(path: &Path, args: &[&str]) -> Command {
+    let mut cmd = git_base(path);
+    cmd.args(args);
+    cmd
+}
+
+/// Config that makes a read-only command skip the repo's hooks (no index write can fire
+/// `post-index-change`) and signature verification through its `gpg.program`.
+const READ_ONLY_CONFIG: [&str; 4] = [
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "log.showSignature=false",
+];
+
+/// `args` with `--no-ext-diff --no-textconv` after a `diff`/`show`/`log` subcommand, so a diff
+/// driver or textconv named by the repo's `.gitattributes` never runs, and with
+/// `--ignore-submodules=dirty` after `status`/`diff`, so git never runs inside a submodule whose
+/// own config the overrides were not built from. A submodule's new commit still shows.
+fn read_only_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
+    let mut out = args.to_vec();
+    if matches!(args.first(), Some(&("status" | "diff"))) {
+        out.insert(1, "--ignore-submodules=dirty");
+    }
+    if matches!(args.first(), Some(&("diff" | "show" | "log"))) {
+        out.splice(1..1, ["--no-ext-diff", "--no-textconv"]);
+    }
+    out
+}
+
+/// Disabling overrides for every filter driver and config-defined hook that comes from outside
+/// the user's own system/global config, from `git config --list --show-scope -z`. Names are
+/// matched as bytes because git allows any bytes in a subsection name. An empty
+/// `clean`/`smudge`/`process` disables that filter step, `required=false` keeps git from
+/// failing, and `enabled=false` turns a `hook.<name>` off.
+fn repo_config_overrides(listing: &[u8]) -> Vec<(Vec<u8>, &'static str)> {
+    let mut drivers: Vec<&[u8]> = Vec::new();
+    let mut hooks: Vec<&[u8]> = Vec::new();
+    let mut fields = listing.split(|&b| b == 0);
+    while let (Some(scope), Some(entry)) = (fields.next(), fields.next()) {
+        if matches!(scope, b"system" | b"global") {
+            continue;
+        }
+        let key = entry.split(|&b| b == b'\n').next().unwrap_or_default();
+        let (names, rest) = if let Some(rest) = key.strip_prefix(b"filter.") {
+            (&mut drivers, rest)
+        } else if let Some(rest) = key.strip_prefix(b"hook.") {
+            (&mut hooks, rest)
+        } else {
+            continue;
+        };
+        if let Some(dot) = rest.iter().rposition(|&b| b == b'.') {
+            let name = &rest[..dot];
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
+    }
+    let key = |section: &[u8], name: &[u8], var: &[u8]| {
+        [section, b".", name, b".", var].concat()
+    };
+    let filter_overrides = drivers.into_iter().flat_map(|d| {
+        [
+            (key(b"filter", d, b"clean"), ""),
+            (key(b"filter", d, b"smudge"), ""),
+            (key(b"filter", d, b"process"), ""),
+            (key(b"filter", d, b"required"), "false"),
+        ]
+    });
+    let hook_overrides = hooks
+        .into_iter()
+        .map(|h| (key(b"hook", h, b"enabled"), "false"));
+    filter_overrides.chain(hook_overrides).collect()
+}
+
+#[cfg(unix)]
+fn os_string(bytes: Vec<u8>) -> std::ffi::OsString {
+    use std::os::unix::ffi::OsStringExt;
+    std::ffi::OsString::from_vec(bytes)
+}
+
+#[cfg(not(unix))]
+fn os_string(bytes: Vec<u8>) -> std::ffi::OsString {
+    String::from_utf8_lossy(&bytes).into_owned().into()
+}
+
+/// git for commands Zashiki runs on a repo by itself, which must not execute any program the
+/// repo's own config names, including a fetch from a promisor remote a repo can declare for
+/// itself. Config overrides go through `GIT_CONFIG_KEY_n` rather than `-c`
+/// because a driver or hook name may contain `=`, which `-c` would split on.
+struct ReadOnlyGit<'a> {
+    path: &'a Path,
+    config_overrides: Vec<(std::ffi::OsString, &'static str)>,
+}
+
+/// The overrides for a config listing, or `None` unless git listed it cleanly: without the
+/// listing nothing tells which programs the repo names, so the caller runs no read-only command.
+fn overrides_from_listing(
+    listing: std::io::Result<std::process::Output>,
+) -> Option<Vec<(Vec<u8>, &'static str)>> {
+    let output = listing.ok().filter(|o| o.status.success())?;
+    Some(repo_config_overrides(&output.stdout))
+}
+
+impl<'a> ReadOnlyGit<'a> {
+    /// `None` when the repo's config cannot be listed (not a repo, unreadable config, a git
+    /// without `--show-scope`); such a repo is treated as a git failure.
+    async fn open(path: &'a Path) -> Option<Self> {
+        let listing = git_command(path, &["config", "--list", "--show-scope", "-z"])
+            .output()
+            .await;
+        Some(Self {
+            path,
+            config_overrides: overrides_from_listing(listing)?
+                .into_iter()
+                .map(|(key, value)| (os_string(key), value))
+                .collect(),
+        })
+    }
+
+    fn command(&self, args: &[&str]) -> Command {
+        let mut cmd = git_base(self.path);
+        cmd.args(READ_ONLY_CONFIG)
+            .args(read_only_args(args))
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            .env("GIT_NO_LAZY_FETCH", "1");
+        let inherited: usize = std::env::var("GIT_CONFIG_COUNT")
+            .ok()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0);
+        for (i, (key, value)) in self.config_overrides.iter().enumerate() {
+            let n = inherited + i;
+            cmd.env(format!("GIT_CONFIG_KEY_{n}"), key)
+                .env(format!("GIT_CONFIG_VALUE_{n}"), value);
+        }
+        if !self.config_overrides.is_empty() {
+            cmd.env(
+                "GIT_CONFIG_COUNT",
+                (inherited + self.config_overrides.len()).to_string(),
+            );
+        }
+        cmd
+    }
+
+    /// stdout even on a non-zero exit (`git diff --no-index` exits non-zero when the files
+    /// differ); empty on spawn failure.
+    async fn stdout(&self, args: &[&str]) -> String {
+        self.command(args)
+            .output()
+            .await
+            .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+            .unwrap_or_default()
+    }
 }
 
 /// Run `git` without passing stdin; on a non-zero exit, return a `GitError` carrying stderr.
@@ -165,29 +310,19 @@ pub async fn unstage_all(path: &Path) -> Result<(), GitError> {
 /// (e.g. not a repo) falls to false, so before calling, guarantee that the repo is in the scanned
 /// list (isAllowedRepo).
 pub async fn has_staged(path: &Path) -> bool {
-    match git_command(path, &["diff", "--cached", "--quiet"])
-        .output()
-        .await
-    {
+    let Some(git) = ReadOnlyGit::open(path).await else {
+        return false;
+    };
+    match git.command(&["diff", "--cached", "--quiet"]).output().await {
         Ok(output) => !output.status.success(),
         Err(_) => false,
     }
 }
 
-/// stdout of `git ...` under the hardened write-op env (`GIT_LITERAL_PATHSPECS=1`, `core.quotepath=false`),
-/// keeping stdout even on a non-zero exit (`git diff --no-index` exits non-zero when the files differ).
-async fn git_stdout(path: &Path, args: &[&str]) -> String {
-    git_command(path, args)
-        .output()
-        .await
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default()
-}
-
 /// The byte size of a blob addressed as `<rev>:<file>` (e.g. `HEAD:app.ts`, `:app.ts`), or 0 when
 /// the object is absent (a new file at HEAD, a staged-deleted file in the index).
-async fn blob_size(path: &Path, spec: &str) -> u64 {
-    git_stdout(path, &["cat-file", "-s", spec])
+async fn blob_size(git: &ReadOnlyGit<'_>, spec: &str) -> u64 {
+    git.stdout(&["cat-file", "-s", spec])
         .await
         .trim()
         .parse()
@@ -195,8 +330,8 @@ async fn blob_size(path: &Path, spec: &str) -> u64 {
 }
 
 /// The text of a blob addressed as `<rev>:<file>`, or empty when the object is absent.
-async fn show_blob(path: &Path, spec: &str) -> String {
-    git_stdout(path, &["show", spec]).await
+async fn show_blob(git: &ReadOnlyGit<'_>, spec: &str) -> String {
+    git.stdout(&["show", spec]).await
 }
 
 /// Worktree file text, read only when the file resolves inside the repo. A symlink escaping the repo
@@ -247,7 +382,17 @@ pub async fn diff(path: &Path, file: &str, staged: bool, untracked: bool) -> Dif
     } else {
         vec!["diff", "--numstat", "--", file]
     };
-    let (added, removed, binary) = parse_numstat(&git_stdout(path, &numstat_args).await);
+    let Some(git) = ReadOnlyGit::open(path).await else {
+        return DiffPayload {
+            old_text: String::new(),
+            new_text: String::new(),
+            binary: false,
+            too_large: false,
+            added: 0,
+            removed: 0,
+        };
+    };
+    let (added, removed, binary) = parse_numstat(&git.stdout(&numstat_args).await);
     if binary {
         return DiffPayload {
             old_text: String::new(),
@@ -270,7 +415,7 @@ pub async fn diff(path: &Path, file: &str, staged: bool, untracked: bool) -> Dif
     let (old_size, new_size) = tokio::join!(
         async {
             match old_spec {
-                Some(rev) => blob_size(path, &format!("{rev}:{file}")).await,
+                Some(rev) => blob_size(&git, &format!("{rev}:{file}")).await,
                 None => 0,
             }
         },
@@ -281,7 +426,7 @@ pub async fn diff(path: &Path, file: &str, staged: bool, untracked: bool) -> Dif
                     .map(|m| m.len())
                     .unwrap_or(0)
             } else {
-                blob_size(path, &format!(":{file}")).await
+                blob_size(&git, &format!(":{file}")).await
             }
         },
     );
@@ -299,7 +444,7 @@ pub async fn diff(path: &Path, file: &str, staged: bool, untracked: bool) -> Dif
     let (old_text, new_text) = tokio::join!(
         async {
             match old_spec {
-                Some(rev) => show_blob(path, &format!("{rev}:{file}")).await,
+                Some(rev) => show_blob(&git, &format!("{rev}:{file}")).await,
                 None => String::new(),
             }
         },
@@ -310,7 +455,7 @@ pub async fn diff(path: &Path, file: &str, staged: bool, untracked: bool) -> Dif
                     .await
                     .unwrap_or_default()
             } else {
-                show_blob(path, &format!(":{file}")).await
+                show_blob(&git, &format!(":{file}")).await
             }
         },
     );
@@ -363,21 +508,21 @@ pub async fn commit(path: &Path, message: &str) -> Result<(), GitError> {
 
 /// The current branch, or the short SHA when HEAD is detached (`git branch --show-current` prints
 /// nothing there). Keeps `branch` non-empty for a valid-but-headless repo so the client can show it.
-async fn resolve_branch(path: &Path) -> String {
-    let current = git_output(path, &["branch", "--show-current"]).await;
+async fn resolve_branch(git: &ReadOnlyGit<'_>) -> String {
+    let current = git.stdout(&["branch", "--show-current"]).await;
     let current = current.trim();
     if !current.is_empty() {
         return current.to_string();
     }
-    git_output(path, &["rev-parse", "--short", "HEAD"])
+    git.stdout(&["rev-parse", "--short", "HEAD"])
         .await
         .trim()
         .to_string()
 }
 
 /// The committer date of HEAD (ISO 8601), or empty for a repo with no commits.
-async fn last_commit_iso(path: &Path) -> String {
-    git_output(path, &["log", "-1", "--format=%cI"])
+async fn last_commit_iso(git: &ReadOnlyGit<'_>) -> String {
+    git.stdout(&["log", "-1", "--format=%cI"])
         .await
         .trim()
         .to_string()
@@ -386,9 +531,14 @@ async fn last_commit_iso(path: &Path) -> String {
 async fn build_repo_status(r: ScannedRepo) -> RepoStatus {
     let path = Path::new(&r.path);
     // Awaited in series, not joined: one git process per held permit keeps STATUS_CONCURRENCY an exact process cap.
-    let branch = resolve_branch(path).await;
-    let raw = git_output(path, &["--no-optional-locks", "status", "--porcelain=v1"]).await;
-    let last_commit = last_commit_iso(path).await;
+    let (branch, raw, last_commit) = match ReadOnlyGit::open(path).await {
+        Some(git) => (
+            resolve_branch(&git).await,
+            git.stdout(&["status", "--porcelain=v1"]).await,
+            last_commit_iso(&git).await,
+        ),
+        None => Default::default(),
+    };
     let parsed = zashiki_core::git::parse_git_status(&raw);
     RepoStatus {
         org: r.org,
@@ -970,5 +1120,431 @@ mod tests {
 
         let d = diff(&repo, "link", false, true).await;
         assert!(!d.new_text.contains("TOP SECRET"));
+    }
+
+    /// Writes an executable `/bin/sh` script at `dir/name` that appends `name` to `marker` and passes
+    /// stdin through, so it can stand in for any program a repo's config points git at.
+    #[cfg(unix)]
+    fn marker_script(dir: &Path, name: &str, marker: &Path) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let script = dir.join(name);
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\necho {name} >> '{}'\ncat\n", marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        script.to_string_lossy().into_owned()
+    }
+
+    /// Rewrites `file` with the same content and an older mtime: the index entry is stat-dirty but
+    /// not racy, so git re-reads the file and would refresh the index entry.
+    fn make_stat_dirty(file: &Path) {
+        let content = std::fs::read(file).unwrap();
+        std::fs::write(file, content).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(file)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60))
+            .unwrap();
+    }
+
+    /// A repo whose own `.git/config` and `.git/info/attributes` point every program-running key
+    /// (fsmonitor, clean/smudge/process filters, diff driver, textconv, hooks) at marker scripts.
+    #[cfg(unix)]
+    struct HostileRepo {
+        _dir: tempfile::TempDir,
+        repo: std::path::PathBuf,
+        marker: std::path::PathBuf,
+    }
+
+    #[cfg(unix)]
+    impl HostileRepo {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let repo = dir.path().join("repo");
+            let bin = dir.path().join("bin");
+            std::fs::create_dir_all(&repo).unwrap();
+            std::fs::create_dir_all(&bin).unwrap();
+            let marker = dir.path().join("marker");
+            init_repo(&repo);
+
+            for (key, name) in [
+                ("core.fsmonitor", "fsmonitor"),
+                ("filter.evil.clean", "clean"),
+                ("filter.evil.smudge", "smudge"),
+                ("diff.evil.command", "external-diff"),
+                ("diff.evil.textconv", "textconv"),
+            ] {
+                let script = marker_script(&bin, name, &marker);
+                git(&repo, &["config", key, &script]);
+            }
+            let hooks = repo.join(".git/hooks");
+            std::fs::create_dir_all(&hooks).unwrap();
+            marker_script(&hooks, "post-index-change", &marker);
+            let config_hook = marker_script(&bin, "config-hook", &marker);
+            git(&repo, &["config", "hook.evil.command", &config_hook]);
+            git(&repo, &["config", "hook.evil.event", "post-index-change"]);
+            std::fs::write(
+                repo.join(".git/info/attributes"),
+                "* filter=evil diff=evil\n",
+            )
+            .unwrap();
+            make_stat_dirty(&repo.join("base.txt"));
+            std::fs::write(repo.join("untracked.txt"), "u\n").unwrap();
+            Self {
+                _dir: dir,
+                repo,
+                marker,
+            }
+        }
+
+        fn forget(&self) {
+            let _ = std::fs::remove_file(&self.marker);
+        }
+
+        fn ran(&self) -> String {
+            std::fs::read_to_string(&self.marker).unwrap_or_default()
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn periodic_status_runs_no_program_from_repo_config() {
+        let h = HostileRepo::new();
+
+        let status = build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "r".to_string(),
+            path: h.repo.to_string_lossy().into_owned(),
+            is_worktree: false,
+        })
+        .await;
+
+        assert_eq!(h.ran(), "");
+        assert_eq!(status.branch, "main");
+        assert!(status.changed.iter().any(|e| e.path == "untracked.txt"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_only_git_disables_a_filter_whose_name_is_not_utf8() {
+        use std::io::Write;
+        let h = HostileRepo::new();
+        let script = marker_script(h.repo.parent().unwrap(), "raw-clean", &h.marker);
+        let mut config = std::fs::OpenOptions::new()
+            .append(true)
+            .open(h.repo.join(".git/config"))
+            .unwrap();
+        config.write_all(b"[filter \"\xff\"]\n\tclean = ").unwrap();
+        config.write_all(script.as_bytes()).unwrap();
+        config.write_all(b"\n").unwrap();
+        std::fs::write(h.repo.join(".git/info/attributes"), b"* filter=\xff\n").unwrap();
+
+        build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "r".to_string(),
+            path: h.repo.to_string_lossy().into_owned(),
+            is_worktree: false,
+        })
+        .await;
+        diff(&h.repo, "base.txt", false, false).await;
+        diff(&h.repo, "untracked.txt", false, true).await;
+
+        assert_eq!(h.ran(), "");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn diff_does_not_lazy_fetch_a_missing_object_from_the_repo_remote() {
+        use std::os::unix::fs::PermissionsExt;
+        let h = HostileRepo::new();
+        let upload_pack = h.repo.parent().unwrap().join("upload-pack");
+        std::fs::write(
+            &upload_pack,
+            format!("#!/bin/sh\necho upload-pack >> '{}'\nexit 1\n", h.marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&upload_pack, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let upload_pack = upload_pack.to_string_lossy().into_owned();
+        let remote = h.repo.to_string_lossy().into_owned();
+        for (key, value) in [
+            ("core.repositoryformatversion", "1"),
+            ("extensions.partialClone", "origin"),
+            ("remote.origin.url", remote.as_str()),
+            ("remote.origin.promisor", "true"),
+            ("remote.origin.uploadpack", upload_pack.as_str()),
+        ] {
+            git(&h.repo, &["config", key, value]);
+        }
+        git(
+            &h.repo,
+            &[
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "hook.evil.enabled=false",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                "100644,1111111111111111111111111111111111111111,missing.txt",
+            ],
+        );
+        h.forget();
+
+        let d = diff(&h.repo, "missing.txt", true, false).await;
+
+        assert_eq!(h.ran(), "");
+        assert_eq!(d.new_text, "");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_only_git_does_not_enter_a_submodule_but_still_sees_its_new_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let upstream = dir.path().join("upstream");
+        let outer = dir.path().join("outer");
+        let marker = dir.path().join("marker");
+        std::fs::create_dir_all(&upstream).unwrap();
+        std::fs::create_dir_all(&outer).unwrap();
+        init_repo(&upstream);
+        init_repo(&outer);
+        let upstream_path = upstream.to_string_lossy().into_owned();
+        git(
+            &outer,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                &upstream_path,
+                "sub",
+            ],
+        );
+        git(&outer, &["commit", "-q", "-m", "add sub"]);
+        let sub = outer.join("sub");
+        git(&sub, &["commit", "-q", "--allow-empty", "-m", "next"]);
+
+        let clean = marker_script(dir.path(), "sub-clean", &marker);
+        git(&sub, &["config", "filter.subevil.clean", &clean]);
+        let attributes = String::from_utf8(
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&sub)
+                .args(["rev-parse", "--path-format=absolute", "--git-path", "info/attributes"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap();
+        let attributes = Path::new(attributes.trim());
+        std::fs::create_dir_all(attributes.parent().unwrap()).unwrap();
+        std::fs::write(attributes, "* filter=subevil\n").unwrap();
+        make_stat_dirty(&sub.join("base.txt"));
+
+        let status = build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "outer".to_string(),
+            path: outer.to_string_lossy().into_owned(),
+            is_worktree: false,
+        })
+        .await;
+        let d = diff(&outer, "sub", false, false).await;
+
+        assert_eq!(std::fs::read_to_string(&marker).unwrap_or_default(), "");
+        assert!(status.changed.iter().any(|e| e.path == "sub"));
+        assert_eq!((d.added, d.removed), (1, 1));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn periodic_status_does_not_verify_signatures_with_repo_gpg_program() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("repo");
+        std::fs::create_dir_all(&p).unwrap();
+        init_repo(&p);
+        let marker = dir.path().join("marker");
+        let gpg = dir.path().join("gpg");
+        std::fs::write(
+            &gpg,
+            format!(
+                "#!/bin/sh\ncase \"$*\" in\n*--verify*) echo verify >> '{}' ;;\n*) cat >/dev/null; printf '\\n[GNUPG:] SIG_CREATED D\\n' >&2; printf -- '-----BEGIN PGP SIGNATURE-----\\nAAAA\\n-----END PGP SIGNATURE-----\\n' ;;\nesac\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&gpg, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let gpg = gpg.to_string_lossy().into_owned();
+        git(&p, &["config", "gpg.program", &gpg]);
+        git(&p, &["commit", "-q", "-S", "--allow-empty", "-m", "signed"]);
+        git(&p, &["config", "log.showSignature", "true"]);
+
+        let status = build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "r".to_string(),
+            path: p.to_string_lossy().into_owned(),
+            is_worktree: false,
+        })
+        .await;
+
+        assert_eq!(std::fs::read_to_string(&marker).unwrap_or_default(), "");
+        assert!(!status.last_commit.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn diff_runs_no_program_from_repo_config() {
+        let h = HostileRepo::new();
+        let stat_dirty = diff(&h.repo, "base.txt", false, false).await;
+        assert_eq!(h.ran(), "");
+        assert_eq!((stat_dirty.added, stat_dirty.removed), (0, 0));
+
+        std::fs::write(h.repo.join("staged.txt"), "s\n").unwrap();
+        git(&h.repo, &["-c", "filter.evil.clean=cat", "add", "staged.txt"]);
+        std::fs::write(h.repo.join("base.txt"), "base\nagain\n").unwrap();
+        h.forget();
+
+        let changed = diff(&h.repo, "base.txt", false, false).await;
+        let staged = diff(&h.repo, "staged.txt", true, false).await;
+        let untracked = diff(&h.repo, "untracked.txt", false, true).await;
+        let has = has_staged(&h.repo).await;
+
+        assert_eq!(h.ran(), "");
+        assert_eq!(changed.new_text, "base\nagain\n");
+        assert_eq!(staged.new_text, "s\n");
+        assert_eq!(untracked.added, 1);
+        assert!(has);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn stage_still_applies_the_repo_clean_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        init_repo(p);
+        git(p, &["config", "filter.upper.clean", "tr a-z A-Z"]);
+        std::fs::write(p.join(".git/info/attributes"), "*.txt filter=upper\n").unwrap();
+        std::fs::write(p.join("note.txt"), "quiet\n").unwrap();
+
+        stage(p, "note.txt").await.unwrap();
+
+        let blob = std::process::Command::new("git")
+            .arg("-C")
+            .arg(p)
+            .args(["show", ":note.txt"])
+            .output()
+            .unwrap()
+            .stdout;
+        assert_eq!(String::from_utf8_lossy(&blob), "QUIET\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn overrides_from_listing_refuses_anything_but_a_clean_exit() {
+        use std::os::unix::process::ExitStatusExt;
+        let output = |code: i32, stdout: &[u8]| {
+            Ok(std::process::Output {
+                status: std::process::ExitStatus::from_raw(code << 8),
+                stdout: stdout.to_vec(),
+                stderr: Vec::new(),
+            })
+        };
+        let listing: &[u8] = b"local\0hook.h.command\n/x\0";
+
+        assert_eq!(
+            overrides_from_listing(output(0, listing)),
+            Some(vec![(b"hook.h.enabled".to_vec(), "false")])
+        );
+        assert_eq!(overrides_from_listing(output(0, b"")), Some(Vec::new()));
+        assert_eq!(overrides_from_listing(output(1, listing)), None);
+        assert_eq!(overrides_from_listing(output(129, b"")), None);
+        assert_eq!(
+            overrides_from_listing(Err(std::io::Error::other("spawn failed"))),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn read_only_git_refuses_to_open_when_the_config_cannot_be_listed() {
+        assert!(ReadOnlyGit::open(Path::new("/no/such/repo")).await.is_none());
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        assert!(ReadOnlyGit::open(dir.path()).await.is_some());
+    }
+
+    #[test]
+    fn read_only_args_disable_external_diff_and_textconv_for_diff_like_commands() {
+        assert_eq!(
+            read_only_args(&["diff", "--numstat", "--", "a"]),
+            vec![
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--ignore-submodules=dirty",
+                "--numstat",
+                "--",
+                "a"
+            ]
+        );
+        assert_eq!(
+            read_only_args(&["status", "--porcelain=v1"]),
+            vec!["status", "--ignore-submodules=dirty", "--porcelain=v1"]
+        );
+        assert_eq!(
+            read_only_args(&["show", "HEAD:a"]),
+            vec!["show", "--no-ext-diff", "--no-textconv", "HEAD:a"]
+        );
+        assert_eq!(
+            read_only_args(&["log", "-1", "--format=%cI"]),
+            vec!["log", "--no-ext-diff", "--no-textconv", "-1", "--format=%cI"]
+        );
+        assert_eq!(
+            read_only_args(&["branch", "--show-current"]),
+            vec!["branch", "--show-current"]
+        );
+    }
+
+    #[test]
+    fn repo_config_overrides_disable_only_filters_and_hooks_the_repo_itself_defines() {
+        let listing: &[u8] = b"global\0filter.lfs.process\ngit-lfs filter-process\0\
+                       local\0core.bare\nfalse\0\
+                       local\0filter.evil.clean\n/x/clean\0\
+                       local\0filter.evil.smudge\n/x/smudge\0\
+                       worktree\0filter.a=b.c.process\n/x/p\0\
+                       local\0filter.evil.required\ntrue\0\
+                       local\0filter.\xff.clean\n/x/raw\0\
+                       system\0filter.sys.clean\nsys\0\
+                       local\0hook.lint.command\n/x/h\0\
+                       local\0hook.lint.event\npost-index-change\0\
+                       global\0hook.mine.command\n/x/mine\0";
+        let overrides = repo_config_overrides(listing);
+        let keys: Vec<&[u8]> = overrides.iter().map(|(k, _)| k.as_slice()).collect();
+        let expected: Vec<&[u8]> = vec![
+            b"filter.evil.clean",
+            b"filter.evil.smudge",
+            b"filter.evil.process",
+            b"filter.evil.required",
+            b"filter.a=b.c.clean",
+            b"filter.a=b.c.smudge",
+            b"filter.a=b.c.process",
+            b"filter.a=b.c.required",
+            b"filter.\xff.clean",
+            b"filter.\xff.smudge",
+            b"filter.\xff.process",
+            b"filter.\xff.required",
+            b"hook.lint.enabled",
+        ];
+        assert_eq!(keys, expected);
+        assert!(overrides.iter().all(|(k, v)| *v
+            == if k.ends_with(b".required") || k.ends_with(b".enabled") {
+                "false"
+            } else {
+                ""
+            }));
     }
 }
