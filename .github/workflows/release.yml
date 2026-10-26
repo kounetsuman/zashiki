@@ -106,18 +106,13 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Import the Developer ID Application cert into a throwaway keychain and forward the
-      # signing identity + notarization credentials to the build step (unset in the unsigned
-      # path, so the Tauri bundler skips signing entirely).
+      # Import the Developer ID Application cert into a throwaway keychain; the signed build
+      # step then finds the identity through the keychain search list.
       - name: Import Apple Developer ID certificate
         if: steps.signing.outputs.enabled == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PW="$(uuidgen)"
@@ -132,18 +127,20 @@ jobs:
           # Developer ID intermediate stays resolvable), rather than replacing it.
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/[[:space:]"]//g')
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-          {
-            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
-            echo "APPLE_ID=$APPLE_ID"
-            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
-            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
-          } >> "$GITHUB_ENV"
 
-      - name: Build app & publish draft release
+      # Two variants so the Apple credentials reach only the signing build: the Tauri bundler
+      # treats a present-but-empty APPLE_SIGNING_IDENTITY as an identity to sign with, so the
+      # unsigned build must not see these variables at all.
+      - name: Build app & publish draft release (signed + notarized)
+        if: steps.signing.outputs.enabled == 'true'
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with: &tauri-build-inputs
           projectPath: apps/desktop
           # .app ディレクトリは Release アセットにできないため dmg で配布する（.app は dmg に内包）。
           args: --config src-tauri/tauri.bundle.conf.json --bundles dmg
@@ -153,6 +150,13 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: false
+
+      - name: Build app & publish draft release (unsigned)
+        if: steps.signing.outputs.enabled != 'true'
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with: *tauri-build-inputs
 
       # Gate the release on a valid signature + stapled notarization ticket for signed builds.
       # Verify the shipped .dmg: the bundler removes the intermediate .app after packaging it,
