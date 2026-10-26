@@ -460,12 +460,18 @@ mod hooks_rest_tests {
     }
 
     /// A process whose command is named `claude`, standing in for the claude a hook runs under.
+    /// It waits on its stdin, so it exits once the returned Child is dropped.
     #[cfg(unix)]
-    fn spawn_stand_in_claude(dir: &std::path::Path) -> std::process::Child {
-        // A link rather than a copy: nothing is written, so a concurrent fork cannot hold the file busy.
-        let claude = dir.join("claude");
-        std::os::unix::fs::symlink("/bin/sleep", &claude).unwrap();
-        std::process::Command::new(&claude).arg("30").spawn().unwrap()
+    fn spawn_stand_in_claude() -> std::process::Child {
+        use std::os::unix::process::CommandExt;
+        // The Rust coreutils on ubuntu-26.04 refuse to run under a name other than their own.
+        std::process::Command::new("/bin/sh")
+            .arg0("claude")
+            .env_clear()
+            .args(["-c", "read _"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .unwrap()
     }
 
     #[cfg(unix)]
@@ -473,8 +479,7 @@ mod hooks_rest_tests {
     async fn a_hook_from_a_cockpit_terminal_records_the_session_of_the_claude_that_fired_it() {
         let terminal = "11111111-2222-4333-8444-555555555555";
         let sid = "579fa8cf-4901-45cb-b9ec-17e229231a37";
-        let dir = tempfile::tempdir().unwrap();
-        let mut claude = spawn_stand_in_claude(dir.path());
+        let mut claude = spawn_stand_in_claude();
         let claude_pid = claude.id() as i64;
         let hub = ControlHub::new(ConfigView::default(), vec![], empty_snapshot());
         let services = services(hub, NotifyMode::Web, Arc::new(Mutex::new(vec![])));
