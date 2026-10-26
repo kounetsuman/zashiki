@@ -1,7 +1,5 @@
 //! The file types `/api/media` is willing to serve, mirroring the client's `viewer/media.ts`.
 
-use std::path::Path;
-
 /// A servable media type: the `Content-Type` we send, and whether it is a PDF (rendered by the
 /// WebView's PDF viewer rather than as an `<img>` / `<video>` subresource).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,8 +39,10 @@ const MEDIA_TYPES: &[(&str, MediaType)] = &[
 ];
 
 /// The media type for a file name by its (case-insensitive) extension, or None when it is not media.
+/// The extension is whatever follows the last `.`, as on the client, so `.png` is a PNG.
 pub fn media_type_for(file: &str) -> Option<MediaType> {
-    let ext = Path::new(file).extension()?.to_str()?.to_ascii_lowercase();
+    let (_, ext) = file.rsplit_once('.')?;
+    let ext = ext.to_ascii_lowercase();
     MEDIA_TYPES
         .iter()
         .find(|(known, _)| *known == ext)
@@ -81,6 +81,15 @@ mod tests {
     }
 
     #[test]
+    fn treats_dot_named_files_by_their_extension_like_the_client() {
+        assert_eq!(media_type_for(".png").unwrap().content_type, "image/png");
+        assert_eq!(
+            media_type_for("assets/.mp4").unwrap().content_type,
+            "video/mp4"
+        );
+    }
+
+    #[test]
     fn rejects_non_media_and_extensionless_names() {
         for name in [
             "index.html",
@@ -89,8 +98,8 @@ mod tests {
             "data.json",
             "README.md",
             "Makefile",
-            ".png",
             "dir/",
+            "v1.2/LICENSE",
             "",
         ] {
             assert_eq!(media_type_for(name), None, "{name}");
