@@ -157,6 +157,23 @@ describe("renderMermaidBlocks", () => {
       expect(mermaid.render).toHaveBeenCalledWith(expect.any(String), source);
     });
 
+    it("shows its code block again when the user asked to render it but it fails", async () => {
+      const host = previewWith(remoteBlock);
+      await renderMermaidBlocks(host);
+      const block = host.querySelector<HTMLElement>(".viewer-mermaid");
+      if (block === null) throw new Error("no block");
+      delete block.dataset.mermaidState;
+      mermaid.render.mockImplementation(async () => {
+        throw new Error("parse error");
+      });
+      await renderMermaidBlocks(host, {
+        renderedRemoteDiagrams: new Set([source]),
+      });
+      expect(block.dataset.mermaidState).toBe("error");
+      expect(block.querySelector("button")).toBeNull();
+      expect(block.querySelector("pre > code")?.textContent).toBe(source);
+    });
+
     it("shows the code block when the probe page cannot start", async () => {
       probe.probeMermaid.mockImplementation(async () => {
         throw new Error("no probe page");

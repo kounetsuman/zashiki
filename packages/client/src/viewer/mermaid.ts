@@ -60,6 +60,17 @@ function remoteDiagramButton(
   return button;
 }
 
+function showCodeBlock(block: HTMLElement, source: string): void {
+  block.dataset.mermaidState = "error";
+  if (block.querySelector("code") !== null) return;
+  const pre = document.createElement("pre");
+  const code = document.createElement("code");
+  code.className = "language-mermaid";
+  code.textContent = source;
+  pre.append(code);
+  block.replaceChildren(pre);
+}
+
 async function renderInApp(id: string, source: string): Promise<string> {
   const mermaid = await loadMermaid();
   try {
@@ -105,7 +116,7 @@ export async function renderMermaidBlocks(
         : await probeMermaid(id, source);
       if (!block.isConnected) continue;
       if (result.kind === "failed") {
-        block.dataset.mermaidState = "error";
+        showCodeBlock(block, source);
       } else if (result.kind === "remote") {
         block.dataset.mermaidState = "remote";
         block.replaceChildren(remoteDiagramButton(result.hosts, options));
@@ -116,7 +127,7 @@ export async function renderMermaidBlocks(
       }
     } catch {
       if (!block.isConnected) continue;
-      block.dataset.mermaidState = "error";
+      showCodeBlock(block, source);
     }
   }
 }
