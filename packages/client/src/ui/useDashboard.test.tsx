@@ -14,13 +14,16 @@ import {
 } from "../lib/dashboard.js";
 import { useDashboard } from "./useDashboard.js";
 
-const { isTauri } = vi.hoisted(() => ({ isTauri: vi.fn(() => true) }));
+const { isTauri, invoke } = vi.hoisted(() => ({
+  isTauri: vi.fn(() => true),
+  invoke: vi.fn((_command: string, _args?: unknown) => Promise.resolve()),
+}));
 const { listen } = vi.hoisted(() => ({
   listen: vi.fn((_event: string, _handler: () => void) =>
     Promise.resolve(vi.fn()),
   ),
 }));
-vi.mock("@tauri-apps/api/core", () => ({ isTauri }));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri, invoke }));
 vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -87,6 +90,7 @@ const configured = (
 beforeEach(() => {
   isTauri.mockReturnValue(true);
   listen.mockClear();
+  invoke.mockClear();
 });
 afterEach(cleanup);
 
@@ -111,6 +115,42 @@ describe("useDashboard", () => {
     expect(storage.getItem(DASHBOARD_LAST_SHOWN_KEY)).toBe(
       shownOn("https://dash.example/board", TODAY),
     );
+  });
+
+  it("tells the shell which address it frames before framing it", () => {
+    const order: string[] = [];
+    invoke.mockImplementationOnce((command, args) => {
+      order.push(`${command} ${JSON.stringify(args)}`);
+      return Promise.resolve();
+    });
+    function Probe() {
+      const { frame } = useDashboard(
+        configured(),
+        undefined,
+        null,
+        false,
+        () => NOW,
+      );
+      if (frame !== null) order.push(`frame ${frame.kind}`);
+      return null;
+    }
+    render(<Probe />);
+    expect(order).toEqual([
+      'set_dashboard_origin {"url":"https://dash.example/board"}',
+      "frame remote",
+    ]);
+  });
+
+  it("withdraws the framed address when the setting stops naming a web page", () => {
+    mount(configured({ url: "" }), memoryStorage());
+    expect(invoke).toHaveBeenCalledWith("set_dashboard_origin", { url: "" });
+  });
+
+  it("has nothing to tell outside the desktop app", () => {
+    isTauri.mockReturnValue(false);
+    const { state } = mount(configured(), memoryStorage());
+    expect(state.frame).not.toBeNull();
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it("stays out of the way until the wake it was configured for", () => {

@@ -12,6 +12,7 @@ import {
   saveDashboardLastShown,
   shouldShowDashboard,
 } from "../lib/dashboard.js";
+import { allowDashboardOrigin } from "../lib/dashboard-origin.js";
 import { useWakeEvent } from "./useWakeEvent.js";
 
 type StoragePart = Pick<Storage, "getItem" | "setItem">;
@@ -98,6 +99,11 @@ export function useDashboard(
     },
     [api, storage],
   );
+
+  const configuredUrl = settings?.url;
+  useEffect(() => {
+    if (configuredUrl !== undefined) allowDashboardOrigin(configuredUrl);
+  }, [configuredUrl]);
 
   useEffect(() => {
     if (settings === null || blocked || launchHandled.current) return;
