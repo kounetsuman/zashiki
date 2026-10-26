@@ -21,12 +21,15 @@ jobs:
   release:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Resolve and validate tag
         id: tag
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
           if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::invalid tag format: $TAG (expected vX.Y.Z)"
             exit 1
@@ -41,8 +44,9 @@ jobs:
         id: notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          VERSION="${{ steps.tag.outputs.version }}"
           BODY=$(awk -v v="$VERSION" '
             function flush() { while (n > 0 && lines[n] ~ /^[[:space:]]*$/) n--; for (i = 1; i <= n; i++) print lines[i] }
             $0 ~ "^## \\[" v "\\]" { inx = 1; next }
@@ -52,8 +56,8 @@ jobs:
           ' CHANGELOG.md)
           if [ -z "${BODY//[[:space:]]/}" ]; then
             echo "::warning::no [$VERSION] section in CHANGELOG.md — using auto-generated notes"
-            BODY=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
-              -f tag_name="${{ steps.tag.outputs.tag }}" --jq .body)
+            BODY=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+              -f tag_name="$TAG" --jq .body)
           fi
           {
             echo "body<<CHANGELOG_EOF"
@@ -61,16 +65,18 @@ jobs:
             echo "CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             crates/zashiki-server
@@ -82,8 +88,10 @@ jobs:
       # .app の CFBundleVersion は tauri.conf.json の version が支配するため、tag から注入する
       # （リポジトリ上の 0.0.0 は誤 publish 防止のプレースホルダー。書き換えは CI 内に閉じる）。
       - name: Inject version from tag
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
         run: |
-          jq --arg v "${{ steps.tag.outputs.version }}" '.version = $v' \
+          jq --arg v "$VERSION" '.version = $v' \
             apps/desktop/src-tauri/tauri.conf.json > tauri.conf.tmp
           mv tauri.conf.tmp apps/desktop/src-tauri/tauri.conf.json
 
@@ -104,18 +112,13 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Import the Developer ID Application cert into a throwaway keychain and forward the
-      # signing identity + notarization credentials to the build step (unset in the unsigned
-      # path, so the Tauri bundler skips signing entirely).
+      # Import the Developer ID Application cert into a throwaway keychain; the signed build
+      # step then finds the identity through the keychain search list.
       - name: Import Apple Developer ID certificate
         if: steps.signing.outputs.enabled == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PW="$(uuidgen)"
@@ -130,18 +133,20 @@ jobs:
           # Developer ID intermediate stays resolvable), rather than replacing it.
           security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/[[:space:]"]//g')
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
-          {
-            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
-            echo "APPLE_ID=$APPLE_ID"
-            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
-            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
-          } >> "$GITHUB_ENV"
 
-      - name: Build app & publish draft release
-        uses: tauri-apps/tauri-action@v0
+      # Two variants so the Apple credentials reach only the signing build: the Tauri bundler
+      # treats a present-but-empty APPLE_SIGNING_IDENTITY as an identity to sign with, so the
+      # unsigned build must not see these variables at all.
+      - name: Build app & publish draft release (signed + notarized)
+        if: steps.signing.outputs.enabled == 'true'
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with: &tauri-build-inputs
           projectPath: apps/desktop
           # .app ディレクトリは Release アセットにできないため dmg で配布する（.app は dmg に内包）。
           args: --config src-tauri/tauri.bundle.conf.json --bundles dmg
@@ -151,6 +156,13 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: false
+
+      - name: Build app & publish draft release (unsigned)
+        if: steps.signing.outputs.enabled != 'true'
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with: *tauri-build-inputs
 
       # Gate the release on a valid signature + stapled notarization ticket for signed builds.
       # Verify the shipped .dmg: the bundler removes the intermediate .app after packaging it,
