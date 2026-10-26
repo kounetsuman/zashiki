@@ -150,6 +150,11 @@ function MediaHost({
       </video>
     );
   }
+  if (media.kind === "pdf") {
+    return (
+      <iframe className="viewer-pdf-frame" title={relPath} src={media.url} />
+    );
+  }
   return <img className="viewer-media" src={media.url} alt={relPath} />;
 }
 
@@ -185,7 +190,7 @@ export function Viewer({
   const focusTarget = useCallback(
     () =>
       sectionRef.current?.querySelector<HTMLElement>(
-        ".cm-content, .delimited-table, .viewer-html-frame",
+        ".cm-content, .delimited-table, .viewer-html-frame, .viewer-pdf-frame",
       ) ?? null,
     [],
   );

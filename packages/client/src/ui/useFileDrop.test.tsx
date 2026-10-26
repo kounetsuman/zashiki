@@ -8,13 +8,14 @@ import {
 } from "@testing-library/react";
 import { FILE_MAX_BYTES } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { MediaKind } from "../viewer/media.js";
 import { type FileDropError, useFileDrop } from "./useFileDrop.js";
 
 afterEach(cleanup);
 
 function Harness(props: {
   onFile: (name: string, content: string) => void;
-  onMedia?: (name: string, file: File, kind: "image" | "video") => void;
+  onMedia?: (name: string, file: File, kind: MediaKind) => void;
   onError: (name: string, error: FileDropError) => void;
 }) {
   const drop = useFileDrop(

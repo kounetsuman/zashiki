@@ -7,7 +7,7 @@ import { mediaUrl } from "../lib/url.js";
 export interface FilesApi {
   /** Reads the content of a repo-relative file (signal allows timeout/abort). */
   read(repoPath: string, file: string, signal?: AbortSignal): Promise<string>;
-  /** URL streaming the file's raw bytes for `<img>` / `<video>` (token in the query). */
+  /** URL streaming the file's raw bytes for `<img>` / `<video>` / the PDF `<iframe>` (token in the query). */
   mediaUrl(repoPath: string, file: string): string;
 }
 
