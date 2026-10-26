@@ -1,0 +1,263 @@
+//! Where the main window may go. The WebView reports navigations of the page and of every frame in
+//! it alike, with nothing but the target URL, so one decision covers both.
+
+use tauri::Url;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Navigation {
+    Stay,
+    OpenInBrowser,
+    Refuse,
+}
+
+/// `allowed` holds serialized web origins (`scheme://host:port`, see [`web_origin`]). The shell's own
+/// startup and error pages are `data:` URLs, which are let through only while `showing_shell_page`.
+pub fn decide(url: &Url, allowed: &[String], showing_shell_page: bool) -> Navigation {
+    let is_allowed = || web_origin(url).is_some_and(|origin| allowed.contains(&origin));
+    match url.scheme() {
+        "http" | "https" if is_allowed() => Navigation::Stay,
+        "http" | "https" => Navigation::OpenInBrowser,
+        "blob" if is_allowed() => Navigation::Stay,
+        "about" if matches!(url.path(), "blank" | "srcdoc") => Navigation::Stay,
+        "data" if showing_shell_page => Navigation::Stay,
+        _ => Navigation::Refuse,
+    }
+}
+
+/// Requests to open a new window never get one: a second WebView would sit outside the
+/// navigation guard. Web links go to the default browser instead.
+pub fn decide_new_window(url: &Url) -> Navigation {
+    match url.scheme() {
+        "http" | "https" => Navigation::OpenInBrowser,
+        _ => Navigation::Refuse,
+    }
+}
+
+/// The origins the window is served from: the page's own origin, and the server's, which differs
+/// in development where the page comes from the Vite dev server but media still streams from the
+/// server.
+pub fn app_origins(page_url: &str, server_port: u16) -> Vec<String> {
+    let mut origins = Vec::new();
+    let server = format!("http://127.0.0.1:{server_port}");
+    for url in [page_url, server.as_str()] {
+        if let Some(origin) = Url::parse(url).ok().as_ref().and_then(web_origin) {
+            if !origins.contains(&origin) {
+                origins.push(origin);
+            }
+        }
+    }
+    origins
+}
+
+/// The http(s) origin a URL belongs to (a `blob:` URL belongs to the origin that created it), or
+/// None for anything that has no web origin of its own.
+pub fn web_origin(url: &Url) -> Option<String> {
+    let origin = url.origin();
+    let serialized = origin.ascii_serialization();
+    let is_web = serialized.starts_with("http://") || serialized.starts_with("https://");
+    (origin.is_tuple() && is_web).then_some(serialized)
+}
+
+/// [`web_origin`] of an address given as text, such as the URL the window is opened on.
+pub fn web_origin_of(url: &str) -> Option<String> {
+    web_origin(&Url::parse(url).ok()?)
+}
+
+/// The origin of the configured dashboard page, which the dashboard overlay frames in the window.
+/// Only an http(s) address counts; anything else (empty, a local file, another scheme) is None.
+pub fn dashboard_origin(dashboard_url: &str) -> Option<String> {
+    let url = Url::parse(dashboard_url.trim()).ok()?;
+    matches!(url.scheme(), "http" | "https")
+        .then(|| web_origin(&url))
+        .flatten()
+}
+
+pub fn open_in_browser(url: &Url) {
+    #[cfg(target_os = "macos")]
+    let opener = "open";
+    #[cfg(not(target_os = "macos"))]
+    let opener = "xdg-open";
+    let url = url.to_string();
+    std::thread::spawn(move || {
+        if let Err(e) = std::process::Command::new(opener).arg(&url).status() {
+            eprintln!("zashiki: could not open {url} in the default browser: {e}");
+        }
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn url(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
+
+    fn served_from(page: &str) -> Vec<String> {
+        app_origins(page, 8790)
+    }
+
+    #[test]
+    fn stays_on_the_origin_the_app_is_served_from() {
+        let allowed = served_from("http://127.0.0.1:8790");
+        for target in [
+            "http://127.0.0.1:8790/?token=abc",
+            "http://127.0.0.1:8790/api/media?path=a.pdf",
+            "http://127.0.0.1:8790/#memo",
+        ] {
+            assert_eq!(
+                decide(&url(target), &allowed, false),
+                Navigation::Stay,
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
+    fn sends_other_web_origins_to_the_browser() {
+        let allowed = served_from("http://127.0.0.1:8790");
+        for target in [
+            "https://example.com/",
+            "http://127.0.0.1:5173/",
+            "http://127.0.0.1:8791/",
+            "http://localhost:8790/",
+            "https://127.0.0.1:8790/",
+            "http://evil.example/http://127.0.0.1:8790/",
+        ] {
+            assert_eq!(
+                decide(&url(target), &allowed, false),
+                Navigation::OpenInBrowser,
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
+    fn development_serves_the_page_from_vite_and_media_from_the_server() {
+        let allowed = served_from("http://localhost:5173");
+        assert_eq!(
+            decide(&url("http://localhost:5173/"), &allowed, false),
+            Navigation::Stay
+        );
+        assert_eq!(
+            decide(
+                &url("http://127.0.0.1:8790/api/media?path=a.pdf"),
+                &allowed,
+                false
+            ),
+            Navigation::Stay
+        );
+        assert_eq!(
+            decide(&url("http://localhost:3000/"), &allowed, false),
+            Navigation::OpenInBrowser
+        );
+    }
+
+    #[test]
+    fn an_extra_allowed_origin_is_stayed_on() {
+        let mut allowed = served_from("http://127.0.0.1:8790");
+        allowed.extend(dashboard_origin("https://dash.example/board?x=1"));
+        assert_eq!(
+            decide(&url("https://dash.example/board"), &allowed, false),
+            Navigation::Stay
+        );
+        assert_eq!(
+            decide(&url("https://other.example/"), &allowed, false),
+            Navigation::OpenInBrowser
+        );
+    }
+
+    #[test]
+    fn frames_the_app_creates_itself_stay() {
+        let allowed = served_from("http://127.0.0.1:8790");
+        for target in [
+            "about:blank",
+            "about:srcdoc",
+            "blob:http://127.0.0.1:8790/5d1f0f3e-2b8c-4a43-9d9a-3f1c2b7e6a10",
+        ] {
+            assert_eq!(
+                decide(&url(target), &allowed, false),
+                Navigation::Stay,
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
+    fn refuses_everything_else_without_opening_it() {
+        let allowed = served_from("http://127.0.0.1:8790");
+        for target in [
+            "blob:https://example.com/5d1f0f3e-2b8c-4a43-9d9a-3f1c2b7e6a10",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "data:text/html,<h1>Zashiki</h1>",
+            "about:config",
+            "vscode://file/a",
+            "ftp://example.com/",
+        ] {
+            assert_eq!(
+                decide(&url(target), &allowed, false),
+                Navigation::Refuse,
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
+    fn shell_pages_are_shown_only_before_the_app_is_loaded() {
+        let allowed = served_from("http://127.0.0.1:8790");
+        let page = url("data:text/html;charset=utf-8,%3Ch1%3E");
+        assert_eq!(decide(&page, &allowed, true), Navigation::Stay);
+        assert_eq!(decide(&page, &allowed, false), Navigation::Refuse);
+    }
+
+    #[test]
+    fn new_windows_open_web_links_in_the_browser_and_nothing_else() {
+        assert_eq!(
+            decide_new_window(&url("https://github.com/kounetsuman/zashiki/issues/new")),
+            Navigation::OpenInBrowser
+        );
+        assert_eq!(
+            decide_new_window(&url("http://127.0.0.1:8790/")),
+            Navigation::OpenInBrowser
+        );
+        for target in ["about:blank", "file:///etc/passwd", "javascript:alert(1)"] {
+            assert_eq!(
+                decide_new_window(&url(target)),
+                Navigation::Refuse,
+                "{target}"
+            );
+        }
+    }
+
+    #[test]
+    fn dashboard_origin_takes_only_web_addresses() {
+        assert_eq!(
+            dashboard_origin(" https://dash.example:8443/board?x=1 ").as_deref(),
+            Some("https://dash.example:8443")
+        );
+        assert_eq!(
+            dashboard_origin("http://localhost:3000/").as_deref(),
+            Some("http://localhost:3000")
+        );
+        for value in [
+            "",
+            "dashboard.html",
+            "~/dash.html",
+            "file:///Users/me/dash.html",
+            "tauri://localhost",
+            "blob:https://dash.example/5d1f0f3e",
+            "javascript:alert(1)",
+            "data:text/html,x",
+        ] {
+            assert_eq!(dashboard_origin(value), None, "{value}");
+        }
+    }
+
+    #[test]
+    fn app_origins_does_not_repeat_the_server_origin() {
+        assert_eq!(served_from("http://127.0.0.1:8790").len(), 1);
+        assert_eq!(served_from("http://localhost:5173").len(), 2);
+        assert_eq!(served_from("not a url").len(), 1);
+    }
+}

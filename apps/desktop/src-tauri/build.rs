@@ -13,6 +13,7 @@ fn main() {
             "pick_and_read_file",
             "report_memo_status",
             "report_memo_saved",
+            "set_dashboard_origin",
         ]),
     ))
     .expect("failed to run tauri-build");
