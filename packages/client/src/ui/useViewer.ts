@@ -35,11 +35,11 @@ export interface Viewer {
   buffers: ViewerBuffers;
   /** Ensures a buffer for the file (firing a read only when new) and returns its key. */
   ensureBuffer(repoPath: string, relPath: string): string;
-  /** Ensures a repo image/video buffer streamed from the media URL (no text read) and returns its key. */
+  /** Ensures a repo image/video/PDF buffer streamed from the media URL (no text read) and returns its key. */
   ensureMediaBuffer(repoPath: string, relPath: string, kind: MediaKind): string;
   /** Opens a dropped file from content already in hand (no repo read) and returns its key. */
   openExternal(name: string, content: string): string;
-  /** Opens a dropped image/video from an object URL created for the file, and returns its key. */
+  /** Opens a dropped image/video/PDF from an object URL created for the file, and returns its key. */
   openExternalMedia(name: string, file: File, kind: MediaKind): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
@@ -134,7 +134,9 @@ export function useViewer(
     (name: string, file: File, kind: MediaKind): string => {
       const key = externalViewerKey(name);
       revokeObjectUrl(key);
-      const url = URL.createObjectURL(file);
+      const url = URL.createObjectURL(
+        kind === "pdf" ? new Blob([file], { type: "application/pdf" }) : file,
+      );
       objectUrlsRef.current[key] = url;
       setBuffers((prev) => openExternalMediaBuffer(prev, name, { kind, url }));
       return key;

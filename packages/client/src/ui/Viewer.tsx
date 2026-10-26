@@ -150,6 +150,11 @@ function MediaHost({
       </video>
     );
   }
+  if (media.kind === "pdf") {
+    return (
+      <iframe className="viewer-pdf-frame" title={relPath} src={media.url} />
+    );
+  }
   return <img className="viewer-media" src={media.url} alt={relPath} />;
 }
 

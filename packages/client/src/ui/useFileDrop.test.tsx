@@ -8,13 +8,14 @@ import {
 } from "@testing-library/react";
 import { FILE_MAX_BYTES } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { MediaKind } from "../viewer/media.js";
 import { type FileDropError, useFileDrop } from "./useFileDrop.js";
 
 afterEach(cleanup);
 
 function Harness(props: {
   onFile: (name: string, content: string) => void;
-  onMedia?: (name: string, file: File, kind: "image" | "video") => void;
+  onMedia?: (name: string, file: File, kind: MediaKind) => void;
   onError: (name: string, error: FileDropError) => void;
 }) {
   const drop = useFileDrop(
@@ -71,6 +72,18 @@ describe("useFileDrop", () => {
       dataTransfer: transfer(["Files"], [img]),
     });
     expect(onMedia).toHaveBeenCalledWith("logo.png", img, "image");
+    expect(onFile).not.toHaveBeenCalled();
+  });
+
+  it("routes a dropped pdf to onMedia instead of reading it as text", () => {
+    const onFile = vi.fn();
+    const onMedia = vi.fn();
+    render(<Harness onFile={onFile} onMedia={onMedia} onError={vi.fn()} />);
+    const pdf = new File(["%PDF"], "spec.pdf");
+    fireEvent.drop(screen.getByTestId("zone"), {
+      dataTransfer: transfer(["Files"], [pdf]),
+    });
+    expect(onMedia).toHaveBeenCalledWith("spec.pdf", pdf, "pdf");
     expect(onFile).not.toHaveBeenCalled();
   });
 

@@ -40,7 +40,7 @@ pub(crate) async fn file_read(
     }
 }
 
-/// `GET /api/media`: streams a repo image/video for `<img>` / `<video>`. Delegates to ServeFile so
+/// `GET /api/media`: streams a repo image/video/PDF for `<img>` / `<video>` / `<iframe>`. Delegates to ServeFile so
 /// Range requests get 206 partial responses (video seeking) with a content type inferred from the path.
 /// The raw Request is forwarded to ServeFile so it can read the Range header.
 pub(crate) async fn media_read(

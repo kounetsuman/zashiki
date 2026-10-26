@@ -16,6 +16,11 @@ describe("mediaKind", () => {
     expect(mediaKind("recording.MOV")).toBe("video");
   });
 
+  it("maps .pdf to pdf", () => {
+    expect(mediaKind("spec.pdf")).toBe("pdf");
+    expect(mediaKind("Report.PDF")).toBe("pdf");
+  });
+
   it("returns null for text and unknown extensions", () => {
     expect(mediaKind("app.ts")).toBeNull();
     expect(mediaKind("README.md")).toBeNull();

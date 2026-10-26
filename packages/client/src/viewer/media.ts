@@ -1,5 +1,5 @@
-/** How the Viewer renders a file: as an image, a video, or (null) as text via CodeMirror. */
-export type MediaKind = "image" | "video";
+/** How the Viewer renders a file: as an image, a video, a PDF, or (null) as text via CodeMirror. */
+export type MediaKind = "image" | "video" | "pdf";
 
 const IMAGE_EXTENSIONS = new Set([
   "png",
@@ -25,5 +25,6 @@ export function mediaKind(name: string): MediaKind | null {
   const ext = extensionOf(name);
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
   if (VIDEO_EXTENSIONS.has(ext)) return "video";
+  if (ext === "pdf") return "pdf";
   return null;
 }

@@ -12,14 +12,17 @@ const filesApi: FilesApi = {
 };
 
 let created: string[];
+let createdFrom: Blob[];
 let revoked: string[];
 
 beforeEach(() => {
   created = [];
+  createdFrom = [];
   revoked = [];
   let n = 0;
   vi.stubGlobal("URL", {
-    createObjectURL: () => {
+    createObjectURL: (blob: Blob) => {
+      createdFrom.push(blob);
       const url = `blob:${n++}`;
       created.push(url);
       return url;
@@ -59,6 +62,18 @@ describe("useViewer media", () => {
     });
     expect(revoked).toContain("blob:0");
     expect(result.current.buffers[key]?.media?.url).toBe("blob:1");
+  });
+
+  it("openExternalMedia types a dropped pdf as application/pdf whatever File.type says", () => {
+    const { result } = renderHook(() => useViewer(filesApi, null));
+    act(() => {
+      result.current.openExternalMedia(
+        "spec.pdf",
+        new File(["%PDF"], "spec.pdf", { type: "" }),
+        "pdf",
+      );
+    });
+    expect(createdFrom[0]?.type).toBe("application/pdf");
   });
 
   it("closeBuffer revokes the object URL of a dropped media buffer", () => {
