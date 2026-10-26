@@ -49,6 +49,7 @@ describe("renderMarkdown", () => {
       "[site](https://example.com/a)",
       "Visit https://example.com/b today",
       "[plain](http://example.com/c)",
+      "[relative to the scheme](//example.com/d)",
     ]) {
       const html = renderMarkdown(source);
       expect(html).toContain('target="_blank"');
