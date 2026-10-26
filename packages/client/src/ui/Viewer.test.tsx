@@ -440,6 +440,18 @@ describe("Viewer", () => {
       ]);
     });
 
+    it("keeps keyboard focus in the preview after a load button is activated", () => {
+      const { container } = render(
+        <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const button = screen.getByRole("button", { name: /chart/ });
+      button.focus();
+      fireEvent.click(button);
+      expect(document.activeElement).toBe(
+        container.querySelector(".viewer-preview"),
+      );
+    });
+
     it("forgets loaded images when another file opens, even on returning to the first", () => {
       const { container, rerender } = render(
         <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,

@@ -6,6 +6,7 @@ import {
   type MouseEvent,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -216,12 +217,22 @@ export function Viewer({
     [showAlternate, alternate, buffer.content, loadedRemoteImages, t],
   );
 
+  const refocusPreviewOnRender = useRef(false);
   const loadClickedRemoteImage = useCallback((event: MouseEvent) => {
     const src = clickedRemoteImageSrc(event);
     if (src === null) return;
     event.preventDefault();
+    refocusPreviewOnRender.current = true;
     setLoadedRemoteImages((prev) => new Set([...prev, src]));
   }, []);
+
+  // The re-rendered HTML replaces the activated button, which would drop focus to the body.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: previewHtml is a re-run trigger, not read in the body.
+  useLayoutEffect(() => {
+    if (!refocusPreviewOnRender.current) return;
+    refocusPreviewOnRender.current = false;
+    previewRef.current?.focus({ preventScroll: true });
+  }, [previewHtml]);
 
   const focusTarget = useCallback(
     () =>
@@ -267,6 +278,7 @@ export function Viewer({
         // biome-ignore lint/a11y/noStaticElementInteractions: same delegation; the div itself is not interactive
         <div
           ref={previewRef}
+          tabIndex={-1}
           className="viewer-preview markdown-body"
           onClick={loadClickedRemoteImage}
           // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
