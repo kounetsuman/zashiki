@@ -134,7 +134,9 @@ export function useViewer(
     (name: string, file: File, kind: MediaKind): string => {
       const key = externalViewerKey(name);
       revokeObjectUrl(key);
-      const url = URL.createObjectURL(file);
+      const url = URL.createObjectURL(
+        kind === "pdf" ? new Blob([file], { type: "application/pdf" }) : file,
+      );
       objectUrlsRef.current[key] = url;
       setBuffers((prev) => openExternalMediaBuffer(prev, name, { kind, url }));
       return key;
