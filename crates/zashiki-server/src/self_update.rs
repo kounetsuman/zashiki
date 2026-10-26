@@ -48,16 +48,15 @@ pub fn decide_update_mode(
 }
 
 /// Install only a release strictly newer than the running app, so a replaced or rolled-back release can't
-/// downgrade it. The `Err` is the user-facing reason.
-/// Build metadata is ignored: it carries no precedence, so `v0.36.0+1` is the running `0.36.0`.
-/// The tag is parsed exactly as `install.sh` reads it (one optional leading `v`, no trimming).
+/// downgrade it. Shares `update_checker::newer_release` with detection, so a tag is offered only if it
+/// would also be installed. The `Err` is the user-facing reason.
 pub fn check_upgrade(running: &semver::Version, tag: &str) -> Result<(), String> {
-    let newer = semver::Version::parse(tag.strip_prefix('v').unwrap_or(tag))
-        .is_ok_and(|release| release.cmp_precedence(running).is_gt());
-    if newer {
-        Ok(())
-    } else {
-        Err(format!("release {tag} is not newer than the running version {running}"))
+    let Some(release) = crate::update_checker::parse_release_tag(tag) else {
+        return Err(format!("release tag \"{}\" is not a version", tag.escape_debug()));
+    };
+    match crate::update_checker::newer_release(running, tag) {
+        Some(_) => Ok(()),
+        None => Err(format!("release {release} is not newer than the running version {running}")),
     }
 }
 
@@ -279,7 +278,7 @@ mod tests {
     fn upgrade_refuses_the_running_version() {
         assert_eq!(
             check_upgrade(&v("0.36.0"), "v0.36.0"),
-            Err("release v0.36.0 is not newer than the running version 0.36.0".to_string()),
+            Err("release 0.36.0 is not newer than the running version 0.36.0".to_string()),
         );
     }
 
@@ -298,9 +297,20 @@ mod tests {
 
     #[test]
     fn upgrade_refuses_a_tag_that_is_not_a_version() {
-        for tag in ["", "latest", "v1", "v0.37.0; rm -rf /", "../v0.37.0", "vv0.37.0", " v0.37.0", "v0.37.0\n", "V0.37.0"] {
-            assert!(check_upgrade(&v("0.36.0"), tag).is_err(), "{tag:?} must be refused");
+        for tag in ["", "latest", "v1", "v0.37.0; rm -rf /", "../v0.37.0", "vv0.37.0", " v0.37.0", "V0.37.0"] {
+            assert_eq!(
+                check_upgrade(&v("0.36.0"), tag),
+                Err(format!("release tag \"{tag}\" is not a version")),
+            );
         }
+    }
+
+    #[test]
+    fn upgrade_refusal_escapes_control_characters_in_the_tag() {
+        assert_eq!(
+            check_upgrade(&v("0.36.0"), "v0.37.0\n\x1b[2J"),
+            Err("release tag \"v0.37.0\\n\\u{1b}[2J\" is not a version".to_string()),
+        );
     }
 
     #[test]
