@@ -19,9 +19,11 @@ pub fn may_navigate(url: &Url, allowed: &[String], showing_shell_page: bool) -> 
 
 /// Requests to open a new window never get one: a second WebView would sit outside the
 /// navigation guard. Web links go to the default browser instead; WebKit asks for a new window
-/// only from a user gesture, so this is the one place a link reaches the browser.
-pub fn opens_in_browser(url: &Url) -> bool {
+/// only from a user gesture, so this is the one place a link reaches the browser. The app's own
+/// origins are kept out of it, since their URLs can carry the access token.
+pub fn opens_in_browser(url: &Url, app_origins: &[String]) -> bool {
     matches!(url.scheme(), "http" | "https")
+        && web_origin(url).is_some_and(|origin| !app_origins.contains(&origin))
 }
 
 /// The origins the window is served from: the page's own origin, and the server's, which differs
@@ -189,12 +191,25 @@ mod tests {
 
     #[test]
     fn new_windows_open_web_links_in_the_browser_and_nothing_else() {
-        assert!(opens_in_browser(&url(
-            "https://github.com/kounetsuman/zashiki/issues/new"
-        )));
-        assert!(opens_in_browser(&url("http://127.0.0.1:8790/")));
+        let app = served_from("http://localhost:5173");
+        assert!(opens_in_browser(
+            &url("https://github.com/kounetsuman/zashiki/issues/new"),
+            &app
+        ));
+        assert!(opens_in_browser(&url("http://127.0.0.1:8791/"), &app));
         for target in ["about:blank", "file:///etc/passwd", "javascript:alert(1)"] {
-            assert!(!opens_in_browser(&url(target)), "{target}");
+            assert!(!opens_in_browser(&url(target), &app), "{target}");
+        }
+    }
+
+    #[test]
+    fn new_windows_never_take_the_app_s_own_urls_to_the_browser() {
+        let app = served_from("http://localhost:5173");
+        for target in [
+            "http://localhost:5173/?token=abc",
+            "http://127.0.0.1:8790/api/media?path=a.pdf&token=abc",
+        ] {
+            assert!(!opens_in_browser(&url(target), &app), "{target}");
         }
     }
 

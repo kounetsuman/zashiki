@@ -222,6 +222,7 @@ fn main() {
             // (not blocking the main thread = resolving the perceived "hang").
             let app_origins = navigation::app_origins(&base, cfg.port);
             let guard_handle = app.handle().clone();
+            let new_window_origins = app_origins.clone();
             let loading: tauri::Url = pages::data_url(&pages::loading_html())
                 .parse()
                 .expect("data URL は常にパース可能");
@@ -250,8 +251,8 @@ fn main() {
                             .load(Ordering::SeqCst);
                         navigation::may_navigate(url, &allowed, showing_shell_page)
                     })
-                    .on_new_window(|url, _features| {
-                        if navigation::opens_in_browser(&url) {
+                    .on_new_window(move |url, _features| {
+                        if navigation::opens_in_browser(&url, &new_window_origins) {
                             navigation::open_in_browser(&url);
                         }
                         tauri::webview::NewWindowResponse::Deny
