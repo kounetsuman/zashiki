@@ -143,44 +143,59 @@ fn read_only_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
 }
 
 /// Disabling overrides for every filter driver and config-defined hook that comes from outside
-/// the user's own system/global config, from
-/// `git config --show-scope -z --get-regexp '^(filter|hook)\.'`. An empty
+/// the user's own system/global config, from `git config --list --show-scope -z`. Names are
+/// matched as bytes because git allows any bytes in a subsection name. An empty
 /// `clean`/`smudge`/`process` disables that filter step, `required=false` keeps git from
 /// failing, and `enabled=false` turns a `hook.<name>` off.
-fn repo_config_overrides(listing: &str) -> Vec<(String, String)> {
-    let mut drivers: Vec<&str> = Vec::new();
-    let mut hooks: Vec<&str> = Vec::new();
-    let mut fields = listing.split('\0');
+fn repo_config_overrides(listing: &[u8]) -> Vec<(Vec<u8>, &'static str)> {
+    let mut drivers: Vec<&[u8]> = Vec::new();
+    let mut hooks: Vec<&[u8]> = Vec::new();
+    let mut fields = listing.split(|&b| b == 0);
     while let (Some(scope), Some(entry)) = (fields.next(), fields.next()) {
-        if matches!(scope, "system" | "global") {
+        if matches!(scope, b"system" | b"global") {
             continue;
         }
-        let key = entry.split('\n').next().unwrap_or("");
-        let (names, rest) = if let Some(rest) = key.strip_prefix("filter.") {
+        let key = entry.split(|&b| b == b'\n').next().unwrap_or_default();
+        let (names, rest) = if let Some(rest) = key.strip_prefix(b"filter.") {
             (&mut drivers, rest)
-        } else if let Some(rest) = key.strip_prefix("hook.") {
+        } else if let Some(rest) = key.strip_prefix(b"hook.") {
             (&mut hooks, rest)
         } else {
             continue;
         };
-        if let Some((name, _)) = rest.rsplit_once('.') {
+        if let Some(dot) = rest.iter().rposition(|&b| b == b'.') {
+            let name = &rest[..dot];
             if !names.contains(&name) {
                 names.push(name);
             }
         }
     }
+    let key = |section: &[u8], name: &[u8], var: &[u8]| {
+        [section, b".", name, b".", var].concat()
+    };
     let filter_overrides = drivers.into_iter().flat_map(|d| {
         [
-            (format!("filter.{d}.clean"), String::new()),
-            (format!("filter.{d}.smudge"), String::new()),
-            (format!("filter.{d}.process"), String::new()),
-            (format!("filter.{d}.required"), "false".to_string()),
+            (key(b"filter", d, b"clean"), ""),
+            (key(b"filter", d, b"smudge"), ""),
+            (key(b"filter", d, b"process"), ""),
+            (key(b"filter", d, b"required"), "false"),
         ]
     });
     let hook_overrides = hooks
         .into_iter()
-        .map(|h| (format!("hook.{h}.enabled"), "false".to_string()));
+        .map(|h| (key(b"hook", h, b"enabled"), "false"));
     filter_overrides.chain(hook_overrides).collect()
+}
+
+#[cfg(unix)]
+fn os_string(bytes: Vec<u8>) -> std::ffi::OsString {
+    use std::os::unix::ffi::OsStringExt;
+    std::ffi::OsString::from_vec(bytes)
+}
+
+#[cfg(not(unix))]
+fn os_string(bytes: Vec<u8>) -> std::ffi::OsString {
+    String::from_utf8_lossy(&bytes).into_owned().into()
 }
 
 /// git for commands Zashiki runs on a repo by itself, which must not execute any program the
@@ -188,28 +203,22 @@ fn repo_config_overrides(listing: &str) -> Vec<(String, String)> {
 /// because a driver or hook name may contain `=`, which `-c` would split on.
 struct ReadOnlyGit<'a> {
     path: &'a Path,
-    config_overrides: Vec<(String, String)>,
+    config_overrides: Vec<(std::ffi::OsString, &'static str)>,
 }
 
 impl<'a> ReadOnlyGit<'a> {
     async fn open(path: &'a Path) -> Self {
-        let listing = git_command(
-            path,
-            &[
-                "config",
-                "--show-scope",
-                "-z",
-                "--get-regexp",
-                r"^(filter|hook)\.",
-            ],
-        )
-        .output()
-        .await
-        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
-        .unwrap_or_default();
+        let listing = git_command(path, &["config", "--list", "--show-scope", "-z"])
+            .output()
+            .await
+            .map(|o| o.stdout)
+            .unwrap_or_default();
         Self {
             path,
-            config_overrides: repo_config_overrides(&listing),
+            config_overrides: repo_config_overrides(&listing)
+                .into_iter()
+                .map(|(key, value)| (os_string(key), value))
+                .collect(),
         }
     }
 
@@ -1188,6 +1197,34 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn read_only_git_disables_a_filter_whose_name_is_not_utf8() {
+        use std::io::Write;
+        let h = HostileRepo::new();
+        let script = marker_script(h.repo.parent().unwrap(), "raw-clean", &h.marker);
+        let mut config = std::fs::OpenOptions::new()
+            .append(true)
+            .open(h.repo.join(".git/config"))
+            .unwrap();
+        config.write_all(b"[filter \"\xff\"]\n\tclean = ").unwrap();
+        config.write_all(script.as_bytes()).unwrap();
+        config.write_all(b"\n").unwrap();
+        std::fs::write(h.repo.join(".git/info/attributes"), b"* filter=\xff\n").unwrap();
+
+        build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "r".to_string(),
+            path: h.repo.to_string_lossy().into_owned(),
+            is_worktree: false,
+        })
+        .await;
+        diff(&h.repo, "base.txt", false, false).await;
+        diff(&h.repo, "untracked.txt", false, true).await;
+
+        assert_eq!(h.ran(), "");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
     async fn periodic_status_does_not_verify_signatures_with_repo_gpg_program() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
@@ -1291,33 +1328,37 @@ mod tests {
 
     #[test]
     fn repo_config_overrides_disable_only_filters_and_hooks_the_repo_itself_defines() {
-        let listing = "global\0filter.lfs.process\ngit-lfs filter-process\0\
+        let listing: &[u8] = b"global\0filter.lfs.process\ngit-lfs filter-process\0\
+                       local\0core.bare\nfalse\0\
                        local\0filter.evil.clean\n/x/clean\0\
                        local\0filter.evil.smudge\n/x/smudge\0\
                        worktree\0filter.a=b.c.process\n/x/p\0\
                        local\0filter.evil.required\ntrue\0\
+                       local\0filter.\xff.clean\n/x/raw\0\
                        system\0filter.sys.clean\nsys\0\
                        local\0hook.lint.command\n/x/h\0\
                        local\0hook.lint.event\npost-index-change\0\
                        global\0hook.mine.command\n/x/mine\0";
         let overrides = repo_config_overrides(listing);
-        let keys: Vec<&str> = overrides.iter().map(|(k, _)| k.as_str()).collect();
-        assert_eq!(
-            keys,
-            vec![
-                "filter.evil.clean",
-                "filter.evil.smudge",
-                "filter.evil.process",
-                "filter.evil.required",
-                "filter.a=b.c.clean",
-                "filter.a=b.c.smudge",
-                "filter.a=b.c.process",
-                "filter.a=b.c.required",
-                "hook.lint.enabled",
-            ]
-        );
-        assert!(overrides.iter().all(|(k, v)| v
-            == if k.ends_with(".required") || k.ends_with(".enabled") {
+        let keys: Vec<&[u8]> = overrides.iter().map(|(k, _)| k.as_slice()).collect();
+        let expected: Vec<&[u8]> = vec![
+            b"filter.evil.clean",
+            b"filter.evil.smudge",
+            b"filter.evil.process",
+            b"filter.evil.required",
+            b"filter.a=b.c.clean",
+            b"filter.a=b.c.smudge",
+            b"filter.a=b.c.process",
+            b"filter.a=b.c.required",
+            b"filter.\xff.clean",
+            b"filter.\xff.smudge",
+            b"filter.\xff.process",
+            b"filter.\xff.required",
+            b"hook.lint.enabled",
+        ];
+        assert_eq!(keys, expected);
+        assert!(overrides.iter().all(|(k, v)| *v
+            == if k.ends_with(b".required") || k.ends_with(b".enabled") {
                 "false"
             } else {
                 ""
