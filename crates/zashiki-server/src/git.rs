@@ -207,20 +207,29 @@ struct ReadOnlyGit<'a> {
     config_overrides: Vec<(std::ffi::OsString, &'static str)>,
 }
 
+/// The overrides for a config listing, or `None` unless git listed it cleanly: without the
+/// listing nothing tells which programs the repo names, so the caller runs no read-only command.
+fn overrides_from_listing(
+    listing: std::io::Result<std::process::Output>,
+) -> Option<Vec<(Vec<u8>, &'static str)>> {
+    let output = listing.ok().filter(|o| o.status.success())?;
+    Some(repo_config_overrides(&output.stdout))
+}
+
 impl<'a> ReadOnlyGit<'a> {
-    async fn open(path: &'a Path) -> Self {
+    /// `None` when the repo's config cannot be listed (not a repo, unreadable config, a git
+    /// without `--show-scope`); such a repo is treated as a git failure.
+    async fn open(path: &'a Path) -> Option<Self> {
         let listing = git_command(path, &["config", "--list", "--show-scope", "-z"])
             .output()
-            .await
-            .map(|o| o.stdout)
-            .unwrap_or_default();
-        Self {
+            .await;
+        Some(Self {
             path,
-            config_overrides: repo_config_overrides(&listing)
+            config_overrides: overrides_from_listing(listing)?
                 .into_iter()
                 .map(|(key, value)| (os_string(key), value))
                 .collect(),
-        }
+        })
     }
 
     fn command(&self, args: &[&str]) -> Command {
@@ -296,12 +305,10 @@ pub async fn unstage_all(path: &Path) -> Result<(), GitError> {
 /// (e.g. not a repo) falls to false, so before calling, guarantee that the repo is in the scanned
 /// list (isAllowedRepo).
 pub async fn has_staged(path: &Path) -> bool {
-    match ReadOnlyGit::open(path)
-        .await
-        .command(&["diff", "--cached", "--quiet"])
-        .output()
-        .await
-    {
+    let Some(git) = ReadOnlyGit::open(path).await else {
+        return false;
+    };
+    match git.command(&["diff", "--cached", "--quiet"]).output().await {
         Ok(output) => !output.status.success(),
         Err(_) => false,
     }
@@ -370,7 +377,16 @@ pub async fn diff(path: &Path, file: &str, staged: bool, untracked: bool) -> Dif
     } else {
         vec!["diff", "--numstat", "--", file]
     };
-    let git = ReadOnlyGit::open(path).await;
+    let Some(git) = ReadOnlyGit::open(path).await else {
+        return DiffPayload {
+            old_text: String::new(),
+            new_text: String::new(),
+            binary: false,
+            too_large: false,
+            added: 0,
+            removed: 0,
+        };
+    };
     let (added, removed, binary) = parse_numstat(&git.stdout(&numstat_args).await);
     if binary {
         return DiffPayload {
@@ -510,10 +526,14 @@ async fn last_commit_iso(git: &ReadOnlyGit<'_>) -> String {
 async fn build_repo_status(r: ScannedRepo) -> RepoStatus {
     let path = Path::new(&r.path);
     // Awaited in series, not joined: one git process per held permit keeps STATUS_CONCURRENCY an exact process cap.
-    let git = ReadOnlyGit::open(path).await;
-    let branch = resolve_branch(&git).await;
-    let raw = git.stdout(&["status", "--porcelain=v1"]).await;
-    let last_commit = last_commit_iso(&git).await;
+    let (branch, raw, last_commit) = match ReadOnlyGit::open(path).await {
+        Some(git) => (
+            resolve_branch(&git).await,
+            git.stdout(&["status", "--porcelain=v1"]).await,
+            last_commit_iso(&git).await,
+        ),
+        None => Default::default(),
+    };
     let parsed = zashiki_core::git::parse_git_status(&raw);
     RepoStatus {
         org: r.org,
@@ -1352,6 +1372,40 @@ mod tests {
             .unwrap()
             .stdout;
         assert_eq!(String::from_utf8_lossy(&blob), "QUIET\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn overrides_from_listing_refuses_anything_but_a_clean_exit() {
+        use std::os::unix::process::ExitStatusExt;
+        let output = |code: i32, stdout: &[u8]| {
+            Ok(std::process::Output {
+                status: std::process::ExitStatus::from_raw(code << 8),
+                stdout: stdout.to_vec(),
+                stderr: Vec::new(),
+            })
+        };
+        let listing: &[u8] = b"local\0hook.h.command\n/x\0";
+
+        assert_eq!(
+            overrides_from_listing(output(0, listing)),
+            Some(vec![(b"hook.h.enabled".to_vec(), "false")])
+        );
+        assert_eq!(overrides_from_listing(output(0, b"")), Some(Vec::new()));
+        assert_eq!(overrides_from_listing(output(1, listing)), None);
+        assert_eq!(overrides_from_listing(output(129, b"")), None);
+        assert_eq!(
+            overrides_from_listing(Err(std::io::Error::other("spawn failed"))),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn read_only_git_refuses_to_open_when_the_config_cannot_be_listed() {
+        assert!(ReadOnlyGit::open(Path::new("/no/such/repo")).await.is_none());
+        let dir = tempfile::tempdir().unwrap();
+        init_repo(dir.path());
+        assert!(ReadOnlyGit::open(dir.path()).await.is_some());
     }
 
     #[test]
