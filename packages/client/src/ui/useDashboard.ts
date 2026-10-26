@@ -12,7 +12,7 @@ import {
   saveDashboardLastShown,
   shouldShowDashboard,
 } from "../lib/dashboard.js";
-import { allowDashboardOrigin } from "../lib/dashboard-origin.js";
+import { registerDashboardOrigin } from "../lib/dashboard-origin.js";
 import { useWakeEvent } from "./useWakeEvent.js";
 
 type StoragePart = Pick<Storage, "getItem" | "setItem">;
@@ -100,9 +100,17 @@ export function useDashboard(
     [api, storage],
   );
 
-  const configuredUrl = settings?.url;
+  const configuredUrl = settings?.url.trim();
+  const [registeredUrl, setRegisteredUrl] = useState<string | null>(null);
   useEffect(() => {
-    if (configuredUrl !== undefined) allowDashboardOrigin(configuredUrl);
+    if (configuredUrl === undefined) return;
+    let current = true;
+    void registerDashboardOrigin(configuredUrl).then(() => {
+      if (current) setRegisteredUrl(configuredUrl);
+    });
+    return () => {
+      current = false;
+    };
   }, [configuredUrl]);
 
   useEffect(() => {
@@ -117,5 +125,11 @@ export function useDashboard(
     pendingRead.current?.abort();
     setShown((prev) => ({ frame: null, nonce: prev.nonce }));
   }, []);
-  return { frame: shown.frame, showNonce: shown.nonce, dismiss };
+  const waitingForShell =
+    shown.frame?.kind === "remote" && shown.frame.url !== registeredUrl;
+  return {
+    frame: waitingForShell ? null : shown.frame,
+    showNonce: shown.nonce,
+    dismiss,
+  };
 }

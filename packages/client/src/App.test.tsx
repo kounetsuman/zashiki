@@ -1981,11 +1981,11 @@ describe("App dashboard on launch", () => {
     dashboard,
   });
 
-  it("puts the configured page in front of the cockpit once the settings arrive, and Escape dismisses it", () => {
+  it("puts the configured page in front of the cockpit once the settings arrive, and Escape dismisses it", async () => {
     const { control } = renderApp(memoryStorage());
     expect(screen.queryByRole("dialog", { name: "ダッシュボード" })).toBeNull();
 
-    act(() =>
+    await act(async () =>
       control.emit(
         configSync({
           ...DEFAULT_DASHBOARD_SETTINGS,
