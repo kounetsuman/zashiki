@@ -134,10 +134,12 @@ Enabled by default. To stop the server's outbound egress to github.com, set
 ## In-app update (direct dmg swap)
 
 Pressing **Update** swaps the running `.app` in place with the newest signed release,
-independent of Homebrew. A detached helper (`setsid`) SIGTERMs the app, waits for it and
+independent of Homebrew. A release that is not newer than the running version is refused. A detached helper (`setsid`) SIGTERMs the app, waits for it and
 its port to free, then runs the bundled [`install.sh`](../../scripts/install.sh) in
 self-update mode (`ZASHIKI_SELF_UPDATE=1`): it downloads the latest release `.dmg`,
-verifies its Developer ID signature and notarization (`codesign` / `spctl`), swaps the
+verifies its Developer ID signature, that it is signed by the Zashiki Team ID
+(`RELEASE_TEAM_ID` in `install.sh`), its notarization (`codesign` / `spctl`), and that the
+app inside carries the requested version, swaps the
 bundle atomically (staged copy + rename, so a failed install never leaves you without an
 app), and the helper reopens it. Steps append to `~/Library/Logs/zashiki/update.log`.
 
@@ -215,6 +217,9 @@ One-time setup (maintainer):
    | `APPLE_ID` | Apple ID email used for notarization |
    | `APPLE_PASSWORD` | the app-specific password from step 2 |
    | `APPLE_TEAM_ID` | 10-character Team ID |
+
+   Signing with a different Team ID also requires updating `RELEASE_TEAM_ID` in
+   `scripts/install.sh`; otherwise installs and in-app updates refuse the new build.
 
 ### Homebrew tap auto-bump
 
