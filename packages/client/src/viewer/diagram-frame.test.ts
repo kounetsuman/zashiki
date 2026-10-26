@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DIAGRAM_BASE_CSS,
   diagramFrame,
   diagramFrameDocument,
   diagramFrameSize,
@@ -16,6 +17,13 @@ describe("diagramFrameDocument", () => {
     expect(page).toContain(
       "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:",
     );
+  });
+});
+
+describe("diagramFrameDocument text metrics", () => {
+  it("lays text out with the line height the probe measured it with", () => {
+    expect(DIAGRAM_BASE_CSS).not.toContain("line-height");
+    expect(diagramFrameDocument("<svg></svg>")).not.toContain("line-height");
   });
 });
 

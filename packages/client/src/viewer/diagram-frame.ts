@@ -7,7 +7,7 @@ body {
 }`;
 
 const PREVIEW_CSS = `html, body { overflow: hidden; background: transparent; }
-body { color: #ddd; line-height: 1.6; }
+body { color: #ddd; }
 body > svg { display: block; width: 100%; height: auto; }`;
 
 const FRAME_POLICY =
