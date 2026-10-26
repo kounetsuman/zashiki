@@ -42,8 +42,8 @@ fn open_devtools(webview: tauri::WebviewWindow) {
 }
 
 /// The dashboard overlay frames the configured page inside the window, so the navigation guard lets
-/// that page's origin through as well. The app reports the address before each showing; one that is
-/// not an http(s) address clears the allowance.
+/// that page's origin through as well. The app reports the configured address whenever it changes;
+/// one that is not an http(s) address clears the allowance.
 #[tauri::command]
 fn set_dashboard_origin(dashboard: tauri::State<'_, DashboardOrigin>, url: String) {
     *dashboard.0.lock().unwrap() = navigation::dashboard_origin(&url);
