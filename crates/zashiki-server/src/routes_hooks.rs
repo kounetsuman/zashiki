@@ -467,6 +467,7 @@ mod hooks_rest_tests {
         // The Rust coreutils on ubuntu-26.04 refuse to run under a name other than their own.
         std::process::Command::new("/bin/sh")
             .arg0("claude")
+            .env_clear()
             .args(["-c", "read _"])
             .stdin(std::process::Stdio::piped())
             .spawn()
