@@ -55,9 +55,10 @@ impl Guard {
 }
 
 /// Requests to open a new window never get one: a second WebView would sit outside the
-/// navigation guard. Web links go to the default browser instead; WebKit asks for a new window
-/// only from a user gesture, so this is the one place a link reaches the browser. The app's own
-/// origins are kept out of it, since their URLs can carry the access token.
+/// navigation guard. Web links go to the default browser instead, and this is the one place a link
+/// reaches it. Only the app's own page asks for windows by script: the frames that run other
+/// content's scripts (the dashboard, the HTML preview) are sandboxed without `allow-popups`. The
+/// app's own origins are kept out of it, since their URLs can carry the access token.
 pub fn opens_in_browser(url: &Url, app_origins: &[String]) -> bool {
     matches!(url.scheme(), "http" | "https")
         && web_origin(url).is_some_and(|origin| !app_origins.contains(&origin))
