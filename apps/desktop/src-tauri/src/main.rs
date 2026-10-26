@@ -114,8 +114,7 @@ struct QuitBridge {
     /// startup or error page, which has no Memo and no listener, so a quit would wait out both
     /// timeouts and then ask about unsaved edits that cannot exist. Set when the navigation is
     /// dispatched, not when the app has finished loading: quitting during the load still falls
-    /// through to the guard, which is the safe direction. The navigation guard reads it too: the
-    /// startup and error pages may be shown only until then.
+    /// through to the guard, which is the safe direction.
     app_loaded: AtomicBool,
 }
 
@@ -220,9 +219,11 @@ fn main() {
             grant_app_commands(app, &base);
             // Show the loading page immediately and start the sidecar on a background thread
             // (not blocking the main thread = resolving the perceived "hang").
-            let app_origins = navigation::app_origins(&base, cfg.port);
+            let guard = Arc::new(navigation::Guard::new(navigation::app_origins(
+                &base, cfg.port,
+            )));
+            let new_window_guard = Arc::clone(&guard);
             let guard_handle = app.handle().clone();
-            let new_window_origins = app_origins.clone();
             let loading: tauri::Url = pages::data_url(&pages::loading_html())
                 .parse()
                 .expect("data URL は常にパース可能");
@@ -236,23 +237,12 @@ fn main() {
                     // which breaks in-page tab reordering. Disable it so DOM drag-and-drop works.
                     .disable_drag_drop_handler()
                     .on_navigation(move |url| {
-                        let mut allowed = app_origins.clone();
-                        allowed.extend(
-                            guard_handle
-                                .state::<DashboardOrigin>()
-                                .0
-                                .lock()
-                                .unwrap()
-                                .clone(),
-                        );
-                        let showing_shell_page = !guard_handle
-                            .state::<QuitBridge>()
-                            .app_loaded
-                            .load(Ordering::SeqCst);
-                        navigation::may_navigate(url, &allowed, showing_shell_page)
+                        let dashboard = guard_handle.state::<DashboardOrigin>();
+                        let dashboard_origin = dashboard.0.lock().unwrap().clone();
+                        guard.allows(url, dashboard_origin)
                     })
                     .on_new_window(move |url, _features| {
-                        if navigation::opens_in_browser(&url, &new_window_origins) {
+                        if navigation::opens_in_browser(&url, new_window_guard.app_origins()) {
                             navigation::open_in_browser(&url);
                         }
                         tauri::webview::NewWindowResponse::Deny

@@ -17,6 +17,43 @@ pub fn may_navigate(url: &Url, allowed: &[String], showing_shell_page: bool) -> 
     }
 }
 
+/// The main window's navigation guard. The shell's pages may be shown until the window first moves
+/// onto the app, which is decided here rather than by when the shell asks for that move, so a
+/// startup page that is still loading when the app is ready is not refused.
+pub struct Guard {
+    app_origins: Vec<String>,
+    showing_shell_page: std::sync::atomic::AtomicBool,
+}
+
+impl Guard {
+    pub fn new(app_origins: Vec<String>) -> Self {
+        Self {
+            app_origins,
+            showing_shell_page: std::sync::atomic::AtomicBool::new(true),
+        }
+    }
+
+    pub fn app_origins(&self) -> &[String] {
+        &self.app_origins
+    }
+
+    /// [`may_navigate`] against the app's origins plus `extra_origin` (the dashboard's).
+    pub fn allows(&self, url: &Url, extra_origin: Option<String>) -> bool {
+        use std::sync::atomic::Ordering;
+        if matches!(url.scheme(), "http" | "https") && may_navigate(url, &self.app_origins, false) {
+            self.showing_shell_page.store(false, Ordering::SeqCst);
+            return true;
+        }
+        let mut allowed = self.app_origins.clone();
+        allowed.extend(extra_origin);
+        may_navigate(
+            url,
+            &allowed,
+            self.showing_shell_page.load(Ordering::SeqCst),
+        )
+    }
+}
+
 /// Requests to open a new window never get one: a second WebView would sit outside the
 /// navigation guard. Web links go to the default browser instead; WebKit asks for a new window
 /// only from a user gesture, so this is the one place a link reaches the browser. The app's own
@@ -187,6 +224,30 @@ mod tests {
         let page = url("data:text/html;charset=utf-8,%3Ch1%3E");
         assert!(may_navigate(&page, &allowed, true));
         assert!(!may_navigate(&page, &allowed, false));
+    }
+
+    #[test]
+    fn the_guard_shows_shell_pages_until_the_window_moves_onto_the_app() {
+        let guard = Guard::new(served_from("http://127.0.0.1:8790"));
+        let loading = url("data:text/html;charset=utf-8,%3Ch1%3Eloading");
+        let error = url("data:text/html;charset=utf-8,%3Ch1%3Eerror");
+        assert!(guard.allows(&loading, None));
+        assert!(!guard.allows(&url("https://example.com/"), None));
+        assert!(
+            guard.allows(&error, None),
+            "a refused navigation is not the app"
+        );
+        assert!(guard.allows(&url("http://127.0.0.1:8790/?token=abc"), None));
+        assert!(!guard.allows(&loading, None));
+    }
+
+    #[test]
+    fn the_guard_lets_the_extra_origin_through_without_counting_it_as_the_app() {
+        let guard = Guard::new(served_from("http://127.0.0.1:8790"));
+        let dashboard = dashboard_origin("https://dash.example/board");
+        assert!(guard.allows(&url("https://dash.example/board"), dashboard.clone()));
+        assert!(!guard.allows(&url("https://dash.example/board"), None));
+        assert!(guard.allows(&url("data:text/html,x"), dashboard));
     }
 
     #[test]
