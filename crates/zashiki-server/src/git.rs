@@ -133,9 +133,14 @@ const READ_ONLY_CONFIG: [&str; 4] = [
 ];
 
 /// `args` with `--no-ext-diff --no-textconv` after a `diff`/`show`/`log` subcommand, so a diff
-/// driver or textconv named by the repo's `.gitattributes` never runs.
+/// driver or textconv named by the repo's `.gitattributes` never runs, and with
+/// `--ignore-submodules=dirty` after `status`/`diff`, so git never runs inside a submodule whose
+/// own config the overrides were not built from. A submodule's new commit still shows.
 fn read_only_args<'a>(args: &[&'a str]) -> Vec<&'a str> {
     let mut out = args.to_vec();
+    if matches!(args.first(), Some(&("status" | "diff"))) {
+        out.insert(1, "--ignore-submodules=dirty");
+    }
     if matches!(args.first(), Some(&("diff" | "show" | "log"))) {
         out.splice(1..1, ["--no-ext-diff", "--no-textconv"]);
     }
@@ -1132,6 +1137,19 @@ mod tests {
         script.to_string_lossy().into_owned()
     }
 
+    /// Rewrites `file` with the same content and an older mtime: the index entry is stat-dirty but
+    /// not racy, so git re-reads the file and would refresh the index entry.
+    fn make_stat_dirty(file: &Path) {
+        let content = std::fs::read(file).unwrap();
+        std::fs::write(file, content).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(file)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60))
+            .unwrap();
+    }
+
     /// A repo whose own `.git/config` and `.git/info/attributes` point every program-running key
     /// (fsmonitor, clean/smudge/process filters, diff driver, textconv, hooks) at marker scripts.
     #[cfg(unix)]
@@ -1173,15 +1191,7 @@ mod tests {
                 "* filter=evil diff=evil\n",
             )
             .unwrap();
-            // Same content, older mtime: the index entry is stat-dirty but not racy, so git
-            // re-reads the file and would refresh the index entry.
-            std::fs::write(repo.join("base.txt"), "base\n").unwrap();
-            std::fs::File::options()
-                .write(true)
-                .open(repo.join("base.txt"))
-                .unwrap()
-                .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(60))
-                .unwrap();
+            make_stat_dirty(&repo.join("base.txt"));
             std::fs::write(repo.join("untracked.txt"), "u\n").unwrap();
             Self {
                 _dir: dir,
@@ -1289,6 +1299,65 @@ mod tests {
 
         assert_eq!(h.ran(), "");
         assert_eq!(d.new_text, "");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_only_git_does_not_enter_a_submodule_but_still_sees_its_new_commit() {
+        let dir = tempfile::tempdir().unwrap();
+        let upstream = dir.path().join("upstream");
+        let outer = dir.path().join("outer");
+        let marker = dir.path().join("marker");
+        std::fs::create_dir_all(&upstream).unwrap();
+        std::fs::create_dir_all(&outer).unwrap();
+        init_repo(&upstream);
+        init_repo(&outer);
+        let upstream_path = upstream.to_string_lossy().into_owned();
+        git(
+            &outer,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                &upstream_path,
+                "sub",
+            ],
+        );
+        git(&outer, &["commit", "-q", "-m", "add sub"]);
+        let sub = outer.join("sub");
+        git(&sub, &["commit", "-q", "--allow-empty", "-m", "next"]);
+
+        let clean = marker_script(dir.path(), "sub-clean", &marker);
+        git(&sub, &["config", "filter.subevil.clean", &clean]);
+        let attributes = String::from_utf8(
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(&sub)
+                .args(["rev-parse", "--path-format=absolute", "--git-path", "info/attributes"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap();
+        let attributes = Path::new(attributes.trim());
+        std::fs::create_dir_all(attributes.parent().unwrap()).unwrap();
+        std::fs::write(attributes, "* filter=subevil\n").unwrap();
+        make_stat_dirty(&sub.join("base.txt"));
+
+        let status = build_repo_status(ScannedRepo {
+            org: "o".to_string(),
+            repo: "outer".to_string(),
+            path: outer.to_string_lossy().into_owned(),
+            is_worktree: false,
+        })
+        .await;
+        let d = diff(&outer, "sub", false, false).await;
+
+        assert_eq!(std::fs::read_to_string(&marker).unwrap_or_default(), "");
+        assert!(status.changed.iter().any(|e| e.path == "sub"));
+        assert_eq!((d.added, d.removed), (1, 1));
     }
 
     #[cfg(unix)]
@@ -1412,7 +1481,19 @@ mod tests {
     fn read_only_args_disable_external_diff_and_textconv_for_diff_like_commands() {
         assert_eq!(
             read_only_args(&["diff", "--numstat", "--", "a"]),
-            vec!["diff", "--no-ext-diff", "--no-textconv", "--numstat", "--", "a"]
+            vec![
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--ignore-submodules=dirty",
+                "--numstat",
+                "--",
+                "a"
+            ]
+        );
+        assert_eq!(
+            read_only_args(&["status", "--porcelain=v1"]),
+            vec!["status", "--ignore-submodules=dirty", "--porcelain=v1"]
         );
         assert_eq!(
             read_only_args(&["show", "HEAD:a"]),
