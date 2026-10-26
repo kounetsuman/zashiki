@@ -46,7 +46,7 @@ jobs:
           VERSION: ${{ steps.tag.outputs.version }}
         run: |
           DMG="Zashiki_${VERSION}_aarch64.dmg"
-          gh release download "$TAG" --repo "${{ github.repository }}" --pattern "$DMG" --dir .
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$DMG" --dir .
           echo "sha256=$(shasum -a 256 "$DMG" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout the tap
