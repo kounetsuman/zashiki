@@ -207,8 +207,8 @@ pub(crate) async fn handle_client_message(
         // broadcasts. app_version being set marks the desktop-shell context (gates swap vs open-page).
         ClientMessage::UpdatePerform => {
             let hub = services.hub.clone();
-            let present = services.app_version.is_some();
-            tokio::spawn(async move { crate::self_update::perform_update(hub, present).await });
+            let running = services.app_version.clone();
+            tokio::spawn(async move { crate::self_update::perform_update(hub, running).await });
             true
         }
         // Re-read the signed-in account and broadcast account.status. When asked, first restart every

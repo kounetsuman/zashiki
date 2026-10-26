@@ -47,6 +47,15 @@ pub fn decide_update_mode(
     }
 }
 
+/// Install only a release strictly newer than the running app, so a replaced or rolled-back release can't
+/// downgrade it. The `Err` is the user-facing reason.
+pub fn check_upgrade(running: &semver::Version, tag: &str) -> Result<(), String> {
+    match crate::update_checker::newer_release(running, tag) {
+        Some(_) => Ok(()),
+        None => Err(format!("release {tag} is not newer than the running version {running}")),
+    }
+}
+
 /// Walk up from the running server binary to the enclosing `*.app` bundle directory (the server
 /// binary is bundled inside the app, so an ancestor is the `.app`).
 pub fn app_bundle_path(current_exe: &Path) -> Option<PathBuf> {
@@ -196,7 +205,7 @@ fn spawn_update(installer: &Path, bundle: &Path, install_dir: &Path, version: &s
 }
 
 /// Orchestrate an update triggered from the Update button, broadcasting status to all clients.
-pub async fn perform_update(hub: Arc<ControlHub>, app_version_present: bool) {
+pub async fn perform_update(hub: Arc<ControlHub>, running: Option<semver::Version>) {
     // Capture before the awaits below, while the parent shell is still our parent (not yet launchd).
     let shell_pid = unsafe { libc::getppid() };
     let exe = std::env::current_exe().ok();
@@ -205,7 +214,7 @@ pub async fn perform_update(hub: Arc<ControlHub>, app_version_present: bool) {
     let install_dir = bundle.as_deref().and_then(Path::parent).map(Path::to_path_buf);
     let writable = install_dir.as_deref().map(dir_writable).unwrap_or(false);
 
-    match decide_update_mode(app_version_present, bundle.clone(), installer, writable) {
+    match decide_update_mode(running.is_some(), bundle.clone(), installer, writable) {
         UpdateMode::OpenPage => {
             open_releases_page();
             hub.broadcast(status(UpdateStatusState::Opened, None));
@@ -213,6 +222,7 @@ pub async fn perform_update(hub: Arc<ControlHub>, app_version_present: bool) {
         UpdateMode::Swap { bundle, installer } => {
             // Unwrap is safe: Swap implies bundle is Some, so its parent produced install_dir.
             let install_dir = install_dir.expect("swap mode has a bundle parent");
+            let running = running.expect("swap mode has a running app version");
             hub.broadcast(status(UpdateStatusState::Running, None));
             // Resolve the release while the app is still alive so an unreachable GitHub is reported
             // in-app, not discovered only after the app has been torn down. The installer is
@@ -224,6 +234,10 @@ pub async fn perform_update(hub: Arc<ControlHub>, app_version_present: bool) {
                 ));
                 return;
             };
+            if let Err(reason) = check_upgrade(&running, &version) {
+                hub.broadcast(status(UpdateStatusState::Failed, Some(reason)));
+                return;
+            }
             match stage_installer(&installer) {
                 Ok(staged) => match spawn_update(&staged, &bundle, &install_dir, &version, shell_pid, server_port()) {
                     Ok(()) => hub.broadcast(status(UpdateStatusState::Relaunching, None)),
@@ -244,6 +258,47 @@ pub async fn perform_update(hub: Arc<ControlHub>, app_version_present: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn v(s: &str) -> semver::Version {
+        semver::Version::parse(s).unwrap()
+    }
+
+    #[test]
+    fn upgrade_accepts_only_a_strictly_newer_release() {
+        assert_eq!(check_upgrade(&v("0.36.0"), "v0.37.0"), Ok(()));
+        assert_eq!(check_upgrade(&v("0.36.0"), "0.36.1"), Ok(()));
+        assert_eq!(check_upgrade(&v("1.0.0-rc.1"), "v1.0.0"), Ok(()));
+    }
+
+    #[test]
+    fn upgrade_refuses_the_running_version() {
+        assert_eq!(
+            check_upgrade(&v("0.36.0"), "v0.36.0"),
+            Err("release v0.36.0 is not newer than the running version 0.36.0".to_string()),
+        );
+    }
+
+    #[test]
+    fn upgrade_refuses_an_older_release() {
+        assert!(check_upgrade(&v("0.36.0"), "v0.35.9").is_err());
+        assert!(check_upgrade(&v("1.0.0"), "v1.0.0-rc.1").is_err());
+    }
+
+    #[test]
+    fn upgrade_refuses_a_tag_that_is_not_a_version() {
+        for tag in ["", "latest", "v1", "v0.37.0; rm -rf /", "../v0.37.0"] {
+            assert!(check_upgrade(&v("0.36.0"), tag).is_err(), "{tag:?} must be refused");
+        }
+    }
+
+    #[test]
+    fn bundled_installer_requires_the_release_team_signature_and_pinned_version() {
+        let installer = include_str!("../../../scripts/install.sh");
+        assert!(installer.contains("RELEASE_TEAM_ID=\"CN93GSH7MN\""));
+        assert!(installer.contains("certificate leaf[subject.OU] = \\\"${RELEASE_TEAM_ID}\\\""));
+        assert!(installer.contains("-R=\"$RELEASE_SIGNER_REQUIREMENT\" \"$src\""));
+        assert!(installer.contains("[[ \"$src_version\" == \"${ZASHIKI_VERSION#v}\" ]]"));
+    }
 
     #[test]
     fn app_bundle_path_finds_enclosing_dot_app() {
