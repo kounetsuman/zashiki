@@ -16,11 +16,15 @@
 #   ZASHIKI_SELF_UPDATE   Set to 1 when driven by the in-app updater: the app is already being torn
 #                         down by the update helper, so skip the interactive quit (relaunch is the
 #                         helper's job). The bundle is still swapped atomically and verified either way.
+#                         The downloaded app must also carry exactly the ZASHIKI_VERSION it was pinned
+#                         to, so a release whose dmg holds a different (e.g. older) build is refused.
 #
 set -euo pipefail
 
 REPO="kounetsuman/zashiki"
 APP_NAME="Zashiki.app"
+RELEASE_TEAM_ID="CN93GSH7MN"
+RELEASE_SIGNER_REQUIREMENT="anchor apple generic and certificate leaf[subject.OU] = \"${RELEASE_TEAM_ID}\""
 INSTALL_DIR="${ZASHIKI_INSTALL_DIR:-/Applications}"
 SELF_UPDATE="${ZASHIKI_SELF_UPDATE:-}"
 
@@ -92,8 +96,16 @@ src="${mnt}/${APP_NAME}"
 # install — critical on the self-update path, where the swap is unattended.
 codesign --verify --deep --strict --verbose=2 "$src" >/dev/null 2>&1 \
   || err "signature verification failed for the downloaded app (codesign). Aborting without touching the installed app."
+codesign --verify --deep --strict -R="$RELEASE_SIGNER_REQUIREMENT" "$src" >/dev/null 2>&1 \
+  || err "the downloaded app is not signed by the Zashiki team (Team ID ${RELEASE_TEAM_ID}). Aborting without touching the installed app."
 spctl -a -t exec "$src" >/dev/null 2>&1 \
   || err "notarization/Gatekeeper assessment failed for the downloaded app (spctl). Aborting without touching the installed app."
+
+if [[ -n "$SELF_UPDATE" && -n "${ZASHIKI_VERSION:-}" ]]; then
+  src_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${src}/Contents/Info.plist" 2>/dev/null)" || src_version=""
+  [[ "$src_version" == "${ZASHIKI_VERSION#v}" ]] \
+    || err "the downloaded app is version '${src_version}', not the requested ${ZASHIKI_VERSION}. Aborting without touching the installed app."
+fi
 
 dest="${INSTALL_DIR%/}/${APP_NAME}"
 [[ -w "$INSTALL_DIR" ]] || err "no write permission to ${INSTALL_DIR}. Re-run with a writable ZASHIKI_INSTALL_DIR (e.g. ZASHIKI_INSTALL_DIR=\"\$HOME/Applications\") or via sudo."

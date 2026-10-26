@@ -28,11 +28,17 @@ pub fn parse_running_version(current: &str) -> Option<semver::Version> {
     (v != semver::Version::new(0, 0, 0)).then_some(v)
 }
 
-/// The newer stable version, if the release `tag_name` parses to something strictly newer than `current`.
-/// Prerelease precedence applies (`1.0.0-rc.1 < 1.0.0`), so an rc build is correctly told a stable `1.0.0` is newer.
+/// A release tag as the installer reads it: one optional leading `v`, then a semver, with nothing trimmed.
+pub fn parse_release_tag(tag_name: &str) -> Option<semver::Version> {
+    semver::Version::parse(tag_name.strip_prefix('v').unwrap_or(tag_name)).ok()
+}
+
+/// The newer version, if the release `tag_name` parses (see `parse_release_tag`) to something strictly newer
+/// than `current`. Prerelease precedence applies (`1.0.0-rc.1 < 1.0.0`), so an rc build is correctly told a
+/// stable `1.0.0` is newer; build metadata carries no precedence, so `v0.36.0+1` is not newer than `0.36.0`.
 pub fn newer_release(current: &semver::Version, tag_name: &str) -> Option<semver::Version> {
-    let latest = semver::Version::parse(tag_name.trim().trim_start_matches('v')).ok()?;
-    (latest > *current).then_some(latest)
+    let latest = parse_release_tag(tag_name)?;
+    latest.cmp_precedence(current).is_gt().then_some(latest)
 }
 
 /// Extract `(tag_name, html_url)` from a `releases/latest` JSON body, comparing the tag against `current`.
@@ -204,6 +210,31 @@ mod tests {
         );
         // ...but the very rc it is already running is not "newer".
         assert_eq!(newer_release(&rc, "v1.0.0-rc.1"), None);
+    }
+
+    #[test]
+    fn newer_release_ignores_build_metadata() {
+        let current = semver::Version::new(0, 36, 0);
+        assert_eq!(newer_release(&current, "v0.36.0+1"), None);
+        assert_eq!(newer_release(&current, "v0.36.1+1"), Some(semver::Version::parse("0.36.1+1").unwrap()));
+    }
+
+    #[test]
+    fn newer_release_reads_the_tag_exactly_as_the_installer_does() {
+        let current = semver::Version::new(0, 36, 0);
+        assert_eq!(newer_release(&current, "0.37.0"), Some(semver::Version::new(0, 37, 0)));
+        for tag in ["vv0.37.0", " v0.37.0", "v0.37.0\n", "V0.37.0"] {
+            assert_eq!(newer_release(&current, tag), None, "{tag:?} is not a release tag");
+        }
+    }
+
+    #[test]
+    fn evaluate_release_does_not_announce_a_tag_the_updater_would_refuse() {
+        let current = semver::Version::new(0, 36, 0);
+        for tag in ["v0.36.0+1", "vv0.37.0", " v0.37.0"] {
+            let body = format!(r#"{{"tag_name":{}}}"#, serde_json::to_string(tag).unwrap());
+            assert_eq!(evaluate_release(&current, &body), None, "{tag:?} must not be announced");
+        }
     }
 
     #[test]
