@@ -1,4 +1,5 @@
 import mermaid from "mermaid";
+import { DIAGRAM_BASE_CSS } from "./diagram-frame.js";
 import { MERMAID_CONFIG } from "./mermaid-config.js";
 import type {
   MermaidProbeResult,
@@ -6,6 +7,10 @@ import type {
 } from "./mermaid-probe.js";
 import { remoteImageHost } from "./remote-host.js";
 import { remoteHostsIn } from "./remote-references.js";
+
+const baseStyle = document.createElement("style");
+baseStyle.textContent = DIAGRAM_BASE_CSS;
+document.head.appendChild(baseStyle);
 
 mermaid.initialize(MERMAID_CONFIG);
 

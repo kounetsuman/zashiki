@@ -1,5 +1,6 @@
 import type { Mermaid } from "mermaid";
 
+import { diagramFrame } from "./diagram-frame.js";
 import { MERMAID_CONFIG } from "./mermaid-config.js";
 import { probeMermaid } from "./mermaid-probe.js";
 
@@ -26,6 +27,8 @@ export interface RenderMermaidOptions {
   remoteDiagramLabel?: (hosts: string) => string;
   /** Text on that button telling how to render the diagram anyway. */
   remoteDiagramAction?: string;
+  /** Accessible name of the frame a diagram is shown in. */
+  diagramTitle?: string;
 }
 
 const MAX_LISTED_HOSTS = 3;
@@ -84,12 +87,12 @@ async function renderInApp(id: string, source: string): Promise<string> {
 }
 
 /**
- * Turns the `.viewer-mermaid` placeholders under `root` into rendered SVG diagrams. Each diagram
- * is first drawn where it cannot fetch anything from outside the app; one that reaches outside the
- * repo becomes a button naming the hosts instead, unless its source is in
- * `renderedRemoteDiagrams`, which is drawn in the app as is. A block that fails to render keeps
- * its code block as the visible fallback. Never rejects; safe to call on every commit — each
- * block is claimed synchronously, so concurrent calls don't process it twice.
+ * Turns the `.viewer-mermaid` placeholders under `root` into rendered diagrams. Each diagram is
+ * drawn where it cannot fetch anything from outside the app and shown in a frame that may load
+ * nothing either. One found to reach outside the repo becomes a button naming the hosts instead,
+ * unless its source is in `renderedRemoteDiagrams`, which is drawn in the app as is. A block that
+ * fails to render shows its code block. Never rejects; safe to call on every commit — each block
+ * is claimed synchronously, so concurrent calls don't process it twice.
  */
 export async function renderMermaidBlocks(
   root: HTMLElement,
@@ -111,9 +114,15 @@ export async function renderMermaidBlocks(
     const source = block.dataset.mermaidSource ?? "";
     const id = `viewer-mermaid-${crypto.randomUUID()}`;
     try {
-      const result = options.renderedRemoteDiagrams?.has(source)
-        ? { kind: "rendered" as const, svg: await renderInApp(id, source) }
-        : await probeMermaid(id, source);
+      if (options.renderedRemoteDiagrams?.has(source)) {
+        const svg = await renderInApp(id, source);
+        if (!block.isConnected) continue;
+        block.dataset.mermaidState = "rendered";
+        // Mermaid sanitizes its SVG output (securityLevel defaults to strict).
+        block.innerHTML = svg;
+        continue;
+      }
+      const result = await probeMermaid(id, source);
       if (!block.isConnected) continue;
       if (result.kind === "failed") {
         showCodeBlock(block, source);
@@ -122,8 +131,9 @@ export async function renderMermaidBlocks(
         block.replaceChildren(remoteDiagramButton(result.hosts, options));
       } else {
         block.dataset.mermaidState = "rendered";
-        // Mermaid sanitizes its SVG output (securityLevel defaults to strict).
-        block.innerHTML = result.svg;
+        block.replaceChildren(
+          diagramFrame(result.svg, options.diagramTitle ?? "Mermaid"),
+        );
       }
     } catch {
       if (!block.isConnected) continue;

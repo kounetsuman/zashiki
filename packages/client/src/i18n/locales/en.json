@@ -201,6 +201,7 @@
     "loadRemoteImage": "Load image from {{host}}",
     "remoteDiagram": "This diagram loads content from {{hosts}}",
     "renderRemoteDiagram": "Click to render",
+    "mermaidDiagram": "Mermaid diagram",
     "openFailed": "Could not open: {{error}}",
     "readTimeout": "Reading timed out",
     "dropTooLarge": "{{name}} is too large to preview (max 2 MB)",

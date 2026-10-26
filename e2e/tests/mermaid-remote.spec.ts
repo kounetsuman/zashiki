@@ -1,49 +1,39 @@
-import { expect, test } from "@playwright/test";
+import { expect, gotoApp, test } from "../harness/app.js";
 
-// Feature: a Mermaid diagram in the Markdown preview is first drawn in a page that cannot fetch from
-// outside the app. Why guard this in a real browser: jsdom fetches no images, so only a browser shows
-// that drawing a diagram with a remote image node sends no request to that host.
+// Feature: opening a Markdown file never fetches what its Mermaid diagrams refer to outside the repo.
+// Why guard this in a real browser: jsdom fetches nothing, so only a browser shows that no request
+// reaches the remote host, including when a drawn diagram is hovered.
 
-const REMOTE = /https:\/\/img\.example\//;
+const REMOTE = /^https:\/\/img\.example\//;
 
-interface ProbeWindow {
-  probeMermaid(
-    id: string,
-    source: string,
-  ): Promise<{ kind: string; hosts?: string[]; svg?: string }>;
-}
-
-test.describe("Mermaid probe page", () => {
-  test("names the host of a remote image node without requesting it", async ({
+test.describe("Mermaid diagrams in the Markdown preview", () => {
+  test("make no remote request on open or on hover, and load one only after its button is clicked", async ({
     page,
   }) => {
     const requested: string[] = [];
-    await page.route(REMOTE, (route) => {
+    await page.context().route(REMOTE, (route) => {
       requested.push(route.request().url());
       return route.abort();
     });
-    await page.goto("/mermaid-probe.html");
-    const result = await page.evaluate(() =>
-      (window as unknown as ProbeWindow).probeMermaid(
-        "probe-remote",
-        'flowchart TD\n  A@{ img: "https://img.example/a.png" }\n  B["<img src=\'https://img.example/b.png\'>"]',
-      ),
-    );
-    expect(result).toEqual({ kind: "remote", hosts: ["img.example"] });
-    expect(requested).toEqual([]);
-  });
 
-  test("returns the drawing of a diagram without remote references", async ({
-    page,
-  }) => {
-    await page.goto("/mermaid-probe.html");
-    const result = await page.evaluate(() =>
-      (window as unknown as ProbeWindow).probeMermaid(
-        "probe-local",
-        "flowchart TD\n  A-->B",
-      ),
-    );
-    expect(result.kind).toBe("rendered");
-    expect(result.svg).toContain("<svg");
+    await gotoApp(page);
+    const explorer = page.locator('[data-view="explorer"]');
+    await explorer.getByText("mermaid-docs").click();
+    await explorer.getByText("README.md").click();
+    await page.getByRole("button", { name: "Preview" }).click();
+
+    const button = page.getByRole("button", { name: /img\.example/ });
+    await expect(button).toBeVisible();
+    await page
+      .frameLocator(".viewer-mermaid-frame")
+      .getByText("Hover me")
+      .hover();
+    await page.waitForTimeout(500);
+    expect(requested).toEqual([]);
+
+    await button.click();
+    await expect
+      .poll(() => requested)
+      .toContain("https://img.example/node.png");
   });
 });

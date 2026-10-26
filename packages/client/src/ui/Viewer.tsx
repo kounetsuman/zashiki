@@ -288,6 +288,7 @@ export function Viewer({
       renderedRemoteDiagrams,
       remoteDiagramLabel: (hosts) => t("viewer.remoteDiagram", { hosts }),
       remoteDiagramAction: t("viewer.renderRemoteDiagram"),
+      diagramTitle: t("viewer.mermaidDiagram"),
     });
   });
 

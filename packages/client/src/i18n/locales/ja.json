@@ -201,6 +201,7 @@
     "loadRemoteImage": "{{host}} から画像を読み込む",
     "remoteDiagram": "この図は {{hosts}} からコンテンツを読み込みます",
     "renderRemoteDiagram": "クリックで描画",
+    "mermaidDiagram": "Mermaid 図",
     "openFailed": "開けませんでした: {{error}}",
     "readTimeout": "読み込みがタイムアウトしました",
     "dropTooLarge": "{{name}} はプレビューするには大きすぎます（最大 2 MB）",

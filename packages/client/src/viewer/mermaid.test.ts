@@ -42,15 +42,20 @@ describe("renderMermaidBlocks", () => {
     }));
   });
 
-  it("replaces a pending block with the rendered svg", async () => {
+  it("shows a drawn diagram in a frame that runs no script and loads nothing", async () => {
     const host = previewWith(
       '<div class="viewer-mermaid"><pre><code class="language-mermaid">graph TD;</code></pre></div>',
     );
-    await renderMermaidBlocks(host);
+    await renderMermaidBlocks(host, { diagramTitle: "Diagram" });
     const block = host.querySelector<HTMLElement>(".viewer-mermaid");
     expect(block?.dataset.mermaidState).toBe("rendered");
-    expect(block?.querySelector("svg[data-diagram]")).not.toBeNull();
     expect(block?.querySelector("code")).toBeNull();
+    expect(block?.querySelector("svg")).toBeNull();
+    const frame = block?.querySelector("iframe");
+    expect(frame?.getAttribute("sandbox")).toBe("");
+    expect(frame?.title).toBe("Diagram");
+    expect(frame?.getAttribute("srcdoc")).toContain("<svg data-diagram></svg>");
+    expect(frame?.getAttribute("srcdoc")).toContain("default-src 'none'");
     expect(probe.probeMermaid).toHaveBeenCalledWith(
       expect.any(String),
       "graph TD;",
