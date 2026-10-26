@@ -15,6 +15,20 @@ const base: ViewerBuffer = {
 
 const noop = () => undefined;
 
+const mermaid = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  render: vi.fn(async () => ({ svg: "<svg data-in-app></svg>" })),
+}));
+vi.mock("mermaid", () => ({ default: mermaid }));
+
+const probe = vi.hoisted(() => ({
+  probeMermaid: vi.fn(async () => ({
+    kind: "remote" as const,
+    hosts: ["img.example"],
+  })),
+}));
+vi.mock("../viewer/mermaid-probe.js", () => probe);
+
 afterEach(cleanup);
 
 describe("Viewer", () => {
@@ -467,6 +481,80 @@ describe("Viewer", () => {
       expect(remoteSrcs(container)).toEqual(["docs/c.png"]);
       rerender(<Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />);
       expect(remoteSrcs(container)).toEqual(["docs/c.png"]);
+    });
+  });
+
+  describe("Mermaid diagrams that load remote content", () => {
+    const md: ViewerBuffer = {
+      ...base,
+      relPath: "README.md",
+      content:
+        '```mermaid\nflowchart TD\n  A@{ img: "https://img.example/a.png" }\n```\n',
+      preview: true,
+    };
+
+    afterEach(() => vi.clearAllMocks());
+
+    it("shows a button naming the host instead of drawing the diagram", async () => {
+      const { container } = render(
+        <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const button = await screen.findByRole("button", {
+        name: /img\.example/,
+      });
+      expect(button.textContent).toContain(
+        "この図は img.example からコンテンツを読み込みます",
+      );
+      expect(container.querySelector("svg")).toBeNull();
+      expect(mermaid.render).not.toHaveBeenCalled();
+    });
+
+    it("draws the diagram once its button is clicked, and keeps it drawn when the file changes", async () => {
+      const { container, rerender } = render(
+        <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: /img\.example/ }),
+      );
+      await vi.waitFor(() =>
+        expect(container.querySelector("svg[data-in-app]")).not.toBeNull(),
+      );
+      expect(document.activeElement).toBe(
+        container.querySelector(".viewer-preview"),
+      );
+
+      rerender(
+        <Viewer
+          buffer={{ ...md, content: `${md.content}\nmore\n` }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      await vi.waitFor(() =>
+        expect(container.querySelector("svg[data-in-app]")).not.toBeNull(),
+      );
+      expect(screen.queryByRole("button", { name: /img\.example/ })).toBeNull();
+    });
+
+    it("forgets drawn diagrams when another file with the same content opens", async () => {
+      const { container, rerender } = render(
+        <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: /img\.example/ }),
+      );
+      await vi.waitFor(() =>
+        expect(container.querySelector("svg[data-in-app]")).not.toBeNull(),
+      );
+      rerender(
+        <Viewer
+          buffer={{ ...md, relPath: "docs/OTHER.md" }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      await screen.findByRole("button", { name: /img\.example/ });
+      expect(container.querySelector("svg[data-in-app]")).toBeNull();
     });
   });
 });

@@ -1556,7 +1556,8 @@ textarea {
   margin: 8px 0;
 }
 
-.viewer-preview .viewer-remote-image {
+.viewer-preview .viewer-remote-image,
+.viewer-preview .viewer-mermaid-remote {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1570,18 +1571,36 @@ textarea {
   cursor: pointer;
 }
 
-.viewer-preview .viewer-remote-image:hover {
+.viewer-preview .viewer-remote-image:hover,
+.viewer-preview .viewer-mermaid-remote:hover {
   border-color: #6cb6ff;
   color: #ddd;
 }
 
-.viewer-preview .viewer-remote-image .material-symbols-outlined {
+.viewer-preview .viewer-remote-image .material-symbols-outlined,
+.viewer-preview .viewer-mermaid-remote .material-symbols-outlined {
   font-size: 18px;
 }
 
-.viewer-preview .viewer-remote-image-host {
+.viewer-preview .viewer-remote-image-host,
+.viewer-preview .viewer-mermaid-remote-action {
   color: #777;
   font-size: 0.85em;
+}
+
+.viewer-preview .viewer-mermaid-remote {
+  margin: 8px 0;
+}
+
+.viewer-mermaid-probe {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  border: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
 }
 
 .viewer-preview li.task-list-item {
