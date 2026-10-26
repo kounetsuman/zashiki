@@ -57,25 +57,40 @@ const mermaidFences = (md: Markdown) => {
   };
 };
 
-const REPO_BASE = "http://repo.invalid/";
-const REPO_ORIGIN = new URL(REPO_BASE).origin;
-const INERT_SCHEMES = new Set(["data:", "blob:"]);
+const EXPLICIT_SCHEME = /^([a-z][a-z0-9+.-]*):/i;
+const NETWORK_PATH = /^[/\\]{2}/;
+const INERT_SCHEMES = new Set(["data", "blob"]);
+const NETWORK_PATH_BASE = "https://placeholder.invalid/";
+
+/** The URL parser drops these before reading a URL, so the browser does too. */
+function asTheBrowserReadsIt(src: string): string {
+  const withoutBreaks = src.replace(/[\t\n\r]/g, "");
+  let start = 0;
+  while (
+    start < withoutBreaks.length &&
+    withoutBreaks.charCodeAt(start) <= 0x20
+  )
+    start++;
+  return withoutBreaks.slice(start);
+}
 
 /**
  * The host an image source would be fetched from when it lies outside the repo, or null for a
- * repo path or an inline (`data:` / `blob:`) image. Resolves the way the browser does, so
- * forms such as `//host` and `/\host` count as remote; an unparsable source counts as remote.
+ * repo path or an inline (`data:` / `blob:`) image. Any explicit scheme or a `//` / `/\` prefix
+ * counts as outside the repo.
  */
 export function remoteImageHost(src: string): string | null {
-  let url: URL;
+  const read = asTheBrowserReadsIt(src);
+  const scheme = EXPLICIT_SCHEME.exec(read)?.[1]?.toLowerCase();
+  if (scheme === undefined && !NETWORK_PATH.test(read)) return null;
+  if (scheme !== undefined && INERT_SCHEMES.has(scheme)) return null;
   try {
-    url = new URL(src, REPO_BASE);
+    const url =
+      scheme === undefined ? new URL(read, NETWORK_PATH_BASE) : new URL(read);
+    return url.host;
   } catch {
     return "";
   }
-  if (INERT_SCHEMES.has(url.protocol)) return null;
-  if (url.origin === REPO_ORIGIN) return null;
-  return url.host || url.protocol;
 }
 
 export interface RenderMarkdownOptions {

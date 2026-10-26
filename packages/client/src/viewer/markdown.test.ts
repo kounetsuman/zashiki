@@ -82,6 +82,11 @@ describe("renderMarkdown", () => {
       ["http", "http://tracker.example:8080/p.png", "tracker.example:8080"],
       ["protocol-relative", "//tracker.example/p.png", "tracker.example"],
       ["other scheme", "ftp://tracker.example/p.png", "tracker.example"],
+      [
+        "scheme without slashes",
+        "http:tracker.example/p.png",
+        "tracker.example",
+      ],
     ])("renders a %s image as a load button without a src", (_, url, host) => {
       const html = renderMarkdown(`![a chart](${url})`);
       expect(html).not.toContain("<img");
@@ -155,6 +160,10 @@ describe("remoteImageHost", () => {
     ["HTTPS://IMG.example/a.png", "img.example"],
     ["  https://img.example/a.png", "img.example"],
     ["/\\img.example/a.png", "img.example"],
+    ["\\\\img.example/a.png", "img.example"],
+    ["http:img.example/a.png", "img.example"],
+    ["http:/img.example/a.png", "img.example"],
+    ["http://repo.invalid/a.png", "repo.invalid"],
   ])("treats %s as remote", (src, host) => {
     expect(remoteImageHost(src)).toBe(host);
   });
