@@ -45,16 +45,8 @@ fn open_devtools(webview: tauri::WebviewWindow) {
 /// that page's origin through as well. The app reports the address before each showing; one that is
 /// not an http(s) address clears the allowance.
 #[tauri::command]
-fn set_dashboard_origin(
-    dashboard: tauri::State<'_, DashboardOrigin>,
-    url: String,
-) -> Result<(), String> {
-    let origin = navigation::dashboard_origin(&url);
-    let accepted = origin.is_some();
-    *dashboard.0.lock().unwrap() = origin;
-    accepted
-        .then_some(())
-        .ok_or_else(|| "notWebOrigin".to_string())
+fn set_dashboard_origin(dashboard: tauri::State<'_, DashboardOrigin>, url: String) {
+    *dashboard.0.lock().unwrap() = navigation::dashboard_origin(&url);
 }
 
 #[derive(Default)]

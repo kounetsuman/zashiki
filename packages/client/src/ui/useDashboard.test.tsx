@@ -146,6 +146,18 @@ describe("useDashboard", () => {
     expect(invoke).toHaveBeenCalledWith("set_dashboard_origin", { url: "" });
   });
 
+  it("says so when the shell could not be told", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    invoke.mockImplementationOnce(() => Promise.reject(new Error("ipc down")));
+    mount(configured(), memoryStorage());
+    await act(async () => {});
+    expect(warn).toHaveBeenCalledWith(
+      "could not tell the shell the dashboard address",
+      expect.any(Error),
+    );
+    warn.mockRestore();
+  });
+
   it("has nothing to tell outside the desktop app", () => {
     isTauri.mockReturnValue(false);
     const { state } = mount(configured(), memoryStorage());

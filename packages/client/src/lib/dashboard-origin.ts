@@ -7,5 +7,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
  */
 export function allowDashboardOrigin(url: string): void {
   if (!isTauri()) return;
-  void invoke("set_dashboard_origin", { url }).catch(() => undefined);
+  void invoke("set_dashboard_origin", { url }).catch((e: unknown) => {
+    console.warn("could not tell the shell the dashboard address", e);
+  });
 }
