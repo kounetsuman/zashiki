@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { renderMarkdown } from "./markdown.js";
+import { remoteImageHost, renderMarkdown } from "./markdown.js";
 
 describe("renderMarkdown", () => {
   it("renders GFM tables as a table element", () => {
@@ -68,5 +68,127 @@ describe("renderMarkdown", () => {
     const html = renderMarkdown("```js\nconst a = 1;\n```");
     expect(html).not.toContain("viewer-mermaid");
     expect(html).toContain('<code class="language-js">');
+  });
+
+  it("does not emit raw <img> HTML from the source", () => {
+    const html = renderMarkdown('<img src="https://tracker.example/p.gif">');
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  });
+
+  describe("remote images", () => {
+    it.each([
+      ["https", "https://tracker.example/p.png", "tracker.example"],
+      ["http", "http://tracker.example:8080/p.png", "tracker.example:8080"],
+      ["protocol-relative", "//tracker.example/p.png", "tracker.example"],
+      ["other scheme", "ftp://tracker.example/p.png", "tracker.example"],
+      [
+        "scheme without slashes",
+        "http:tracker.example/p.png",
+        "tracker.example",
+      ],
+    ])("renders a %s image as a load button without a src", (_, url, host) => {
+      const html = renderMarkdown(`![a chart](${url})`);
+      expect(html).not.toContain("<img");
+      expect(html).not.toMatch(/\ssrc=/);
+      expect(html).toContain('class="viewer-remote-image"');
+      expect(html).toContain('type="button"');
+      expect(html).toContain("a chart");
+      expect(html).toContain(host);
+    });
+
+    it("keeps a remote image inside a link as a load button", () => {
+      const html = renderMarkdown(
+        "[![badge](https://img.example/b.svg)](https://ci.example)",
+      );
+      expect(html).not.toContain("<img");
+      expect(html).toContain('class="viewer-remote-image"');
+    });
+
+    it("titles the load button with the given text for its host", () => {
+      const html = renderMarkdown("![x](https://img.example/a.png)", {
+        remoteImageLabel: (host) => `Load from ${host}`,
+      });
+      expect(html).toContain('title="Load from img.example"');
+    });
+
+    it("escapes the alt text and URL on the load button", () => {
+      const html = renderMarkdown(
+        '![<b>"q"</b>](https://img.example/a.png?x="1")',
+      );
+      expect(html).not.toContain("<b>");
+      expect(html).not.toMatch(/data-remote-src="[^"]*"1"/);
+    });
+
+    it("renders a remote image as an img once its URL is loaded", () => {
+      const src = "https://img.example/a.png";
+      const html = renderMarkdown(`![a chart](${src})`, {
+        loadedRemoteImages: new Set([src]),
+      });
+      expect(html).toContain(`<img src="${src}" alt="a chart">`);
+      expect(html).not.toContain("viewer-remote-image");
+    });
+
+    it("leaves other remote images as buttons when one is loaded", () => {
+      const html = renderMarkdown(
+        "![a](https://img.example/a.png) ![b](https://img.example/b.png)",
+        { loadedRemoteImages: new Set(["https://img.example/a.png"]) },
+      );
+      expect(html).toContain('<img src="https://img.example/a.png"');
+      expect(html).toContain('data-remote-src="https://img.example/b.png"');
+    });
+  });
+
+  describe("local images", () => {
+    it.each([
+      ["relative", "docs/shot.png"],
+      ["dot-relative", "./shot.png"],
+      ["root-relative", "/shot.png"],
+      ["data", "data:image/png;base64,iVBORw0KGgo="],
+    ])("renders a %s image as an img exactly as before", (_, url) => {
+      const html = renderMarkdown(`![shot](${url})`);
+      expect(html).toContain(`<img src="${url}" alt="shot">`);
+      expect(html).not.toContain("viewer-remote-image");
+    });
+  });
+});
+
+describe("remoteImageHost", () => {
+  it.each([
+    ["https://img.example/a.png", "img.example"],
+    ["//img.example/a.png", "img.example"],
+    ["HTTPS://IMG.example/a.png", "img.example"],
+    ["  https://img.example/a.png", "img.example"],
+    ["/\\img.example/a.png", "img.example"],
+    ["\\\\img.example/a.png", "img.example"],
+    ["http:img.example/a.png", "img.example"],
+    ["http:/img.example/a.png", "img.example"],
+    ["http://repo.invalid/a.png", "repo.invalid"],
+  ])("treats %s as remote", (src, host) => {
+    expect(remoteImageHost(src)).toBe(host);
+  });
+
+  it.each([
+    "docs/a.png",
+    "./a.png",
+    "../a.png",
+    "/a.png",
+    "a.png?x=1#y",
+    "data:image/png;base64,AAAA",
+    "blob:http://localhost:5173/0b1e6c2e-1f5d-4c2a-9d0b-7f0c1b2a3d4e",
+  ])("treats %s as not remote", (src) => {
+    expect(remoteImageHost(src)).toBeNull();
+  });
+
+  it("labels an unparsable remote source with the source itself", () => {
+    expect(remoteImageHost("http://[bad/a.png")).toBe("http://[bad/a.png");
+  });
+
+  it("shortens a long unparsable remote source label", () => {
+    const src = `http://[bad/${"a".repeat(100)}.png`;
+    const label = remoteImageHost(src) ?? "";
+    expect(label.length).toBeLessThanOrEqual(60);
+    expect(label.startsWith("http://[bad/")).toBe(true);
+    expect(label.endsWith("…")).toBe(true);
   });
 });
