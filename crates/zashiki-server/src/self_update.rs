@@ -50,8 +50,9 @@ pub fn decide_update_mode(
 /// Install only a release strictly newer than the running app, so a replaced or rolled-back release can't
 /// downgrade it. The `Err` is the user-facing reason.
 /// Build metadata is ignored: it carries no precedence, so `v0.36.0+1` is the running `0.36.0`.
+/// The tag is parsed exactly as `install.sh` reads it (one optional leading `v`, no trimming).
 pub fn check_upgrade(running: &semver::Version, tag: &str) -> Result<(), String> {
-    let newer = semver::Version::parse(tag.trim().trim_start_matches('v'))
+    let newer = semver::Version::parse(tag.strip_prefix('v').unwrap_or(tag))
         .is_ok_and(|release| release.cmp_precedence(running).is_gt());
     if newer {
         Ok(())
@@ -297,7 +298,7 @@ mod tests {
 
     #[test]
     fn upgrade_refuses_a_tag_that_is_not_a_version() {
-        for tag in ["", "latest", "v1", "v0.37.0; rm -rf /", "../v0.37.0"] {
+        for tag in ["", "latest", "v1", "v0.37.0; rm -rf /", "../v0.37.0", "vv0.37.0", " v0.37.0", "v0.37.0\n", "V0.37.0"] {
             assert!(check_upgrade(&v("0.36.0"), tag).is_err(), "{tag:?} must be refused");
         }
     }
