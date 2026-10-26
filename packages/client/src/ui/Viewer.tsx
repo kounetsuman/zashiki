@@ -36,6 +36,13 @@ const TOGGLE_LABEL: Record<AlternateView, { show: string; hide: string }> = {
 };
 
 const NO_REMOTE_IMAGES: ReadonlySet<string> = new Set();
+const NO_REMOTE_DIAGRAMS: ReadonlySet<string> = new Set();
+
+function clickedRemoteDiagram(event: MouseEvent): HTMLElement | null {
+  if (!(event.target instanceof Element)) return null;
+  if (event.target.closest(".viewer-mermaid-remote") === null) return null;
+  return event.target.closest<HTMLElement>(".viewer-mermaid");
+}
 
 function clickedRemoteImageSrc(event: MouseEvent): string | null {
   if (!(event.target instanceof Element)) return null;
@@ -202,9 +209,12 @@ export function Viewer({
   const [loadedRemoteImages, setLoadedRemoteImages] =
     useState(NO_REMOTE_IMAGES);
   const [loadedRemoteImagesFile, setLoadedRemoteImagesFile] = useState(fileKey);
+  const [renderedRemoteDiagrams, setRenderedRemoteDiagrams] =
+    useState(NO_REMOTE_DIAGRAMS);
   if (loadedRemoteImagesFile !== fileKey) {
     setLoadedRemoteImagesFile(fileKey);
     setLoadedRemoteImages(NO_REMOTE_IMAGES);
+    setRenderedRemoteDiagrams(NO_REMOTE_DIAGRAMS);
   }
   const previewHtml = useMemo(
     () =>
@@ -218,7 +228,16 @@ export function Viewer({
   );
 
   const refocusPreviewOnRender = useRef(false);
-  const loadClickedRemoteImage = useCallback((event: MouseEvent) => {
+  const loadClickedRemoteContent = useCallback((event: MouseEvent) => {
+    const diagram = clickedRemoteDiagram(event);
+    if (diagram !== null) {
+      event.preventDefault();
+      const source = diagram.dataset.mermaidSource ?? "";
+      delete diagram.dataset.mermaidState;
+      previewRef.current?.focus({ preventScroll: true });
+      setRenderedRemoteDiagrams((prev) => new Set([...prev, source]));
+      return;
+    }
     const src = clickedRemoteImageSrc(event);
     if (src === null) return;
     event.preventDefault();
@@ -265,7 +284,12 @@ export function Viewer({
   useEffect(() => {
     const host = previewRef.current;
     if (host === null) return;
-    void renderMermaidBlocks(host);
+    void renderMermaidBlocks(host, {
+      renderedRemoteDiagrams,
+      remoteDiagramLabel: (hosts) => t("viewer.remoteDiagram", { hosts }),
+      remoteDiagramAction: t("viewer.renderRemoteDiagram"),
+      diagramTitle: t("viewer.mermaidDiagram"),
+    });
   });
 
   function readyContent() {
@@ -280,7 +304,7 @@ export function Viewer({
           ref={previewRef}
           tabIndex={-1}
           className="viewer-preview markdown-body"
-          onClick={loadClickedRemoteImage}
+          onClick={loadClickedRemoteContent}
           // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
           dangerouslySetInnerHTML={{ __html: previewHtml }}
         />

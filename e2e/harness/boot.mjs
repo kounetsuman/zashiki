@@ -12,7 +12,7 @@
 //
 // It is plain JS (.mjs) because webServer runs it in a separate, bare node process.
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +35,13 @@ const orgs = (process.env.ZK_E2E_ORGS ?? "acme,globex")
 const mutableOrg = process.env.ZK_E2E_MUTABLE_ORG ?? "initech";
 const reposRoots = [...orgs, mutableOrg].map((org) => join(fixtureRoot, org));
 for (const dir of reposRoots) mkdirSync(dir, { recursive: true });
+
+// A repo for the viewer tests, under the first read-only org (repos do not change the SESSION LIST).
+const docsRepo = join(reposRoots[0], "mermaid-docs");
+cpSync(join(harnessDir, "fixtures", "mermaid-docs"), docsRepo, {
+  recursive: true,
+});
+mkdirSync(join(docsRepo, ".git"), { recursive: true });
 
 const reposConfPath = join(fixtureRoot, "repos.conf");
 writeFileSync(reposConfPath, `${reposRoots.join("\n")}\n`);
