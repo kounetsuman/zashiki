@@ -70,7 +70,10 @@ const webLinksInNewWindow = (md: Markdown) => {
       self.renderToken(tokens, idx, options));
   md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
     const token = tokens[idx];
-    if (token !== undefined && WEB_LINK.test(token.attrGet("href") ?? "")) {
+    if (
+      token !== undefined &&
+      WEB_LINK.test(String(token.attrGet("href") ?? ""))
+    ) {
       token.attrSet("target", "_blank");
       token.attrSet("rel", "noopener noreferrer");
     }
