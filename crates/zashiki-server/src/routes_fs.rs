@@ -42,10 +42,9 @@ pub(crate) async fn file_read(
 }
 
 /// `GET /api/media`: streams a repo image/video/PDF for `<img>` / `<video>` / `<iframe>`; any other file
-/// type is 415. Delegates to ServeFile so Range requests get 206 partial responses (video seeking), then
-/// replaces its guessed content type with ours and adds (except for PDF) a sandbox CSP, so
-/// a repo file opened as a page cannot run script on the app's origin. Every response, errors included,
-/// carries nosniff.
+/// type is 415. Delegates to ServeFile with the content type from our own table, so Range requests get
+/// 206 partial responses (video seeking), and adds (except for PDF) a sandbox CSP so a repo file opened
+/// as a page cannot run script on the app's origin. Every response, errors included, carries nosniff.
 /// The raw Request is forwarded to ServeFile so it can read the Range header.
 pub(crate) async fn media_read(
     State(state): State<AppState>,
@@ -85,17 +84,15 @@ async fn serve_media(state: &AppState, params: FileReadParams, req: Request) -> 
         Ok(abs) => abs,
         Err((status, msg)) => return json_error(status, &msg),
     };
-    let mut res = match ServeFile::new(abs).oneshot(req).await {
+    let mut res = match ServeFile::new_with_mime(abs, &media_type.mime())
+        .oneshot(req)
+        .await
+    {
         Ok(res) => res.into_response(),
         Err(unreachable) => match unreachable {},
     };
-    let headers = res.headers_mut();
-    headers.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(media_type.content_type),
-    );
     if !media_type.is_pdf {
-        headers.insert(
+        res.headers_mut().insert(
             header::CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(MEDIA_CSP),
         );

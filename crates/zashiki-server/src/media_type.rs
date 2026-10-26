@@ -8,6 +8,14 @@ pub struct MediaType {
     pub is_pdf: bool,
 }
 
+impl MediaType {
+    pub fn mime(&self) -> mime::Mime {
+        self.content_type
+            .parse()
+            .expect("MEDIA_TYPES holds only valid MIME types")
+    }
+}
+
 const fn media(content_type: &'static str) -> MediaType {
     MediaType {
         content_type,
@@ -78,6 +86,13 @@ mod tests {
         );
         assert_eq!(media_type_for("doc.pdf"), Some(PDF));
         assert!(!media_type_for("clip.mp4").unwrap().is_pdf);
+    }
+
+    #[test]
+    fn every_content_type_is_a_valid_mime() {
+        for (ext, media_type) in MEDIA_TYPES {
+            assert_eq!(media_type.mime().as_ref(), media_type.content_type, "{ext}");
+        }
     }
 
     #[test]

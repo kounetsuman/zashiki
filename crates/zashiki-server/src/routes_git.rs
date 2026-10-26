@@ -841,6 +841,23 @@ mod git_file_rest_tests {
         assert_eq!(body, vec![0, 1, 2, 3]);
     }
 
+    #[tokio::test]
+    async fn media_read_leaves_bodyless_not_modified_responses_untyped() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("logo.png"), [1u8, 2, 3]).unwrap();
+        let (s, h, body) = media_req(
+            app(&fx),
+            &fx.repo_a,
+            "logo.png",
+            &[("if-modified-since", "Fri, 01 Jan 2100 00:00:00 GMT")],
+        )
+        .await;
+        assert_eq!(s, StatusCode::NOT_MODIFIED);
+        assert!(body.is_empty());
+        assert!(h.get("content-type").is_none());
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+    }
+
     /// A media file above the text max still streams (no size cap), unlike /api/file which 413s.
     #[tokio::test]
     async fn media_read_streams_files_above_the_text_limit() {
