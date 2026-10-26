@@ -916,7 +916,7 @@ mod git_file_rest_tests {
         }
     }
 
-    /// A sandboxed document cannot host the WebView's PDF viewer, so PDFs get nosniff but no CSP.
+    /// The sandbox CSP is left off PDFs because it could stop the WebView's built-in PDF viewer.
     #[tokio::test]
     async fn media_read_serves_pdf_with_nosniff_and_without_a_sandbox() {
         let fx = fixture();
