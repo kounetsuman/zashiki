@@ -179,4 +179,16 @@ describe("remoteImageHost", () => {
   ])("treats %s as not remote", (src) => {
     expect(remoteImageHost(src)).toBeNull();
   });
+
+  it("labels an unparsable remote source with the source itself", () => {
+    expect(remoteImageHost("http://[bad/a.png")).toBe("http://[bad/a.png");
+  });
+
+  it("shortens a long unparsable remote source label", () => {
+    const src = `http://[bad/${"a".repeat(100)}.png`;
+    const label = remoteImageHost(src) ?? "";
+    expect(label.length).toBeLessThanOrEqual(60);
+    expect(label.startsWith("http://[bad/")).toBe(true);
+    expect(label.endsWith("…")).toBe(true);
+  });
 });

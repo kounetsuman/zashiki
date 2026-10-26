@@ -75,8 +75,9 @@ function asTheBrowserReadsIt(src: string): string {
 }
 
 /**
- * The host an image source would be fetched from when it lies outside the repo, or null for a
- * repo path or an inline (`data:` / `blob:`) image. Any explicit scheme or a `//` / `/\` prefix
+ * The host an image source would be fetched from when it lies outside the repo (the source
+ * itself, shortened, when it has no host), or null for a repo path or an inline (`data:` /
+ * `blob:`) image. Any explicit scheme or a `//` / `/\` prefix
  * counts as outside the repo.
  */
 export function remoteImageHost(src: string): string | null {
@@ -87,10 +88,17 @@ export function remoteImageHost(src: string): string | null {
   try {
     const url =
       scheme === undefined ? new URL(read, NETWORK_PATH_BASE) : new URL(read);
-    return url.host;
-  } catch {
-    return "";
-  }
+    if (url.host !== "") return url.host;
+  } catch {}
+  return shortened(src);
+}
+
+const MAX_LABEL_LENGTH = 60;
+
+function shortened(text: string): string {
+  return text.length <= MAX_LABEL_LENGTH
+    ? text
+    : `${text.slice(0, MAX_LABEL_LENGTH - 1)}…`;
 }
 
 export interface RenderMarkdownOptions {
