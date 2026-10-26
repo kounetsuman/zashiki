@@ -199,7 +199,8 @@ fn os_string(bytes: Vec<u8>) -> std::ffi::OsString {
 }
 
 /// git for commands Zashiki runs on a repo by itself, which must not execute any program the
-/// repo's own config names. Config overrides go through `GIT_CONFIG_KEY_n` rather than `-c`
+/// repo's own config names, including a fetch from a promisor remote a repo can declare for
+/// itself. Config overrides go through `GIT_CONFIG_KEY_n` rather than `-c`
 /// because a driver or hook name may contain `=`, which `-c` would split on.
 struct ReadOnlyGit<'a> {
     path: &'a Path,
@@ -226,7 +227,8 @@ impl<'a> ReadOnlyGit<'a> {
         let mut cmd = git_base(self.path);
         cmd.args(READ_ONLY_CONFIG)
             .args(read_only_args(args))
-            .env("GIT_OPTIONAL_LOCKS", "0");
+            .env("GIT_OPTIONAL_LOCKS", "0")
+            .env("GIT_NO_LAZY_FETCH", "1");
         let inherited: usize = std::env::var("GIT_CONFIG_COUNT")
             .ok()
             .and_then(|n| n.parse().ok())
@@ -1221,6 +1223,52 @@ mod tests {
         diff(&h.repo, "untracked.txt", false, true).await;
 
         assert_eq!(h.ran(), "");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn diff_does_not_lazy_fetch_a_missing_object_from_the_repo_remote() {
+        use std::os::unix::fs::PermissionsExt;
+        let h = HostileRepo::new();
+        let upload_pack = h.repo.parent().unwrap().join("upload-pack");
+        std::fs::write(
+            &upload_pack,
+            format!("#!/bin/sh\necho upload-pack >> '{}'\nexit 1\n", h.marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&upload_pack, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let upload_pack = upload_pack.to_string_lossy().into_owned();
+        let remote = h.repo.to_string_lossy().into_owned();
+        for (key, value) in [
+            ("core.repositoryformatversion", "1"),
+            ("extensions.partialClone", "origin"),
+            ("remote.origin.url", remote.as_str()),
+            ("remote.origin.promisor", "true"),
+            ("remote.origin.uploadpack", upload_pack.as_str()),
+        ] {
+            git(&h.repo, &["config", key, value]);
+        }
+        git(
+            &h.repo,
+            &[
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.hooksPath=/dev/null",
+                "-c",
+                "hook.evil.enabled=false",
+                "update-index",
+                "--add",
+                "--cacheinfo",
+                "100644,1111111111111111111111111111111111111111,missing.txt",
+            ],
+        );
+        h.forget();
+
+        let d = diff(&h.repo, "missing.txt", true, false).await;
+
+        assert_eq!(h.ran(), "");
+        assert_eq!(d.new_text, "");
     }
 
     #[cfg(unix)]
