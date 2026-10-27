@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { SessionUsage } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -53,6 +53,46 @@ describe("SessionStatusFooter", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  describe("totals before the last compaction", () => {
+    const compacted: SessionUsage = {
+      ...base,
+      beforeCompaction: {
+        sessionTokens: 120_600_000,
+        subagentTokens: 84_600_000,
+        elapsedMs: 60_000,
+      },
+    };
+
+    it("offers nothing for a session that was never compacted", () => {
+      render(<SessionStatusFooter usage={base} />);
+      expect(screen.queryByRole("button")).toBeNull();
+    });
+
+    it("keeps them behind a closed toggle by default", () => {
+      render(<SessionStatusFooter usage={compacted} />);
+      expect(screen.getByRole("button").getAttribute("aria-expanded")).toBe(
+        "false",
+      );
+      expect(screen.queryByText("120.6M")).toBeNull();
+    });
+
+    it("shows them when open and reports clicks on the toggle", () => {
+      const onToggle = vi.fn();
+      render(
+        <SessionStatusFooter
+          usage={compacted}
+          beforeCompactionOpen
+          onToggleBeforeCompaction={onToggle}
+        />,
+      );
+      expect(screen.getByText("120.6M")).toBeTruthy();
+      expect(screen.getByText("84.6M")).toBeTruthy();
+      expect(screen.getByText("1m 0s")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button"));
+      expect(onToggle).toHaveBeenCalledOnce();
+    });
   });
 
   it("shows dashes for every cell before a transcript is readable", () => {

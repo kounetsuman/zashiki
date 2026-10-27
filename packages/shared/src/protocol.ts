@@ -100,9 +100,16 @@ export const usageLimitsSchema = z.object({
 
 export type UsageLimits = z.infer<typeof usageLimitsSchema>;
 
+/** What the session status footer counted from the transcript's start up to its most recent compaction. */
+export const usageBeforeCompactionSchema = z.object({
+  sessionTokens: z.number().int().min(0),
+  subagentTokens: z.number().int().min(0),
+  elapsedMs: z.number().int().min(0),
+});
+
 /**
- * Session status-footer material. `turn*` counts from the most recent human prompt; `session*` spans
- * the whole transcript. `*StartedAt` are epoch ms — the client renders live elapsed as `now - start`.
+ * Session status-footer material. `turn*` counts from the most recent human prompt; `session*` from
+ * the most recent compaction (the whole transcript when it was never compacted). `*StartedAt` are epoch ms — the client renders live elapsed as `now - start`.
  * Tokens/timestamps derive from the transcript (no user setup). Account usage limits are global, not
  * per session, so they ride on `state.sync`'s `accountLimits` rather than here.
  */
@@ -113,9 +120,12 @@ export const sessionUsageSchema = z.object({
   subagentTokens: z.number().int().min(0).default(0),
   turnStartedAt: z.number().int(),
   sessionStartedAt: z.number().int(),
+  /** Absent when the session was never compacted. */
+  beforeCompaction: usageBeforeCompactionSchema.optional(),
 });
 
 export type SessionUsage = z.infer<typeof sessionUsageSchema>;
+export type UsageBeforeCompaction = z.infer<typeof usageBeforeCompactionSchema>;
 
 /** Per-window snapshot distributed via state.sync. */
 export const cockpitTerminalInfoSchema = z.object({
