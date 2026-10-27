@@ -334,7 +334,11 @@ fn subagent_tokens_sync(
                 },
                 // Hold the last good reading at the size it was read at, so a file that could not be
                 // opened this once keeps its tokens in the total and is read again next poll.
-                Err(_) => known.get(&path).copied().unwrap_or_default(),
+                Err(_) => known
+                    .get(&path)
+                    .copied()
+                    .filter(|c| c.compacted_at_ms == compacted_at_ms)
+                    .unwrap_or_default(),
             },
         };
         fresh.insert(path, total);

@@ -328,7 +328,7 @@ fn main_session_model(event: &Value) -> Option<String> {
 /// only what a later line grew it by. A line without an id stands on its own. A transcript that
 /// replays lines it already holds can report a reply below its own high-water mark, which is why the
 /// mark only ever rises: otherwise the dip would be charged again on the way back up.
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct ReplyUsage {
     counted: HashMap<String, u64>,
 }
@@ -488,15 +488,19 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
         };
         if let Some(compacted_at_ms) = compaction_at_ms(&event) {
             let earlier = before_compaction.map_or(0, |b| b.session_tokens);
+            let started_at_ms = before_compaction
+                .map(|b| b.started_at_ms)
+                .or(first_event_at_ms)
+                .unwrap_or(compacted_at_ms);
             before_compaction = Some(BeforeCompaction {
                 session_tokens: earlier + session_tokens,
                 subagent_tokens: 0,
-                started_at_ms: first_event_at_ms.unwrap_or(compacted_at_ms),
+                started_at_ms,
                 compacted_at_ms,
             });
             session_tokens = 0;
             turn_tokens = 0;
-            turn_replies = ReplyUsage::default();
+            turn_replies = session_replies.clone();
             turn_started_at_ms = None;
             continue;
         }
@@ -515,7 +519,8 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
             turn_tokens = 0;
             turn_replies = ReplyUsage::default();
             if let Some(ts) = ts {
-                turn_started_at_ms = Some(ts);
+                let compacted_at_ms = before_compaction.map_or(0, |b| b.compacted_at_ms);
+                turn_started_at_ms = Some(ts.max(compacted_at_ms));
             }
             continue;
         }
@@ -1301,7 +1306,34 @@ mod tests {
         .join("\n");
         let u = session_usage(&jsonl).unwrap();
         assert_eq!(u.session_tokens, 4);
+        assert_eq!(u.turn_tokens, 4);
         assert_eq!(u.before_compaction.unwrap().session_tokens, 50);
+    }
+
+    #[test]
+    fn usage_turn_does_not_start_before_compaction_when_a_prompt_is_replayed() {
+        let jsonl = [
+            user_at("2000-01-01T00:00:00Z", json!("最初")),
+            compact_boundary_at("2000-01-01T01:00:00Z"),
+            user_at("2000-01-01T00:00:00Z", json!("最初")),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.turn_started_at_ms, u.session_started_at_ms);
+    }
+
+    /// A transcript that opens at a compaction still dates the earlier totals from the first event
+    /// it holds, not from whatever followed the first compaction.
+    #[test]
+    fn usage_before_compaction_keeps_its_first_start_across_compactions() {
+        let jsonl = [
+            compact_boundary_at("2000-01-01T01:00:00Z"),
+            assistant_usage("2000-01-01T01:30:00Z", 1, 0, 0),
+            compact_boundary_at("2000-01-01T02:00:00Z"),
+        ]
+        .join("\n");
+        let before = session_usage(&jsonl).unwrap().before_compaction.unwrap();
+        assert_eq!(before.started_at_ms, 946_684_800_000 + 3_600_000);
     }
 
     #[test]
