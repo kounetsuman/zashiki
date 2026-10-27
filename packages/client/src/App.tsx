@@ -1005,9 +1005,12 @@ export function App({
   );
 
   const toggleBeforeCompaction = useCallback((): void => {
-    setBeforeCompactionOpen(!beforeCompactionOpen);
-    saveFooterBeforeCompactionOpen(viewStorage, !beforeCompactionOpen);
-  }, [beforeCompactionOpen, viewStorage]);
+    setBeforeCompactionOpen((prev) => {
+      const next = !prev;
+      saveFooterBeforeCompactionOpen(viewStorage, next);
+      return next;
+    });
+  }, [viewStorage]);
 
   const dismissWizard = useCallback((): void => {
     setWizardSeen(true);

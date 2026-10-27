@@ -285,9 +285,9 @@
       "model": "model",
       "modelTitle": "The model this terminal answers with",
       "beforeCompaction": "before compaction",
-      "beforeCompactionTitle": "Totals before the last /compact — session tokens / agent tokens / elapsed",
-      "showBeforeCompaction": "Show totals before /compact",
-      "hideBeforeCompaction": "Hide totals before /compact"
+      "beforeCompactionTitle": "Totals before the last compaction (/compact or automatic) — session tokens / agent tokens / elapsed",
+      "showBeforeCompaction": "Show totals before the last compaction",
+      "hideBeforeCompaction": "Hide totals before the last compaction"
     },
     "account": {
       "session": "Current session",

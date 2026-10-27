@@ -147,26 +147,6 @@ function BeforeCompaction({
   const { t } = useTranslation();
   return (
     <span className="ss-before-compaction">
-      {open && (
-        <Tooltip
-          className="ss-group"
-          label={t("footer.status.beforeCompactionTitle")}
-        >
-          <span className="ss-cap">{t("footer.status.beforeCompaction")}</span>
-          <StatusCell
-            value={fmtTokens(totals.sessionTokens)}
-            caption={t("footer.status.session")}
-          />
-          <StatusCell
-            value={fmtTokens(totals.subagentTokens)}
-            caption={t("footer.status.agents")}
-          />
-          <StatusCell
-            value={fmtDuration(totals.elapsedMs)}
-            caption={t("footer.status.session")}
-          />
-        </Tooltip>
-      )}
       <button
         type="button"
         className="ss-toggle"
@@ -182,6 +162,32 @@ function BeforeCompaction({
           history
         </span>
       </button>
+      {open && (
+        <Tooltip
+          className="ss-group"
+          label={t("footer.status.beforeCompactionTitle")}
+        >
+          <span className="ss-cap">{t("footer.status.beforeCompaction")}</span>
+          <StatusCell
+            value={fmtTokens(totals.sessionTokens)}
+            caption={t("footer.status.session")}
+          />
+          <StatusCell
+            value={fmtTokens(totals.subagentTokens)}
+            caption={t("footer.status.agents")}
+          />
+          <span
+            className="material-symbols-outlined ss-icon"
+            aria-hidden="true"
+          >
+            schedule
+          </span>
+          <StatusCell
+            value={fmtDuration(totals.elapsedMs)}
+            caption={t("footer.status.session")}
+          />
+        </Tooltip>
+      )}
     </span>
   );
 }

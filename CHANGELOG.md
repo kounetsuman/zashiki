@@ -10,11 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The session status footer reports the tokens this session's subagents spent, beside the turn and session totals (#435)
-- The session status footer can show the totals from before the last `/compact` (session tokens, agent tokens, elapsed), collapsed by default behind a toggle on its right end (#474)
+- The session status footer can show the totals from before the last compaction (session tokens, agent tokens, elapsed), collapsed by default behind a toggle on its right end (#474)
 
 ### Fixed
 
-- The session status footer's session tokens, agent tokens and session elapsed restart at a `/compact` instead of still counting the conversation it replaced (#474)
+- The session status footer's session tokens, agent tokens and session elapsed restart at a compaction (`/compact` or automatic) instead of still counting the conversation it replaced (#474)
 - The footer's turn and session token totals no longer count a reply once per content block: a reply that thinks, calls a tool and answers was charged three times, roughly doubling the tokens reported (#436)
 
 ## [0.21.0] - 2026-09-02
