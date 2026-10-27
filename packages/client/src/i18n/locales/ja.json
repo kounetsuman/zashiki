@@ -283,7 +283,11 @@
       "agentTokensTitle": "このセッションのサブエージェントで API が扱ったトークン",
       "elapsedTitle": "経過時間 — 今ターン / セッション累計",
       "model": "モデル",
-      "modelTitle": "このターミナルが応答に使うモデル"
+      "modelTitle": "このターミナルが応答に使うモデル",
+      "beforeCompaction": "compact 前",
+      "beforeCompactionTitle": "直前の /compact までの累計 — セッショントークン / エージェントトークン / 経過時間",
+      "showBeforeCompaction": "compact 前の値を表示",
+      "hideBeforeCompaction": "compact 前の値を隠す"
     },
     "account": {
       "session": "現在のセッション",

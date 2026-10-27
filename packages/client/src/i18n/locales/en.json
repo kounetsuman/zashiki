@@ -283,7 +283,11 @@
       "agentTokensTitle": "Tokens the API touched for this session's subagents",
       "elapsedTitle": "Elapsed — this turn / this session",
       "model": "model",
-      "modelTitle": "The model this terminal answers with"
+      "modelTitle": "The model this terminal answers with",
+      "beforeCompaction": "before compaction",
+      "beforeCompactionTitle": "Totals before the last /compact — session tokens / agent tokens / elapsed",
+      "showBeforeCompaction": "Show totals before /compact",
+      "hideBeforeCompaction": "Hide totals before /compact"
     },
     "account": {
       "session": "Current session",

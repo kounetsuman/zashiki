@@ -58,6 +58,10 @@ import {
   saveFirstRunWizardSeen,
   shouldShowFirstRunWizard,
 } from "./lib/first-run-wizard.js";
+import {
+  loadFooterBeforeCompactionOpen,
+  saveFooterBeforeCompactionOpen,
+} from "./lib/footer-before-compaction.js";
 import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
@@ -253,6 +257,9 @@ export function App({
   );
   const [wizardSeen, setWizardSeen] = useState(() =>
     loadFirstRunWizardSeen(viewStorage),
+  );
+  const [beforeCompactionOpen, setBeforeCompactionOpen] = useState(() =>
+    loadFooterBeforeCompactionOpen(viewStorage),
   );
   // Gate the first-run flow on persistable storage: a returning/updated user (seen flag present) or
   // a storage-less session starts at "done", so the welcome only ever greets a fresh install.
@@ -997,6 +1004,11 @@ export function App({
     [control],
   );
 
+  const toggleBeforeCompaction = useCallback((): void => {
+    setBeforeCompactionOpen(!beforeCompactionOpen);
+    saveFooterBeforeCompactionOpen(viewStorage, !beforeCompactionOpen);
+  }, [beforeCompactionOpen, viewStorage]);
+
   const dismissWizard = useCallback((): void => {
     setWizardSeen(true);
     saveFirstRunWizardSeen(viewStorage);
@@ -1323,6 +1335,8 @@ export function App({
               model={activeSessionModel}
               accentColor={activeSessionAccent}
               thresholds={footerThresholds}
+              beforeCompactionOpen={beforeCompactionOpen}
+              onToggleBeforeCompaction={toggleBeforeCompaction}
             />
           )}
         </div>

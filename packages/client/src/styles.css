@@ -656,6 +656,28 @@ textarea {
   color: #ff6b6b;
 }
 
+.ss-before-compaction {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ss-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.ss-toggle:hover .ss-icon,
+.ss-toggle[aria-expanded="true"] .ss-icon {
+  color: #d0d3d6;
+}
+
 .app-tooltip {
   position: fixed;
   transform: translateY(-100%) translateY(-6px);

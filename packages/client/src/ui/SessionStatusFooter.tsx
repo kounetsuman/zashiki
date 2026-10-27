@@ -2,6 +2,7 @@ import {
   DEFAULT_FOOTER_THRESHOLDS,
   type FooterThresholds,
   type SessionUsage,
+  type UsageBeforeCompaction,
 } from "@zashiki/shared";
 import { useTranslation } from "react-i18next";
 
@@ -26,6 +27,9 @@ export interface SessionStatusFooterProps {
   accentColor?: string;
   /** Configured severity thresholds driving each cell's color. Defaults to the built-in bands (isolated tests). */
   thresholds?: FooterThresholds;
+  /** Whether the totals from before the last compaction are expanded (they are only offered once compacted). */
+  beforeCompactionOpen?: boolean;
+  onToggleBeforeCompaction?: () => void;
 }
 
 const DASH = "–";
@@ -40,6 +44,8 @@ export function SessionStatusFooter({
   model,
   accentColor,
   thresholds = DEFAULT_FOOTER_THRESHOLDS,
+  beforeCompactionOpen = false,
+  onToggleBeforeCompaction,
 }: SessionStatusFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
@@ -117,6 +123,65 @@ export function SessionStatusFooter({
           }
         />
       </Tooltip>
+
+      {usage?.beforeCompaction && (
+        <BeforeCompaction
+          totals={usage.beforeCompaction}
+          open={beforeCompactionOpen}
+          onToggle={onToggleBeforeCompaction}
+        />
+      )}
     </footer>
+  );
+}
+
+function BeforeCompaction({
+  totals,
+  open,
+  onToggle,
+}: {
+  totals: UsageBeforeCompaction;
+  open: boolean;
+  onToggle?: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <span className="ss-before-compaction">
+      {open && (
+        <Tooltip
+          className="ss-group"
+          label={t("footer.status.beforeCompactionTitle")}
+        >
+          <span className="ss-cap">{t("footer.status.beforeCompaction")}</span>
+          <StatusCell
+            value={fmtTokens(totals.sessionTokens)}
+            caption={t("footer.status.session")}
+          />
+          <StatusCell
+            value={fmtTokens(totals.subagentTokens)}
+            caption={t("footer.status.agents")}
+          />
+          <StatusCell
+            value={fmtDuration(totals.elapsedMs)}
+            caption={t("footer.status.session")}
+          />
+        </Tooltip>
+      )}
+      <button
+        type="button"
+        className="ss-toggle"
+        aria-expanded={open}
+        aria-label={t(
+          open
+            ? "footer.status.hideBeforeCompaction"
+            : "footer.status.showBeforeCompaction",
+        )}
+        onClick={onToggle}
+      >
+        <span className="material-symbols-outlined ss-icon" aria-hidden="true">
+          history
+        </span>
+      </button>
+    </span>
   );
 }
