@@ -224,7 +224,8 @@ pub struct DashboardSettings {
 }
 
 /// Session status-footer material: token totals plus the epoch-ms starting points for live elapsed.
-/// `turn` is measured from the most recent human prompt; `session` spans the whole transcript.
+/// `turn` is measured from the most recent human prompt; `session` from the most recent compaction
+/// (the whole transcript when it was never compacted).
 /// Tokens/timestamps come from the transcript (no user setup). Account usage limits are global, not
 /// per session, so they ride on `state.sync`'s `account_limits` rather than here.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,6 +239,18 @@ pub struct SessionUsage {
     pub subagent_tokens: u64,
     pub turn_started_at: u64,
     pub session_started_at: u64,
+    /// The session's totals before its most recent compaction; absent when it was never compacted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_compaction: Option<UsageBeforeCompaction>,
+}
+
+/// What [`SessionUsage`] counted from the transcript's start up to its most recent compaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsageBeforeCompaction {
+    pub session_tokens: u64,
+    pub subagent_tokens: u64,
+    pub elapsed_ms: u64,
 }
 
 /// One window's snapshot distributed via state.sync.
@@ -1207,11 +1220,31 @@ mod tests {
                 subagent_tokens: 300,
                 turn_started_at: 10,
                 session_started_at: 10,
+                before_compaction: None,
             }),
         };
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"usage":{"turnTokens":0,"sessionTokens":500,"subagentTokens":300,"turnStartedAt":10,"sessionStartedAt":10}}"#;
         assert_eq!(to_json(&info), json);
         assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_usage_round_trips_the_totals_before_compaction() {
+        let usage = SessionUsage {
+            turn_tokens: 1,
+            session_tokens: 2,
+            subagent_tokens: 0,
+            turn_started_at: 3,
+            session_started_at: 4,
+            before_compaction: Some(UsageBeforeCompaction {
+                session_tokens: 500,
+                subagent_tokens: 300,
+                elapsed_ms: 60_000,
+            }),
+        };
+        let json = r#"{"turnTokens":1,"sessionTokens":2,"subagentTokens":0,"turnStartedAt":3,"sessionStartedAt":4,"beforeCompaction":{"sessionTokens":500,"subagentTokens":300,"elapsedMs":60000}}"#;
+        assert_eq!(to_json(&usage), json);
+        assert_eq!(serde_json::from_str::<SessionUsage>(json).unwrap(), usage);
     }
 
     #[test]

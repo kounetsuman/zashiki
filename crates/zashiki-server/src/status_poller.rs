@@ -16,7 +16,7 @@ use zashiki_core::session_state::{
 
 use crate::jsonl::{last_user_or_assistant_event, loop_wakeup_pending, TranscriptTitle};
 use crate::hooks::NotifyEvent;
-use crate::protocol::{CockpitTerminalInfo, NotifyKind, SessionUsage};
+use crate::protocol::{CockpitTerminalInfo, NotifyKind, SessionUsage, UsageBeforeCompaction};
 use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
 
 const TITLE_MAX_CHARS: usize = 30;
@@ -506,6 +506,11 @@ impl StatusPoller {
             subagent_tokens: d.subagent_tokens,
             turn_started_at: d.turn_started_at_ms,
             session_started_at: d.session_started_at_ms,
+            before_compaction: d.before_compaction.map(|b| UsageBeforeCompaction {
+                session_tokens: b.session_tokens,
+                subagent_tokens: b.subagent_tokens,
+                elapsed_ms: b.compacted_at_ms.saturating_sub(b.started_at_ms),
+            }),
         });
 
         self.prev_states
@@ -725,6 +730,7 @@ mod tests {
             subagent_tokens: 40,
             turn_started_at_ms: 1000,
             session_started_at_ms: 500,
+            before_compaction: None,
             model: model.map(str::to_string),
             model_at_ms: model.map(|_| model_at_ms),
         }

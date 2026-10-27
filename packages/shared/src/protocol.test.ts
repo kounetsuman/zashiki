@@ -199,6 +199,22 @@ describe("cockpitTerminalInfoSchema", () => {
     };
     expect(sessionUsageSchema.parse(usage).subagentTokens).toBe(0);
   });
+
+  it("carries the totals from before the last compaction", () => {
+    const usage = {
+      turnTokens: 0,
+      sessionTokens: 0,
+      subagentTokens: 0,
+      turnStartedAt: 1700000000000,
+      sessionStartedAt: 1700000000000,
+      beforeCompaction: {
+        sessionTokens: 120_600_000,
+        subagentTokens: 84_600_000,
+        elapsedMs: 3_600_000,
+      },
+    };
+    expect(sessionUsageSchema.parse(usage)).toEqual(usage);
+  });
 });
 
 describe("canRestartCockpitTerminal", () => {

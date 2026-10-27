@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::jsonl::{
     background_task_ids, claude_project_dir_name, session_usage, subagent_tokens, SessionUsageData,
+    SubagentTokens,
     TitleScan, TranscriptTitle,
 };
 use crate::status_poller::Slices;
@@ -23,12 +24,14 @@ const DEFAULT_MAX_SLICE_BYTES: u64 = 64 * 1024;
 type NowMs = Box<dyn Fn() -> u64 + Send + Sync>;
 
 /// What a subagent transcript was worth when it was last read, with the size and mtime it was read
-/// at. Transcripts are only ever appended to, so a file matching both is worth the same again.
+/// at and the compaction it was split at. Transcripts are only ever appended to, so a file matching
+/// all three is worth the same again.
 #[derive(Clone, Copy, Default)]
 struct CachedTotal {
     len: u64,
     mtime_ms: u64,
-    tokens: u64,
+    compacted_at_ms: Option<u64>,
+    tokens: SubagentTokens,
 }
 
 /// Per-subagents-directory file totals, so a poll re-reads only the transcripts that grew.
@@ -141,7 +144,12 @@ impl ClaudeProjectsAdapter {
         let totals = Arc::clone(&self.subagent_totals);
         tokio::task::spawn_blocking(move || {
             let mut data = session_usage(&String::from_utf8_lossy(&fs::read(&path).ok()?))?;
-            data.subagent_tokens = subagent_tokens_sync(&subagents_dir, &totals);
+            let compacted_at_ms = data.before_compaction.map(|b| b.compacted_at_ms);
+            let tokens = subagent_tokens_sync(&subagents_dir, compacted_at_ms, &totals);
+            data.subagent_tokens = tokens.since_compaction;
+            if let Some(before) = data.before_compaction.as_mut() {
+                before.subagent_tokens = tokens.before_compaction;
+            }
             Some(data)
         })
         .await
@@ -286,7 +294,8 @@ fn subagent_transcript_files(dir: &Path) -> Vec<(PathBuf, u64, u64)> {
     files
 }
 
-/// Tokens spent across every subagent transcript below the directory (0 when it is missing).
+/// Tokens spent across every subagent transcript below the directory, split at `compacted_at_ms`
+/// (0 when it is missing).
 ///
 /// Like the session transcript, a file is read whole: a total needs every assistant `usage`, not a
 /// slice. A transcript is only appended to, so one whose size and mtime are unchanged since the last
@@ -297,8 +306,9 @@ fn subagent_transcript_files(dir: &Path) -> Vec<(PathBuf, u64, u64)> {
 /// Bytes are decoded leniently: a poll can land mid-append, in the middle of a multi-byte character.
 fn subagent_tokens_sync(
     dir: &Path,
+    compacted_at_ms: Option<u64>,
     cache: &Mutex<HashMap<PathBuf, HashMap<PathBuf, CachedTotal>>>,
-) -> u64 {
+) -> SubagentTokens {
     let files = subagent_transcript_files(dir);
     let known = cache
         .lock()
@@ -309,7 +319,9 @@ fn subagent_tokens_sync(
     for (path, len, mtime) in files {
         let cached = known
             .get(&path)
-            .filter(|c| c.len == len && c.mtime_ms == mtime)
+            .filter(|c| {
+                c.len == len && c.mtime_ms == mtime && c.compacted_at_ms == compacted_at_ms
+            })
             .copied();
         let total = match cached {
             Some(total) => total,
@@ -317,7 +329,8 @@ fn subagent_tokens_sync(
                 Ok(bytes) => CachedTotal {
                     len,
                     mtime_ms: mtime,
-                    tokens: subagent_tokens(&String::from_utf8_lossy(&bytes)),
+                    compacted_at_ms,
+                    tokens: subagent_tokens(&String::from_utf8_lossy(&bytes), compacted_at_ms),
                 },
                 // Hold the last good reading at the size it was read at, so a file that could not be
                 // opened this once keeps its tokens in the total and is read again next poll.
@@ -326,7 +339,10 @@ fn subagent_tokens_sync(
         };
         fresh.insert(path, total);
     }
-    let tokens = fresh.values().map(|c| c.tokens).sum();
+    let tokens = fresh.values().fold(SubagentTokens::default(), |sum, c| SubagentTokens {
+        before_compaction: sum.before_compaction + c.tokens.before_compaction,
+        since_compaction: sum.since_compaction + c.tokens.since_compaction,
+    });
     if let Ok(mut totals) = cache.lock() {
         // Most sessions run no subagents at all, so without this every terminal polled would leave
         // an empty entry behind for as long as the server is up.
@@ -456,6 +472,33 @@ mod tests {
         assert_eq!(u.session_tokens, 15);
     }
 
+    /// A subagent that answered before the session was compacted counts toward the earlier totals.
+    #[tokio::test]
+    async fn session_usage_splits_subagent_tokens_at_the_compaction() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:00:05Z\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n{\"type\":\"system\",\"subtype\":\"compact_boundary\",\"timestamp\":\"2000-01-01T01:00:00Z\"}\n";
+        write_jsonl(tmp.path(), SID, content, BASE_SEC);
+        write_subagent_content(
+            tmp.path(),
+            SID,
+            "agent-a1.jsonl",
+            "{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T00:30:00Z\",\"message\":{\"usage\":{\"input_tokens\":700}}}\n",
+        );
+        write_subagent_content(
+            tmp.path(),
+            SID,
+            "agent-a2.jsonl",
+            "{\"type\":\"assistant\",\"timestamp\":\"2000-01-01T01:30:00Z\",\"message\":{\"usage\":{\"input_tokens\":40}}}\n",
+        );
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let u = adapter.session_usage(CWD, SID).await.unwrap();
+        assert_eq!(u.subagent_tokens, 40);
+        assert_eq!(u.session_tokens, 0);
+        let before = u.before_compaction.unwrap();
+        assert_eq!(before.subagent_tokens, 700);
+        assert_eq!(before.session_tokens, 10);
+    }
+
     /// A workflow parks its agents one directory deeper, under `workflows/<run>/`.
     #[tokio::test]
     async fn session_usage_counts_subagents_a_workflow_ran() {
@@ -569,11 +612,17 @@ mod tests {
         let path = tmp.path().join("agent-a1.jsonl");
         fs::write(&path, agent_reply(700)).unwrap();
         let cache = Mutex::new(HashMap::new());
-        assert_eq!(subagent_tokens_sync(tmp.path(), &cache), 700);
+        assert_eq!(
+            subagent_tokens_sync(tmp.path(), None, &cache).since_compaction,
+            700
+        );
         assert_eq!(cache.lock().unwrap().len(), 1);
 
         fs::remove_file(&path).unwrap();
-        assert_eq!(subagent_tokens_sync(tmp.path(), &cache), 0);
+        assert_eq!(
+            subagent_tokens_sync(tmp.path(), None, &cache).since_compaction,
+            0
+        );
         assert!(cache.lock().unwrap().is_empty());
     }
 

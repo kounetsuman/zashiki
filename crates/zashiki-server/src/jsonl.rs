@@ -264,7 +264,8 @@ pub fn claude_project_dir_name(cwd: &str) -> String {
 }
 
 /// Token/timing rollup for a session's transcript (the material for the session status footer).
-/// `turn` counts from the most recent human prompt; `session` counts the whole transcript.
+/// `turn` counts from the most recent human prompt; `session` counts from the most recent compaction,
+/// or the whole transcript when it was never compacted.
 /// `*_at_ms` are epoch-ms starting points (the client renders live elapsed as `now - start`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionUsageData {
@@ -276,12 +277,32 @@ pub struct SessionUsageData {
     pub subagent_tokens: u64,
     pub turn_started_at_ms: u64,
     pub session_started_at_ms: u64,
+    /// Everything counted before the most recent compaction; None when the transcript was never compacted.
+    pub before_compaction: Option<BeforeCompaction>,
     /// Model id of the newest main-session assistant reply (the model that answered); None until one
     /// exists. See [`main_session_model`] for why sidechain and synthetic replies are excluded.
     pub model: Option<String>,
     /// Epoch-ms of that reply, so the reading can be weighed against Claude Code's statusLine report.
     /// None when the reply carried no parseable timestamp.
     pub model_at_ms: Option<u64>,
+}
+
+/// The session's totals from its first line up to its most recent compaction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BeforeCompaction {
+    pub session_tokens: u64,
+    /// Left at 0 by [`session_usage`] and filled by the projects adapter, like
+    /// [`SessionUsageData::subagent_tokens`].
+    pub subagent_tokens: u64,
+    pub started_at_ms: u64,
+    pub compacted_at_ms: u64,
+}
+
+/// A subagent transcript's tokens, split at the session's most recent compaction.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SubagentTokens {
+    pub before_compaction: u64,
+    pub since_compaction: u64,
 }
 
 const SYNTHETIC_MODEL: &str = "<synthetic>";
@@ -423,28 +444,62 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
+/// Timestamp of a `/compact` (manual or automatic) boundary line. Claude Code keeps appending to the
+/// same transcript after compacting, so this line is the only mark of where the new context begins.
+fn compaction_at_ms(event: &Value) -> Option<u64> {
+    if event.get("type").and_then(Value::as_str) != Some("system")
+        || event.get("subtype").and_then(Value::as_str) != Some("compact_boundary")
+    {
+        return None;
+    }
+    event
+        .get("timestamp")
+        .and_then(Value::as_str)
+        .and_then(parse_iso8601_ms)
+}
+
 /// Aggregates per-turn / per-session token totals and their starting timestamps from a full transcript.
 /// Returns None when no user/assistant event carries a parseable timestamp (nothing to anchor elapsed on).
-/// A turn boundary (`is_human_prompt`) resets the turn total and moves the turn start.
+/// A turn boundary (`is_human_prompt`) resets the turn total and moves the turn start. A compaction
+/// boundary resets both the turn and the session, carrying the session's totals into `before_compaction`.
 pub fn session_usage(content: &str) -> Option<SessionUsageData> {
     let mut session_tokens: u64 = 0;
     let mut turn_tokens: u64 = 0;
-    let mut session_started_at_ms: Option<u64> = None;
+    let mut first_event_at_ms: Option<u64> = None;
     let mut turn_started_at_ms: Option<u64> = None;
     let mut model: Option<String> = None;
     let mut model_at_ms: Option<u64> = None;
+    let mut before_compaction: Option<BeforeCompaction> = None;
+    // Kept across a compaction, so a reply whose lines reappear after the boundary is not charged twice.
     let mut session_replies = ReplyUsage::default();
     // A turn counts its replies on its own: Claude Code can inject a user line into the middle of a
     // reply, and the turn that starts there must still be charged for the rest of that reply.
     let mut turn_replies = ReplyUsage::default();
 
     for line in content.split('\n') {
-        if !(line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\"")) {
+        if !(line.contains("\"type\":\"user\"")
+            || line.contains("\"type\":\"assistant\"")
+            || line.contains("\"compact_boundary\""))
+        {
             continue;
         }
         let Some(event) = parse_line(line) else {
             continue;
         };
+        if let Some(compacted_at_ms) = compaction_at_ms(&event) {
+            let earlier = before_compaction.map_or(0, |b| b.session_tokens);
+            before_compaction = Some(BeforeCompaction {
+                session_tokens: earlier + session_tokens,
+                subagent_tokens: 0,
+                started_at_ms: first_event_at_ms.unwrap_or(compacted_at_ms),
+                compacted_at_ms,
+            });
+            session_tokens = 0;
+            turn_tokens = 0;
+            turn_replies = ReplyUsage::default();
+            turn_started_at_ms = None;
+            continue;
+        }
         let kind = event.get("type").and_then(Value::as_str);
         if kind != Some("user") && kind != Some("assistant") {
             continue;
@@ -454,7 +509,7 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
             .and_then(Value::as_str)
             .and_then(parse_iso8601_ms);
         if let Some(ts) = ts {
-            session_started_at_ms.get_or_insert(ts);
+            first_event_at_ms.get_or_insert(ts);
         }
         if is_human_prompt(&event) {
             turn_tokens = 0;
@@ -474,29 +529,46 @@ pub fn session_usage(content: &str) -> Option<SessionUsageData> {
         }
     }
 
-    let session_started_at_ms = session_started_at_ms?;
+    let session_started_at_ms = match before_compaction {
+        Some(b) => b.compacted_at_ms,
+        None => first_event_at_ms?,
+    };
     Some(SessionUsageData {
         turn_tokens,
         session_tokens,
         subagent_tokens: 0,
         turn_started_at_ms: turn_started_at_ms.unwrap_or(session_started_at_ms),
         session_started_at_ms,
+        before_compaction,
         model,
         model_at_ms,
     })
 }
 
-/// Sum of the tokens the API touched across one subagent transcript's assistant replies.
+/// Sum of the tokens the API touched across one subagent transcript's assistant replies, split at
+/// `compacted_at_ms` (all of it is `since_compaction` when None). A reply without a parseable timestamp
+/// is counted as `since_compaction`.
 /// Turn boundaries do not apply: a subagent runs to completion inside the turn that spawned it.
-pub fn subagent_tokens(content: &str) -> u64 {
+pub fn subagent_tokens(content: &str, compacted_at_ms: Option<u64>) -> SubagentTokens {
     let mut replies = ReplyUsage::default();
-    content
+    let mut tokens = SubagentTokens::default();
+    for event in content
         .split('\n')
         .filter(|line| line.contains("\"type\":\"assistant\""))
         .filter_map(parse_line)
         .filter(|event| event.get("type").and_then(Value::as_str) == Some("assistant"))
-        .map(|event| replies.add(&event))
-        .sum()
+    {
+        let added = replies.add(&event);
+        let at_ms = event
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(parse_iso8601_ms);
+        match (at_ms, compacted_at_ms) {
+            (Some(at), Some(boundary)) if at < boundary => tokens.before_compaction += added,
+            _ => tokens.since_compaction += added,
+        }
+    }
+    tokens
 }
 
 /// Collects every background shell launch ID (`toolUseResult.backgroundTaskId`) in the transcript
@@ -1115,7 +1187,7 @@ mod tests {
             assistant_reply_block("msg_2", "2000-01-01T00:00:09Z", "text", 3, 1),
         ]
         .join("\n");
-        assert_eq!(subagent_tokens(&jsonl), 50 + 4);
+        assert_eq!(subagent_tokens(&jsonl, None).since_compaction, 50 + 4);
     }
 
     #[test]
@@ -1128,14 +1200,15 @@ mod tests {
             assistant_usage("2000-01-01T00:00:09Z", 1, 0, 2),
         ]
         .join("\n");
-        assert_eq!(subagent_tokens(&jsonl), 10 + 20 + 5 + 1 + 2);
+        assert_eq!(subagent_tokens(&jsonl, None).since_compaction, 10 + 20 + 5 + 1 + 2);
     }
 
     #[test]
     fn subagent_tokens_of_a_transcript_without_replies_is_zero() {
-        assert_eq!(subagent_tokens(""), 0);
+        assert_eq!(subagent_tokens("", None).since_compaction, 0);
         assert_eq!(
-            subagent_tokens(&user_at("2000-01-01T00:00:00Z", json!("調べて"))),
+            subagent_tokens(&user_at("2000-01-01T00:00:00Z", json!("調べて")), None)
+                .since_compaction,
             0
         );
     }
@@ -1144,6 +1217,124 @@ mod tests {
     fn session_usage_leaves_subagent_tokens_to_the_adapter() {
         let u = session_usage(&assistant_usage("2000-01-01T00:00:05Z", 4, 0, 1)).unwrap();
         assert_eq!(u.subagent_tokens, 0);
+    }
+
+    fn compact_boundary_at(ts: &str) -> String {
+        json!({
+            "type": "system",
+            "subtype": "compact_boundary",
+            "content": "Conversation compacted",
+            "timestamp": ts,
+            "compactMetadata": {"trigger": "manual"},
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn usage_counts_the_session_from_its_latest_compaction() {
+        let jsonl = [
+            user_at("2000-01-01T00:00:00Z", json!("最初")),
+            assistant_usage("2000-01-01T00:00:05Z", 10, 0, 5),
+            compact_boundary_at("2000-01-01T01:00:00Z"),
+            user_at("2000-01-01T01:00:01Z", json!("要約")),
+            assistant_usage("2000-01-01T01:00:05Z", 3, 0, 1),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 4);
+        assert_eq!(u.turn_tokens, 4);
+        assert_eq!(u.session_started_at_ms, 946_684_800_000 + 3_600_000);
+        assert_eq!(u.turn_started_at_ms, 946_684_800_000 + 3_601_000);
+        assert_eq!(
+            u.before_compaction,
+            Some(BeforeCompaction {
+                session_tokens: 15,
+                subagent_tokens: 0,
+                started_at_ms: 946_684_800_000,
+                compacted_at_ms: 946_684_800_000 + 3_600_000,
+            })
+        );
+    }
+
+    /// The footer reports everything before the latest compaction, not just the stretch since the
+    /// one before it.
+    #[test]
+    fn usage_before_compaction_accumulates_across_compactions() {
+        let jsonl = [
+            assistant_usage("2000-01-01T00:00:05Z", 10, 0, 0),
+            compact_boundary_at("2000-01-01T01:00:00Z"),
+            assistant_usage("2000-01-01T01:00:05Z", 20, 0, 0),
+            compact_boundary_at("2000-01-01T02:00:00Z"),
+            assistant_usage("2000-01-01T02:00:05Z", 7, 0, 0),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 7);
+        let before = u.before_compaction.unwrap();
+        assert_eq!(before.session_tokens, 30);
+        assert_eq!(before.started_at_ms, 946_684_800_000 + 5_000);
+        assert_eq!(before.compacted_at_ms, 946_684_800_000 + 7_200_000);
+    }
+
+    /// Without a new prompt the turn still starts at the compaction, so it never outlasts the session.
+    #[test]
+    fn usage_turn_starts_at_the_compaction_without_a_later_prompt() {
+        let jsonl = [
+            user_at("2000-01-01T00:00:00Z", json!("最初")),
+            assistant_usage("2000-01-01T00:00:05Z", 10, 0, 5),
+            compact_boundary_at("2000-01-01T01:00:00Z"),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.turn_tokens, 0);
+        assert_eq!(u.turn_started_at_ms, u.session_started_at_ms);
+    }
+
+    #[test]
+    fn usage_does_not_recharge_a_reply_replayed_after_compaction() {
+        let jsonl = [
+            assistant_reply_block("msg_1", "2000-01-01T00:00:05Z", "text", 40, 10),
+            compact_boundary_at("2000-01-01T01:00:00Z"),
+            assistant_reply_block("msg_1", "2000-01-01T00:00:05Z", "text", 40, 10),
+            assistant_reply_block("msg_2", "2000-01-01T01:00:05Z", "text", 3, 1),
+        ]
+        .join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 4);
+        assert_eq!(u.before_compaction.unwrap().session_tokens, 50);
+    }
+
+    #[test]
+    fn usage_without_compaction_has_nothing_before_it() {
+        let u = session_usage(&assistant_usage("2000-01-01T00:00:05Z", 4, 0, 1)).unwrap();
+        assert_eq!(u.before_compaction, None);
+    }
+
+    #[test]
+    fn usage_ignores_a_compaction_without_a_readable_timestamp() {
+        let boundary = json!({"type": "system", "subtype": "compact_boundary"}).to_string();
+        let jsonl = [assistant_usage("2000-01-01T00:00:05Z", 4, 0, 1), boundary].join("\n");
+        let u = session_usage(&jsonl).unwrap();
+        assert_eq!(u.session_tokens, 5);
+        assert_eq!(u.before_compaction, None);
+    }
+
+    /// A subagent that kept running across a compaction is split at it, reply by reply.
+    #[test]
+    fn subagent_tokens_split_at_the_compaction() {
+        let jsonl = [
+            assistant_usage("2000-01-01T00:59:00Z", 10, 0, 0),
+            assistant_usage("2000-01-01T01:00:00Z", 3, 0, 0),
+            json!({"type": "assistant", "message": {"usage": {"input_tokens": 2}}}).to_string(),
+        ]
+        .join("\n");
+        assert_eq!(
+            subagent_tokens(&jsonl, Some(946_684_800_000 + 3_600_000)),
+            SubagentTokens {
+                before_compaction: 10,
+                since_compaction: 5,
+            }
+        );
     }
 
     #[test]
