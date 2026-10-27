@@ -657,12 +657,11 @@ textarea {
 }
 
 .ss-before-compaction {
+  flex: none;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
-  overflow: hidden;
 }
 
 .ss-toggle {
