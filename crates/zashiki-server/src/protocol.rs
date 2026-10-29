@@ -302,6 +302,11 @@ pub struct CockpitTerminalInfo {
     /// false is not sent (not sent = treated as false).
     #[serde(default, skip_serializing_if = "is_false")]
     pub menu_open: bool,
+    /// Flag indicating the latest turn ended on an API error (`API Error: …` near the bottom of the
+    /// captured screen). Orthogonal to the primary state: it only overrides an idle state glyph. For
+    /// backward compatibility with older servers, false is not sent (not sent = treated as false).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub api_error: bool,
     /// Model id of the model answering in this terminal (e.g. `claude-opus-5`), for the session status
     /// footer. Read from Claude Code's statusLine while that bridge is in place (known from the
     /// session's first render, and following an in-session `/model` switch), otherwise from the newest
@@ -887,6 +892,7 @@ mod tests {
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
+                api_error: false,
                 model: None,
                 usage: None,
             }],
@@ -1032,6 +1038,7 @@ mod tests {
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
+                api_error: false,
                 model: None,
                 usage: None,
             }],
@@ -1062,6 +1069,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            api_error: false,
             model: None,
             usage: None,
         };
@@ -1087,6 +1095,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            api_error: false,
             model: None,
             usage: None,
         };
@@ -1112,6 +1121,7 @@ mod tests {
             vitest_running: Some(4),
             limited: false,
             menu_open: false,
+            api_error: false,
             model: None,
             usage: None,
         };
@@ -1138,6 +1148,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            api_error: false,
             model: None,
             usage: None,
         };
@@ -1164,6 +1175,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            api_error: false,
             model: None,
             usage: None,
         };
@@ -1213,6 +1225,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            api_error: false,
             model: None,
             usage: Some(SessionUsage {
                 turn_tokens: 0,
@@ -1271,6 +1284,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            api_error: false,
             model: Some("claude-opus-5".into()),
             usage: None,
         };

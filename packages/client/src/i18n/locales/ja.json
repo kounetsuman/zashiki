@@ -96,6 +96,7 @@
     "ariaLabel": "セッション一覧",
     "limitReached": "使用量上限に達しています",
     "menuOpen": "Claude Code のメニュー表示中",
+    "apiError": "直前の応答が API エラーで止まっています",
     "exited": "ターミナルが終了しました",
     "addOrg": "組織を追加",
     "orgToggleTitle": "{{org}}（クリックで折畳・+ で新規セッション・Ctrl-N）",

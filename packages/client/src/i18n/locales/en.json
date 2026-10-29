@@ -96,6 +96,7 @@
     "ariaLabel": "Session list",
     "limitReached": "Usage limit reached",
     "menuOpen": "In a Claude Code menu",
+    "apiError": "The last response ended on an API error",
     "exited": "Terminal has ended",
     "addOrg": "Add org",
     "orgToggleTitle": "{{org}} (click to fold / + for new session / Ctrl-N)",

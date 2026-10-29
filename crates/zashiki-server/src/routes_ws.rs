@@ -75,6 +75,7 @@ mod ws_control_tests {
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
+                api_error: false,
                 model: None,
                 usage: None,
             }],
@@ -182,6 +183,7 @@ mod ws_control_tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            api_error: false,
             model: None,
             usage: None,
         }

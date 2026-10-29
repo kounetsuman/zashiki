@@ -335,6 +335,7 @@ export {
   type DetectStateOptions,
   detectState,
   fallbackState,
+  hasApiError,
   hasBgAgent,
   isLimitReached,
   isMenuOpen,
