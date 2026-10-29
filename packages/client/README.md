@@ -19,6 +19,7 @@ Main Area
           ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / watching / no_claude / exited / starting / unknown
           ├ Background Activity — runningSubagents / shellsRunning / vitestRunning / limited (orthogonal flags)
           ├ menuOpen — orthogonal flag; a Claude Code menu/overlay overrides the state glyph with a gear
+          ├ apiError — orthogonal flag; a turn that ended on an API error overrides an idle state glyph
           └ term / termId — the xterm.js render slot (attaches to a Cockpit Terminal)
 
 Sub Area

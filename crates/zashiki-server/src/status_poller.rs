@@ -9,7 +9,8 @@ use zashiki_core::process_tree::{build_process_maps, count_vitest_in_tree, parse
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
     apply_jsonl_fallback, apply_loop_pending, apply_startup_grace, count_running_subagents,
-    detect_state, fleet_view_counts, has_bg_agent, hook_event_fresh_within_sec, is_limit_reached,
+    detect_state, fleet_view_counts, has_api_error, has_bg_agent, hook_event_fresh_within_sec,
+    is_limit_reached,
     is_menu_open, open_tasks_remaining, resolve_state, skill_agents_running, startup_grace_polls,
     all_subagents_stopped, subagent_fresh_within_sec, CockpitTerminalState, DetectStateOptions,
 };
@@ -118,6 +119,8 @@ pub struct StatusPoller {
     prev_limited: HashMap<String, bool>,
     /// The previous menu_open of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited).
     prev_menu_open: HashMap<String, bool>,
+    /// The previous api_error of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited).
+    prev_api_error: HashMap<String, bool>,
     /// The previous background-agent presence of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited, so the subagent chip does not flicker off during copy-mode).
     prev_bg_present: HashMap<String, bool>,
     /// The previous on-screen open-task fact of windows whose decision was skipped due to pane_in_mode (carried over for the same reason as prev_limited, so watching does not flicker off during copy-mode).
@@ -190,6 +193,7 @@ impl StatusPoller {
         self.prev_states.retain(|id, _| live.contains(id.as_str()));
         self.prev_limited.retain(|id, _| live.contains(id.as_str()));
         self.prev_menu_open.retain(|id, _| live.contains(id.as_str()));
+        self.prev_api_error.retain(|id, _| live.contains(id.as_str()));
         self.prev_bg_present.retain(|id, _| live.contains(id.as_str()));
         self.prev_open_tasks.retain(|id, _| live.contains(id.as_str()));
         self.no_claude_streak
@@ -267,7 +271,7 @@ impl StatusPoller {
         let mut fleet_view_working: Option<usize> = None;
         let mut bg_agent_scraped = false;
         let mut open_tasks_on_screen = false;
-        let (mut state, mut limited, mut menu_open) = if in_mode {
+        let (mut state, mut limited, mut menu_open, mut api_error) = if in_mode {
             (
                 self.prev_states
                     .get(&win.cockpit_terminal_id)
@@ -278,6 +282,10 @@ impl StatusPoller {
                     .copied()
                     .unwrap_or(false),
                 self.prev_menu_open
+                    .get(&win.cockpit_terminal_id)
+                    .copied()
+                    .unwrap_or(false),
+                self.prev_api_error
                     .get(&win.cockpit_terminal_id)
                     .copied()
                     .unwrap_or(false),
@@ -303,7 +311,7 @@ impl StatusPoller {
             let markers = resolve_menu_markers(config);
             let marker_refs: Vec<&str> = markers.iter().map(String::as_str).collect();
             let menu_open = is_menu_open(&capture, &marker_refs);
-            (state, limited, menu_open)
+            (state, limited, menu_open, has_api_error(&capture))
         };
         if in_mode {
             bg_agent_scraped = self
@@ -406,6 +414,7 @@ impl StatusPoller {
             open_tasks_on_screen = false;
             limited = false;
             menu_open = false;
+            api_error = false;
             CockpitTerminalState::Exited
         } else {
             state
@@ -518,6 +527,8 @@ impl StatusPoller {
         self.prev_limited.insert(win.cockpit_terminal_id.clone(), limited);
         self.prev_menu_open
             .insert(win.cockpit_terminal_id.clone(), menu_open);
+        self.prev_api_error
+            .insert(win.cockpit_terminal_id.clone(), api_error);
         self.prev_bg_present
             .insert(win.cockpit_terminal_id.clone(), bg_agent_scraped);
         self.prev_open_tasks
@@ -537,6 +548,7 @@ impl StatusPoller {
             vitest_running,
             limited,
             menu_open,
+            api_error,
             model,
             usage,
         })
@@ -1018,6 +1030,61 @@ mod tests {
         let mut poller = StatusPoller::new();
         let (snap, _) = poller.evaluate(&ports, &config()).await;
         assert!(snap.sessions[0].menu_open);
+    }
+
+    /// A capture whose latest turn ended on an API error puts api_error=true on the wire.
+    #[tokio::test]
+    async fn api_error_line_sets_api_error_flag() {
+        let cap = "⏺ API Error: Request timed out.\n\n✻ Worked for 12s\n───\n❯ \n───\n".to_string();
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap)]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert!(snap.sessions[0].api_error);
+    }
+
+    /// api_error survives a copy-mode skip (the capture is history then) and is dropped once the terminal exits.
+    #[tokio::test]
+    async fn api_error_carries_over_pane_in_mode_and_clears_on_exit() {
+        let cap = "⏺ API Error: Request timed out.\n───\n❯ \n───\n".to_string();
+        let mut win = window("@1", "work", vec![pane("%1", 100, 0, "/repos/charlie/app")]);
+        let ports1 = FakePorts {
+            windows: vec![win.clone()],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap.clone())]),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        poller.evaluate(&ports1, &config()).await;
+
+        win.panes[0].in_mode = true;
+        let ports2 = FakePorts {
+            windows: vec![win.clone()],
+            ps: ps_with_claude(100),
+            captures: HashMap::new(),
+            ..Default::default()
+        };
+        let (snap2, _) = poller.evaluate(&ports2, &config()).await;
+        assert!(snap2.sessions[0].api_error);
+
+        win.panes[0].in_mode = false;
+        win.exited = true;
+        let ports3 = FakePorts {
+            windows: vec![win],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), cap)]),
+            ..Default::default()
+        };
+        let (snap3, _) = poller.evaluate(&ports3, &config()).await;
+        assert!(!snap3.sessions[0].api_error);
     }
 
     /// A window with claude absent is starting while within the startup grace and settles to no_claude once the grace is exceeded.
@@ -1946,6 +2013,7 @@ mod tests {
             vitest_running: None,
             limited: false,
             menu_open: false,
+            api_error: false,
             model: None,
             usage: None,
         }

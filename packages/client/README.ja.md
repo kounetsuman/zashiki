@@ -19,6 +19,7 @@ Main Area
           ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / watching / no_claude / exited / starting / unknown
           ├ Background Activity — runningSubagents / shellsRunning / vitestRunning / limited（直交フラグ）
           ├ menuOpen — 直交フラグ。Claude Code のメニュー/オーバーレイ表示中は状態グリフを歯車に差し替える
+          ├ apiError — 直交フラグ。直前のターンが API エラーで終わった idle セッションは状態グリフを差し替える
           └ term / termId — xterm.js の描画スロット（Cockpit Terminal に張り付く）
 
 Sub Area

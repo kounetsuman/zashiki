@@ -286,6 +286,32 @@ pub fn is_menu_open(capture: &str, markers: &[&str]) -> bool {
         .any(|line| head_starts_with(line, &needles, is_menu_line_decoration))
 }
 
+/// The shapes Claude Code renders right after the response bullet of a failed turn
+/// (`⏺ API Error: Request timed out.`, `⏺ API Error (Connection error.)`).
+const API_ERROR_PREFIXES: &[&str] = &["api error:", "api error ("];
+
+/// The column-0 bullet of an assistant reply. Wrapped continuation lines, `⎿` tool results and pasted
+/// prompt lines are indented, so requiring it at column 0 keeps their text from matching.
+fn is_response_bullet(c: char) -> bool {
+    matches!(c, '⏺' | '●')
+}
+
+/// Whether the latest turn ended on an API error: the newest reply line (column-0 bullet) within the
+/// last 8 non-empty lines, pinned todo rows skipped, is an `API Error:` render, case-insensitive. A later reply, even a short
+/// one, takes over as the newest and clears the flag. Orthogonal to the main state; the client only
+/// lets it override an idle glyph, since a running or waiting session has already moved past the error.
+pub fn has_api_error(capture: &str) -> bool {
+    let window = bottom_lines_for_run_detection(capture);
+    let Some(newest_reply) = window.iter().rev().find(|l| l.starts_with(is_response_bullet)) else {
+        return false;
+    };
+    let head = newest_reply
+        .trim_start_matches(is_response_bullet)
+        .trim_start()
+        .to_lowercase();
+    API_ERROR_PREFIXES.iter().any(|p| head.starts_with(p))
+}
+
 /// Whether the live background-agent panel (`⏺ main` heading directly above line-start `◯ ` agent
 /// lines, wraps allowed) is anchored at the bottom of the pane, matched by contiguity from the bottom.
 pub fn has_bg_agent(capture: &str, marker: &str) -> bool {
@@ -1642,6 +1668,75 @@ mod tests {
         let cap = "│ CUSTOM MENU OPEN │";
         assert!(!is_menu_open(cap, DEFAULT_MENU_MARKERS));
         assert!(is_menu_open(cap, &["CUSTOM MENU OPEN"]));
+    }
+
+    // ---- has_api_error (a turn that ended on an API error) ----
+
+    const CAP_API_ERROR: &str = "❯ 他にも広げて\n\n⏺ API Error: Your computer went to sleep mid-response. The response above may be incomplete.\n\n✻ Sautéed for 5m 19s · done 4:54 PM\n\n───\n❯ \n───\n  ? for shortcuts";
+
+    #[test]
+    fn api_error_detects_bulleted_error_line_at_the_bottom() {
+        assert!(has_api_error(CAP_API_ERROR));
+    }
+
+    #[test]
+    fn api_error_detected_above_a_pinned_todo_list() {
+        let cap = "⏺ API Error: Request timed out.\n\n  5 tasks (2 done, 3 open)\n  ✔ one\n  ✔ two\n  □ three\n  □ four\n  □ five\n───\n❯ \n───\n  ? for shortcuts";
+        assert!(has_api_error(cap));
+    }
+
+    #[test]
+    fn api_error_detects_parenthesized_render() {
+        assert!(has_api_error("● API Error (Connection error.)\n───\n❯\n───"));
+    }
+
+    #[test]
+    fn api_error_is_case_insensitive() {
+        assert!(has_api_error("⏺ api error: Request timed out.\n───\n❯\n───"));
+    }
+
+    #[test]
+    fn api_error_false_for_phrase_quoted_mid_sentence() {
+        let cap = "⏺ The log shows an API Error: 529 from yesterday.\n───\n❯\n───";
+        assert!(!has_api_error(cap));
+    }
+
+    #[test]
+    fn api_error_false_for_phrase_wrapped_onto_a_continuation_line() {
+        let cap = "⏺ The frontend is showing an\n  API Error: 401 because the token expired.\n───\n❯\n───";
+        assert!(!has_api_error(cap));
+    }
+
+    #[test]
+    fn api_error_false_for_a_reply_that_merely_starts_with_the_words() {
+        let cap = "⏺ API errors are retried by the client with backoff.\n───\n❯\n───";
+        assert!(!has_api_error(cap));
+    }
+
+    #[test]
+    fn api_error_false_for_tool_output_or_a_pasted_prompt() {
+        let tool = "⏺ Bash(curl localhost:3000/health)\n  ⎿  API Error: upstream unavailable\n───\n❯\n───";
+        let pasted = "❯ fix this:\n  API Error: 401 Unauthorized\n───\n❯\n───";
+        assert!(!has_api_error(tool));
+        assert!(!has_api_error(pasted));
+    }
+
+    #[test]
+    fn api_error_false_once_a_short_retry_replies_within_the_window() {
+        let cap = "⏺ API Error: Request timed out.\n\n✻ Worked for 12s\n\n❯ continue\n\n⏺ Done.\n\n───\n❯ \n───\n  ? for shortcuts";
+        assert!(!has_api_error(cap));
+    }
+
+    #[test]
+    fn api_error_false_once_a_later_turn_pushes_it_out_of_the_bottom_window() {
+        let later = "\n❯ retry\n  1\n  2\n  3\n  4\n  5\n───\n❯\n───";
+        assert!(!has_api_error(&format!("{CAP_API_ERROR}{later}")));
+    }
+
+    #[test]
+    fn api_error_false_for_ordinary_conversation() {
+        let cap = "⏺ 完了しました。\n╭───╮\n│ ❯ │\n╰───╯\n  ? for shortcuts";
+        assert!(!has_api_error(cap));
     }
 
     #[test]

@@ -135,6 +135,34 @@ export function isMenuOpen(
 }
 
 /**
+ * The shapes Claude Code renders right after the response bullet of a failed turn
+ * (`⏺ API Error: Request timed out.`, `⏺ API Error (Connection error.)`).
+ */
+const API_ERROR_PREFIXES: readonly string[] = ["api error:", "api error ("];
+
+// The column-0 bullet of an assistant reply. Wrapped continuation lines, `⎿` tool results and pasted
+// prompt lines are indented, so requiring it at column 0 keeps their text from matching.
+const RESPONSE_BULLET = /^[⏺●]+/;
+
+/**
+ * Whether the latest turn ended on an API error: the newest reply line (column-0 bullet) within the
+ * last 8 non-empty lines, pinned todo rows skipped, is an `API Error:` render, case-insensitive. A later reply, even a short
+ * one, takes over as the newest and clears the flag. Orthogonal to the main state; the client only
+ * lets it override an idle glyph, since a running or waiting session has already moved past the error.
+ */
+export function hasApiError(capture: string): boolean {
+  const newestReply = bottomLinesSkippingPinnedTasks(capture)
+    .reverse()
+    .find((line) => RESPONSE_BULLET.test(line));
+  if (newestReply === undefined) return false;
+  const head = newestReply
+    .replace(RESPONSE_BULLET, "")
+    .trimStart()
+    .toLowerCase();
+  return API_ERROR_PREFIXES.some((p) => head.startsWith(p));
+}
+
+/**
  * Whether a background subagent is running. When idle, the running spinner loses
  * "(esc to interrupt", and the only clue is the "agents" panel at the very bottom
  * (heading `⏺ main` + a line-leading marker line per running agent). To avoid
@@ -188,6 +216,22 @@ export function countRunningSubagents(
   freshWithinSec: number,
 ): number {
   return mtimeAgesSec.filter((age) => age <= freshWithinSec).length;
+}
+
+// Leading glyphs of a pinned todo row (open / done checkboxes).
+const TASK_CHECKBOX_HEAD = /^\s*[□☐▢☑☒✔✓]/;
+
+/** Whether a line is a row of Claude Code's pinned todo list — a checkbox-headed row or the task footer. */
+function isPinnedTaskLine(line: string): boolean {
+  return TASK_CHECKBOX_HEAD.test(line) || TASKS_FOOTER.test(line);
+}
+
+/** The last 8 non-empty lines with the pinned todo rows removed, so a line just above the todo list stays in the window. */
+function bottomLinesSkippingPinnedTasks(capture: string): string[] {
+  const lines = capture
+    .split("\n")
+    .filter((line) => /\S/.test(line) && !isPinnedTaskLine(line));
+  return lines.slice(Math.max(0, lines.length - BOTTOM_WINDOW_LINES));
 }
 
 /**

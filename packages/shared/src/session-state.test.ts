@@ -6,6 +6,7 @@ import {
   DEFAULT_MENU_MARKERS,
   detectState,
   fallbackState,
+  hasApiError,
   hasBgAgent,
   isLimitReached,
   isMenuOpen,
@@ -625,6 +626,75 @@ describe("isLimitReached (detecting the limit banners)", () => {
     const cap =
       "⏺ 応答\n⎿  Claude usage limit reached. Your limit will reset at 7pm (Asia/Tokyo).\n╭───╮\n│ ❯ │\n╰───╯";
     expect(isLimitReached(cap)).toBe(true);
+  });
+});
+
+describe("hasApiError (a turn that ended on an API error)", () => {
+  const CAP_API_ERROR =
+    "❯ 他にも広げて\n\n⏺ API Error: Your computer went to sleep mid-response. The response above may be incomplete.\n\n✻ Sautéed for 5m 19s · done 4:54 PM\n\n───\n❯ \n───\n  ? for shortcuts";
+
+  it("true for a bulleted error line at the bottom", () => {
+    expect(hasApiError(CAP_API_ERROR)).toBe(true);
+  });
+
+  it("true when the error sits above a pinned todo list", () => {
+    const cap =
+      "⏺ API Error: Request timed out.\n\n  5 tasks (2 done, 3 open)\n  ✔ one\n  ✔ two\n  □ three\n  □ four\n  □ five\n───\n❯ \n───\n  ? for shortcuts";
+    expect(hasApiError(cap)).toBe(true);
+  });
+
+  it("true for the parenthesized render", () => {
+    expect(hasApiError("● API Error (Connection error.)\n───\n❯\n───")).toBe(
+      true,
+    );
+  });
+
+  it("is case-insensitive", () => {
+    expect(hasApiError("⏺ api error: Request timed out.\n───\n❯\n───")).toBe(
+      true,
+    );
+  });
+
+  it("false when the phrase is quoted mid-sentence", () => {
+    const cap =
+      "⏺ The log shows an API Error: 529 from yesterday.\n───\n❯\n───";
+    expect(hasApiError(cap)).toBe(false);
+  });
+
+  it("false when the phrase wraps onto a continuation line", () => {
+    const cap =
+      "⏺ The frontend is showing an\n  API Error: 401 because the token expired.\n───\n❯\n───";
+    expect(hasApiError(cap)).toBe(false);
+  });
+
+  it("false for a reply that merely starts with the words", () => {
+    const cap =
+      "⏺ API errors are retried by the client with backoff.\n───\n❯\n───";
+    expect(hasApiError(cap)).toBe(false);
+  });
+
+  it("false for tool output or a pasted prompt", () => {
+    const tool =
+      "⏺ Bash(curl localhost:3000/health)\n  ⎿  API Error: upstream unavailable\n───\n❯\n───";
+    const pasted = "❯ fix this:\n  API Error: 401 Unauthorized\n───\n❯\n───";
+    expect(hasApiError(tool)).toBe(false);
+    expect(hasApiError(pasted)).toBe(false);
+  });
+
+  it("false once a short retry replies within the window", () => {
+    const cap =
+      "⏺ API Error: Request timed out.\n\n✻ Worked for 12s\n\n❯ continue\n\n⏺ Done.\n\n───\n❯ \n───\n  ? for shortcuts";
+    expect(hasApiError(cap)).toBe(false);
+  });
+
+  it("false once a later turn pushes it out of the bottom window", () => {
+    const later = "\n❯ retry\n  1\n  2\n  3\n  4\n  5\n───\n❯\n───";
+    expect(hasApiError(`${CAP_API_ERROR}${later}`)).toBe(false);
+  });
+
+  it("false for an ordinary conversation screen", () => {
+    const cap = "⏺ 完了しました。\n╭───╮\n│ ❯ │\n╰───╯\n  ? for shortcuts";
+    expect(hasApiError(cap)).toBe(false);
   });
 });
 

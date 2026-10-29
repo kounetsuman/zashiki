@@ -22,6 +22,9 @@ const FRESH_ICON = "start";
 // A Claude Code menu/overlay (/usage, /status, /login, …) being open replaces the state glyph with this gear.
 const MENU_ICON = "settings";
 
+// An idle session whose latest turn ended on an API error shows this instead of the completion check.
+const API_ERROR_ICON = "cloud_off";
+
 // Activity-chip glyphs. These sit beside the state glyph as chips, not overlaid on it.
 export const BG_AGENT_GLYPH = "robot_2";
 const SHELL_GLYPH = "terminal";
@@ -30,7 +33,7 @@ const VITEST_GLYPH = "science";
 // Reaching the usage limit overlays this top-right badge on the state glyph. Orthogonal to the state.
 const LIMIT_BADGE = "error";
 
-/** Lifecycle-state glyph; a Claude Code menu overrides it with a gear, background activity lives in ActivityChips, only the limit badge stays overlaid. */
+/** Lifecycle-state glyph; a Claude Code menu overrides it with a gear and an API error overrides an idle one, background activity lives in ActivityChips, only the limit badge stays overlaid. */
 export function StateIcon({
   session,
   fresh,
@@ -40,13 +43,23 @@ export function StateIcon({
 }) {
   const { t } = useTranslation();
   const menuOpen = session.menuOpen === true;
+  const apiError =
+    !menuOpen && session.apiError === true && session.state === "idle";
   const exited = session.state === "exited";
-  const stateClass = menuOpen ? "menu" : fresh ? "fresh" : session.state;
+  const stateClass = menuOpen
+    ? "menu"
+    : apiError
+      ? "api_error"
+      : fresh
+        ? "fresh"
+        : session.state;
   const glyph = menuOpen
     ? MENU_ICON
-    : fresh
-      ? FRESH_ICON
-      : STATE_ICONS[session.state];
+    : apiError
+      ? API_ERROR_ICON
+      : fresh
+        ? FRESH_ICON
+        : STATE_ICONS[session.state];
   const showLimited = session.limited === true;
   return (
     <span
@@ -58,9 +71,11 @@ export function StateIcon({
         title={
           menuOpen
             ? t("sessionList.menuOpen")
-            : exited
-              ? t("sessionList.exited")
-              : undefined
+            : apiError
+              ? t("sessionList.apiError")
+              : exited
+                ? t("sessionList.exited")
+                : undefined
         }
       >
         {glyph}

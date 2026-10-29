@@ -180,6 +180,12 @@ export const cockpitTerminalInfoSchema = z.object({
    */
   menuOpen: z.boolean().optional(),
   /**
+   * Whether the latest turn ended on an API error (`API Error: …` near the bottom of the captured
+   * screen; hasApiError in shared/session-state.ts). Orthogonal to the main state: it only overrides an
+   * idle state glyph. optional for old-server compatibility (not sent is treated as false).
+   */
+  apiError: z.boolean().optional(),
+  /**
    * Model id answering in this terminal (e.g. `claude-opus-5`), for the status footer. The server reads
    * it from Claude Code's statusLine, falling back to the newest assistant reply in the transcript.
    * Absent for old servers, and while neither source knows it. Kept out of `usage`, which a terminal
