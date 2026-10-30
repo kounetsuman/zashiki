@@ -594,9 +594,12 @@ describe("Viewer", () => {
         <Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
       );
       const editor = container.querySelector(".cm-editor");
-      fireEvent.click(
-        screen.getByRole("button", { name: "折り返して全体を表示" }),
-      );
+      const button = screen.getByRole("button", {
+        name: "折り返して全体を表示",
+      });
+      button.focus();
+      expect(document.activeElement).toBe(button);
+      fireEvent.click(button);
       expect(container.querySelector(".cm-editor")).toBe(editor);
       expect(document.activeElement).toBe(
         container.querySelector(".cm-content"),
