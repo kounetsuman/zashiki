@@ -557,4 +557,109 @@ describe("Viewer", () => {
       expect(container.querySelector("svg[data-in-app]")).toBeNull();
     });
   });
+
+  describe("line wrap toggle", () => {
+    afterEach(() => localStorage.clear());
+
+    it("explains itself in a tooltip and starts unwrapped", () => {
+      const { container } = render(
+        <Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const button = screen.getByRole("button", {
+        name: "折り返して全体を表示",
+      });
+      expect(button.getAttribute("title")).toBe("折り返して全体を表示");
+      expect(button.getAttribute("aria-pressed")).toBe("false");
+      expect(container.querySelector(".cm-lineWrapping")).toBeNull();
+    });
+
+    it("wraps the code and unwraps it again", () => {
+      const { container } = render(
+        <Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const button = screen.getByRole("button", {
+        name: "折り返して全体を表示",
+      });
+      fireEvent.click(button);
+      expect(button.getAttribute("aria-pressed")).toBe("true");
+      expect(
+        container.querySelector(".cm-content.cm-lineWrapping"),
+      ).not.toBeNull();
+      fireEvent.click(button);
+      expect(container.querySelector(".cm-lineWrapping")).toBeNull();
+    });
+
+    it("keeps the same editor and hands focus back to it", () => {
+      const { container } = render(
+        <Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const editor = container.querySelector(".cm-editor");
+      const button = screen.getByRole("button", {
+        name: "折り返して全体を表示",
+      });
+      button.focus();
+      expect(document.activeElement).toBe(button);
+      fireEvent.click(button);
+      expect(container.querySelector(".cm-editor")).toBe(editor);
+      expect(document.activeElement).toBe(
+        container.querySelector(".cm-content"),
+      );
+    });
+
+    it("is absent until the file has loaded", () => {
+      render(
+        <Viewer
+          buffer={{ ...base, status: "loading", content: null }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      expect(
+        screen.queryByRole("button", { name: "折り返して全体を表示" }),
+      ).toBeNull();
+    });
+
+    it("keeps the choice for the next file opened", () => {
+      const first = render(
+        <Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      fireEvent.click(
+        screen.getByRole("button", { name: "折り返して全体を表示" }),
+      );
+      first.unmount();
+      const { container } = render(
+        <Viewer
+          buffer={{ ...base, relPath: "src/other.ts" }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      expect(
+        container.querySelector(".cm-content.cm-lineWrapping"),
+      ).not.toBeNull();
+    });
+
+    it("is absent while a preview or media is shown", () => {
+      const { rerender } = render(
+        <Viewer
+          buffer={{ ...base, relPath: "README.md", preview: true }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      expect(
+        screen.queryByRole("button", { name: "折り返して全体を表示" }),
+      ).toBeNull();
+      rerender(
+        <Viewer
+          buffer={{ ...base, media: { kind: "image", url: "blob:img-1" } }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      expect(
+        screen.queryByRole("button", { name: "折り返して全体を表示" }),
+      ).toBeNull();
+    });
+  });
 });

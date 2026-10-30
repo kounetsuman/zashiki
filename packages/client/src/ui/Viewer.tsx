@@ -13,6 +13,10 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
+import {
+  loadViewerLineWrap,
+  saveViewerLineWrap,
+} from "../lib/viewer-line-wrap.js";
 import { isDelimitedText } from "../viewer/delimited.js";
 import { renderMarkdown } from "../viewer/markdown.js";
 import { renderMermaidBlocks } from "../viewer/mermaid.js";
@@ -53,6 +57,18 @@ function clickedRemoteImageSrc(event: MouseEvent): string | null {
   );
 }
 
+function browserStorage(): Storage | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function lineWrapExtension(lineWrap: boolean) {
+  return lineWrap ? EditorView.lineWrapping : [];
+}
+
 function alternateView(relPath: string): AlternateView | null {
   if (isMarkdown(relPath)) return "markdownPreview";
   if (isHtml(relPath)) return "htmlPreview";
@@ -86,12 +102,18 @@ export interface ViewerProps {
  */
 function CodeMirrorHost({
   buffer,
+  lineWrap,
   revealLine,
   revealNonce,
   onRevealed,
-}: Pick<ViewerProps, "buffer" | "revealLine" | "revealNonce" | "onRevealed">) {
+}: Pick<ViewerProps, "buffer" | "revealLine" | "revealNonce" | "onRevealed"> & {
+  lineWrap: boolean;
+}) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const lineWrapCompartment = useRef(new Compartment()).current;
+  const lineWrapRef = useRef(lineWrap);
+  lineWrapRef.current = lineWrap;
   const revealedRef = useRef<number | undefined>(undefined);
   // Read the initial doc via a ref so the closure is fixed at view creation
   // time (avoid recreating the view on content changes; the content-sync effect
@@ -107,7 +129,10 @@ function CodeMirrorHost({
       parent: host,
       state: EditorState.create({
         doc: contentRef.current ?? "",
-        extensions: viewerEditorExtensions(language),
+        extensions: [
+          viewerEditorExtensions(language),
+          lineWrapCompartment.of(lineWrapExtension(lineWrapRef.current)),
+        ],
       }),
     });
     viewRef.current = view;
@@ -128,7 +153,13 @@ function CodeMirrorHost({
     };
     // Recreate only per relPath (do not recreate on content changes, so scroll
     // position is preserved).
-  }, [buffer.relPath]);
+  }, [buffer.relPath, lineWrapCompartment]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: lineWrapCompartment.reconfigure(lineWrapExtension(lineWrap)),
+    });
+  }, [lineWrap, lineWrapCompartment]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -205,6 +236,11 @@ export function Viewer({
   const previewRef = useRef<HTMLDivElement | null>(null);
   const alternate = alternateView(buffer.relPath);
   const showAlternate = alternate !== null && buffer.preview;
+  const showsCode =
+    buffer.status === "ready" && buffer.media === undefined && !showAlternate;
+  const [lineWrap, setLineWrap] = useState(() =>
+    loadViewerLineWrap(browserStorage()),
+  );
   const fileKey = `${buffer.repoPath}\0${buffer.relPath}`;
   const [loadedRemoteImages, setLoadedRemoteImages] =
     useState(NO_REMOTE_IMAGES);
@@ -260,6 +296,14 @@ export function Viewer({
       ) ?? null,
     [],
   );
+
+  const toggleLineWrap = useCallback(() => {
+    setLineWrap((prev) => {
+      saveViewerLineWrap(browserStorage(), !prev);
+      return !prev;
+    });
+    focusTarget()?.focus({ preventScroll: true });
+  }, [focusTarget]);
 
   // Focus the content (not the section) on open, so the find keymap (Cmd+F) reaches the editor
   // and the keys that scroll reach whichever element owns the scroll. A first (uncached) open
@@ -330,6 +374,7 @@ export function Viewer({
     return (
       <CodeMirrorHost
         buffer={buffer}
+        lineWrap={lineWrap}
         revealLine={revealLine}
         revealNonce={revealNonce}
         onRevealed={onRevealed}
@@ -361,6 +406,20 @@ export function Viewer({
         <span className="viewer-path" title={buffer.relPath}>
           {buffer.relPath}
         </span>
+        {showsCode && (
+          <button
+            type="button"
+            className={`viewer-wrap${lineWrap ? " is-active" : ""}`}
+            aria-label={t("viewer.lineWrap")}
+            aria-pressed={lineWrap}
+            title={t("viewer.lineWrap")}
+            onClick={toggleLineWrap}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true">
+              wrap_text
+            </span>
+          </button>
+        )}
         {alternate !== null && (
           <button
             type="button"

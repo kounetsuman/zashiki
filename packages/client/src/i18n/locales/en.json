@@ -197,6 +197,7 @@
   "viewer": {
     "viewerLabel": "Viewer {{path}}",
     "copyPathLabel": "Copy path",
+    "lineWrap": "Wrap long lines to show them in full",
     "code": "Code",
     "preview": "Preview",
     "loadRemoteImage": "Load image from {{host}}",

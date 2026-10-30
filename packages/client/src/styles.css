@@ -1024,7 +1024,8 @@ textarea {
   text-overflow: ellipsis;
 }
 
-.viewer-copy {
+.viewer-copy,
+.viewer-wrap {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -1054,11 +1055,13 @@ textarea {
 }
 
 .viewer-copy:hover,
+.viewer-wrap:hover,
 .viewer-toggle:hover {
   background: #2a2a2a;
   color: #fff;
 }
 
+.viewer-wrap.is-active,
 .viewer-toggle.is-active {
   border-color: #4a6da7;
   color: #fff;
@@ -3409,6 +3412,7 @@ textarea {
 .session-org-new .material-symbols-outlined,
 .tab-close .material-symbols-outlined,
 .viewer-copy .material-symbols-outlined,
+.viewer-wrap .material-symbols-outlined,
 .diff-copy .material-symbols-outlined,
 .error-dialog-close .material-symbols-outlined {
   font-size: 16px;
