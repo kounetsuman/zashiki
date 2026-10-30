@@ -4,7 +4,11 @@ type StoragePart = Pick<Storage, "getItem" | "setItem">;
 export const VIEWER_LINE_WRAP_KEY = "zk.viewer.lineWrap";
 
 export function loadViewerLineWrap(storage: StoragePart | null): boolean {
-  return storage?.getItem(VIEWER_LINE_WRAP_KEY) === "1";
+  try {
+    return storage?.getItem(VIEWER_LINE_WRAP_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 export function saveViewerLineWrap(

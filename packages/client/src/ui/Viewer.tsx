@@ -58,7 +58,11 @@ function clickedRemoteImageSrc(event: MouseEvent): string | null {
 }
 
 function browserStorage(): Storage | null {
-  return typeof localStorage === "undefined" ? null : localStorage;
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function lineWrapExtension(lineWrap: boolean) {
@@ -232,16 +236,11 @@ export function Viewer({
   const previewRef = useRef<HTMLDivElement | null>(null);
   const alternate = alternateView(buffer.relPath);
   const showAlternate = alternate !== null && buffer.preview;
-  const showsCode = buffer.media === undefined && !showAlternate;
+  const showsCode =
+    buffer.status === "ready" && buffer.media === undefined && !showAlternate;
   const [lineWrap, setLineWrap] = useState(() =>
     loadViewerLineWrap(browserStorage()),
   );
-  const toggleLineWrap = useCallback(() => {
-    setLineWrap((prev) => {
-      saveViewerLineWrap(browserStorage(), !prev);
-      return !prev;
-    });
-  }, []);
   const fileKey = `${buffer.repoPath}\0${buffer.relPath}`;
   const [loadedRemoteImages, setLoadedRemoteImages] =
     useState(NO_REMOTE_IMAGES);
@@ -297,6 +296,14 @@ export function Viewer({
       ) ?? null,
     [],
   );
+
+  const toggleLineWrap = useCallback(() => {
+    setLineWrap((prev) => {
+      saveViewerLineWrap(browserStorage(), !prev);
+      return !prev;
+    });
+    focusTarget()?.focus({ preventScroll: true });
+  }, [focusTarget]);
 
   // Focus the content (not the section) on open, so the find keymap (Cmd+F) reaches the editor
   // and the keys that scroll reach whichever element owns the scroll. A first (uncached) open

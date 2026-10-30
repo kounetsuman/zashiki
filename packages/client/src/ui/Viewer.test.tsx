@@ -589,6 +589,33 @@ describe("Viewer", () => {
       expect(container.querySelector(".cm-lineWrapping")).toBeNull();
     });
 
+    it("keeps the same editor and hands focus back to it", () => {
+      const { container } = render(
+        <Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const editor = container.querySelector(".cm-editor");
+      fireEvent.click(
+        screen.getByRole("button", { name: "折り返して全体を表示" }),
+      );
+      expect(container.querySelector(".cm-editor")).toBe(editor);
+      expect(document.activeElement).toBe(
+        container.querySelector(".cm-content"),
+      );
+    });
+
+    it("is absent until the file has loaded", () => {
+      render(
+        <Viewer
+          buffer={{ ...base, status: "loading", content: null }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      expect(
+        screen.queryByRole("button", { name: "折り返して全体を表示" }),
+      ).toBeNull();
+    });
+
     it("keeps the choice for the next file opened", () => {
       const first = render(
         <Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />,

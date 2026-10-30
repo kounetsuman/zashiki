@@ -25,6 +25,16 @@ describe("viewer line-wrap preference", () => {
     expect(() => saveViewerLineWrap(null, true)).not.toThrow();
   });
 
+  it("stays unwrapped when the read fails", () => {
+    const s = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => undefined,
+    };
+    expect(loadViewerLineWrap(s)).toBe(false);
+  });
+
   it("swallows a failing write", () => {
     const s = {
       getItem: () => null,
