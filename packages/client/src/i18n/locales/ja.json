@@ -197,6 +197,7 @@
   "viewer": {
     "viewerLabel": "ビューア {{path}}",
     "copyPathLabel": "パスをコピー",
+    "lineWrap": "折り返して全体を表示",
     "code": "コード",
     "preview": "プレビュー",
     "loadRemoteImage": "{{host}} から画像を読み込む",
