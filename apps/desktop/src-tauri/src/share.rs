@@ -59,7 +59,10 @@ pub fn show(webview: *mut c_void, text: &str, anchor: Anchor) {
         NSRectEdge::MaxY
     };
     picker.showRelativeToRect_ofView_preferredEdge(rect, view, above);
-    PICKER.with(|slot| *slot.borrow_mut() = Some(picker));
+    let previous = PICKER.with(|slot| slot.borrow_mut().replace(picker));
+    if let Some(previous) = previous {
+        previous.close();
+    }
 }
 
 #[cfg(test)]
