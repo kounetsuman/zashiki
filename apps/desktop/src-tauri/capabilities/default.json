@@ -10,6 +10,7 @@
     "allow-pick-and-read-file",
     "allow-report-memo-status",
     "allow-report-memo-saved",
-    "allow-set-dashboard-origin"
+    "allow-set-dashboard-origin",
+    "allow-share-text"
   ]
 }

@@ -33,10 +33,19 @@ serde = { version = "1", features = ["derive"] }
 # グラフ全体で union されるので、ビルド時間はこの指定では変わらない）。
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6"
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWorkspace"] }
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+  "std",
+  "NSResponder",
+  "NSSharingService",
+  "NSView",
+  "NSWorkspace",
+] }
 objc2-foundation = { version = "0.3", default-features = false, features = [
   "std",
   "block2",
+  "NSArray",
+  "NSGeometry",
   "NSNotification",
   "NSOperation",
   "NSString",

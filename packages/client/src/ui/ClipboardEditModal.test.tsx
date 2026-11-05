@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import { EditorView } from "@codemirror/view";
 import {
   cleanup,
   createEvent,
@@ -10,6 +12,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ClipboardEditModal } from "./ClipboardEditModal.js";
 
+const share = vi.hoisted(() => ({
+  canShareText: vi.fn(() => true),
+  shareText: vi.fn(async () => undefined),
+}));
+vi.mock("../lib/share-text.js", () => share);
+
 // The editor is now CodeMirror; text/indent/search behavior is the pure specs
 // (clipboard-edit-indent.test.ts, clipboard-edit-modal.test.ts, editor-search.test.ts). This suite
 // covers the React shell only.
@@ -19,6 +27,8 @@ const writeText = vi.fn<(text: string) => Promise<void>>();
 beforeEach(() => {
   localStorage.clear();
   writeText.mockReset();
+  share.canShareText.mockReturnValue(true);
+  share.shareText.mockClear();
   writeText.mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", {
     value: { writeText },
@@ -115,5 +125,28 @@ describe("ClipboardEditModal", () => {
     expect(
       (screen.getByRole("combobox", { name: "幅" }) as HTMLSelectElement).value,
     ).toBe("4");
+  });
+
+  it("shares the edited text, anchored to the Share button", () => {
+    const { container } = renderModal({ text: "echo \\\n  hi" });
+    const view = EditorView.findFromDOM(
+      container.querySelector(".cm-editor") as HTMLElement,
+    );
+    if (view === null) throw new Error("editor not mounted");
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "echo hi" },
+    });
+    const button = screen.getByRole("button", { name: "共有" });
+    fireEvent.click(button);
+    expect(share.shareText).toHaveBeenCalledWith(
+      "echo hi",
+      button.getBoundingClientRect(),
+    );
+  });
+
+  it("hides the Share button where the share sheet is unavailable", () => {
+    share.canShareText.mockReturnValue(false);
+    renderModal();
+    expect(screen.queryByRole("button", { name: "共有" })).toBeNull();
   });
 });

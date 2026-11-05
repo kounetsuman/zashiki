@@ -8,6 +8,8 @@ mod menu;
 mod navigation;
 mod pages;
 mod quit_log;
+#[cfg(target_os = "macos")]
+mod share;
 mod sidecar;
 #[cfg(target_os = "macos")]
 mod wake;
@@ -51,6 +53,23 @@ fn set_dashboard_origin(dashboard: tauri::State<'_, DashboardOrigin>, url: Strin
 
 #[derive(Default)]
 struct DashboardOrigin(Mutex<Option<String>>);
+
+/// Opens the macOS share sheet for `text`, pointing at `anchor` (the Share button's rect).
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn share_text(webview: tauri::Webview, text: String, anchor: share::Anchor) -> Result<(), String> {
+    webview
+        .with_webview(move |platform| share::show(platform.inner(), &text, anchor))
+        .map_err(|e| e.to_string())
+}
+
+/// The share sheet is macOS-only; elsewhere the call is rejected.
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn share_text(text: String) -> Result<(), String> {
+    let _ = text;
+    Err("unsupported".to_string())
+}
 
 /// A file chosen via the native open dialog, already read into memory.
 #[derive(serde::Serialize)]
@@ -186,7 +205,8 @@ fn main() {
             pick_and_read_file,
             report_memo_status,
             report_memo_saved,
-            set_dashboard_origin
+            set_dashboard_origin,
+            share_text
         ])
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

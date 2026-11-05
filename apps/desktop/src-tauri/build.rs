@@ -14,6 +14,7 @@ fn main() {
             "report_memo_status",
             "report_memo_saved",
             "set_dashboard_origin",
+            "share_text",
         ]),
     ))
     .expect("failed to run tauri-build");

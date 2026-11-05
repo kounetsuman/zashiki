@@ -500,18 +500,32 @@ describe("TerminalView", () => {
     expect(document.querySelector(".clip-edit-cm .cm-editor")).toBeTruthy();
   });
 
-  it("Cmd+C on a single-line selection does not open the modal", () => {
+  it("Cmd+C on a single-line selection opens the modal too", () => {
     const f = fakeSession();
     render(<TerminalView session={f.session} />);
     const term = MockTerminal.instances[0];
     if (!term) throw new Error("terminal not created");
     term.selection = "claude --flag";
+    let handled = true;
+    act(() => {
+      handled = term.emitKey({ key: "c", metaKey: true });
+    });
+    expect(handled).toBe(false);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("Cmd+C with nothing selected does not open the modal", () => {
+    const f = fakeSession();
+    render(<TerminalView session={f.session} />);
+    const term = MockTerminal.instances[0];
+    if (!term) throw new Error("terminal not created");
+    term.selection = "";
     let handled = false;
     act(() => {
       handled = term.emitKey({ key: "c", metaKey: true });
     });
     expect(handled).toBe(true);
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("Ctrl+C is never intercepted (stays SIGINT to the pty)", () => {
