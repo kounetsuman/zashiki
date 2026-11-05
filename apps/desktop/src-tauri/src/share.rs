@@ -5,9 +5,9 @@ use std::ffi::c_void;
 
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
-use objc2::{AnyThread, MainThreadMarker};
+use objc2::{sel, AnyThread, MainThreadMarker};
 use objc2_app_kit::{NSSharingServicePicker, NSView};
-use objc2_foundation::{NSArray, NSPoint, NSRect, NSRectEdge, NSSize, NSString};
+use objc2_foundation::{NSArray, NSObjectProtocol, NSPoint, NSRect, NSRectEdge, NSSize, NSString};
 
 /// Where the share sheet points: the button's rect in WebView CSS pixels (top-left origin).
 #[derive(Clone, Copy, serde::Deserialize)]
@@ -58,10 +58,17 @@ pub fn show(webview: *mut c_void, text: &str, anchor: Anchor) {
     } else {
         NSRectEdge::MaxY
     };
+    if let Some(previous) = PICKER.with(|slot| slot.borrow_mut().take()) {
+        close(&previous);
+    }
     picker.showRelativeToRect_ofView_preferredEdge(rect, view, above);
-    let previous = PICKER.with(|slot| slot.borrow_mut().replace(picker));
-    if let Some(previous) = previous {
-        previous.close();
+    PICKER.with(|slot| *slot.borrow_mut() = Some(picker));
+}
+
+/// `close` only exists from macOS 13, and the app still launches on older systems.
+fn close(picker: &NSSharingServicePicker) {
+    if picker.respondsToSelector(sel!(close)) {
+        picker.close();
     }
 }
 
