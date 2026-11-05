@@ -178,12 +178,14 @@ export function ClipboardEditModal({
             <button
               type="button"
               className="clip-edit-share"
-              onClick={(e) =>
+              onClick={(e) => {
+                const view = viewRef.current;
+                if (view === null) return;
                 void shareText(
-                  viewRef.current?.state.doc.toString() ?? initialDoc,
+                  view.state.doc.toString(),
                   e.currentTarget.getBoundingClientRect(),
-                )
-              }
+                );
+              }}
             >
               {t("clipboardEdit.share")}
             </button>

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import { EditorView } from "@codemirror/view";
 import {
   cleanup,
   createEvent,
@@ -126,7 +128,14 @@ describe("ClipboardEditModal", () => {
   });
 
   it("shares the edited text, anchored to the Share button", () => {
-    renderModal({ text: "echo hi   " });
+    const { container } = renderModal({ text: "echo \\\n  hi" });
+    const view = EditorView.findFromDOM(
+      container.querySelector(".cm-editor") as HTMLElement,
+    );
+    if (view === null) throw new Error("editor not mounted");
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: "echo hi" },
+    });
     const button = screen.getByRole("button", { name: "共有" });
     fireEvent.click(button);
     expect(share.shareText).toHaveBeenCalledWith(
