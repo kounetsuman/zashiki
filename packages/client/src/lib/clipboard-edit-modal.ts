@@ -14,16 +14,12 @@ export function saveClipboardEditEnabled(
   storage?.setItem(CLIPBOARD_EDIT_MODAL_KEY, enabled ? "1" : "0");
 }
 
-/**
- * A Cmd+C copy opens the modal only when enabled and the selection spans multiple lines. xterm's
- * getSelection() already joins soft-wrapped rows, so a newline here is a hard break worth editing
- * out (e.g. a one-liner that the source hard-wrapped at the terminal width).
- */
+/** A Cmd+C copy opens the modal only when enabled and something is selected. */
 export function shouldOpenClipboardEditModal(
   enabled: boolean,
   selection: string,
 ): boolean {
-  return enabled && selection.includes("\n");
+  return enabled && selection !== "";
 }
 
 /**

@@ -67,8 +67,14 @@ describe("handleTerminalKey", () => {
     expect(d.openClipboardEdit).toHaveBeenCalledWith("line1\nline2");
   });
 
-  it("passes Cmd+C through for a single-line selection", () => {
+  it("opens the clipboard-edit modal for a single-line selection too", () => {
     const d = deps({ getSelection: () => "oneline" });
+    expect(handleTerminalKey(key({ key: "c", metaKey: true }), d)).toBe(false);
+    expect(d.openClipboardEdit).toHaveBeenCalledWith("oneline");
+  });
+
+  it("passes Cmd+C through when nothing is selected", () => {
+    const d = deps({ getSelection: () => "" });
     expect(handleTerminalKey(key({ key: "c", metaKey: true }), d)).toBe(true);
     expect(d.openClipboardEdit).not.toHaveBeenCalled();
   });

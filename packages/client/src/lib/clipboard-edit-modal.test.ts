@@ -51,9 +51,9 @@ describe("saveClipboardEditEnabled", () => {
 });
 
 describe("shouldOpenClipboardEditModal", () => {
-  it("opens only when enabled and the selection has a newline", () => {
+  it("opens only when enabled and something is selected", () => {
     expect(shouldOpenClipboardEditModal(true, "a\nb")).toBe(true);
-    expect(shouldOpenClipboardEditModal(true, "single line")).toBe(false);
+    expect(shouldOpenClipboardEditModal(true, "single line")).toBe(true);
     expect(shouldOpenClipboardEditModal(true, "")).toBe(false);
     expect(shouldOpenClipboardEditModal(false, "a\nb")).toBe(false);
   });
