@@ -1,6 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-/** Whether the macOS share sheet is reachable, which takes the Tauri shell. */
 export function canShareText(): boolean {
   return isTauri();
 }

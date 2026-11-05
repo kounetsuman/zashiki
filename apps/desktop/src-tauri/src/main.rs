@@ -63,7 +63,7 @@ fn share_text(webview: tauri::Webview, text: String, anchor: share::Anchor) -> R
         .map_err(|e| e.to_string())
 }
 
-/// The share sheet is macOS-only; the UI shows no Share button elsewhere.
+/// The share sheet is macOS-only; elsewhere the call is rejected.
 #[cfg(not(target_os = "macos"))]
 #[tauri::command]
 fn share_text(text: String) -> Result<(), String> {
