@@ -55,6 +55,7 @@ describe("shouldOpenClipboardEditModal", () => {
     expect(shouldOpenClipboardEditModal(true, "a\nb")).toBe(true);
     expect(shouldOpenClipboardEditModal(true, "single line")).toBe(true);
     expect(shouldOpenClipboardEditModal(true, "")).toBe(false);
+    expect(shouldOpenClipboardEditModal(true, " \n\t")).toBe(false);
     expect(shouldOpenClipboardEditModal(false, "a\nb")).toBe(false);
   });
 });

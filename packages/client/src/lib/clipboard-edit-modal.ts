@@ -14,12 +14,11 @@ export function saveClipboardEditEnabled(
   storage?.setItem(CLIPBOARD_EDIT_MODAL_KEY, enabled ? "1" : "0");
 }
 
-/** A Cmd+C copy opens the modal only when enabled and something is selected. */
 export function shouldOpenClipboardEditModal(
   enabled: boolean,
   selection: string,
 ): boolean {
-  return enabled && selection !== "";
+  return enabled && selection.trim() !== "";
 }
 
 /**
