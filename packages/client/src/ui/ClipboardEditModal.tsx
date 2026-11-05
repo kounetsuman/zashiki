@@ -2,7 +2,7 @@ import { EditorState } from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { basicSetup } from "codemirror";
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -11,6 +11,7 @@ import {
   MIN_SPACE_COUNT,
 } from "../lib/clipboard-edit-indent.js";
 import { trimLineEndWhitespace } from "../lib/clipboard-edit-modal.js";
+import { canShareText, shareText } from "../lib/share-text.js";
 import { editorIndent } from "./editor-indent.js";
 import { editorSearch } from "./editor-search-panel.js";
 import { useClipboardIndentSetting } from "./useClipboardIndentSetting.js";
@@ -39,9 +40,11 @@ export interface ClipboardEditModalProps {
 function ClipboardCodeMirror({
   initialDoc,
   setting,
+  viewRef,
 }: {
   initialDoc: string;
   setting: IndentSetting;
+  viewRef: RefObject<EditorView | null>;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const settingRef = useRef(setting);
@@ -66,17 +69,21 @@ function ClipboardCodeMirror({
         ],
       }),
     });
+    viewRef.current = view;
     view.focus();
-    return () => view.destroy();
-  }, [initialDoc]);
+    return () => {
+      viewRef.current = null;
+      view.destroy();
+    };
+  }, [initialDoc, viewRef]);
 
   return <div className="clip-edit-cm" ref={hostRef} />;
 }
 
 /**
  * A scratchpad for the just-copied selection so a hard-wrapped one-liner can be rejoined by hand and
- * re-copied manually before pasting. The dialog never writes to the clipboard itself: the button,
- * Escape, and backdrop all dismiss without touching it.
+ * re-copied manually before pasting, or handed to the macOS share sheet. The dialog never writes to
+ * the clipboard itself: the close button, Escape, and backdrop all dismiss without touching it.
  */
 export function ClipboardEditModal({
   text,
@@ -87,6 +94,7 @@ export function ClipboardEditModal({
   const { t } = useTranslation();
   const { setting, setSetting } = useClipboardIndentSetting();
   const [initialDoc] = useState(() => trimLineEndWhitespace(text));
+  const viewRef = useRef<EditorView | null>(null);
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: overlay only captures outside clicks (Escape is handled by the dialog onKeyDown)
@@ -108,7 +116,11 @@ export function ClipboardEditModal({
         <h2 className="clip-edit-title">{t("clipboardEdit.title")}</h2>
         <p className="clip-edit-desc">{t("clipboardEdit.description")}</p>
         <div className="clip-edit-editor">
-          <ClipboardCodeMirror initialDoc={initialDoc} setting={setting} />
+          <ClipboardCodeMirror
+            initialDoc={initialDoc}
+            setting={setting}
+            viewRef={viewRef}
+          />
         </div>
         <div className="clip-edit-indent">
           <span className="clip-edit-indent-label">
@@ -162,6 +174,20 @@ export function ClipboardEditModal({
           <span>{t("clipboardEdit.neverShow")}</span>
         </label>
         <div className="clip-edit-actions">
+          {canShareText() && (
+            <button
+              type="button"
+              className="clip-edit-share"
+              onClick={(e) =>
+                void shareText(
+                  viewRef.current?.state.doc.toString() ?? initialDoc,
+                  e.currentTarget.getBoundingClientRect(),
+                )
+              }
+            >
+              {t("clipboardEdit.share")}
+            </button>
+          )}
           <button type="button" className="clip-edit-close" onClick={onClose}>
             {t("clipboardEdit.close")}
           </button>

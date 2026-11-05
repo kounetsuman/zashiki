@@ -102,8 +102,10 @@
 .clip-edit-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
+.clip-edit-share,
 .clip-edit-close {
   padding: 5px 16px;
   background: #2a2a2a;
@@ -115,6 +117,7 @@
   cursor: pointer;
 }
 
+.clip-edit-share:hover,
 .clip-edit-close:hover {
   border-color: #4a7;
 }
