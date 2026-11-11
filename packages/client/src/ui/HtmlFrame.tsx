@@ -1,10 +1,11 @@
 import { useEffect, useRef } from "react";
 
 import {
-  HTML_FRAME_PAGE,
   HTML_FRAME_RENDER,
   type HtmlFrameRenderMessage,
+  htmlFrameUrl,
 } from "../lib/html-frame.js";
+import { serverBase } from "../lib/server-base.js";
 
 export interface HtmlFrameProps {
   html: string;
@@ -30,7 +31,7 @@ export function HtmlFrame({ html, title, className }: HtmlFrameProps) {
       frame.contentWindow?.postMessage(message, "*");
     };
     frame.addEventListener("load", handOver, { once: true });
-    frame.src = HTML_FRAME_PAGE;
+    frame.src = htmlFrameUrl(serverBase());
     return () => frame.removeEventListener("load", handOver);
   }, [html]);
 

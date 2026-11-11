@@ -23,22 +23,13 @@ object-src 'none'; \
 base-uri 'none'; \
 frame-ancestors 'self'";
 
-/// The page that shows repo and dashboard HTML with that HTML's own scripts running.
-pub const HTML_FRAME_PATH: &str = "/html-frame.html";
-
-/// Leaves the shown HTML free to load what it needs, but keeps it in an opaque origin even when
-/// the page is opened outside the app's sandboxed frame, and lets only the app frame it.
-pub const HTML_FRAME_CSP: &str = "sandbox allow-scripts; frame-ancestors 'self'";
-
 pub async fn with_page_headers(request: Request, next: Next) -> Response {
-    let csp = if request.uri().path() == HTML_FRAME_PATH {
-        HTML_FRAME_CSP
-    } else {
-        PAGE_CSP
-    };
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
-    headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static(csp));
+    headers.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(PAGE_CSP),
+    );
     headers.insert(header::REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
     response
 }

@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HTML_FRAME_PAGE } from "../lib/html-frame.js";
+import { htmlFrameUrl } from "../lib/html-frame.js";
 import { DashboardOverlay } from "./DashboardOverlay.js";
 
 const noop = () => undefined;
@@ -32,7 +32,9 @@ describe("DashboardOverlay", () => {
       />,
     );
     const frame = container.querySelector("iframe");
-    expect(frame?.getAttribute("src")).toBe(HTML_FRAME_PAGE);
+    expect(frame?.getAttribute("src")).toBe(
+      htmlFrameUrl(window.location.origin),
+    );
     expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
   });
 

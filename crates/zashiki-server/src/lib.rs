@@ -18,6 +18,7 @@ pub mod fs;
 pub mod git;
 pub mod hook_event_store;
 pub mod hooks;
+pub mod html_frame;
 pub mod jsonl;
 pub mod launchd;
 pub mod logging;
@@ -221,7 +222,10 @@ pub fn build_router(config: ServerConfig) -> Router {
         ))
         .with_state(state);
 
-    let mut app = Router::new().route("/healthz", get(healthz)).merge(authed);
+    let mut app = Router::new()
+        .route("/healthz", get(healthz))
+        .route("/html-frame.html", get(html_frame::html_frame_page))
+        .merge(authed);
 
     if let Some(dist) = config.client_dist {
         // Serve GET / and extension-bearing assets from the client dist. No token required.
@@ -828,31 +832,33 @@ mod tests {
     }
 
     /// The page that shows repo / dashboard HTML runs that HTML's own scripts, so it must not get
-    /// the cockpit's script policy; it is forced into an opaque origin and framed only by the app.
+    /// the cockpit's script policy. The server serves it itself, so it is there in development too.
     #[tokio::test]
-    async fn the_html_frame_page_carries_its_own_sandboxing_policy() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("html-frame.html"), "<!doctype html>").unwrap();
-        let app = build_router(ServerConfig {
-            client_dist: Some(dir.path().to_path_buf()),
-            ..Default::default()
-        });
-        let (status, picked) = request_full(
-            app,
-            "GET",
-            "/html-frame.html",
-            &[("host", OK_HOST)],
-            &["content-security-policy", "referrer-policy"],
-        )
-        .await;
-        assert_eq!(status, StatusCode::OK);
-        let csp = picked[0].as_deref().unwrap_or_default();
-        assert_eq!(csp, page_policy::HTML_FRAME_CSP);
-        let directives: Vec<&str> = csp.split(';').map(str::trim).collect();
-        assert!(directives.contains(&"sandbox allow-scripts"), "{csp}");
-        assert!(directives.contains(&"frame-ancestors 'self'"), "{csp}");
-        assert!(!csp.contains("script-src"), "{csp}");
-        assert_eq!(picked[1].as_deref(), Some("no-referrer"));
+    async fn serves_the_html_frame_page_with_its_own_sandboxing_policy() {
+        for client_dist in [None, Some(tempfile::tempdir().unwrap())] {
+            let app = build_router(ServerConfig {
+                client_dist: client_dist.as_ref().map(|d| d.path().to_path_buf()),
+                ..Default::default()
+            });
+            let (status, picked) = request_full(
+                app.clone(),
+                "GET",
+                "/html-frame.html",
+                &[("host", "localhost:8790")],
+                &["content-security-policy", "referrer-policy", "content-type"],
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            let csp = picked[0].as_deref().unwrap_or_default();
+            assert_eq!(csp, html_frame::HTML_FRAME_CSP);
+            let directives: Vec<&str> = csp.split(';').map(str::trim).collect();
+            assert!(directives.contains(&"sandbox allow-scripts"), "{csp}");
+            assert!(!csp.contains("script-src"), "{csp}");
+            assert_eq!(picked[1].as_deref(), Some("no-referrer"));
+            assert!(picked[2].as_deref().unwrap_or_default().starts_with("text/html"));
+            let (_, body) = request(app, "/html-frame.html", Some("localhost:8790"), &[]).await;
+            assert_eq!(body, html_frame::HTML_FRAME_PAGE);
+        }
     }
 
     /// A page in an opaque origin (the HTML frame) sends `Origin: null`; it reaches nothing.

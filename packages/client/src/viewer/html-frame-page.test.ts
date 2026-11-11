@@ -3,10 +3,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HTML_FRAME_PAGE, HTML_FRAME_RENDER } from "../lib/html-frame.js";
+import { HTML_FRAME_RENDER } from "../lib/html-frame.js";
 
 const page = readFileSync(
-  join(import.meta.dirname, "../../public", HTML_FRAME_PAGE),
+  join(
+    import.meta.dirname,
+    "../../../../crates/zashiki-server/assets/html-frame.html",
+  ),
   "utf8",
 );
 

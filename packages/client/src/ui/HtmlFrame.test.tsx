@@ -2,7 +2,7 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HTML_FRAME_PAGE, HTML_FRAME_RENDER } from "../lib/html-frame.js";
+import { HTML_FRAME_RENDER, htmlFrameUrl } from "../lib/html-frame.js";
 import { HtmlFrame } from "./HtmlFrame.js";
 
 afterEach(cleanup);
@@ -14,13 +14,16 @@ function framePostMessage(frame: HTMLIFrameElement) {
 }
 
 describe("HtmlFrame", () => {
-  it("loads the host page in an opaque origin instead of inlining the HTML", () => {
+  it("loads the host page, from another origin than the app's, in an opaque origin instead of inlining the HTML", () => {
     const { container } = render(
       <HtmlFrame html="<h1>hi</h1>" title="demo" className="c" />,
     );
     const frame = container.querySelector("iframe");
     expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
-    expect(frame?.getAttribute("src")).toBe(HTML_FRAME_PAGE);
+    expect(frame?.getAttribute("src")).toBe(
+      htmlFrameUrl(window.location.origin),
+    );
+    expect(new URL(frame?.src ?? "").origin).not.toBe(window.location.origin);
     expect(frame?.getAttribute("srcdoc")).toBeNull();
     expect(frame?.title).toBe("demo");
     expect(frame?.className).toBe("c");

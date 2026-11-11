@@ -66,11 +66,13 @@ pub fn opens_in_browser(url: &Url, app_origins: &[String]) -> bool {
 
 /// The origins the window is served from: the page's own origin, and the server's, which differs
 /// in development where the page comes from the Vite dev server but media still streams from the
-/// server.
+/// server. Also the server under its other loopback name, which serves the frame that runs
+/// previewed HTML apart from the app's origin.
 pub fn app_origins(page_url: &str, server_port: u16) -> Vec<String> {
     let mut origins = Vec::new();
     let server = format!("http://127.0.0.1:{server_port}");
-    for url in [page_url, server.as_str()] {
+    let html_frame = format!("http://localhost:{server_port}");
+    for url in [page_url, server.as_str(), html_frame.as_str()] {
         if let Some(origin) = Url::parse(url).ok().as_ref().and_then(web_origin) {
             if !origins.contains(&origin) {
                 origins.push(origin);
@@ -147,11 +149,22 @@ mod tests {
             "https://example.com/",
             "http://127.0.0.1:5173/",
             "http://127.0.0.1:8791/",
-            "http://localhost:8790/",
+            "http://localhost:8791/",
             "https://127.0.0.1:8790/",
             "http://evil.example/http://127.0.0.1:8790/",
         ] {
             assert!(!may_navigate(&url(target), &allowed, false), "{target}");
+        }
+    }
+
+    #[test]
+    fn the_html_frame_page_is_stayed_on_under_the_servers_other_loopback_name() {
+        for page in ["http://127.0.0.1:8790", "http://localhost:5173"] {
+            let allowed = served_from(page);
+            assert!(
+                may_navigate(&url("http://localhost:8790/html-frame.html"), &allowed, false),
+                "{page}"
+            );
         }
     }
 
@@ -301,8 +314,8 @@ mod tests {
 
     #[test]
     fn app_origins_does_not_repeat_the_server_origin() {
-        assert_eq!(served_from("http://127.0.0.1:8790").len(), 1);
-        assert_eq!(served_from("http://localhost:5173").len(), 2);
-        assert_eq!(served_from("not a url").len(), 1);
+        assert_eq!(served_from("http://127.0.0.1:8790").len(), 2);
+        assert_eq!(served_from("http://localhost:5173").len(), 3);
+        assert_eq!(served_from("not a url").len(), 2);
     }
 }
