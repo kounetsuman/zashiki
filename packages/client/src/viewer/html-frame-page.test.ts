@@ -14,8 +14,10 @@ const page = readFileSync(
 );
 
 function startHostPage(): void {
-  const script = /<script>([\s\S]*?)<\/script>/.exec(page)?.[1];
-  if (script === undefined) throw new Error("the host page has no script");
+  const script = new DOMParser()
+    .parseFromString(page, "text/html")
+    .querySelector("script")?.textContent;
+  if (script == null) throw new Error("the host page has no script");
   new Function(script)();
 }
 
