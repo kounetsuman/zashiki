@@ -474,6 +474,7 @@ mod fs_mutation_rest_tests {
         .await;
         assert_eq!(s, StatusCode::OK, "{b}");
         assert!(!repo_dir.join("src-link").is_symlink());
+        assert!(repo_dir.join("src").is_dir());
         assert!(repo_dir.join("src/main.rs").is_file());
     }
 

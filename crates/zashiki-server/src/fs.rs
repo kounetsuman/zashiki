@@ -191,7 +191,31 @@ pub fn rename_within_repo(
 /// Moves an entry to the OS trash after confirming its parent directory resolves inside the repo (the
 /// entry itself is trashed, never a symlink's target). Blocking; callers run it via spawn_blocking.
 pub fn delete_to_trash(repo_path: &str, rel_path: &str) -> Result<(), (StatusCode, String)> {
-    delete_resolved(repo_path, rel_path, |entry| trash::delete(entry))
+    delete_resolved(repo_path, rel_path, move_to_trash)
+}
+
+#[cfg(target_os = "macos")]
+fn move_to_trash(entry: &Path) -> Result<(), trash::Error> {
+    use trash::macos::TrashContextExtMacos as _;
+    let mut ctx = trash::TrashContext::default();
+    ctx.set_delete_method(trash_delete_method(entry.is_symlink()));
+    ctx.delete(entry)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn move_to_trash(entry: &Path) -> Result<(), trash::Error> {
+    trash::delete(entry)
+}
+
+/// Finder asks for Touch ID / a password to trash a symlink, so links go through the file manager;
+/// everything else stays on Finder to keep "Put Back".
+#[cfg(target_os = "macos")]
+fn trash_delete_method(is_symlink: bool) -> trash::macos::DeleteMethod {
+    if is_symlink {
+        trash::macos::DeleteMethod::NsFileManager
+    } else {
+        trash::macos::DeleteMethod::Finder
+    }
 }
 
 /// Resolves `rel_path` with its parent inside the repo, then runs `trash_op` on the entry itself (a
@@ -505,6 +529,14 @@ mod tests {
         assert_eq!(code, StatusCode::BAD_REQUEST);
         let (code, _) = trashed_path(repo, "a\\..\\x").unwrap_err();
         assert_eq!(code, StatusCode::BAD_REQUEST);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn symlinks_are_trashed_with_the_file_manager_and_others_with_finder() {
+        use trash::macos::DeleteMethod;
+        assert!(matches!(trash_delete_method(true), DeleteMethod::NsFileManager));
+        assert!(matches!(trash_delete_method(false), DeleteMethod::Finder));
     }
 
     /// Runs `delete_resolved` with a trash op that records the path it was given.
