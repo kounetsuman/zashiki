@@ -26,6 +26,7 @@ const probe = vi.hoisted(() => ({
   probeMermaid: vi.fn(async () => ({
     kind: "remote" as const,
     hosts: ["img.example"],
+    svg: "<svg data-drawn></svg>",
   })),
 }));
 vi.mock("../viewer/mermaid-probe.js", () => probe);
@@ -499,7 +500,7 @@ describe("Viewer", () => {
     afterEach(() => vi.clearAllMocks());
 
     const DRAWN_REMOTE_DIAGRAM =
-      'iframe.viewer-mermaid-frame[srcdoc*="<svg data-in-app>"]';
+      'iframe.viewer-mermaid-frame[srcdoc*="<svg data-drawn>"]';
 
     it("shows a button naming the host instead of drawing the diagram", async () => {
       const { container } = render(

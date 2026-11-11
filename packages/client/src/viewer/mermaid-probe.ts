@@ -1,6 +1,7 @@
 export type MermaidProbeResult =
   | { kind: "rendered"; svg: string }
-  | { kind: "remote"; hosts: string[] }
+  /** `svg` is the drawing with its remote content left unloaded, or null when none was drawn. */
+  | { kind: "remote"; hosts: string[]; svg: string | null }
   | { kind: "failed" };
 
 export interface MermaidProbeWindow {
@@ -39,7 +40,7 @@ function openProbeFrame(): Promise<MermaidProbeWindow> {
 
 /**
  * Renders a diagram in a page whose content policy lets it fetch nothing from outside the app,
- * and returns its SVG only when neither the drawing nor the result reaches outside the repo.
+ * and tells whether the drawing or the result reaches outside the repo.
  * Probes run one at a time, since the page tells requests apart by the probe that is running.
  */
 export function probeMermaid(

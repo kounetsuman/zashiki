@@ -67,7 +67,7 @@ async function probeMermaid(
   }
   await nextTask();
   for (const host of requested) hosts.add(host);
-  if (hosts.size > 0) return { kind: "remote", hosts: [...hosts].sort() };
+  if (hosts.size > 0) return { kind: "remote", hosts: [...hosts].sort(), svg };
   return svg === null ? { kind: "failed" } : { kind: "rendered", svg };
 }
 
