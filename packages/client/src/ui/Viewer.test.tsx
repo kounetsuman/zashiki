@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { HTML_FRAME_PAGE } from "../lib/html-frame.js";
 import type { ViewerBuffer } from "../viewer/viewer-model.js";
 import { Viewer } from "./Viewer.js";
 
@@ -127,7 +128,7 @@ describe("Viewer", () => {
     expect(frame?.getAttribute("title")).toBe("site/demo.html");
     // Scripts run in an opaque origin: no same-origin access, popups, or top navigation.
     expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
-    expect(frame?.getAttribute("srcdoc")).toBe("<h1>hi</h1>");
+    expect(frame?.getAttribute("src")).toBe(HTML_FRAME_PAGE);
   });
 
   it("shows the HTML source in CodeMirror when toggled off preview", () => {

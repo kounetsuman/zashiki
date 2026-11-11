@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { DASHBOARD_SANDBOX, type DashboardFrame } from "../lib/dashboard.js";
+import { HtmlFrame } from "./HtmlFrame.js";
 import { Modal } from "./Modal.js";
 import "./DashboardOverlay.css";
 
@@ -61,12 +62,11 @@ export function DashboardOverlay({
           src={frame.url}
         />
       ) : (
-        <iframe
+        <HtmlFrame
           key={showNonce}
           className="dashboard-frame"
           title={title}
-          sandbox={DASHBOARD_SANDBOX}
-          srcDoc={frame.html}
+          html={frame.html}
         />
       )}
     </Modal>

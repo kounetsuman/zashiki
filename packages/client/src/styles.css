@@ -1102,7 +1102,7 @@ textarea {
   border: 0;
 }
 
-/* White canvas since pages assume a light background and the sandboxed srcDoc document is
+/* White canvas since pages assume a light background and the framed document is
    transparent by default. */
 .viewer-html-frame {
   background: #fff;

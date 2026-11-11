@@ -27,6 +27,7 @@ import {
   type ViewerBuffer,
 } from "../viewer/viewer-model.js";
 import { DelimitedTable } from "./DelimitedTable.js";
+import { HtmlFrame } from "./HtmlFrame.js";
 import { Loading } from "./Loading.js";
 import { viewerEditorExtensions } from "./viewer-editor.js";
 
@@ -355,13 +356,10 @@ export function Viewer({
       );
     if (showAlternate && alternate === "htmlPreview")
       return (
-        // allow-scripts without allow-same-origin: scripts run in an opaque origin, so the page
-        // cannot reach the app's token, API, or storage, open popups, or navigate the app.
-        <iframe
+        <HtmlFrame
           className="viewer-html-frame"
           title={buffer.relPath}
-          sandbox="allow-scripts"
-          srcDoc={buffer.content ?? ""}
+          html={buffer.content ?? ""}
         />
       );
     if (showAlternate && alternate === "table")

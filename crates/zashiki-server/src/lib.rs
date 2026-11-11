@@ -117,7 +117,6 @@ use axum::{
 
 use crate::control::ControlServices;
 use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
 /// Server configuration. Passed to `build_router` from tests and main.
@@ -226,11 +225,10 @@ pub fn build_router(config: ServerConfig) -> Router {
 
     if let Some(dist) = config.client_dist {
         // Serve GET / and extension-bearing assets from the client dist. No token required.
-        let client_files = ServeDir::new(dist).append_index_html_on_directories(true);
-        app = app.fallback_service(ServiceExt::<axum::extract::Request>::map_response(
-            client_files,
-            page_policy::with_page_headers,
-        ));
+        let client_files = Router::new()
+            .fallback_service(ServeDir::new(dist).append_index_html_on_directories(true))
+            .layer(axum::middleware::from_fn(page_policy::with_page_headers));
+        app = app.fallback_service(client_files);
     }
 
     // Host/Origin verification applies to all routes, including static serving.
@@ -827,6 +825,44 @@ mod tests {
         let (status, body) = request(app, "/", Some(OK_HOST), &[]).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, "<!doctype html>zk");
+    }
+
+    /// The page that shows repo / dashboard HTML runs that HTML's own scripts, so it must not get
+    /// the cockpit's script policy; it is forced into an opaque origin and framed only by the app.
+    #[tokio::test]
+    async fn the_html_frame_page_carries_its_own_sandboxing_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("html-frame.html"), "<!doctype html>").unwrap();
+        let app = build_router(ServerConfig {
+            client_dist: Some(dir.path().to_path_buf()),
+            ..Default::default()
+        });
+        let (status, picked) = request_full(
+            app,
+            "GET",
+            "/html-frame.html",
+            &[("host", OK_HOST)],
+            &["content-security-policy", "referrer-policy"],
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let csp = picked[0].as_deref().unwrap_or_default();
+        assert_eq!(csp, page_policy::HTML_FRAME_CSP);
+        let directives: Vec<&str> = csp.split(';').map(str::trim).collect();
+        assert!(directives.contains(&"sandbox allow-scripts"), "{csp}");
+        assert!(directives.contains(&"frame-ancestors 'self'"), "{csp}");
+        assert!(!csp.contains("script-src"), "{csp}");
+        assert_eq!(picked[1].as_deref(), Some("no-referrer"));
+    }
+
+    /// A page in an opaque origin (the HTML frame) sends `Origin: null`; it reaches nothing.
+    #[tokio::test]
+    async fn requests_from_an_opaque_origin_are_refused() {
+        let app = router(Some("secret"));
+        for uri in ["/api/repos", "/api/repos?token=secret", "/healthz"] {
+            let (status, _) = request(app.clone(), uri, Some(OK_HOST), &[("origin", "null")]).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{uri}");
+        }
     }
 
     #[tokio::test]
