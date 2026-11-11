@@ -166,7 +166,7 @@ describe("renderMermaidBlocks", () => {
         "<svg data-diagram></svg>",
       );
       expect(frame?.getAttribute("srcdoc")).toContain(
-        "img-src data: blob: https:;",
+        "img-src data: blob: https: http:;",
       );
       expect(probe.probeMermaid).not.toHaveBeenCalled();
       expect(mermaid.render).toHaveBeenCalledWith(expect.any(String), source);

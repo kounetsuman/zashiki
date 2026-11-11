@@ -10,14 +10,14 @@ const PREVIEW_CSS = `html, body { overflow: hidden; background: transparent; }
 body { color: #ddd; }
 body > svg { display: block; width: 100%; height: auto; }`;
 
-/** Which images a framed diagram may load: only those inlined in it, or also https ones. */
+/** Which images a framed diagram may load: only those inlined in it, or also ones from the web. */
 export type DiagramImages = "inline" | "remote";
 
 const FRAME_POLICY: Record<DiagramImages, string> = {
   inline:
     "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:",
   remote:
-    "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob: https:; font-src data:",
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob: https: http:; font-src data:",
 };
 
 function escapeAttribute(text: string): string {
