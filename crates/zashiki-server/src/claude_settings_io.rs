@@ -94,6 +94,11 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
             "{}.bak",
             path.file_name().and_then(|n| n.to_str()).unwrap_or("settings.json")
         ));
+        // A read-only previous backup would make the copy fail with EACCES.
+        match std::fs::remove_file(&backup) {
+            Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
+            _ => {}
+        }
         std::fs::copy(path, backup)?;
     }
     let tmp = unique_temp_path(dir);
@@ -348,6 +353,20 @@ mod tests {
         set_mode(&p.settings_path, 0o600);
         apply_register(&p).unwrap();
         assert_eq!(mode_of(&backup), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn two_writes_on_a_read_only_0400_file_both_succeed_and_keep_0400() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        std::fs::write(&p.settings_path, r#"{"model":"opus"}"#).unwrap();
+        set_mode(&p.settings_path, 0o400);
+        apply_register(&p).unwrap();
+        apply_unregister(&p).unwrap();
+        assert_eq!(mode_of(&p.settings_path), 0o400);
+        let back: Value = serde_json::from_str(&std::fs::read_to_string(&p.settings_path).unwrap()).unwrap();
+        assert_eq!(back, serde_json::json!({"model": "opus"}));
     }
 
     #[cfg(unix)]
