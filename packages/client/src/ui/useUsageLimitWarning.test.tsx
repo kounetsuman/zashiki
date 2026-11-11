@@ -2,21 +2,21 @@
 
 import { act, renderHook } from "@testing-library/react";
 import type { UsageLimit } from "@zashiki/shared";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
 
 import type { Notifier } from "../lib/notify.js";
 import { useUsageLimitWarning } from "./useUsageLimitWarning.js";
 
 const CRIT = { enabled: true, value: 91 };
 
-function fakeNotifier(): Notifier & { notify: ReturnType<typeof vi.fn> } {
+function fakeNotifier(): Notifier & { notify: Mock<Notifier["notify"]> } {
   return {
     isEnabled: () => true,
     setEnabled: () => undefined,
     applyServerConfig: () => undefined,
     permission: () => "granted",
     requestPermission: async () => "granted",
-    notify: vi.fn(),
+    notify: vi.fn<Notifier["notify"]>(),
     playSound: () => undefined,
     shouldShow: () => true,
   };

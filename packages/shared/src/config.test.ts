@@ -225,3 +225,58 @@ describe("footerThresholdsSchema", () => {
     expect(parse("nope")).toEqual(DEFAULT_FOOTER_THRESHOLDS);
   });
 });
+
+describe("defaults filled in by the schemas", () => {
+  it("are fresh copies, so mutating a parsed value never changes the exported defaults", () => {
+    const notifications = notificationSettingsSchema.parse(undefined);
+    const nested = notificationSettingsSchema.parse({});
+    const dashboard = dashboardSettingsSchema.parse(undefined);
+    const footer = footerThresholdsSchema.parse(undefined);
+    const nestedFooter = footerThresholdsSchema.parse({});
+
+    expect(notifications).not.toBe(DEFAULT_NOTIFICATION_SETTINGS);
+    expect(notifications.categories).not.toBe(
+      DEFAULT_NOTIFICATION_SETTINGS.categories,
+    );
+    expect(nested.categories).not.toBe(
+      DEFAULT_NOTIFICATION_SETTINGS.categories,
+    );
+    expect(nested.categories.waiting).not.toBe(
+      DEFAULT_NOTIFICATION_SETTINGS.categories.waiting,
+    );
+    expect(dashboard).not.toBe(DEFAULT_DASHBOARD_SETTINGS);
+    expect(footer).not.toBe(DEFAULT_FOOTER_THRESHOLDS);
+    expect(footer.usagePercent).not.toBe(
+      DEFAULT_FOOTER_THRESHOLDS.usagePercent,
+    );
+    expect(nestedFooter.usagePercent).not.toBe(
+      DEFAULT_FOOTER_THRESHOLDS.usagePercent,
+    );
+    expect(
+      footerThresholdsSchema.parse({ usagePercent: {} }).usagePercent.warn,
+    ).not.toBe(DEFAULT_FOOTER_THRESHOLDS.usagePercent.warn);
+  });
+
+  it("are fresh copies when a malformed value falls back to its default", () => {
+    expect(notificationSettingsSchema.parse("bad")).not.toBe(
+      DEFAULT_NOTIFICATION_SETTINGS,
+    );
+    expect(dashboardSettingsSchema.parse("bad")).not.toBe(
+      DEFAULT_DASHBOARD_SETTINGS,
+    );
+    expect(footerThresholdsSchema.parse("bad")).not.toBe(
+      DEFAULT_FOOTER_THRESHOLDS,
+    );
+  });
+});
+
+describe("parseConfig on a malformed file", () => {
+  it("returns its own copy of the defaults", () => {
+    const parsed = parseConfig("bad");
+    expect(parsed.notifications).not.toBe(DEFAULT_NOTIFICATION_SETTINGS);
+    expect(parsed.notifications.categories).not.toBe(
+      DEFAULT_NOTIFICATION_SETTINGS.categories,
+    );
+    expect(parsed.dashboard).not.toBe(DEFAULT_DASHBOARD_SETTINGS);
+  });
+});
