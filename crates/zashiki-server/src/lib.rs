@@ -37,6 +37,7 @@ pub mod memo;
 pub mod memo_watch;
 pub mod notes;
 pub mod notes_watch;
+pub mod page_policy;
 pub mod repos;
 pub mod repos_watch;
 pub mod runtime;
@@ -116,6 +117,7 @@ use axum::{
 
 use crate::control::ControlServices;
 use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
 /// Server configuration. Passed to `build_router` from tests and main.
@@ -224,7 +226,11 @@ pub fn build_router(config: ServerConfig) -> Router {
 
     if let Some(dist) = config.client_dist {
         // Serve GET / and extension-bearing assets from the client dist. No token required.
-        app = app.fallback_service(ServeDir::new(dist).append_index_html_on_directories(true));
+        let client_files = ServeDir::new(dist).append_index_html_on_directories(true);
+        app = app.fallback_service(ServiceExt::<axum::extract::Request>::map_response(
+            client_files,
+            page_policy::with_page_headers,
+        ));
     }
 
     // Host/Origin verification applies to all routes, including static serving.
@@ -821,5 +827,45 @@ mod tests {
         let (status, body) = request(app, "/", Some(OK_HOST), &[]).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, "<!doctype html>zk");
+    }
+
+    #[tokio::test]
+    async fn client_pages_and_assets_carry_the_page_policy_and_no_referrer() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<!doctype html>zk").unwrap();
+        std::fs::create_dir(dir.path().join("assets")).unwrap();
+        std::fs::write(dir.path().join("assets/index.js"), "export {}").unwrap();
+        let app = build_router(ServerConfig {
+            client_dist: Some(dir.path().to_path_buf()),
+            ..Default::default()
+        });
+        for uri in ["/", "/index.html", "/assets/index.js"] {
+            let (status, picked) = request_full(
+                app.clone(),
+                "GET",
+                uri,
+                &[("host", OK_HOST)],
+                &["content-security-policy", "referrer-policy"],
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{uri}");
+            let csp = picked[0].as_deref().unwrap_or_default();
+            let directives: Vec<&str> = csp.split(';').map(str::trim).collect();
+            for expected in [
+                "script-src 'self'",
+                "object-src 'none'",
+                "base-uri 'none'",
+                "frame-ancestors 'self'",
+            ] {
+                assert!(directives.contains(&expected), "{uri}: {expected} in {csp}");
+            }
+            assert!(!csp.contains("unsafe-eval"), "{uri}: {csp}");
+            let script_src = directives
+                .iter()
+                .find(|d| d.starts_with("script-src"))
+                .unwrap();
+            assert!(!script_src.contains("unsafe-inline"), "{uri}: {csp}");
+            assert_eq!(picked[1].as_deref(), Some("no-referrer"), "{uri}");
+        }
     }
 }
