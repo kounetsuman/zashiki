@@ -86,6 +86,10 @@ fn load_for_merge(path: &Path) -> io::Result<Value> {
 /// serialized text is re-parsed as a guard before it replaces the original. A symlinked
 /// settings.json is written through to its target so the link survives.
 fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
+    write_atomic_using(path, value, &TEMP_COUNTER)
+}
+
+fn write_atomic_using(path: &Path, value: &Value, temp_counter: &AtomicU64) -> io::Result<()> {
     let text = serde_json::to_string_pretty(value)? + "\n";
     serde_json::from_str::<Value>(&text).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
     let path = &resolve_symlink(path)?;
@@ -108,9 +112,9 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
         }
         std::fs::copy(path, backup)?;
     }
-    let tmp = unique_temp_path(dir);
-    let file = create_temp_with_mode_of(&tmp, existing.as_ref())?;
-    let result = fill_and_rename(file, &text, &tmp, path);
+    let mode = temp_mode(existing.as_ref());
+    let (tmp, file) = create_unique_temp(dir, mode, temp_counter)?;
+    let result = fill_and_rename(file, mode, &text, &tmp, path);
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
@@ -124,43 +128,74 @@ fn resolve_symlink(path: &Path) -> io::Result<PathBuf> {
     }
 }
 
-fn fill_and_rename(mut file: std::fs::File, text: &str, tmp: &Path, path: &Path) -> io::Result<()> {
+fn fill_and_rename(mut file: std::fs::File, mode: u32, text: &str, tmp: &Path, path: &Path) -> io::Result<()> {
+    restore_mode(&file, mode)?;
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     drop(file);
     std::fs::rename(tmp, path)
 }
 
-/// A temp path no other write can be using, so overlapping writes never rename each other's
-/// half-written file over settings.json.
-fn unique_temp_path(dir: &Path) -> PathBuf {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    dir.join(format!(".settings.json.{}.{n}.tmp", std::process::id()))
+static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+const TEMP_CREATE_ATTEMPTS: u32 = 16;
+
+/// Creates the temp file under a name no other write is using, so overlapping writes never rename
+/// each other's half-written file over settings.json. A name left behind by an earlier process
+/// with the same pid is skipped.
+fn create_unique_temp(dir: &Path, mode: u32, counter: &AtomicU64) -> io::Result<(PathBuf, std::fs::File)> {
+    for _ in 0..TEMP_CREATE_ATTEMPTS {
+        let n = counter.fetch_add(1, Ordering::Relaxed);
+        let tmp = dir.join(format!(".settings.json.{}.{n}.tmp", std::process::id()));
+        match open_new_with_mode(&tmp, mode) {
+            Ok(file) => return Ok((tmp, file)),
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(io::Error::new(ErrorKind::AlreadyExists, "no free temp file name next to settings.json"))
 }
 
-/// Creates `tmp` with the permission bits of the file it replaces (0600 when there is none yet), so
-/// the replacement is never more readable than the original.
+/// The permission bits of the file being replaced (0600 when there is none yet), so the
+/// replacement is never more readable than the original.
 #[cfg(unix)]
-fn create_temp_with_mode_of(tmp: &Path, original: Option<&std::fs::Metadata>) -> io::Result<std::fs::File> {
-    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
-    let mode = original.map_or(0o600, |m| m.permissions().mode() & 0o777);
-    let file = std::fs::OpenOptions::new()
+fn temp_mode(existing: Option<&std::fs::Metadata>) -> u32 {
+    use std::os::unix::fs::PermissionsExt as _;
+    existing.map_or(0o600, |m| m.permissions().mode() & 0o777)
+}
+
+#[cfg(unix)]
+fn open_new_with_mode(tmp: &Path, mode: u32) -> io::Result<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(mode)
-        .open(tmp)?;
-    // The umask can only narrow the open mode; restore the exact original bits.
-    file.set_permissions(std::fs::Permissions::from_mode(mode))?;
-    Ok(file)
+        .open(tmp)
+}
+
+/// The umask can only narrow the open mode; this restores the exact original bits.
+#[cfg(unix)]
+fn restore_mode(file: &std::fs::File, mode: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt as _;
+    file.set_permissions(std::fs::Permissions::from_mode(mode))
 }
 
 #[cfg(not(unix))]
-fn create_temp_with_mode_of(tmp: &Path, _original: Option<&std::fs::Metadata>) -> io::Result<std::fs::File> {
+fn temp_mode(_existing: Option<&std::fs::Metadata>) -> u32 {
+    0
+}
+
+#[cfg(not(unix))]
+fn open_new_with_mode(tmp: &Path, _mode: u32) -> io::Result<std::fs::File> {
     std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(tmp)
+}
+
+#[cfg(not(unix))]
+fn restore_mode(_file: &std::fs::File, _mode: u32) -> io::Result<()> {
+    Ok(())
 }
 
 pub fn current_status(paths: &ClaudeSettingsPaths) -> RegistrationStatus {
@@ -422,6 +457,19 @@ mod tests {
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .filter(|n| n.ends_with(".tmp"))
             .collect()
+    }
+
+    #[test]
+    fn write_skips_a_temp_name_left_by_an_earlier_process_with_the_same_pid() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let taken = dir.path().join(format!(".settings.json.{}.0.tmp", std::process::id()));
+        std::fs::write(&taken, "left by a crashed process").unwrap();
+        write_atomic_using(&path, &serde_json::json!({"model": "opus"}), &AtomicU64::new(0)).unwrap();
+        let written: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written, serde_json::json!({"model": "opus"}));
+        std::fs::remove_file(&taken).unwrap();
+        assert_eq!(temp_files_in(dir.path()), Vec::<String>::new());
     }
 
     #[test]
