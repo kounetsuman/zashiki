@@ -83,10 +83,12 @@ fn load_for_merge(path: &Path) -> io::Result<Value> {
 }
 
 /// Atomic write (temp → rename) after backing up the current file to `settings.json.bak`. The
-/// serialized text is re-parsed as a guard before it replaces the original.
+/// serialized text is re-parsed as a guard before it replaces the original. A symlinked
+/// settings.json is written through to its target so the link survives.
 fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
     let text = serde_json::to_string_pretty(value)? + "\n";
     serde_json::from_str::<Value>(&text).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+    let path = &resolve_symlink(path)?;
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir)?;
     if path.exists() {
@@ -108,6 +110,13 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
         let _ = std::fs::remove_file(&tmp);
     }
     result
+}
+
+fn resolve_symlink(path: &Path) -> io::Result<PathBuf> {
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => std::fs::canonicalize(path),
+        _ => Ok(path.to_path_buf()),
+    }
 }
 
 fn fill_and_rename(mut file: std::fs::File, text: &str, tmp: &Path, path: &Path) -> io::Result<()> {
@@ -367,6 +376,25 @@ mod tests {
         assert_eq!(mode_of(&p.settings_path), 0o400);
         let back: Value = serde_json::from_str(&std::fs::read_to_string(&p.settings_path).unwrap()).unwrap();
         assert_eq!(back, serde_json::json!({"model": "opus"}));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_through_a_symlinked_settings_file_updates_the_real_file_and_keeps_the_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        let dotfiles = dir.path().join("dotfiles");
+        std::fs::create_dir(&dotfiles).unwrap();
+        let real = dotfiles.join("settings.json");
+        std::fs::write(&real, r#"{"model":"opus"}"#).unwrap();
+        set_mode(&real, 0o640);
+        std::os::unix::fs::symlink(&real, &p.settings_path).unwrap();
+        apply_register(&p).unwrap();
+        assert!(std::fs::symlink_metadata(&p.settings_path).unwrap().file_type().is_symlink());
+        let written: Value = serde_json::from_str(&std::fs::read_to_string(&real).unwrap()).unwrap();
+        assert_eq!(written["model"], serde_json::json!("opus"));
+        assert!(written["statusLine"]["command"].as_str().unwrap().contains("statusline.sh"));
+        assert_eq!(mode_of(&real), 0o640);
     }
 
     #[cfg(unix)]
