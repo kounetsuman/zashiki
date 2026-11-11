@@ -21,10 +21,6 @@ jobs:
   release:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-
       - name: Resolve and validate tag
         id: tag
         env:
@@ -36,6 +32,13 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # Check out exactly the resolved tag, so a manual run builds the tag it publishes
+      # rather than the branch it was started from; the fetch fails if the tag is missing.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          persist-credentials: false
 
       # Populate the Release body from CHANGELOG.md: extract the [X.Y.Z] section so a
       # normal release ships curated notes with no hand-editing. Fall back to GitHub's
@@ -127,7 +130,7 @@ jobs:
           security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
           echo -n "$APPLE_CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
           security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+            -T /usr/bin/codesign -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -k "$KEYCHAIN_PW" "$KEYCHAIN_PATH"
           # Prepend the temp keychain to the existing search list (keep login.keychain-db so the
           # Developer ID intermediate stays resolvable), rather than replacing it.
