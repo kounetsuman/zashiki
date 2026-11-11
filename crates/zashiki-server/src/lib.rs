@@ -852,8 +852,7 @@ mod tests {
             let csp = picked[0].as_deref().unwrap_or_default();
             assert_eq!(csp, html_frame::HTML_FRAME_CSP);
             let directives: Vec<&str> = csp.split(';').map(str::trim).collect();
-            assert!(directives.contains(&"sandbox allow-scripts"), "{csp}");
-            assert!(!csp.contains("script-src"), "{csp}");
+            assert_eq!(directives, ["sandbox allow-scripts"], "{csp}");
             assert_eq!(picked[1].as_deref(), Some("no-referrer"));
             assert!(picked[2].as_deref().unwrap_or_default().starts_with("text/html"));
             let (_, body) = request(app, "/html-frame.html", Some("localhost:8790"), &[]).await;

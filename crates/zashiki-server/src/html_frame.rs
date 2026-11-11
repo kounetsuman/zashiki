@@ -9,8 +9,10 @@ use axum::{
 pub const HTML_FRAME_PAGE: &str = include_str!("../assets/html-frame.html");
 
 /// Leaves the shown HTML free to load what it needs, but keeps it in an opaque origin even when
-/// the page is opened outside the cockpit's sandboxed frame.
-pub const HTML_FRAME_CSP: &str = "sandbox allow-scripts; frame-ancestors 'self'";
+/// the page is opened outside the cockpit's sandboxed frame. Who frames it is left open: the page
+/// holds nothing until its parent sends HTML, and WebKit may judge `'self'` by the sandboxed
+/// page's opaque origin and refuse the cockpit's own frame.
+pub const HTML_FRAME_CSP: &str = "sandbox allow-scripts";
 
 pub async fn html_frame_page() -> Response {
     let mut response = (
