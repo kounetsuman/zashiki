@@ -1,7 +1,8 @@
 //! Implementation of `GET /api/fs/list`.
 //! A read-only REST endpoint that enumerates a single level directly under a directory. Escapes out
 //! of the repo (`..` / symlink) are rejected by `is_safe_repo_relative_path` (in zashiki-core)
-//! plus realpath containment.
+//! plus realpath containment. Rename and delete verify only the parent directory that way and act on
+//! the entry itself, so a symlink is renamed or trashed even when it points outside the repo.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -79,7 +80,10 @@ fn resolve_entry_within_repo(
         return Err((StatusCode::BAD_REQUEST, "invalid entry path".to_string()));
     }
     let entry = resolve_within_repo(repo_path, parent)?.join(name);
-    std::fs::symlink_metadata(&entry).map_err(|e| status_for_fs_error(&e))?;
+    std::fs::symlink_metadata(&entry).map_err(|e| match e.kind() {
+        io::ErrorKind::NotFound => (StatusCode::NOT_FOUND, "entry not found".to_string()),
+        _ => status_for_fs_error(&e),
+    })?;
     Ok(entry)
 }
 
@@ -155,7 +159,8 @@ pub fn reveal_target(repo_path: &str, rel_path: &str) -> Result<PathBuf, (Status
 }
 
 /// Renames an entry within its parent directory. Validates the new name is a single segment, confirms the
-/// source resolves inside the repo, and refuses to clobber an existing entry. Returns the new repo-relative
+/// parent directory resolves inside the repo (the entry itself is renamed, never a symlink's target), and
+/// refuses to clobber an existing entry. Returns the new repo-relative
 /// path. Blocking; callers run it via spawn_blocking.
 pub fn rename_within_repo(
     repo_path: &str,
@@ -183,14 +188,14 @@ pub fn rename_within_repo(
     Ok(new_rel)
 }
 
-/// Moves an entry to the OS trash after confirming it resolves inside the repo. Blocking; callers run it
-/// via spawn_blocking.
+/// Moves an entry to the OS trash after confirming its parent directory resolves inside the repo (the
+/// entry itself is trashed, never a symlink's target). Blocking; callers run it via spawn_blocking.
 pub fn delete_to_trash(repo_path: &str, rel_path: &str) -> Result<(), (StatusCode, String)> {
-    delete_resolved(repo_path, rel_path, |real| trash::delete(real))
+    delete_resolved(repo_path, rel_path, |entry| trash::delete(entry))
 }
 
-/// Resolves `rel_path` inside the repo, then runs `trash_op` on the entry itself (a symlink is not
-/// followed); a failure maps to a 500.
+/// Resolves `rel_path` with its parent inside the repo, then runs `trash_op` on the entry itself (a
+/// symlink is not followed); a failure maps to a 500.
 fn delete_resolved(
     repo_path: &str,
     rel_path: &str,
@@ -473,8 +478,9 @@ mod tests {
     fn delete_missing_entry_is_not_found() {
         let root = tempfile::tempdir().unwrap();
         let repo = root.path().to_str().unwrap();
-        let (code, _) = delete_to_trash(repo, "nope.txt").unwrap_err();
+        let (code, msg) = delete_to_trash(repo, "nope.txt").unwrap_err();
         assert_eq!(code, StatusCode::NOT_FOUND);
+        assert_eq!(msg, "entry not found");
     }
 
     #[test]
