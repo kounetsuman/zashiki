@@ -107,6 +107,7 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
 
 fn fill_and_rename(mut file: std::fs::File, text: &str, tmp: &Path, path: &Path) -> io::Result<()> {
     file.write_all(text.as_bytes())?;
+    file.sync_all()?;
     drop(file);
     std::fs::rename(tmp, path)
 }
