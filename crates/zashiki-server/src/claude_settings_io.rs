@@ -2,7 +2,7 @@
 //! and the register/unregister/status orchestration over the pure `claude_settings` merge. Sibling
 //! to `statusline_hook.rs`, which reads the same file. Behavior is pinned by the `tests` below.
 
-use std::io::{self, ErrorKind};
+use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -96,8 +96,38 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
         std::fs::copy(path, backup)?;
     }
     let tmp = dir.join(".settings.json.tmp");
-    std::fs::write(&tmp, text)?;
+    match std::fs::remove_file(&tmp) {
+        Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
+        _ => {}
+    }
+    let mut file = create_temp_with_mode_of(&tmp, path)?;
+    file.write_all(text.as_bytes())?;
+    drop(file);
     std::fs::rename(&tmp, path)
+}
+
+/// Creates `tmp` with the permission bits of `original` (0600 when it does not exist yet), so the
+/// replacement is never more readable than the file it replaces.
+#[cfg(unix)]
+fn create_temp_with_mode_of(tmp: &Path, original: &Path) -> io::Result<std::fs::File> {
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+    let mode = std::fs::metadata(original).map_or(0o600, |m| m.permissions().mode() & 0o777);
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(mode)
+        .open(tmp)?;
+    // The umask can only narrow the open mode; restore the exact original bits.
+    file.set_permissions(std::fs::Permissions::from_mode(mode))?;
+    Ok(file)
+}
+
+#[cfg(not(unix))]
+fn create_temp_with_mode_of(tmp: &Path, _original: &Path) -> io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(tmp)
 }
 
 pub fn current_status(paths: &ClaudeSettingsPaths) -> RegistrationStatus {
@@ -236,5 +266,75 @@ mod tests {
         let (st, unreadable) = current_status_with_readability(&p);
         assert!(unreadable);
         assert_eq!(st, RegistrationStatus::default());
+    }
+
+    #[cfg(unix)]
+    fn set_mode(path: &Path, mode: u32) {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn mode_of(path: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_keeps_an_existing_0600_file_at_0600() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        std::fs::write(&p.settings_path, r#"{"env":{"TOKEN":"secret"}}"#).unwrap();
+        set_mode(&p.settings_path, 0o600);
+        apply_register(&p).unwrap();
+        assert_eq!(mode_of(&p.settings_path), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_keeps_an_existing_0644_file_at_0644() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        std::fs::write(&p.settings_path, r#"{"model":"opus"}"#).unwrap();
+        set_mode(&p.settings_path, 0o644);
+        apply_register(&p).unwrap();
+        assert_eq!(mode_of(&p.settings_path), 0o644);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_creates_a_new_file_at_0600() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        apply_register(&p).unwrap();
+        assert_eq!(mode_of(&p.settings_path), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_keeps_the_original_mode_over_a_looser_stale_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        let backup = dir.path().join("settings.json.bak");
+        std::fs::write(&backup, "{}").unwrap();
+        set_mode(&backup, 0o644);
+        std::fs::write(&p.settings_path, r#"{"model":"opus"}"#).unwrap();
+        set_mode(&p.settings_path, 0o600);
+        apply_register(&p).unwrap();
+        assert_eq!(mode_of(&backup), 0o600);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_replaces_a_looser_stale_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        let tmp = dir.path().join(".settings.json.tmp");
+        std::fs::write(&tmp, "stale").unwrap();
+        set_mode(&tmp, 0o644);
+        apply_register(&p).unwrap();
+        assert_eq!(mode_of(&p.settings_path), 0o600);
+        assert!(!tmp.exists());
     }
 }
