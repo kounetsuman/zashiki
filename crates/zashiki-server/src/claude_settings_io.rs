@@ -318,6 +318,17 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn write_keeps_a_group_writable_0660_file_at_0660_despite_the_umask() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        std::fs::write(&p.settings_path, r#"{"model":"opus"}"#).unwrap();
+        set_mode(&p.settings_path, 0o660);
+        apply_register(&p).unwrap();
+        assert_eq!(mode_of(&p.settings_path), 0o660);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn write_creates_a_new_file_at_0600() {
         let dir = tempfile::tempdir().unwrap();
         let p = paths_in(dir.path());
