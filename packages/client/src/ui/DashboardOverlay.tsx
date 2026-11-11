@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { DASHBOARD_SANDBOX, type DashboardFrame } from "../lib/dashboard.js";
+import type { DashboardFrame } from "../lib/dashboard.js";
+import { OPAQUE_SCRIPT_SANDBOX } from "../lib/opaque-sandbox.js";
 import { HtmlFrame } from "./HtmlFrame.js";
 import { Modal } from "./Modal.js";
 import "./DashboardOverlay.css";
@@ -58,7 +59,7 @@ export function DashboardOverlay({
           key={showNonce}
           className="dashboard-frame"
           title={title}
-          sandbox={DASHBOARD_SANDBOX}
+          sandbox={OPAQUE_SCRIPT_SANDBOX}
           src={frame.url}
         />
       ) : (

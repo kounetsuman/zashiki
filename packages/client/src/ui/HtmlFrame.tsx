@@ -6,6 +6,7 @@ import {
   type HtmlFrameRenderMessage,
   htmlFrameUrl,
 } from "../lib/html-frame.js";
+import { OPAQUE_SCRIPT_SANDBOX } from "../lib/opaque-sandbox.js";
 import { serverBase } from "../lib/server-base.js";
 
 export interface HtmlFrameProps {
@@ -23,11 +24,9 @@ function isReadyMessage(data: unknown): boolean {
 }
 
 /**
- * Shows an HTML document with its scripts running. allow-scripts without allow-same-origin keeps
- * the page in an opaque origin, so it cannot reach the app's token, API, or storage, open popups,
- * or navigate the app. The HTML goes to the host page by message rather than `srcdoc`, which
- * would subject the page to the cockpit's script policy, and is sent whenever the host page
- * loads, so a page that reloads itself is drawn again.
+ * Shows an HTML document with its scripts running, in an opaque origin. The HTML goes to the
+ * host page by message rather than `srcdoc`, which would subject the page to the cockpit's script
+ * policy, and is sent whenever the host page loads, so a page that reloads itself is drawn again.
  */
 export function HtmlFrame({ html, title, className }: HtmlFrameProps) {
   const ref = useRef<HTMLIFrameElement>(null);
@@ -59,7 +58,7 @@ export function HtmlFrame({ html, title, className }: HtmlFrameProps) {
       ref={ref}
       className={className}
       title={title}
-      sandbox="allow-scripts"
+      sandbox={OPAQUE_SCRIPT_SANDBOX}
     />
   );
 }
