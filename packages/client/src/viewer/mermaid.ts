@@ -1,5 +1,5 @@
 import { diagramFrame } from "./diagram-frame.js";
-import { probeMermaid } from "./mermaid-probe.js";
+import { probeMermaid, renderRemoteMermaid } from "./mermaid-probe.js";
 
 export interface RenderMermaidOptions {
   /** Sources of diagrams the user has asked to render even though they load remote content. */
@@ -83,23 +83,23 @@ export async function renderMermaidBlocks(
     const source = block.dataset.mermaidSource ?? "";
     const id = `viewer-mermaid-${crypto.randomUUID()}`;
     try {
-      const result = await probeMermaid(id, source);
-      if (!block.isConnected) continue;
-      const approved = options.renderedRemoteDiagrams?.has(source) === true;
-      if (result.kind === "remote" && approved) {
-        if (result.svg === null) {
+      if (options.renderedRemoteDiagrams?.has(source)) {
+        const drawn = await renderRemoteMermaid(id, source);
+        if (!block.isConnected) continue;
+        const svg = drawn.kind === "failed" ? null : drawn.svg;
+        if (svg === null) {
           showCodeBlock(block, source);
         } else {
           block.dataset.mermaidState = "rendered";
           block.replaceChildren(
-            diagramFrame(
-              result.svg,
-              options.diagramTitle ?? "Mermaid",
-              "remote",
-            ),
+            diagramFrame(svg, options.diagramTitle ?? "Mermaid", "remote"),
           );
         }
-      } else if (result.kind === "failed") {
+        continue;
+      }
+      const result = await probeMermaid(id, source);
+      if (!block.isConnected) continue;
+      if (result.kind === "failed") {
         showCodeBlock(block, source);
       } else if (result.kind === "remote") {
         block.dataset.mermaidState = "remote";

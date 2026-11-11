@@ -18,6 +18,9 @@ const probe = vi.hoisted(() => ({
       svg: "<svg data-diagram></svg>",
     }),
   ),
+  renderRemoteMermaid: vi.fn(
+    async (): Promise<MermaidProbeResult> => ({ kind: "failed" }),
+  ),
 }));
 
 vi.mock("./mermaid-probe.js", () => probe);
@@ -154,8 +157,8 @@ describe("renderMermaidBlocks", () => {
     const drawnWithRemoteImage =
       '<svg data-diagram><foreignObject><img src="https://img.example/a.png"></foreignObject></svg>';
 
-    it("is drawn in the probe page and shown in a sandboxed frame that may load remote images once the user asked to render it", async () => {
-      probe.probeMermaid.mockImplementation(async () => ({
+    it("is drawn in the page that may load its remote images and shown in a sandboxed frame that may too, once the user asked to render it", async () => {
+      probe.renderRemoteMermaid.mockImplementation(async () => ({
         kind: "remote",
         hosts: ["img.example"],
         svg: drawnWithRemoteImage,
@@ -188,10 +191,11 @@ describe("renderMermaidBlocks", () => {
       expect(frame?.getAttribute("srcdoc")).toContain(
         "img-src data: blob: https: http:;",
       );
-      expect(probe.probeMermaid).toHaveBeenCalledWith(
+      expect(probe.renderRemoteMermaid).toHaveBeenCalledWith(
         expect.any(String),
         source,
       );
+      expect(probe.probeMermaid).not.toHaveBeenCalled();
       expect(mermaid.render).not.toHaveBeenCalled();
     });
 
@@ -201,7 +205,9 @@ describe("renderMermaidBlocks", () => {
       const block = host.querySelector<HTMLElement>(".viewer-mermaid");
       if (block === null) throw new Error("no block");
       delete block.dataset.mermaidState;
-      probe.probeMermaid.mockImplementation(async () => ({ kind: "failed" }));
+      probe.renderRemoteMermaid.mockImplementation(async () => ({
+        kind: "failed",
+      }));
       await renderMermaidBlocks(host, {
         renderedRemoteDiagrams: new Set([source]),
       });
@@ -210,7 +216,12 @@ describe("renderMermaidBlocks", () => {
       expect(block.querySelector("pre > code")?.textContent).toBe(source);
     });
 
-    it("shows its code block when the user asked to render it but the probe page drew nothing", async () => {
+    it("shows its code block when the user asked to render it but nothing was drawn", async () => {
+      probe.renderRemoteMermaid.mockImplementation(async () => ({
+        kind: "remote",
+        hosts: ["img.example"],
+        svg: null,
+      }));
       const host = previewWith(remoteBlock);
       await renderMermaidBlocks(host, {
         renderedRemoteDiagrams: new Set([source]),

@@ -26,6 +26,11 @@ const probe = vi.hoisted(() => ({
   probeMermaid: vi.fn(async () => ({
     kind: "remote" as const,
     hosts: ["img.example"],
+    svg: null,
+  })),
+  renderRemoteMermaid: vi.fn(async () => ({
+    kind: "remote" as const,
+    hosts: ["img.example"],
     svg: "<svg data-drawn></svg>",
   })),
 }));
