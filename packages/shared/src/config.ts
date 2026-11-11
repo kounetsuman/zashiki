@@ -240,7 +240,11 @@ function indicatorSchema<T extends Record<string, FooterBand>>(fallback: T) {
   const shape = Object.fromEntries(
     Object.entries(fallback).map(([band, def]) => [band, bandSchema(def)]),
   ) as { [K in keyof T]: ReturnType<typeof bandSchema> };
-  return z.object(shape).catch(fallback).default(fallback);
+  const indicator = z.object(shape);
+  const fallbackOutput = fallback as z.core.util.NoUndefined<
+    z.output<typeof indicator>
+  >;
+  return indicator.catch(fallbackOutput).default(fallbackOutput);
 }
 
 /**
