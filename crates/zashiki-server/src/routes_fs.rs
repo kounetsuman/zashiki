@@ -454,4 +454,46 @@ mod fs_mutation_rest_tests {
         assert_eq!(b, r#"{"ok":true}"#);
         assert!(!repo_dir.join("trash-me.txt").exists());
     }
+
+    #[cfg(target_os = "macos")]
+    #[ignore = "moves a real symlink to the OS trash; run with `cargo test -- --ignored`"]
+    #[tokio::test]
+    async fn delete_moves_a_symlink_to_a_dir_to_trash_and_keeps_the_target() {
+        let root = tempfile::tempdir().unwrap();
+        let (app, repo) = app_with_repo(root.path());
+        let repo_dir = root.path().join("org1/repo-a");
+        std::fs::create_dir(repo_dir.join("src")).unwrap();
+        std::fs::write(repo_dir.join("src/main.rs"), "x").unwrap();
+        std::os::unix::fs::symlink("src", repo_dir.join("src-link")).unwrap();
+
+        let (s, b) = post(
+            app,
+            "/api/fs/delete?token=t",
+            &format!(r#"{{"repoPath":"{repo}","path":"src-link"}}"#),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "{b}");
+        assert!(!repo_dir.join("src-link").is_symlink());
+        assert!(repo_dir.join("src").is_dir());
+        assert!(repo_dir.join("src/main.rs").is_file());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[ignore = "moves a real dangling symlink to the OS trash; run with `cargo test -- --ignored`"]
+    #[tokio::test]
+    async fn delete_moves_a_dangling_symlink_to_trash() {
+        let root = tempfile::tempdir().unwrap();
+        let (app, repo) = app_with_repo(root.path());
+        let repo_dir = root.path().join("org1/repo-a");
+        std::os::unix::fs::symlink("missing", repo_dir.join("dangling")).unwrap();
+
+        let (s, b) = post(
+            app,
+            "/api/fs/delete?token=t",
+            &format!(r#"{{"repoPath":"{repo}","path":"dangling"}}"#),
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK, "{b}");
+        assert!(!repo_dir.join("dangling").is_symlink());
+    }
 }

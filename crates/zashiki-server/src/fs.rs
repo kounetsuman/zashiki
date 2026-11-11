@@ -1,7 +1,8 @@
 //! Implementation of `GET /api/fs/list`.
 //! A read-only REST endpoint that enumerates a single level directly under a directory. Escapes out
 //! of the repo (`..` / symlink) are rejected by `is_safe_repo_relative_path` (in zashiki-core)
-//! plus realpath containment.
+//! plus realpath containment. Rename and delete verify only the parent directory that way and act on
+//! the entry itself, so a symlink is renamed or trashed even when it points outside the repo.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -65,6 +66,25 @@ fn resolve_within_repo(repo_path: &str, dir: &str) -> Result<PathBuf, (StatusCod
             "dir resolves outside the repo".to_string(),
         ))
     }
+}
+
+/// Resolves an entry without following it when it is itself a symlink: only the parent directory is
+/// canonicalized and checked against the repo root, then the final component is joined as-is.
+fn resolve_entry_within_repo(
+    repo_path: &str,
+    rel_path: &str,
+) -> Result<PathBuf, (StatusCode, String)> {
+    let trimmed = rel_path.trim_end_matches('/');
+    let (parent, name) = trimmed.rsplit_once('/').unwrap_or(("", trimmed));
+    if !is_single_path_segment(name) {
+        return Err((StatusCode::BAD_REQUEST, "invalid entry path".to_string()));
+    }
+    let entry = resolve_within_repo(repo_path, parent)?.join(name);
+    std::fs::symlink_metadata(&entry).map_err(|e| match e.kind() {
+        io::ErrorKind::NotFound => (StatusCode::NOT_FOUND, "entry not found".to_string()),
+        _ => status_for_fs_error(&e),
+    })?;
+    Ok(entry)
 }
 
 /// Enumerates entries directly under the real directory (excludes `.git`, does not follow symlinks for the kind, truncates at the limit).
@@ -139,7 +159,8 @@ pub fn reveal_target(repo_path: &str, rel_path: &str) -> Result<PathBuf, (Status
 }
 
 /// Renames an entry within its parent directory. Validates the new name is a single segment, confirms the
-/// source resolves inside the repo, and refuses to clobber an existing entry. Returns the new repo-relative
+/// parent directory resolves inside the repo (the entry itself is renamed, never a symlink's target), and
+/// refuses to clobber an existing entry. Returns the new repo-relative
 /// path. Blocking; callers run it via spawn_blocking.
 pub fn rename_within_repo(
     repo_path: &str,
@@ -149,19 +170,15 @@ pub fn rename_within_repo(
     if !is_single_path_segment(new_name) {
         return Err((StatusCode::BAD_REQUEST, "invalid new name".to_string()));
     }
-    let real = resolve_within_repo(repo_path, rel_path)?;
-    let parent = real.parent().ok_or((
-        StatusCode::BAD_REQUEST,
-        "cannot rename the repo root".to_string(),
-    ))?;
-    let dest = parent.join(new_name);
-    if dest.exists() {
+    let entry = resolve_entry_within_repo(repo_path, rel_path)?;
+    let dest = entry.with_file_name(new_name);
+    if std::fs::symlink_metadata(&dest).is_ok() {
         return Err((
             StatusCode::CONFLICT,
             "an entry with that name already exists".to_string(),
         ));
     }
-    std::fs::rename(&real, &dest).map_err(|e| status_for_fs_error(&e))?;
+    std::fs::rename(&entry, &dest).map_err(|e| status_for_fs_error(&e))?;
     let parent_rel = parent_rel_dir(rel_path);
     let new_rel = if parent_rel.is_empty() {
         new_name.to_string()
@@ -171,20 +188,45 @@ pub fn rename_within_repo(
     Ok(new_rel)
 }
 
-/// Moves an entry to the OS trash after confirming it resolves inside the repo. Blocking; callers run it
-/// via spawn_blocking.
+/// Moves an entry to the OS trash after confirming its parent directory resolves inside the repo (the
+/// entry itself is trashed, never a symlink's target). Blocking; callers run it via spawn_blocking.
 pub fn delete_to_trash(repo_path: &str, rel_path: &str) -> Result<(), (StatusCode, String)> {
-    delete_resolved(repo_path, rel_path, |real| trash::delete(real))
+    delete_resolved(repo_path, rel_path, move_to_trash)
 }
 
-/// Resolves `rel_path` inside the repo, then runs `trash_op` on the real path; a failure maps to a 500.
+#[cfg(target_os = "macos")]
+fn move_to_trash(entry: &Path) -> Result<(), trash::Error> {
+    use trash::macos::TrashContextExtMacos as _;
+    let mut ctx = trash::TrashContext::default();
+    ctx.set_delete_method(trash_delete_method(entry.is_symlink()));
+    ctx.delete(entry)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn move_to_trash(entry: &Path) -> Result<(), trash::Error> {
+    trash::delete(entry)
+}
+
+/// Finder asks for Touch ID / a password to trash a symlink, so links go through the file manager;
+/// everything else stays on Finder to keep "Put Back".
+#[cfg(target_os = "macos")]
+fn trash_delete_method(is_symlink: bool) -> trash::macos::DeleteMethod {
+    if is_symlink {
+        trash::macos::DeleteMethod::NsFileManager
+    } else {
+        trash::macos::DeleteMethod::Finder
+    }
+}
+
+/// Resolves `rel_path` with its parent inside the repo, then runs `trash_op` on the entry itself (a
+/// symlink is not followed); a failure maps to a 500.
 fn delete_resolved(
     repo_path: &str,
     rel_path: &str,
     trash_op: impl FnOnce(&Path) -> Result<(), trash::Error>,
 ) -> Result<(), (StatusCode, String)> {
-    let real = resolve_within_repo(repo_path, rel_path)?;
-    trash_op(&real).map_err(|e| {
+    let entry = resolve_entry_within_repo(repo_path, rel_path)?;
+    trash_op(&entry).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("failed to move to trash: {e}"),
@@ -358,7 +400,23 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn rename_rejects_symlink_escape() {
+    fn rename_renames_a_link_to_a_dir_not_its_target() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::create_dir(root.path().join("src")).unwrap();
+        std::os::unix::fs::symlink("src", root.path().join("README.md")).unwrap();
+
+        let new_rel = rename_within_repo(repo, "README.md", "LINK.md").unwrap();
+
+        assert_eq!(new_rel, "LINK.md");
+        assert!(root.path().join("LINK.md").is_symlink());
+        assert!(!root.path().join("README.md").is_symlink());
+        assert!(root.path().join("src").is_dir());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_renames_a_link_pointing_outside_the_repo() {
         let root = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
         std::fs::write(outside.path().join("secret.txt"), "s").unwrap();
@@ -368,16 +426,78 @@ mod tests {
         )
         .unwrap();
         let repo = root.path().to_str().unwrap();
-        let (code, _) = rename_within_repo(repo, "link.txt", "x.txt").unwrap_err();
+
+        rename_within_repo(repo, "link.txt", "x.txt").unwrap();
+
+        assert!(root.path().join("x.txt").is_symlink());
+        assert!(outside.path().join("secret.txt").is_file());
+        assert!(!outside.path().join("x.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_renames_a_dangling_link() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::os::unix::fs::symlink("missing", root.path().join("dangling")).unwrap();
+
+        rename_within_repo(repo, "dangling", "renamed").unwrap();
+
+        assert!(root.path().join("renamed").is_symlink());
+        assert!(!root.path().join("dangling").is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_refuses_to_clobber_a_dangling_link() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::write(root.path().join("a.txt"), "a").unwrap();
+        std::os::unix::fs::symlink("missing", root.path().join("b.txt")).unwrap();
+
+        let (code, _) = rename_within_repo(repo, "a.txt", "b.txt").unwrap_err();
+
+        assert_eq!(code, StatusCode::CONFLICT);
+        assert!(root.path().join("b.txt").is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rename_rejects_entries_under_a_symlinked_parent_outside_the_repo() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "s").unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("escape")).unwrap();
+        let repo = root.path().to_str().unwrap();
+
+        let (code, _) = rename_within_repo(repo, "escape/secret.txt", "x.txt").unwrap_err();
+
         assert_eq!(code, StatusCode::BAD_REQUEST);
+        assert!(outside.path().join("secret.txt").is_file());
+    }
+
+    #[test]
+    fn rename_rejects_parent_dir_escape_and_dot_final_components() {
+        let root = tempfile::tempdir().unwrap();
+        let repo_dir = root.path().join("repo");
+        std::fs::create_dir_all(repo_dir.join("sub")).unwrap();
+        std::fs::write(root.path().join("outside.txt"), "o").unwrap();
+        let repo = repo_dir.to_str().unwrap();
+
+        for bad in ["sub/../../outside.txt", "sub/..", "sub/.", ""] {
+            let (code, _) = rename_within_repo(repo, bad, "x").unwrap_err();
+            assert_eq!(code, StatusCode::BAD_REQUEST, "{bad:?}");
+        }
+        assert!(root.path().join("outside.txt").is_file());
     }
 
     #[test]
     fn delete_missing_entry_is_not_found() {
         let root = tempfile::tempdir().unwrap();
         let repo = root.path().to_str().unwrap();
-        let (code, _) = delete_to_trash(repo, "nope.txt").unwrap_err();
+        let (code, msg) = delete_to_trash(repo, "nope.txt").unwrap_err();
         assert_eq!(code, StatusCode::NOT_FOUND);
+        assert_eq!(msg, "entry not found");
     }
 
     #[test]
@@ -397,6 +517,127 @@ mod tests {
             trashed.unwrap(),
             resolve_within_repo(repo, "gone.txt").unwrap()
         );
+    }
+
+    #[test]
+    fn rename_and_delete_reject_a_final_component_with_a_backslash() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::write(root.path().join("a\\..\\x"), "x").unwrap();
+
+        let (code, _) = rename_within_repo(repo, "a\\..\\x", "y").unwrap_err();
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        let (code, _) = trashed_path(repo, "a\\..\\x").unwrap_err();
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn symlinks_are_trashed_with_the_file_manager_and_others_with_finder() {
+        use trash::macos::DeleteMethod;
+        assert!(matches!(trash_delete_method(true), DeleteMethod::NsFileManager));
+        assert!(matches!(trash_delete_method(false), DeleteMethod::Finder));
+    }
+
+    /// Runs `delete_resolved` with a trash op that records the path it was given.
+    fn trashed_path(repo: &str, rel_path: &str) -> Result<PathBuf, (StatusCode, String)> {
+        let mut trashed = None;
+        delete_resolved(repo, rel_path, |path| {
+            trashed = Some(path.to_path_buf());
+            Ok(())
+        })?;
+        Ok(trashed.unwrap())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_trashes_a_link_to_a_dir_not_its_target() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::create_dir(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/main.rs"), "x").unwrap();
+        std::os::unix::fs::symlink("src", root.path().join("README.md")).unwrap();
+
+        let trashed = trashed_path(repo, "README.md").unwrap();
+
+        assert!(trashed.is_symlink());
+        std::fs::remove_file(&trashed).unwrap();
+        assert!(root.path().join("src/main.rs").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_trashes_a_link_to_a_file_not_its_target() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::write(root.path().join("real.txt"), "x").unwrap();
+        std::os::unix::fs::symlink("real.txt", root.path().join("link.txt")).unwrap();
+
+        let trashed = trashed_path(repo, "link.txt").unwrap();
+
+        assert_eq!(trashed.file_name().unwrap(), "link.txt");
+        assert!(trashed.is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_trashes_a_link_pointing_outside_the_repo() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "s").unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("secret.txt"),
+            root.path().join("link.txt"),
+        )
+        .unwrap();
+        let repo = root.path().to_str().unwrap();
+
+        let trashed = trashed_path(repo, "link.txt").unwrap();
+
+        assert!(trashed.is_symlink());
+        std::fs::remove_file(&trashed).unwrap();
+        assert!(outside.path().join("secret.txt").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_trashes_a_dangling_link() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::os::unix::fs::symlink("missing", root.path().join("dangling")).unwrap();
+
+        let trashed = trashed_path(repo, "dangling").unwrap();
+
+        assert!(trashed.is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delete_rejects_entries_under_a_symlinked_parent_outside_the_repo() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "s").unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("escape")).unwrap();
+        let repo = root.path().to_str().unwrap();
+
+        let (code, _) = trashed_path(repo, "escape/secret.txt").unwrap_err();
+
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn delete_rejects_parent_dir_escape_and_dot_final_components() {
+        let root = tempfile::tempdir().unwrap();
+        let repo_dir = root.path().join("repo");
+        std::fs::create_dir_all(repo_dir.join("sub")).unwrap();
+        std::fs::write(root.path().join("outside.txt"), "o").unwrap();
+        let repo = repo_dir.to_str().unwrap();
+
+        for bad in ["sub/../../outside.txt", "sub/..", "sub/.", ""] {
+            let (code, _) = trashed_path(repo, bad).unwrap_err();
+            assert_eq!(code, StatusCode::BAD_REQUEST, "{bad:?}");
+        }
+        assert!(root.path().join("outside.txt").is_file());
     }
 
     #[test]
