@@ -4,6 +4,7 @@
 
 use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value;
 
@@ -95,15 +96,27 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
         ));
         std::fs::copy(path, backup)?;
     }
-    let tmp = dir.join(".settings.json.tmp");
-    match std::fs::remove_file(&tmp) {
-        Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
-        _ => {}
+    let tmp = unique_temp_path(dir);
+    let file = create_temp_with_mode_of(&tmp, path)?;
+    let result = fill_and_rename(file, &text, &tmp, path);
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
-    let mut file = create_temp_with_mode_of(&tmp, path)?;
+    result
+}
+
+fn fill_and_rename(mut file: std::fs::File, text: &str, tmp: &Path, path: &Path) -> io::Result<()> {
     file.write_all(text.as_bytes())?;
     drop(file);
-    std::fs::rename(&tmp, path)
+    std::fs::rename(tmp, path)
+}
+
+/// A temp path no other write can be using, so overlapping writes never rename each other's
+/// half-written file over settings.json.
+fn unique_temp_path(dir: &Path) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    dir.join(format!(".settings.json.{}.{n}.tmp", std::process::id()))
 }
 
 /// Creates `tmp` with the permission bits of `original` (0600 when it does not exist yet), so the
@@ -327,14 +340,34 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn write_replaces_a_looser_stale_temp_file() {
+    fn write_ignores_a_leftover_fixed_name_temp_file() {
         let dir = tempfile::tempdir().unwrap();
         let p = paths_in(dir.path());
-        let tmp = dir.path().join(".settings.json.tmp");
-        std::fs::write(&tmp, "stale").unwrap();
-        set_mode(&tmp, 0o644);
+        let leftover = dir.path().join(".settings.json.tmp");
+        std::fs::write(&leftover, "stale").unwrap();
+        set_mode(&leftover, 0o644);
         apply_register(&p).unwrap();
         assert_eq!(mode_of(&p.settings_path), 0o600);
-        assert!(!tmp.exists());
+        assert!(std::fs::read_to_string(&p.settings_path).unwrap().contains("statusline.sh"));
+        assert_eq!(std::fs::read_to_string(&leftover).unwrap(), "stale");
+    }
+
+    fn temp_files_in(dir: &Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect()
+    }
+
+    #[test]
+    fn sequential_writes_leave_no_temp_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        apply_register(&p).unwrap();
+        apply_unregister(&p).unwrap();
+        apply_register(&p).unwrap();
+        assert!(std::fs::read_to_string(&p.settings_path).unwrap().contains("statusline.sh"));
+        assert_eq!(temp_files_in(dir.path()), Vec::<String>::new());
     }
 }
