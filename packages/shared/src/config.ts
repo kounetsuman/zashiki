@@ -293,7 +293,7 @@ export const DEFAULT_STARTUP_CONFIG: StartupConfig = {};
  */
 export function parseConfig(input: unknown): ZashikiConfig {
   const result = zashikiConfigSchema.safeParse(input ?? {});
-  const config = result.success ? result.data : { ...DEFAULT_CONFIG };
+  const config = result.success ? result.data : structuredClone(DEFAULT_CONFIG);
   return migrateLegacyNotifySound(input, config);
 }
 

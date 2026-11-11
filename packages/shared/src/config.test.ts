@@ -269,3 +269,14 @@ describe("defaults filled in by the schemas", () => {
     );
   });
 });
+
+describe("parseConfig on a malformed file", () => {
+  it("returns its own copy of the defaults", () => {
+    const parsed = parseConfig("bad");
+    expect(parsed.notifications).not.toBe(DEFAULT_NOTIFICATION_SETTINGS);
+    expect(parsed.notifications.categories).not.toBe(
+      DEFAULT_NOTIFICATION_SETTINGS.categories,
+    );
+    expect(parsed.dashboard).not.toBe(DEFAULT_DASHBOARD_SETTINGS);
+  });
+});
