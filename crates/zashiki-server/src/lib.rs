@@ -895,6 +895,7 @@ mod tests {
             let directives: Vec<&str> = csp.split(';').map(str::trim).collect();
             for expected in [
                 "script-src 'self'",
+                "connect-src 'self' ipc: http://ipc.localhost",
                 "object-src 'none'",
                 "base-uri 'none'",
                 "frame-ancestors 'self'",
