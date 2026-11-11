@@ -33,8 +33,6 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
-      # Check out exactly the resolved tag, so a manual run builds the tag it publishes
-      # rather than the branch it was started from; the fetch fails if the tag is missing.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: refs/tags/${{ steps.tag.outputs.tag }}
