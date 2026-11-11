@@ -74,11 +74,11 @@ fn resolve_entry_within_repo(
     rel_path: &str,
 ) -> Result<PathBuf, (StatusCode, String)> {
     let trimmed = rel_path.trim_end_matches('/');
-    let name = trimmed.rsplit('/').next().unwrap_or_default();
-    if name.is_empty() || name == "." || name == ".." {
+    let (parent, name) = trimmed.rsplit_once('/').unwrap_or(("", trimmed));
+    if !is_single_path_segment(name) {
         return Err((StatusCode::BAD_REQUEST, "invalid entry path".to_string()));
     }
-    let entry = resolve_within_repo(repo_path, parent_rel_dir(trimmed))?.join(name);
+    let entry = resolve_within_repo(repo_path, parent)?.join(name);
     std::fs::symlink_metadata(&entry).map_err(|e| status_for_fs_error(&e))?;
     Ok(entry)
 }
@@ -494,6 +494,18 @@ mod tests {
             trashed.unwrap(),
             resolve_within_repo(repo, "gone.txt").unwrap()
         );
+    }
+
+    #[test]
+    fn rename_and_delete_reject_a_final_component_with_a_backslash() {
+        let root = tempfile::tempdir().unwrap();
+        let repo = root.path().to_str().unwrap();
+        std::fs::write(root.path().join("a\\..\\x"), "x").unwrap();
+
+        let (code, _) = rename_within_repo(repo, "a\\..\\x", "y").unwrap_err();
+        assert_eq!(code, StatusCode::BAD_REQUEST);
+        let (code, _) = trashed_path(repo, "a\\..\\x").unwrap_err();
+        assert_eq!(code, StatusCode::BAD_REQUEST);
     }
 
     /// Runs `delete_resolved` with a trash op that records the path it was given.
