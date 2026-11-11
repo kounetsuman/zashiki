@@ -92,6 +92,7 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
 fn write_atomic_using(path: &Path, value: &Value, temp_counter: &AtomicU64) -> io::Result<()> {
     let text = serde_json::to_string_pretty(value)? + "\n";
     serde_json::from_str::<Value>(&text).map_err(|e| io::Error::new(ErrorKind::InvalidData, e))?;
+    remove_legacy_temp(path);
     let path = &resolve_symlink(path)?;
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir)?;
@@ -134,6 +135,13 @@ fn fill_and_rename(mut file: std::fs::File, mode: u32, text: &str, tmp: &Path, p
     file.sync_all()?;
     drop(file);
     std::fs::rename(tmp, path)
+}
+
+/// Older builds wrote through this fixed name next to settings.json, and a leftover can hold a
+/// world-readable copy of the settings.
+fn remove_legacy_temp(path: &Path) {
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let _ = std::fs::remove_file(dir.join(".settings.json.tmp"));
 }
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -439,7 +447,7 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn write_ignores_a_leftover_fixed_name_temp_file() {
+    fn write_removes_a_legacy_fixed_name_temp_file() {
         let dir = tempfile::tempdir().unwrap();
         let p = paths_in(dir.path());
         let leftover = dir.path().join(".settings.json.tmp");
@@ -448,7 +456,7 @@ mod tests {
         apply_register(&p).unwrap();
         assert_eq!(mode_of(&p.settings_path), 0o600);
         assert!(std::fs::read_to_string(&p.settings_path).unwrap().contains("statusline.sh"));
-        assert_eq!(std::fs::read_to_string(&leftover).unwrap(), "stale");
+        assert!(!leftover.exists());
     }
 
     fn temp_files_in(dir: &Path) -> Vec<String> {
