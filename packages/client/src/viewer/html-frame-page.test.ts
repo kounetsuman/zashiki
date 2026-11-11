@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HTML_FRAME_RENDER } from "../lib/html-frame.js";
+import { HTML_FRAME_READY, HTML_FRAME_RENDER } from "../lib/html-frame.js";
 
 const page = readFileSync(
   join(
@@ -34,8 +34,21 @@ function receive(data: unknown, source: MessageEventSource | null): void {
 describe("the HTML frame host page", () => {
   afterEach(() => vi.restoreAllMocks());
 
+  it("tells its parent it is ready every time it loads", () => {
+    stubDocumentRewrite();
+    const post = vi
+      .spyOn(window.parent, "postMessage")
+      .mockImplementation(() => {});
+    startHostPage();
+    startHostPage();
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenCalledWith({ t: HTML_FRAME_READY }, "*");
+    receive({ t: HTML_FRAME_RENDER, html: "" }, window.parent);
+  });
+
   it("writes the HTML its parent sends into its own document, once", () => {
     const write = stubDocumentRewrite();
+    vi.spyOn(window.parent, "postMessage").mockImplementation(() => {});
     startHostPage();
     receive({ t: HTML_FRAME_RENDER, html: "<h1>hi</h1>" }, window.parent);
     receive({ t: HTML_FRAME_RENDER, html: "<h1>again</h1>" }, window.parent);
@@ -45,6 +58,7 @@ describe("the HTML frame host page", () => {
 
   it("ignores messages from anyone but its parent, and messages of another shape", () => {
     const write = stubDocumentRewrite();
+    vi.spyOn(window.parent, "postMessage").mockImplementation(() => {});
     startHostPage();
     const other = new MessageChannel().port1;
     receive({ t: HTML_FRAME_RENDER, html: "<h1>x</h1>" }, other);

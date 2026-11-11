@@ -12,7 +12,10 @@ export function htmlFrameUrl(serverBase: string): string {
   return url.href;
 }
 
-/** Message type `t` of the message carrying the HTML; the page's inline script matches it. */
+/** Message type `t` the host page sends its parent on every load, asking for the HTML. */
+export const HTML_FRAME_READY = "html-frame.ready";
+
+/** Message type `t` of the reply carrying the HTML; the page's inline script matches it. */
 export const HTML_FRAME_RENDER = "html-frame.render";
 
 export interface HtmlFrameRenderMessage {

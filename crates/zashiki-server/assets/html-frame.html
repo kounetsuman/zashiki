@@ -13,6 +13,7 @@
         document.write(data.html);
         document.close();
       });
+      parent.postMessage({ t: "html-frame.ready" }, "*");
     </script>
   </head>
   <body></body>

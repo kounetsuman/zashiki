@@ -1,16 +1,31 @@
 // @vitest-environment jsdom
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { HTML_FRAME_RENDER, htmlFrameUrl } from "../lib/html-frame.js";
+import {
+  HTML_FRAME_READY,
+  HTML_FRAME_RENDER,
+  htmlFrameUrl,
+} from "../lib/html-frame.js";
 import { HtmlFrame } from "./HtmlFrame.js";
 
 afterEach(cleanup);
 
-function framePostMessage(frame: HTMLIFrameElement) {
-  const window = frame.contentWindow;
-  if (window === null) throw new Error("no frame window");
-  return vi.spyOn(window, "postMessage").mockImplementation(() => undefined);
+function renderedFrame(html: string) {
+  const view = render(<HtmlFrame html={html} title="t" />);
+  const frame = view.container.querySelector("iframe");
+  const frameWindow = frame?.contentWindow;
+  if (frame === null || frameWindow == null) throw new Error("no frame");
+  const post = vi
+    .spyOn(frameWindow, "postMessage")
+    .mockImplementation(() => undefined);
+  return { ...view, frame, frameWindow, post };
+}
+
+function receive(data: unknown, source: MessageEventSource | null): void {
+  act(() => {
+    window.dispatchEvent(new MessageEvent("message", { data, source }));
+  });
 }
 
 describe("HtmlFrame", () => {
@@ -29,39 +44,38 @@ describe("HtmlFrame", () => {
     expect(frame?.className).toBe("c");
   });
 
-  it("hands the HTML to the host page once it has loaded", () => {
-    const { container } = render(<HtmlFrame html="<h1>hi</h1>" title="t" />);
-    const frame = container.querySelector("iframe");
-    if (frame === null) throw new Error("no frame");
-    const post = framePostMessage(frame);
+  it("hands the HTML over each time the host page says it is ready, so a reloading page is drawn again", () => {
+    const { frameWindow, post } = renderedFrame("<h1>hi</h1>");
     expect(post).not.toHaveBeenCalled();
-    frame.dispatchEvent(new Event("load"));
-    expect(post).toHaveBeenCalledWith(
+    receive({ t: HTML_FRAME_READY }, frameWindow);
+    receive({ t: HTML_FRAME_READY }, frameWindow);
+    expect(post).toHaveBeenCalledTimes(2);
+    expect(post).toHaveBeenLastCalledWith(
       { t: HTML_FRAME_RENDER, html: "<h1>hi</h1>" },
       "*",
     );
   });
 
-  it("hands it over only for the host page's own load, not for pages the content navigates to", () => {
-    const { container } = render(<HtmlFrame html="<h1>hi</h1>" title="t" />);
-    const frame = container.querySelector("iframe");
-    if (frame === null) throw new Error("no frame");
-    const post = framePostMessage(frame);
-    frame.dispatchEvent(new Event("load"));
-    frame.dispatchEvent(new Event("load"));
-    expect(post).toHaveBeenCalledTimes(1);
+  it("answers only its own frame's well-formed ready message", () => {
+    const { post } = renderedFrame("<h1>hi</h1>");
+    receive({ t: HTML_FRAME_READY }, window);
+    receive({ t: HTML_FRAME_READY }, null);
+    const { frameWindow } = renderedFrame("<h1>other</h1>");
+    receive({ t: "other" }, frameWindow);
+    receive("ready", frameWindow);
+    expect(post).not.toHaveBeenCalled();
   });
 
-  it("reloads the host page with the new HTML when the HTML changes", () => {
-    const { container, rerender } = render(
-      <HtmlFrame html="<h1>one</h1>" title="t" />,
-    );
-    const frame = container.querySelector("iframe");
-    if (frame === null) throw new Error("no frame");
-    frame.dispatchEvent(new Event("load"));
+  it("answers a ready that arrives after the HTML changed with the current HTML only", () => {
+    const { frame, rerender } = renderedFrame("<h1>one</h1>");
     rerender(<HtmlFrame html="<h1>two</h1>" title="t" />);
-    const post = framePostMessage(frame);
-    frame.dispatchEvent(new Event("load"));
+    const frameWindow = frame.contentWindow;
+    if (frameWindow === null) throw new Error("no frame window");
+    const post = vi
+      .spyOn(frameWindow, "postMessage")
+      .mockImplementation(() => undefined);
+    receive({ t: HTML_FRAME_READY }, frameWindow);
+    expect(post).toHaveBeenCalledTimes(1);
     expect(post).toHaveBeenCalledWith(
       { t: HTML_FRAME_RENDER, html: "<h1>two</h1>" },
       "*",
