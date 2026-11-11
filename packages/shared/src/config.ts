@@ -68,6 +68,12 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   },
 };
 
+/** Gives each parse its own copy, so mutating a parsed config never changes the exported defaults. */
+const freshCopy =
+  <T>(value: T) =>
+  (): T =>
+    structuredClone(value);
+
 function categoryPrefSchema(fallback: NotifyCategoryPref) {
   return z
     .object({
@@ -78,8 +84,8 @@ function categoryPrefSchema(fallback: NotifyCategoryPref) {
         .catch(fallback.soundType)
         .default(fallback.soundType),
     })
-    .catch(fallback)
-    .default(fallback);
+    .catch(freshCopy(fallback))
+    .default(freshCopy(fallback));
 }
 
 const defaultCategory = (
@@ -99,11 +105,11 @@ export const notificationSettingsSchema = z
         shellStart: defaultCategory("shellStart"),
         shellEnd: defaultCategory("shellEnd"),
       })
-      .catch(DEFAULT_NOTIFICATION_SETTINGS.categories)
-      .default(DEFAULT_NOTIFICATION_SETTINGS.categories),
+      .catch(freshCopy(DEFAULT_NOTIFICATION_SETTINGS.categories))
+      .default(freshCopy(DEFAULT_NOTIFICATION_SETTINGS.categories)),
   })
-  .catch(DEFAULT_NOTIFICATION_SETTINGS)
-  .default(DEFAULT_NOTIFICATION_SETTINGS);
+  .catch(freshCopy(DEFAULT_NOTIFICATION_SETTINGS))
+  .default(freshCopy(DEFAULT_NOTIFICATION_SETTINGS));
 
 /** Maps an on-the-wire notify `kind` to its settings category (null for an unknown kind). */
 export function notifyCategoryForKind(kind: string): NotifyCategory | null {
@@ -161,8 +167,8 @@ export const dashboardSettingsSchema = z
       .catch(DEFAULT_DASHBOARD_SETTINGS.frequency)
       .default(DEFAULT_DASHBOARD_SETTINGS.frequency),
   })
-  .catch(DEFAULT_DASHBOARD_SETTINGS)
-  .default(DEFAULT_DASHBOARD_SETTINGS);
+  .catch(freshCopy(DEFAULT_DASHBOARD_SETTINGS))
+  .default(freshCopy(DEFAULT_DASHBOARD_SETTINGS));
 
 /**
  * Live-apply settings (`~/.zashiki/config.json`).
@@ -232,8 +238,8 @@ function bandSchema(fallback: FooterBand) {
         .catch(fallback.value)
         .default(fallback.value),
     })
-    .catch(fallback)
-    .default(fallback);
+    .catch(freshCopy(fallback))
+    .default(freshCopy(fallback));
 }
 
 function indicatorSchema<T extends Record<string, FooterBand>>(fallback: T) {
@@ -244,7 +250,9 @@ function indicatorSchema<T extends Record<string, FooterBand>>(fallback: T) {
   const fallbackOutput = fallback as z.core.util.NoUndefined<
     z.output<typeof indicator>
   >;
-  return indicator.catch(fallbackOutput).default(fallbackOutput);
+  return indicator
+    .catch(freshCopy(fallbackOutput))
+    .default(freshCopy(fallbackOutput));
 }
 
 /**
@@ -257,8 +265,8 @@ export const footerThresholdsSchema = z
     sessionTokens: indicatorSchema(DEFAULT_FOOTER_THRESHOLDS.sessionTokens),
     elapsedMs: indicatorSchema(DEFAULT_FOOTER_THRESHOLDS.elapsedMs),
   })
-  .catch(DEFAULT_FOOTER_THRESHOLDS)
-  .default(DEFAULT_FOOTER_THRESHOLDS);
+  .catch(freshCopy(DEFAULT_FOOTER_THRESHOLDS))
+  .default(freshCopy(DEFAULT_FOOTER_THRESHOLDS));
 
 /** Notification channel (equivalent to ZK_NOTIFY). */
 export const notifyModeSchema = z.enum(["web", "macos", "both"]);
