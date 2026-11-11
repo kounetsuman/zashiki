@@ -68,7 +68,7 @@ test.describe("Footer view switching", () => {
     await expect(dialog).toHaveCount(0);
     await page.getByRole("button", { name: "Help" }).click();
     await expect(dialog).toBeVisible();
-    await page.getByRole("button", { name: "Close" }).click();
+    await dialog.getByRole("button", { name: "Close" }).click();
     await expect(dialog).toHaveCount(0);
   });
 });
