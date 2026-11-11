@@ -18,6 +18,13 @@ describe("diagramFrameDocument", () => {
       "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:",
     );
   });
+
+  it("lets a diagram the user chose to render with remote images load web images and nothing else", () => {
+    const page = diagramFrameDocument("<svg></svg>", "remote");
+    expect(page).toContain(
+      "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob: https: http:; font-src data:",
+    );
+  });
 });
 
 describe("diagramFrameDocument text metrics", () => {
@@ -58,5 +65,11 @@ describe("diagramFrame", () => {
     const frame = diagramFrame("<svg></svg>", "Diagram");
     expect(frame.tabIndex).toBe(-1);
     expect(frame.style.pointerEvents).toBe("none");
+  });
+
+  it("runs no script even when it may load remote images", () => {
+    const frame = diagramFrame("<svg></svg>", "Diagram", "remote");
+    expect(frame.getAttribute("sandbox")).toBe("");
+    expect(frame.srcdoc).toContain("img-src data: blob: https: http:;");
   });
 });

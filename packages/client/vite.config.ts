@@ -12,6 +12,9 @@ export default defineConfig({
         mermaidProbe: fileURLToPath(
           new URL("./mermaid-probe.html", import.meta.url),
         ),
+        mermaidRender: fileURLToPath(
+          new URL("./mermaid-render.html", import.meta.url),
+        ),
       },
     },
   },

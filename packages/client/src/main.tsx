@@ -16,6 +16,7 @@ import { createGitApi } from "./api/git.js";
 import { createReposApi } from "./api/repos.js";
 import { createSearchApi } from "./api/search.js";
 import i18n from "./i18n/index.js";
+import { serverBase } from "./lib/server-base.js";
 import { resolveToken, stripTokenFromSearch } from "./lib/token.js";
 import { controlWsUrl, termWsUrl } from "./lib/url.js";
 import { TerminalSession } from "./session/terminal-session.js";
@@ -57,9 +58,7 @@ if (token === null) {
   );
 } else {
   // In development, connect from Vite (:5173) to the server on a different port
-  const base: string =
-    (import.meta.env.VITE_ZK_SERVER as string | undefined) ??
-    window.location.origin;
+  const base = serverBase();
   const control = new ControlClient({ url: controlWsUrl(base, token) });
   control.connect();
   const session = new TerminalSession({

@@ -165,6 +165,24 @@ mod tests {
         }
     }
 
+    /// WKWebView reports a frame's IPC message under the frame's own URL, so the frame that runs
+    /// previewed HTML must sit on an origin no grant covers: the server's other loopback name.
+    #[test]
+    fn the_html_frame_page_reaches_no_command() {
+        for (served, dev, server_port) in [
+            (RELEASE_ORIGIN, false, 8790),
+            ("http://127.0.0.1:9123", false, 9123),
+            (DEV_ORIGIN, true, 8790),
+        ] {
+            let configured = configured_app_origin(context().config(), dev);
+            let frame = format!("http://localhost:{server_port}/html-frame.html");
+            assert!(
+                !reaches(served, configured.as_deref(), &remote(&frame)),
+                "{served} {frame}"
+            );
+        }
+    }
+
     #[test]
     fn the_runtime_capability_keeps_the_static_permissions_and_windows() {
         let template = parse(TEMPLATE);

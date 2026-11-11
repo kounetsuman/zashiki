@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script>
+      addEventListener("message", function render(event) {
+        const data = event.data;
+        if (event.source !== parent) return;
+        if (data?.t !== "html-frame.render") return;
+        if (typeof data.html !== "string") return;
+        removeEventListener("message", render);
+        document.open();
+        document.write(data.html);
+        document.close();
+      });
+      parent.postMessage({ t: "html-frame.ready" }, "*");
+    </script>
+  </head>
+  <body></body>
+</html>

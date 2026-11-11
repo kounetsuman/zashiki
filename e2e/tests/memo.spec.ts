@@ -20,6 +20,10 @@ async function setMemoEnabled(page: Page, enabled: boolean): Promise<void> {
 }
 
 test.describe("Memo tab", () => {
+  test.afterEach(async ({ page }) => {
+    await setMemoEnabled(page, false);
+  });
+
   test("enabling the setting pins a non-closeable Memo tab at the front", async ({
     page,
   }) => {

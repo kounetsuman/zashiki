@@ -8,6 +8,8 @@ import {
   E2E_TOKEN,
 } from "./harness/constants.js";
 
+const SERVER_SETTINGS_SPECS = /memo\.spec\.ts$/;
+
 // Verify the UI in browser mode (the Tauri shell itself is smoke + manual). boot.mjs programmatically
 // starts the sidecar-equivalent server with a fixed token. Within the happy-path scope it never touches
 // real sessions / real Claude.
@@ -32,6 +34,16 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+      testIgnore: SERVER_SETTINGS_SPECS,
+    },
+    // These specs flip settings the shared server persists and every page reads on load, so they run
+    // alone, after every other spec.
+    {
+      name: "server-settings",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: SERVER_SETTINGS_SPECS,
+      dependencies: ["chromium"],
+      fullyParallel: false,
     },
   ],
   webServer: {

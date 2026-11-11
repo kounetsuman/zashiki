@@ -916,6 +916,30 @@ mod git_file_rest_tests {
         }
     }
 
+    #[tokio::test]
+    async fn media_keeps_its_own_policy_while_the_client_pages_are_served() {
+        let fx = fixture();
+        let repo = Path::new(&fx.repo_a);
+        std::fs::write(repo.join("icon.svg"), "<svg></svg>").unwrap();
+        std::fs::write(repo.join("doc.pdf"), b"%PDF-1.4").unwrap();
+        let dist = tempfile::tempdir().unwrap();
+        let app = build_router(ServerConfig {
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
+            repos_conf: Some(fx.conf.clone()),
+            client_dist: Some(dist.path().to_path_buf()),
+            ..Default::default()
+        });
+        let (s, h, _) = media_req(app.clone(), &fx.repo_a, "icon.svg", &[]).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(
+            h.get("content-security-policy").unwrap(),
+            crate::media_type::MEDIA_CSP
+        );
+        let (s, h, _) = media_req(app, &fx.repo_a, "doc.pdf", &[]).await;
+        assert_eq!(s, StatusCode::OK);
+        assert!(h.get("content-security-policy").is_none());
+    }
+
     /// The sandbox CSP is left off PDFs because it could stop the WebView's built-in PDF viewer.
     #[tokio::test]
     async fn media_read_serves_pdf_with_nosniff_and_without_a_sandbox() {

@@ -18,6 +18,9 @@ const probe = vi.hoisted(() => ({
       svg: "<svg data-diagram></svg>",
     }),
   ),
+  renderRemoteMermaid: vi.fn(
+    async (): Promise<MermaidProbeResult> => ({ kind: "failed" }),
+  ),
 }));
 
 vi.mock("./mermaid-probe.js", () => probe);
@@ -122,6 +125,7 @@ describe("renderMermaidBlocks", () => {
       probe.probeMermaid.mockImplementation(async () => ({
         kind: "remote",
         hosts: ["a.example", "b.example", "c.example", "d.example"],
+        svg: null,
       }));
     });
 
@@ -150,16 +154,49 @@ describe("renderMermaidBlocks", () => {
       expect(block?.dataset.mermaidSource).toBe(source);
     });
 
-    it("is drawn in the app without probing once the user asked to render it", async () => {
+    const drawnWithRemoteImage =
+      '<svg data-diagram><foreignObject><img src="https://img.example/a.png"></foreignObject></svg>';
+
+    it("is drawn in the page that may load its remote images and shown in a sandboxed frame that may too, once the user asked to render it", async () => {
+      probe.renderRemoteMermaid.mockImplementation(async () => ({
+        kind: "remote",
+        hosts: ["img.example"],
+        svg: drawnWithRemoteImage,
+      }));
+      const added: Node[] = [];
+      const observer = new MutationObserver((records) => {
+        for (const record of records) added.push(...record.addedNodes);
+      });
+      observer.observe(document, { childList: true, subtree: true });
       const host = previewWith(remoteBlock);
       await renderMermaidBlocks(host, {
         renderedRemoteDiagrams: new Set([source]),
+        diagramTitle: "Diagram",
       });
+      observer.disconnect();
       const block = host.querySelector<HTMLElement>(".viewer-mermaid");
       expect(block?.dataset.mermaidState).toBe("rendered");
-      expect(block?.querySelector("svg[data-diagram]")).not.toBeNull();
+      expect(document.querySelector("img, svg[data-diagram]")).toBeNull();
+      expect(
+        added.some(
+          (node) =>
+            node instanceof Element &&
+            (node.matches("img") || node.querySelector("img") !== null),
+        ),
+      ).toBe(false);
+      const frame = block?.querySelector("iframe");
+      expect(frame?.getAttribute("sandbox")).toBe("");
+      expect(frame?.title).toBe("Diagram");
+      expect(frame?.getAttribute("srcdoc")).toContain(drawnWithRemoteImage);
+      expect(frame?.getAttribute("srcdoc")).toContain(
+        "img-src data: blob: https: http:;",
+      );
+      expect(probe.renderRemoteMermaid).toHaveBeenCalledWith(
+        expect.any(String),
+        source,
+      );
       expect(probe.probeMermaid).not.toHaveBeenCalled();
-      expect(mermaid.render).toHaveBeenCalledWith(expect.any(String), source);
+      expect(mermaid.render).not.toHaveBeenCalled();
     });
 
     it("shows its code block again when the user asked to render it but it fails", async () => {
@@ -168,15 +205,30 @@ describe("renderMermaidBlocks", () => {
       const block = host.querySelector<HTMLElement>(".viewer-mermaid");
       if (block === null) throw new Error("no block");
       delete block.dataset.mermaidState;
-      mermaid.render.mockImplementation(async () => {
-        throw new Error("parse error");
-      });
+      probe.renderRemoteMermaid.mockImplementation(async () => ({
+        kind: "failed",
+      }));
       await renderMermaidBlocks(host, {
         renderedRemoteDiagrams: new Set([source]),
       });
       expect(block.dataset.mermaidState).toBe("error");
       expect(block.querySelector("button")).toBeNull();
       expect(block.querySelector("pre > code")?.textContent).toBe(source);
+    });
+
+    it("shows its code block when the user asked to render it but nothing was drawn", async () => {
+      probe.renderRemoteMermaid.mockImplementation(async () => ({
+        kind: "remote",
+        hosts: ["img.example"],
+        svg: null,
+      }));
+      const host = previewWith(remoteBlock);
+      await renderMermaidBlocks(host, {
+        renderedRemoteDiagrams: new Set([source]),
+      });
+      const block = host.querySelector<HTMLElement>(".viewer-mermaid");
+      expect(block?.dataset.mermaidState).toBe("error");
+      expect(block?.querySelector("iframe")).toBeNull();
     });
 
     it("shows the code block when the probe page cannot start", async () => {

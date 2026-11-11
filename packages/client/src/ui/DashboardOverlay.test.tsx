@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { htmlFrameUrl } from "../lib/html-frame.js";
 import { DashboardOverlay } from "./DashboardOverlay.js";
 
 const noop = () => undefined;
@@ -31,9 +32,10 @@ describe("DashboardOverlay", () => {
       />,
     );
     const frame = container.querySelector("iframe");
-    expect(frame?.getAttribute("srcdoc")).toBe("<h1>goals</h1>");
+    expect(frame?.getAttribute("src")).toBe(
+      htmlFrameUrl(window.location.origin),
+    );
     expect(frame?.getAttribute("sandbox")).toBe("allow-scripts");
-    expect(frame?.getAttribute("src")).toBeNull();
   });
 
   it("says why the page could not be read instead of framing nothing", () => {

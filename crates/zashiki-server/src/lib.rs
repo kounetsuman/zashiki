@@ -18,6 +18,7 @@ pub mod fs;
 pub mod git;
 pub mod hook_event_store;
 pub mod hooks;
+pub mod html_frame;
 pub mod jsonl;
 pub mod launchd;
 pub mod logging;
@@ -37,6 +38,7 @@ pub mod memo;
 pub mod memo_watch;
 pub mod notes;
 pub mod notes_watch;
+pub mod page_policy;
 pub mod repos;
 pub mod repos_watch;
 pub mod runtime;
@@ -220,11 +222,17 @@ pub fn build_router(config: ServerConfig) -> Router {
         ))
         .with_state(state);
 
-    let mut app = Router::new().route("/healthz", get(healthz)).merge(authed);
+    let mut app = Router::new()
+        .route("/healthz", get(healthz))
+        .route("/html-frame.html", get(html_frame::html_frame_page))
+        .merge(authed);
 
     if let Some(dist) = config.client_dist {
         // Serve GET / and extension-bearing assets from the client dist. No token required.
-        app = app.fallback_service(ServeDir::new(dist).append_index_html_on_directories(true));
+        let client_files = Router::new()
+            .fallback_service(ServeDir::new(dist).append_index_html_on_directories(true))
+            .layer(axum::middleware::from_fn(page_policy::with_page_headers));
+        app = app.fallback_service(client_files);
     }
 
     // Host/Origin verification applies to all routes, including static serving.
@@ -821,5 +829,85 @@ mod tests {
         let (status, body) = request(app, "/", Some(OK_HOST), &[]).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, "<!doctype html>zk");
+    }
+
+    /// The page that shows repo / dashboard HTML runs that HTML's own scripts, so it must not get
+    /// the cockpit's script policy. The server serves it itself, so it is there in development too.
+    #[tokio::test]
+    async fn serves_the_html_frame_page_with_its_own_sandboxing_policy() {
+        for client_dist in [None, Some(tempfile::tempdir().unwrap())] {
+            let app = build_router(ServerConfig {
+                client_dist: client_dist.as_ref().map(|d| d.path().to_path_buf()),
+                ..Default::default()
+            });
+            let (status, picked) = request_full(
+                app.clone(),
+                "GET",
+                "/html-frame.html",
+                &[("host", "localhost:8790")],
+                &["content-security-policy", "referrer-policy", "content-type"],
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            let csp = picked[0].as_deref().unwrap_or_default();
+            assert_eq!(csp, html_frame::HTML_FRAME_CSP);
+            let directives: Vec<&str> = csp.split(';').map(str::trim).collect();
+            assert_eq!(directives, ["sandbox allow-scripts"], "{csp}");
+            assert_eq!(picked[1].as_deref(), Some("no-referrer"));
+            assert!(picked[2].as_deref().unwrap_or_default().starts_with("text/html"));
+            let (_, body) = request(app, "/html-frame.html", Some("localhost:8790"), &[]).await;
+            assert_eq!(body, html_frame::HTML_FRAME_PAGE);
+        }
+    }
+
+    /// A page in an opaque origin (the HTML frame) sends `Origin: null`; it reaches nothing.
+    #[tokio::test]
+    async fn requests_from_an_opaque_origin_are_refused() {
+        let app = router(Some("secret"));
+        for uri in ["/api/repos", "/api/repos?token=secret", "/healthz"] {
+            let (status, _) = request(app.clone(), uri, Some(OK_HOST), &[("origin", "null")]).await;
+            assert_eq!(status, StatusCode::FORBIDDEN, "{uri}");
+        }
+    }
+
+    #[tokio::test]
+    async fn client_pages_and_assets_carry_the_page_policy_and_no_referrer() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("index.html"), "<!doctype html>zk").unwrap();
+        std::fs::create_dir(dir.path().join("assets")).unwrap();
+        std::fs::write(dir.path().join("assets/index.js"), "export {}").unwrap();
+        let app = build_router(ServerConfig {
+            client_dist: Some(dir.path().to_path_buf()),
+            ..Default::default()
+        });
+        for uri in ["/", "/index.html", "/assets/index.js"] {
+            let (status, picked) = request_full(
+                app.clone(),
+                "GET",
+                uri,
+                &[("host", OK_HOST)],
+                &["content-security-policy", "referrer-policy"],
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "{uri}");
+            let csp = picked[0].as_deref().unwrap_or_default();
+            let directives: Vec<&str> = csp.split(';').map(str::trim).collect();
+            for expected in [
+                "script-src 'self'",
+                "connect-src 'self' ipc: http://ipc.localhost",
+                "object-src 'none'",
+                "base-uri 'none'",
+                "frame-ancestors 'self'",
+            ] {
+                assert!(directives.contains(&expected), "{uri}: {expected} in {csp}");
+            }
+            assert!(!csp.contains("unsafe-eval"), "{uri}: {csp}");
+            let script_src = directives
+                .iter()
+                .find(|d| d.starts_with("script-src"))
+                .unwrap();
+            assert!(!script_src.contains("unsafe-inline"), "{uri}: {csp}");
+            assert_eq!(picked[1].as_deref(), Some("no-referrer"), "{uri}");
+        }
     }
 }

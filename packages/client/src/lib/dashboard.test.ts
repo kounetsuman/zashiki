@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   DASHBOARD_LAST_SHOWN_KEY,
-  DASHBOARD_SANDBOX,
   dashboardDayKey,
   dashboardFailureSpendsDay,
   dashboardTarget,
@@ -58,14 +57,6 @@ describe("dashboardTarget", () => {
       kind: "remote",
       url: "https://dash.example",
     });
-  });
-});
-
-describe("DASHBOARD_SANDBOX", () => {
-  it("is an opaque origin, which no navigation inside the frame can widen", () => {
-    expect(DASHBOARD_SANDBOX).toBe("allow-scripts");
-    expect(DASHBOARD_SANDBOX).not.toContain("allow-same-origin");
-    expect(DASHBOARD_SANDBOX).not.toContain("allow-top-navigation");
   });
 });
 
