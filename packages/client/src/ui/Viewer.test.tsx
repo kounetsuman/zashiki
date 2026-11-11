@@ -495,6 +495,9 @@ describe("Viewer", () => {
 
     afterEach(() => vi.clearAllMocks());
 
+    const DRAWN_REMOTE_DIAGRAM =
+      'iframe.viewer-mermaid-frame[srcdoc*="<svg data-in-app>"]';
+
     it("shows a button naming the host instead of drawing the diagram", async () => {
       const { container } = render(
         <Viewer buffer={md} onTogglePreview={noop} onCopyPath={noop} />,
@@ -517,7 +520,7 @@ describe("Viewer", () => {
         await screen.findByRole("button", { name: /img\.example/ }),
       );
       await vi.waitFor(() =>
-        expect(container.querySelector("svg[data-in-app]")).not.toBeNull(),
+        expect(container.querySelector(DRAWN_REMOTE_DIAGRAM)).not.toBeNull(),
       );
       expect(document.activeElement).toBe(
         container.querySelector(".viewer-preview"),
@@ -531,7 +534,7 @@ describe("Viewer", () => {
         />,
       );
       await vi.waitFor(() =>
-        expect(container.querySelector("svg[data-in-app]")).not.toBeNull(),
+        expect(container.querySelector(DRAWN_REMOTE_DIAGRAM)).not.toBeNull(),
       );
       expect(screen.queryByRole("button", { name: /img\.example/ })).toBeNull();
     });
@@ -544,7 +547,7 @@ describe("Viewer", () => {
         await screen.findByRole("button", { name: /img\.example/ }),
       );
       await vi.waitFor(() =>
-        expect(container.querySelector("svg[data-in-app]")).not.toBeNull(),
+        expect(container.querySelector(DRAWN_REMOTE_DIAGRAM)).not.toBeNull(),
       );
       rerender(
         <Viewer
@@ -554,7 +557,7 @@ describe("Viewer", () => {
         />,
       );
       await screen.findByRole("button", { name: /img\.example/ });
-      expect(container.querySelector("svg[data-in-app]")).toBeNull();
+      expect(container.querySelector(DRAWN_REMOTE_DIAGRAM)).toBeNull();
     });
   });
 

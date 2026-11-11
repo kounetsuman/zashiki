@@ -150,14 +150,24 @@ describe("renderMermaidBlocks", () => {
       expect(block?.dataset.mermaidSource).toBe(source);
     });
 
-    it("is drawn in the app without probing once the user asked to render it", async () => {
+    it("is shown in a sandboxed frame that may load remote images, without probing, once the user asked to render it", async () => {
       const host = previewWith(remoteBlock);
       await renderMermaidBlocks(host, {
         renderedRemoteDiagrams: new Set([source]),
+        diagramTitle: "Diagram",
       });
       const block = host.querySelector<HTMLElement>(".viewer-mermaid");
       expect(block?.dataset.mermaidState).toBe("rendered");
-      expect(block?.querySelector("svg[data-diagram]")).not.toBeNull();
+      expect(document.querySelector("svg[data-diagram]")).toBeNull();
+      const frame = block?.querySelector("iframe");
+      expect(frame?.getAttribute("sandbox")).toBe("");
+      expect(frame?.title).toBe("Diagram");
+      expect(frame?.getAttribute("srcdoc")).toContain(
+        "<svg data-diagram></svg>",
+      );
+      expect(frame?.getAttribute("srcdoc")).toContain(
+        "img-src data: blob: https:;",
+      );
       expect(probe.probeMermaid).not.toHaveBeenCalled();
       expect(mermaid.render).toHaveBeenCalledWith(expect.any(String), source);
     });

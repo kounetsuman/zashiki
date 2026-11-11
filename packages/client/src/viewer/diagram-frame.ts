@@ -10,17 +10,27 @@ const PREVIEW_CSS = `html, body { overflow: hidden; background: transparent; }
 body { color: #ddd; }
 body > svg { display: block; width: 100%; height: auto; }`;
 
-const FRAME_POLICY =
-  "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:";
+/** Which images a framed diagram may load: only those inlined in it, or also https ones. */
+export type DiagramImages = "inline" | "remote";
+
+const FRAME_POLICY: Record<DiagramImages, string> = {
+  inline:
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:",
+  remote:
+    "default-src 'none'; style-src 'unsafe-inline'; img-src data: blob: https:; font-src data:",
+};
 
 function escapeAttribute(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
 
-/** A page holding only the diagram, whose policy lets it load nothing from outside, ever. */
-export function diagramFrameDocument(svg: string): string {
+/** A page holding only the diagram, whose policy lets it load no script and no other content. */
+export function diagramFrameDocument(
+  svg: string,
+  images: DiagramImages = "inline",
+): string {
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${escapeAttribute(
-    FRAME_POLICY,
+    FRAME_POLICY[images],
   )}"><style>${DIAGRAM_BASE_CSS}\n${PREVIEW_CSS}</style></head><body>${svg}</body></html>`;
 }
 
@@ -75,18 +85,22 @@ export function diagramFrameSize(svg: string): DiagramFrameSize {
 }
 
 /**
- * Shows a drawn diagram in a frame of its own that runs no script and may fetch nothing, so
- * whatever the diagram refers to stays unloaded. The frame takes neither focus nor the pointer,
- * so the app's keys keep working and nothing in the read-only diagram can be followed.
+ * Shows a drawn diagram in a frame of its own that runs no script and fetches nothing but the
+ * images `images` allows. The frame takes neither focus nor the pointer, so the app's keys keep
+ * working and nothing in the read-only diagram can be followed.
  */
-export function diagramFrame(svg: string, title: string): HTMLIFrameElement {
+export function diagramFrame(
+  svg: string,
+  title: string,
+  images: DiagramImages = "inline",
+): HTMLIFrameElement {
   const frame = document.createElement("iframe");
   frame.className = "viewer-mermaid-frame";
   frame.setAttribute("sandbox", "");
   frame.title = title;
   frame.tabIndex = -1;
   frame.style.pointerEvents = "none";
-  frame.srcdoc = diagramFrameDocument(svg);
+  frame.srcdoc = diagramFrameDocument(svg, images);
   const { maxWidth, aspectRatio, height } = diagramFrameSize(svg);
   if (maxWidth !== null) frame.style.maxWidth = maxWidth;
   if (aspectRatio !== null) frame.style.aspectRatio = aspectRatio;
