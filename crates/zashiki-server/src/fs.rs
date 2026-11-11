@@ -375,13 +375,6 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn is_symlink(path: &Path) -> bool {
-        std::fs::symlink_metadata(path)
-            .map(|m| m.file_type().is_symlink())
-            .unwrap_or(false)
-    }
-
-    #[cfg(unix)]
     #[test]
     fn rename_renames_a_link_to_a_dir_not_its_target() {
         let root = tempfile::tempdir().unwrap();
@@ -392,8 +385,8 @@ mod tests {
         let new_rel = rename_within_repo(repo, "README.md", "LINK.md").unwrap();
 
         assert_eq!(new_rel, "LINK.md");
-        assert!(is_symlink(&root.path().join("LINK.md")));
-        assert!(!is_symlink(&root.path().join("README.md")));
+        assert!(root.path().join("LINK.md").is_symlink());
+        assert!(!root.path().join("README.md").is_symlink());
         assert!(root.path().join("src").is_dir());
     }
 
@@ -412,7 +405,7 @@ mod tests {
 
         rename_within_repo(repo, "link.txt", "x.txt").unwrap();
 
-        assert!(is_symlink(&root.path().join("x.txt")));
+        assert!(root.path().join("x.txt").is_symlink());
         assert!(outside.path().join("secret.txt").is_file());
         assert!(!outside.path().join("x.txt").exists());
     }
@@ -426,8 +419,8 @@ mod tests {
 
         rename_within_repo(repo, "dangling", "renamed").unwrap();
 
-        assert!(is_symlink(&root.path().join("renamed")));
-        assert!(!is_symlink(&root.path().join("dangling")));
+        assert!(root.path().join("renamed").is_symlink());
+        assert!(!root.path().join("dangling").is_symlink());
     }
 
     #[cfg(unix)]
@@ -441,7 +434,7 @@ mod tests {
         let (code, _) = rename_within_repo(repo, "a.txt", "b.txt").unwrap_err();
 
         assert_eq!(code, StatusCode::CONFLICT);
-        assert!(is_symlink(&root.path().join("b.txt")));
+        assert!(root.path().join("b.txt").is_symlink());
     }
 
     #[cfg(unix)]
@@ -535,7 +528,7 @@ mod tests {
 
         let trashed = trashed_path(repo, "README.md").unwrap();
 
-        assert!(is_symlink(&trashed));
+        assert!(trashed.is_symlink());
         std::fs::remove_file(&trashed).unwrap();
         assert!(root.path().join("src/main.rs").is_file());
     }
@@ -551,7 +544,7 @@ mod tests {
         let trashed = trashed_path(repo, "link.txt").unwrap();
 
         assert_eq!(trashed.file_name().unwrap(), "link.txt");
-        assert!(is_symlink(&trashed));
+        assert!(trashed.is_symlink());
     }
 
     #[cfg(unix)]
@@ -569,7 +562,7 @@ mod tests {
 
         let trashed = trashed_path(repo, "link.txt").unwrap();
 
-        assert!(is_symlink(&trashed));
+        assert!(trashed.is_symlink());
         std::fs::remove_file(&trashed).unwrap();
         assert!(outside.path().join("secret.txt").is_file());
     }
@@ -583,7 +576,7 @@ mod tests {
 
         let trashed = trashed_path(repo, "dangling").unwrap();
 
-        assert!(is_symlink(&trashed));
+        assert!(trashed.is_symlink());
     }
 
     #[cfg(unix)]
@@ -612,6 +605,7 @@ mod tests {
             let (code, _) = trashed_path(repo, bad).unwrap_err();
             assert_eq!(code, StatusCode::BAD_REQUEST, "{bad:?}");
         }
+        assert!(root.path().join("outside.txt").is_file());
     }
 
     #[test]
