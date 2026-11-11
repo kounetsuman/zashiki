@@ -91,7 +91,12 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
     let path = &resolve_symlink(path)?;
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     std::fs::create_dir_all(dir)?;
-    if path.exists() {
+    let existing = match std::fs::metadata(path) {
+        Ok(m) => Some(m),
+        Err(e) if e.kind() == ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
+    if existing.is_some() {
         let backup = path.with_file_name(format!(
             "{}.bak",
             path.file_name().and_then(|n| n.to_str()).unwrap_or("settings.json")
@@ -104,7 +109,7 @@ fn write_atomic(path: &Path, value: &Value) -> io::Result<()> {
         std::fs::copy(path, backup)?;
     }
     let tmp = unique_temp_path(dir);
-    let file = create_temp_with_mode_of(&tmp, path)?;
+    let file = create_temp_with_mode_of(&tmp, existing.as_ref())?;
     let result = fill_and_rename(file, &text, &tmp, path);
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -134,12 +139,12 @@ fn unique_temp_path(dir: &Path) -> PathBuf {
     dir.join(format!(".settings.json.{}.{n}.tmp", std::process::id()))
 }
 
-/// Creates `tmp` with the permission bits of `original` (0600 when it does not exist yet), so the
-/// replacement is never more readable than the file it replaces.
+/// Creates `tmp` with the permission bits of the file it replaces (0600 when there is none yet), so
+/// the replacement is never more readable than the original.
 #[cfg(unix)]
-fn create_temp_with_mode_of(tmp: &Path, original: &Path) -> io::Result<std::fs::File> {
+fn create_temp_with_mode_of(tmp: &Path, original: Option<&std::fs::Metadata>) -> io::Result<std::fs::File> {
     use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
-    let mode = std::fs::metadata(original).map_or(0o600, |m| m.permissions().mode() & 0o777);
+    let mode = original.map_or(0o600, |m| m.permissions().mode() & 0o777);
     let file = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -151,7 +156,7 @@ fn create_temp_with_mode_of(tmp: &Path, original: &Path) -> io::Result<std::fs::
 }
 
 #[cfg(not(unix))]
-fn create_temp_with_mode_of(tmp: &Path, _original: &Path) -> io::Result<std::fs::File> {
+fn create_temp_with_mode_of(tmp: &Path, _original: Option<&std::fs::Metadata>) -> io::Result<std::fs::File> {
     std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
