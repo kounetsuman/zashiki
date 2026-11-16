@@ -6,7 +6,7 @@ Node server を撤去し、コアロジックを Rust へ寄せる取り組み�
 
 ## crate 構成
 
-- **`zashiki-core`** … 純関数のみ・**依存ゼロ（std）を維持**。TS 版 `@zashiki/shared` の domain と 1:1 で対応する移植（`git` / `process_tree` / `save_file` / `session_state` / `repos` / `flow`）。`cargo test` で守り、CI `core-check` で TS 版との一致を担保する。
+- **`zashiki-core`** … 純関数のみ・**依存ゼロ（std）を維持**。TS 版 `@zashiki/shared` の domain と 1:1 で対応する移植（`git` / `save_file` / `session_state` / `repos` / `flow`）。`cargo test` で守り、CI `core-check` で TS 版との一致を担保する。
 - **`zashiki-server`** … REST/WS/PTY・JSON シリアライズ・jsonl パースを持つ server crate（`axum` / `tokio` / `serde` 等に依存し `zashiki-core` を使う）。TS server の drop-in 置換を目指す。
 
 ## 目標アーキテクチャ

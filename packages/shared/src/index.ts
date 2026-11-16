@@ -170,15 +170,6 @@ export {
 } from "./org-style.js";
 export { stripTrailingSlashes } from "./path-slash.js";
 export {
-  buildProcessMaps,
-  findSidInTree,
-  type ProcessEntry,
-  type ProcessMaps,
-  parsePsSnapshot,
-  resolveIdentitySid,
-  sidFromArgs,
-} from "./process-tree.js";
-export {
   type ClaudeInstall,
   type ClientMessage,
   type CockpitTerminalId,
