@@ -36,6 +36,14 @@ describe("memoSyncChange", () => {
     });
   });
 
+  it("never splits a surrogate pair at either edge", () => {
+    expect(memoSyncChange("a😀b", "a😁b")).toEqual({
+      from: 1,
+      to: 3,
+      insert: "😁",
+    });
+  });
+
   it("replaces everything when nothing is shared", () => {
     expect(memoSyncChange("abc", "xyz")).toEqual({
       from: 0,
@@ -61,5 +69,9 @@ describe("keepThroughSync", () => {
   it("keeps a position inside the change at its offset, clamped to the inserted text", () => {
     expect(keepThroughSync(6, change)).toBe(6);
     expect(keepThroughSync(6, { from: 0, to: 10, insert: "ab" })).toBe(2);
+  });
+
+  it("never lands between the halves of an inserted surrogate pair", () => {
+    expect(keepThroughSync(2, { from: 1, to: 3, insert: "😀" })).toBe(1);
   });
 });
