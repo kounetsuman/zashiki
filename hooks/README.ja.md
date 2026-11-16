@@ -22,7 +22,8 @@
 
 アプリから自動登録できる。初回起動時にワンクリックのセットアップウィザードを提示し、SETTINGS には
 「Claude Code 連携」トグルがある。どちらも `~/.claude/settings.json` へ冪等・可逆にマージし、既存の
-hooks/statusLine を保持する（既存 statusLine は `ZK_LEGACY_STATUSLINE` でラップ）。以下の手動登録は
+hooks/statusLine を保持する（既存 statusLine は `ZK_LEGACY_STATUSLINE` でラップ）。新しいビルドが登録する
+イベントが同じインストールの既存の登録に無い場合は、サーバが起動時に足す（連携を OFF にしていれば OFF のまま）。以下の手動登録は
 スタンドアロン/上級者向け。
 
 `~/.claude/settings.json` に登録する（パスは各自のリポジトリ位置に読み替え）:

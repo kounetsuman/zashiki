@@ -275,6 +275,56 @@ fn register_statusline(root: &mut Map<String, Value>, paths: &ScriptPaths) {
     }
 }
 
+/// Adds the hook events an existing registration is missing — what a build that registers a new
+/// event finds on an install registered by an older one. Acts only when every zashiki entry already
+/// runs this build's script, so a server started from another checkout (a test, e2e, a dev sandbox)
+/// never rewrites the installed app's registration; touches nothing when no event carries a zashiki
+/// entry (never registered, or turned off). Existing entries and the statusLine are left as they are.
+pub fn merge_top_up(current: &Value, paths: &ScriptPaths) -> (Value, bool) {
+    let ours = our_hook_entries(current, paths);
+    let all_run_this_build = ours.iter().all(|e| entry_runs_script(e, &paths.notify_event));
+    if ours.is_empty() || !all_run_this_build {
+        return (current.clone(), false);
+    }
+    let mut next = current.clone();
+    let Some(hooks) = next.get_mut("hooks").and_then(Value::as_object_mut) else {
+        return (current.clone(), false);
+    };
+    for (event, kind) in EVENTS {
+        if event_registered(current, event, paths) {
+            continue;
+        }
+        let slot = hooks.entry(event.to_string()).or_insert_with(|| Value::Array(Vec::new()));
+        if let Some(arr) = slot.as_array_mut() {
+            arr.push(desired_hook_entry(paths, kind));
+        }
+    }
+    let changed = &next != current;
+    (next, changed)
+}
+
+fn our_hook_entries<'a>(current: &'a Value, paths: &ScriptPaths) -> Vec<&'a Value> {
+    EVENTS
+        .iter()
+        .filter_map(|(event, _)| current.get("hooks")?.get(event)?.as_array())
+        .flatten()
+        .filter(|e| entry_is_ours_hook(e, &paths.notify_event))
+        .collect()
+}
+
+fn entry_runs_script(entry: &Value, script: &str) -> bool {
+    entry
+        .get("hooks")
+        .and_then(Value::as_array)
+        .is_some_and(|items| {
+            items.iter().any(|it| {
+                it.get("command")
+                    .and_then(Value::as_str)
+                    .is_some_and(|cmd| parse_command(cmd).command_token.as_deref() == Some(script))
+            })
+        })
+}
+
 // ---- unregister ----
 
 pub fn merge_unregister(current: &Value, paths: &ScriptPaths) -> (Value, bool) {
@@ -334,14 +384,16 @@ fn unregister_statusline(root: &mut Map<String, Value>, statusline_path: &str) {
 
 // ---- status ----
 
+fn event_registered(current: &Value, event: &str, paths: &ScriptPaths) -> bool {
+    current
+        .get("hooks")
+        .and_then(|h| h.get(event))
+        .and_then(Value::as_array)
+        .is_some_and(|arr| arr.iter().any(|e| entry_is_ours_hook(e, &paths.notify_event)))
+}
+
 pub fn registration_status(current: &Value, paths: &ScriptPaths) -> RegistrationStatus {
-    let hooks_registered = EVENTS.iter().all(|(event, _)| {
-        current
-            .get("hooks")
-            .and_then(|h| h.get(event))
-            .and_then(Value::as_array)
-            .is_some_and(|arr| arr.iter().any(|e| entry_is_ours_hook(e, &paths.notify_event)))
-    });
+    let hooks_registered = EVENTS.iter().all(|(event, _)| event_registered(current, event, paths));
 
     let (status_line_registered, status_line_conflict) = match current.get("statusLine") {
         None => (false, false),
@@ -760,6 +812,83 @@ mod tests {
         assert!(changed);
         assert!(registration_status(&after, &paths()).hooks_registered);
         assert_eq!(bytes(&after), bytes(&before));
+    }
+
+    fn without_subagent_stop(registered: &Value) -> Value {
+        let mut without = registered.clone();
+        without["hooks"].as_object_mut().unwrap().remove("SubagentStop");
+        without
+    }
+
+    /// Foreign hooks beside ours, a foreign statusLine wrapped by ours, and unrelated settings.
+    fn lived_in() -> Value {
+        v(r#"{"model":"opus",
+            "hooks":{"Stop":[{"matcher":"","hooks":[{"type":"command","command":"~/my-stop.sh"}]}]},
+            "statusLine":{"type":"command","command":"~/legacy.sh"}}"#)
+    }
+
+    #[test]
+    fn top_up_adds_the_missing_event_and_leaves_the_rest_byte_identical() {
+        let registered = merge_register(&lived_in(), &paths()).0;
+        let (after, changed) = merge_top_up(&without_subagent_stop(&registered), &paths());
+        assert!(changed);
+        assert_eq!(bytes(&after), bytes(&registered));
+    }
+
+    #[test]
+    fn top_up_leaves_the_statusline_as_it_finds_it() {
+        let mut registered = merge_register(&v("{}"), &paths()).0;
+        registered.as_object_mut().unwrap().remove("statusLine");
+        let foreign = v(r#"{"type":"command","command":"~/other-statusline.sh"}"#);
+        for status_line in [None, Some(foreign)] {
+            let mut input = without_subagent_stop(&registered);
+            if let Some(s) = &status_line {
+                input["statusLine"] = s.clone();
+            }
+            let (after, _) = merge_top_up(&input, &paths());
+            assert!(registration_status(&after, &paths()).hooks_registered);
+            assert_eq!(after.get("statusLine"), status_line.as_ref());
+        }
+    }
+
+    /// The hand registration the hooks README shows, chained to a legacy notifier, on two events only.
+    #[test]
+    fn top_up_keeps_a_hand_registered_entry_and_its_legacy_notifier() {
+        let input = v(r#"{"hooks":{
+            "Notification":[{"hooks":[{"type":"command","command":"ZK_LEGACY_NOTIFY=/l.sh /opt/zashiki/hooks/notify-event.sh waiting"}]}],
+            "Stop":[{"hooks":[{"type":"command","command":"ZK_LEGACY_NOTIFY=/l.sh /opt/zashiki/hooks/notify-event.sh done"}]}]
+        }}"#);
+        let (after, changed) = merge_top_up(&input, &paths());
+        assert!(changed);
+        assert!(registration_status(&after, &paths()).hooks_registered);
+        assert_eq!(after["hooks"]["Notification"], input["hooks"]["Notification"]);
+        assert_eq!(after["hooks"]["Stop"], input["hooks"]["Stop"]);
+    }
+
+    #[test]
+    fn top_up_leaves_a_registration_by_another_build_alone() {
+        let elsewhere = ScriptPaths::from_hooks_dir("/Applications/zashiki.app/Contents/Resources/hooks");
+        let input = without_subagent_stop(&merge_register(&lived_in(), &elsewhere).0);
+        let (after, changed) = merge_top_up(&input, &paths());
+        assert!(!changed);
+        assert_eq!(bytes(&after), bytes(&input));
+    }
+
+    #[test]
+    fn top_up_leaves_an_unregistered_install_unregistered() {
+        let registered = merge_register(&lived_in(), &paths()).0;
+        let turned_off = merge_unregister(&registered, &paths()).0;
+        for case in [v("{}"), lived_in(), turned_off] {
+            let (after, changed) = merge_top_up(&case, &paths());
+            assert!(!changed);
+            assert_eq!(bytes(&after), bytes(&case));
+        }
+    }
+
+    #[test]
+    fn top_up_is_a_no_op_on_a_full_registration() {
+        let registered = merge_register(&lived_in(), &paths()).0;
+        assert!(!merge_top_up(&registered, &paths()).1);
     }
 
     #[test]

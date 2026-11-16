@@ -1,6 +1,11 @@
 import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
-import { Compartment, EditorState } from "@codemirror/state";
+import {
+  Annotation,
+  Compartment,
+  EditorState,
+  Transaction,
+} from "@codemirror/state";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap, scrollPastEnd } from "@codemirror/view";
 import { basicSetup } from "codemirror";
@@ -10,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import type { IndentSetting } from "../lib/clipboard-edit-indent.js";
 import { type MemoStatus, memoStatus } from "../lib/memo-status.js";
 import { type MemoBuffer, memoDirty } from "../memo/memo-model.js";
+import { memoSyncChanges } from "../memo/memo-sync-change.js";
 import {
   clampMemoViewState,
   type MemoViewState,
@@ -17,6 +23,25 @@ import {
 import { editorIndent } from "./editor-indent.js";
 import { editorSearch } from "./editor-search-panel.js";
 import { useClipboardIndentSetting } from "./useClipboardIndentSetting.js";
+
+/** Marks a transaction that applies text from the server, which is not a local edit. */
+const fromServer = Annotation.define<boolean>();
+
+/**
+ * Applies text from the server in place: carets stay where the reader left them, CodeMirror keeps
+ * the top visible line in view, and the change stays out of the undo history so undo cannot revert
+ * the other client's save.
+ */
+function applyServerText(view: EditorView, text: string): void {
+  // CodeMirror's own text always breaks lines with \n, so a CRLF memo is compared in that form.
+  const incoming = view.state.toText(text).toString();
+  const changes = memoSyncChanges(view.state.doc.toString(), incoming);
+  if (changes.length === 0) return;
+  view.dispatch({
+    changes,
+    annotations: [fromServer.of(true), Transaction.addToHistory.of(false)],
+  });
+}
 
 /** Resolve CodeMirror's selection offsets into the line/column primitives {@link memoStatus} needs. */
 function readMemoStatus(state: EditorState): MemoStatus {
@@ -67,8 +92,8 @@ interface CodeMirrorHostProps
 
 /**
  * The editable CodeMirror instance for the Memo. Unlike the read-only Viewer, edits flow back out via
- * onChange, and Cmd-S saves. External updates (another client or an on-disk edit) swap the doc only
- * when it actually differs.
+ * onChange, and Cmd-S saves. External updates (another client or an on-disk edit) are applied in
+ * place by {@link applyServerText}.
  *
  * Each mount reads viewState and each unmount writes it back, so a tab switch returns to the same
  * scroll offset and caret instead of the top of the document.
@@ -120,7 +145,11 @@ function CodeMirrorHost({
           oneDark,
           language.of([]),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) onChangeRef.current(u.state.doc.toString());
+            const local = !u.transactions.some((tr) =>
+              tr.annotation(fromServer),
+            );
+            if (u.docChanged && local)
+              onChangeRef.current(u.state.doc.toString());
             if (u.docChanged || u.selectionSet)
               onStatusChangeRef.current(readMemoStatus(u.state));
           }),
@@ -181,11 +210,7 @@ function CodeMirrorHost({
 
   useEffect(() => {
     const view = viewRef.current;
-    if (view === null) return;
-    if (view.state.doc.toString() === buffer.text) return;
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: buffer.text },
-    });
+    if (view !== null) applyServerText(view, buffer.text);
   }, [buffer.text]);
 
   return <div className="memo-cm" ref={hostRef} />;
