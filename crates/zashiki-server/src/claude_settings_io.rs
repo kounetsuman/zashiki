@@ -223,21 +223,17 @@ pub fn current_status_with_readability(paths: &ClaudeSettingsPaths) -> (Registra
     }
 }
 
-/// The boot-time read: first tops up a registration an older build left missing an event (see
-/// `merge_top_up`), then reports as [`current_status_with_readability`]. A failed top-up write leaves
-/// the file as it was and the status says unregistered, so the SETTINGS toggle is still the way out.
+/// The boot-time read: tops up a registration an older build of this install left missing an event
+/// (see `merge_top_up`), then reports as [`current_status_with_readability`]. A failed top-up write is
+/// reported as the status before the top-up, so the SETTINGS toggle is still the way out.
 pub fn current_status_after_top_up(paths: &ClaudeSettingsPaths) -> (RegistrationStatus, bool) {
-    let _ = apply_top_up(paths);
-    current_status_with_readability(paths)
-}
-
-fn apply_top_up(paths: &ClaudeSettingsPaths) -> io::Result<()> {
-    let current = load_for_merge(&paths.settings_path)?;
-    let (next, changed) = merge_top_up(&current, &script_paths(&paths.hooks_dir));
-    if changed {
-        write_atomic(&paths.settings_path, &next)?;
-    }
-    Ok(())
+    let scripts = script_paths(&paths.hooks_dir);
+    let Ok(current) = load_for_merge(&paths.settings_path) else {
+        return (RegistrationStatus::default(), true);
+    };
+    let (next, changed) = merge_top_up(&current, &scripts);
+    let settled = if changed && write_atomic(&paths.settings_path, &next).is_err() { &current } else { &next };
+    (registration_status(settled, &scripts), false)
 }
 
 pub fn apply_register(paths: &ClaudeSettingsPaths) -> io::Result<RegistrationStatus> {
@@ -376,6 +372,21 @@ mod tests {
         let (st, unreadable) = current_status_after_top_up(&p);
         assert!(!st.hooks_registered && !unreadable);
         assert!(!p.settings_path.exists());
+    }
+
+    #[test]
+    fn boot_leaves_the_registration_of_another_build_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let installed = ClaudeSettingsPaths {
+            hooks_dir: PathBuf::from("/Applications/zashiki.app/Contents/Resources/hooks"),
+            ..paths_in(dir.path())
+        };
+        apply_register(&installed).unwrap();
+        drop_subagent_stop(&installed);
+        let before = std::fs::read_to_string(&installed.settings_path).unwrap();
+        let (st, _) = current_status_after_top_up(&paths_in(dir.path()));
+        assert!(!st.hooks_registered);
+        assert_eq!(std::fs::read_to_string(&installed.settings_path).unwrap(), before);
     }
 
     #[test]
