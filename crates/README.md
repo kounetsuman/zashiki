@@ -6,7 +6,7 @@ An effort to remove the Node server and move the core logic into Rust. The view 
 
 ## Crate layout
 
-- **`zashiki-core`** … Pure functions only, **kept dependency-free (std)**. A port corresponding 1:1 to the domain of the TS `@zashiki/shared` (`git` / `process_tree` / `save_file` / `session_state` / `repos` / `flow`). Guarded by `cargo test`, with the CI `core-check` ensuring parity with the TS version.
+- **`zashiki-core`** … Pure functions only, **kept dependency-free (std)**. A port corresponding 1:1 to the domain of the TS `@zashiki/shared` (`git` / `save_file` / `session_state` / `repos` / `flow`). Guarded by `cargo test`, with the CI `core-check` ensuring parity with the TS version.
 - **`zashiki-server`** … A server crate that holds REST/WS/PTY, JSON serialization, and jsonl parsing (depends on `axum` / `tokio` / `serde` etc. and uses `zashiki-core`). Aims to be a drop-in replacement for the TS server.
 
 ## Target architecture

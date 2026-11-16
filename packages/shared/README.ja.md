@@ -16,7 +16,6 @@
 | `protocol.ts` | 制御メッセージ（`ClientMessage`/`ServerMessage`）と `SessionInfo` の zod スキーマ | `protocol.test.ts` |
 | `repos.ts` | `repos.conf` 互換パーサ + org 配色（`orgColor`/`resolveOrgColor`/`DEFAULT_ORG_PALETTE`） | `repos.test.ts` |
 | `git.ts` | `git status --porcelain` パーサ | `git.test.ts` |
-| `process-tree.ts` | ps 出力からプロセス木を組み `--session-id` でペインを引く | `process-tree.test.ts` |
 | `save-file.ts` | save/restore の TSV（`widx\twname\tcwd\tsid[\tresumeSid]`）シリアライズ/パース | `save-file.test.ts` |
 | `fs-tree.ts` | explorer 表示整形（`sortFsEntries`/`joinRepoRelative`/`fileIconKind`） | `fs-tree.test.ts` |
 | `search.ts` | ripgrep 引数組み立て・`rg --json` 出力パース | `search.test.ts` |
