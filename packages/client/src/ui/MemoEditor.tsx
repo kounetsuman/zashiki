@@ -3,7 +3,6 @@ import { languages } from "@codemirror/language-data";
 import {
   Annotation,
   Compartment,
-  EditorSelection,
   EditorState,
   Transaction,
 } from "@codemirror/state";
@@ -16,7 +15,7 @@ import { useTranslation } from "react-i18next";
 import type { IndentSetting } from "../lib/clipboard-edit-indent.js";
 import { type MemoStatus, memoStatus } from "../lib/memo-status.js";
 import { type MemoBuffer, memoDirty } from "../memo/memo-model.js";
-import { keepThroughSync, memoSyncChange } from "../memo/memo-sync-change.js";
+import { memoSyncChanges } from "../memo/memo-sync-change.js";
 import {
   clampMemoViewState,
   type MemoViewState,
@@ -34,23 +33,12 @@ const fromServer = Annotation.define<boolean>();
  * the other client's save.
  */
 function applyServerText(view: EditorView, text: string): void {
-  const { state } = view;
-  const current = state.doc.toString();
-  if (current === text) return;
-  // Compared as CodeMirror's own text, whose line breaks are always \n, so a CRLF memo matches.
-  const change = memoSyncChange(current, state.toText(text).toString());
-  if (change === null) return;
+  // CodeMirror's own text always breaks lines with \n, so a CRLF memo is compared in that form.
+  const incoming = view.state.toText(text).toString();
+  const changes = memoSyncChanges(view.state.doc.toString(), incoming);
+  if (changes.length === 0) return;
   view.dispatch({
-    changes: change,
-    selection: EditorSelection.create(
-      state.selection.ranges.map((range) =>
-        EditorSelection.range(
-          keepThroughSync(range.anchor, change),
-          keepThroughSync(range.head, change),
-        ),
-      ),
-      state.selection.mainIndex,
-    ),
+    changes,
     annotations: [fromServer.of(true), Transaction.addToHistory.of(false)],
   });
 }

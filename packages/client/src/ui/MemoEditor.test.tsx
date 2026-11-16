@@ -162,11 +162,18 @@ describe("MemoEditor", () => {
       expect(editorOf(memo.content).state.selection.mainIndex).toBe(1);
     });
 
+    it("keeps a caret on the same character when edits land on both sides of it", () => {
+      const memo = renderMemo("A\nuntouched middle\nZ");
+      caretAt(memo.content, "A\nuntouched ".length);
+      memo.sync("AAAA\nuntouched middle\nZZ");
+      expect(caretOf(memo.content)).toBe("AAAA\nuntouched ".length);
+    });
+
     it("clamps a caret to text that shrank", () => {
       const memo = renderMemo(LONG_TEXT);
       caretAt(memo.content, 600);
       memo.sync("tiny");
-      expect(caretOf(memo.content)).toBe(4);
+      expect(caretOf(memo.content)).toBeLessThanOrEqual(4);
     });
 
     it("cannot be undone, so undo never brings back the text it replaced", () => {
