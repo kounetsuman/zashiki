@@ -23,7 +23,8 @@ When `jq` is available, each event also carries `cockpit_terminal_id` — the `Z
 The app can register these for you: on first run zashiki offers a one-click setup wizard, and SETTINGS
 has a "Claude Code integration" toggle. Both do an idempotent, reversible merge into
 `~/.claude/settings.json` that preserves your existing hooks/statusLine (a foreign statusLine is wrapped
-via `ZK_LEGACY_STATUSLINE`). The manual registration below is for standalone/advanced use.
+via `ZK_LEGACY_STATUSLINE`). When a newer build registers an event an existing registration lacks, the
+server adds it at startup; an integration you turned off stays off. The manual registration below is for standalone/advanced use.
 
 Register it in `~/.claude/settings.json` (adjust the path to your own repository location):
 

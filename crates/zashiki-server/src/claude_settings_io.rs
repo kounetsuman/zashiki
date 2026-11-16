@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use serde_json::Value;
 
 use crate::claude_settings::{
-    merge_register, merge_unregister, registration_status, RegistrationStatus, ScriptPaths,
+    merge_register, merge_top_up, merge_unregister, registration_status, RegistrationStatus, ScriptPaths,
 };
 
 /// The resolved locations this adapter operates on. Injected into the control handlers (like
@@ -223,6 +223,23 @@ pub fn current_status_with_readability(paths: &ClaudeSettingsPaths) -> (Registra
     }
 }
 
+/// The boot-time read: first tops up a registration an older build left missing an event (see
+/// `merge_top_up`), then reports as [`current_status_with_readability`]. A failed top-up write leaves
+/// the file as it was and the status says unregistered, so the SETTINGS toggle is still the way out.
+pub fn current_status_after_top_up(paths: &ClaudeSettingsPaths) -> (RegistrationStatus, bool) {
+    let _ = apply_top_up(paths);
+    current_status_with_readability(paths)
+}
+
+fn apply_top_up(paths: &ClaudeSettingsPaths) -> io::Result<()> {
+    let current = load_for_merge(&paths.settings_path)?;
+    let (next, changed) = merge_top_up(&current, &script_paths(&paths.hooks_dir));
+    if changed {
+        write_atomic(&paths.settings_path, &next)?;
+    }
+    Ok(())
+}
+
 pub fn apply_register(paths: &ClaudeSettingsPaths) -> io::Result<RegistrationStatus> {
     let scripts = script_paths(&paths.hooks_dir);
     let current = load_for_merge(&paths.settings_path)?;
@@ -318,6 +335,56 @@ mod tests {
         std::fs::write(&p.settings_path, "{not json").unwrap();
         assert!(apply_register(&p).is_err());
         assert_eq!(std::fs::read_to_string(&p.settings_path).unwrap(), "{not json", "must not overwrite corrupt file");
+    }
+
+    fn drop_subagent_stop(p: &ClaudeSettingsPaths) {
+        let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&p.settings_path).unwrap()).unwrap();
+        v["hooks"].as_object_mut().unwrap().remove("SubagentStop");
+        std::fs::write(&p.settings_path, serde_json::to_string_pretty(&v).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn boot_tops_up_an_install_registered_by_an_older_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        apply_register(&p).unwrap();
+        let registered = std::fs::read_to_string(&p.settings_path).unwrap();
+        drop_subagent_stop(&p);
+        let (st, unreadable) = current_status_after_top_up(&p);
+        assert!(st.hooks_registered && !unreadable);
+        assert_eq!(std::fs::read_to_string(&p.settings_path).unwrap(), registered);
+    }
+
+    #[test]
+    fn boot_leaves_a_turned_off_install_off_and_unwritten() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        apply_register(&p).unwrap();
+        apply_unregister(&p).unwrap();
+        let turned_off = std::fs::read_to_string(&p.settings_path).unwrap();
+        std::fs::remove_file(dir.path().join("settings.json.bak")).unwrap();
+        let (st, _) = current_status_after_top_up(&p);
+        assert!(!st.hooks_registered);
+        assert_eq!(std::fs::read_to_string(&p.settings_path).unwrap(), turned_off);
+        assert!(!dir.path().join("settings.json.bak").exists(), "nothing was written");
+    }
+
+    #[test]
+    fn boot_creates_no_settings_file_on_a_fresh_install() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        let (st, unreadable) = current_status_after_top_up(&p);
+        assert!(!st.hooks_registered && !unreadable);
+        assert!(!p.settings_path.exists());
+    }
+
+    #[test]
+    fn boot_still_reports_a_corrupt_settings_file_as_unreadable() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = paths_in(dir.path());
+        std::fs::write(&p.settings_path, "{not json").unwrap();
+        assert!(current_status_after_top_up(&p).1);
+        assert_eq!(std::fs::read_to_string(&p.settings_path).unwrap(), "{not json");
     }
 
     #[test]

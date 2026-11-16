@@ -275,6 +275,19 @@ fn register_statusline(root: &mut Map<String, Value>, paths: &ScriptPaths) {
     }
 }
 
+/// Adds the hook events an existing registration is missing — what a build that registers a new
+/// event finds on an install registered by an older one. Touches nothing when no event carries a
+/// zashiki entry (never registered, or turned off), and leaves the statusLine alone.
+pub fn merge_top_up(current: &Value, paths: &ScriptPaths) -> (Value, bool) {
+    if !any_event_registered(current, paths) {
+        return (current.clone(), false);
+    }
+    let mut next = current.clone();
+    register_hooks(ensure_object(&mut next), paths);
+    let changed = &next != current;
+    (next, changed)
+}
+
 // ---- unregister ----
 
 pub fn merge_unregister(current: &Value, paths: &ScriptPaths) -> (Value, bool) {
@@ -334,14 +347,20 @@ fn unregister_statusline(root: &mut Map<String, Value>, statusline_path: &str) {
 
 // ---- status ----
 
+fn event_registered(current: &Value, event: &str, paths: &ScriptPaths) -> bool {
+    current
+        .get("hooks")
+        .and_then(|h| h.get(event))
+        .and_then(Value::as_array)
+        .is_some_and(|arr| arr.iter().any(|e| entry_is_ours_hook(e, &paths.notify_event)))
+}
+
+fn any_event_registered(current: &Value, paths: &ScriptPaths) -> bool {
+    EVENTS.iter().any(|(event, _)| event_registered(current, event, paths))
+}
+
 pub fn registration_status(current: &Value, paths: &ScriptPaths) -> RegistrationStatus {
-    let hooks_registered = EVENTS.iter().all(|(event, _)| {
-        current
-            .get("hooks")
-            .and_then(|h| h.get(event))
-            .and_then(Value::as_array)
-            .is_some_and(|arr| arr.iter().any(|e| entry_is_ours_hook(e, &paths.notify_event)))
-    });
+    let hooks_registered = EVENTS.iter().all(|(event, _)| event_registered(current, event, paths));
 
     let (status_line_registered, status_line_conflict) = match current.get("statusLine") {
         None => (false, false),
@@ -760,6 +779,47 @@ mod tests {
         assert!(changed);
         assert!(registration_status(&after, &paths()).hooks_registered);
         assert_eq!(bytes(&after), bytes(&before));
+    }
+
+    fn without_subagent_stop(registered: &Value) -> Value {
+        let mut without = registered.clone();
+        without["hooks"].as_object_mut().unwrap().remove("SubagentStop");
+        without
+    }
+
+    #[test]
+    fn top_up_adds_the_missing_event_and_leaves_the_rest_byte_identical() {
+        let registered = merge_register(&v("{}"), &paths()).0;
+        let (after, changed) = merge_top_up(&without_subagent_stop(&registered), &paths());
+        assert!(changed);
+        assert_eq!(bytes(&after), bytes(&registered));
+    }
+
+    #[test]
+    fn top_up_leaves_a_missing_statusline_missing() {
+        let mut registered = merge_register(&v("{}"), &paths()).0;
+        registered.as_object_mut().unwrap().remove("statusLine");
+        let (after, _) = merge_top_up(&without_subagent_stop(&registered), &paths());
+        assert!(registration_status(&after, &paths()).hooks_registered);
+        assert!(after.get("statusLine").is_none());
+    }
+
+    #[test]
+    fn top_up_leaves_an_unregistered_install_unregistered() {
+        let input = v(r#"{"model":"opus","hooks":{"Stop":[{"hooks":[{"type":"command","command":"~/mine.sh"}]}]}}"#);
+        let registered = merge_register(&input, &paths()).0;
+        let turned_off = merge_unregister(&registered, &paths()).0;
+        for case in [v("{}"), input, turned_off] {
+            let (after, changed) = merge_top_up(&case, &paths());
+            assert!(!changed);
+            assert_eq!(bytes(&after), bytes(&case));
+        }
+    }
+
+    #[test]
+    fn top_up_is_a_no_op_on_a_full_registration() {
+        let registered = merge_register(&v("{}"), &paths()).0;
+        assert!(!merge_top_up(&registered, &paths()).1);
     }
 
     #[test]
