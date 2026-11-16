@@ -4,7 +4,13 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-import { type RefObject, useCallback, useEffect, useRef } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 import {
   createClaudeExitGuard,
   type ExitKey,
@@ -16,6 +22,11 @@ import {
   type TerminalSize,
 } from "../lib/terminal-fit.js";
 import { stripTerminalReplies } from "../lib/terminal-reply.js";
+import {
+  restoreStep,
+  SCROLL_RESTORE_WINDOW_MS,
+  scrolledBackLine,
+} from "../lib/terminal-scroll-memory.js";
 import { clearsScrollback } from "../lib/terminal-scrollback-clear.js";
 import type { SearchResults } from "../lib/terminal-search.js";
 import { wheelDeltaToLines } from "../lib/terminal-wheel.js";
@@ -26,15 +37,11 @@ import type { XtermRenderer } from "./xterm-renderer.js";
 
 const COPY_DEBOUNCE_MS = 200;
 
-/**
- * Put the viewport back on the latest output, without the smooth scroll: xterm only lets go of the
- * viewport once a scroll actually reaches the bottom, and an animated one is still on its way there
- * while the next output arrives.
- */
-function followLatestOutput(term: Terminal): void {
+/** Scroll without the smooth scroll, which would still be under way as the next output arrives. */
+function scrollInstantly(term: Terminal, scroll: () => void): void {
   const smoothScrollDuration = term.options.smoothScrollDuration;
   term.options.smoothScrollDuration = 0;
-  term.scrollToBottom();
+  scroll();
   term.options.smoothScrollDuration = smoothScrollDuration;
 }
 
@@ -50,6 +57,8 @@ export interface XtermTerminalDeps {
   clipboardEditEnabled: boolean;
   /** The Cockpit Terminal whose Claude Session a double Ctrl+C / Ctrl+D would exit, null when none runs. */
   claudeTerminalId: string | null;
+  /** The Cockpit Terminal shown, whose scroll position is remembered when switching away from it. */
+  cockpitTerminalId: string | null;
   toggleFind(): void;
   openClipboardEdit(text: string): void;
   confirmClaudeExit(key: ExitKey, claudeTerminalId: string): void;
@@ -73,6 +82,7 @@ export function useXtermTerminal({
   resizeNonce,
   clipboardEditEnabled,
   claudeTerminalId,
+  cockpitTerminalId,
   toggleFind,
   openClipboardEdit,
   confirmClaudeExit,
@@ -89,6 +99,16 @@ export function useXtermTerminal({
   clipboardEditEnabledRef.current = clipboardEditEnabled;
   const claudeTerminalIdRef = useRef(claudeTerminalId);
   claudeTerminalIdRef.current = claudeTerminalId;
+  const scrolledBackLinesRef = useRef(new Map<string, number>());
+  const restoreRef = useRef<{
+    cockpitTerminalId: string;
+    line: number;
+    since: number;
+    replaying: boolean;
+  } | null>(null);
+  const shownCockpitTerminalId = useRef(cockpitTerminalId);
+  /** Whose history the shared xterm holds: the one shown when its replay was written. */
+  const replayedCockpitTerminalId = useRef<string | null>(null);
 
   // Under WKWebView the DOM renderer intermittently drops the first paint on attach (rows exist but
   // stay empty while the buffer holds the content, and a later resize does not reliably repaint); the
@@ -265,14 +285,40 @@ export function useXtermTerminal({
     // taken from the reader meanwhile: a viewport with nothing above it is one they cannot scroll
     // either. The alternate screen never has a scrollback and hands the normal buffer's viewport back
     // untouched when the program exits, so wait for it rather than follow every chunk of a TUI.
+    // A terminal switched back to while scrolled back into its history returns to that line instead,
+    // once its replay reaches past it.
     let followLatest = false;
     const offData = session.onData((chunk) => {
       const rebuilt = clearsScrollback(chunk);
       term.write(chunk, () => {
         session.notifyWritten(chunk.length);
-        followLatest = followLatest || rebuilt;
-        if (!followLatest || term.buffer.active.type === "alternate") return;
-        followLatestOutput(term);
+        if (rebuilt) {
+          followLatest = true;
+          replayedCockpitTerminalId.current = shownCockpitTerminalId.current;
+          const armed = restoreRef.current;
+          if (armed !== null)
+            restoreRef.current = { ...armed, replaying: true };
+        }
+        if (term.buffer.active.type === "alternate") return;
+        const restore = restoreRef.current;
+        if (restore?.replaying) {
+          const { line, since } = restore;
+          const step = restoreStep(
+            line,
+            term.buffer.active.baseY,
+            Date.now() - since,
+          );
+          if (step === "give-up") restoreRef.current = null;
+          if (step === "scroll") {
+            // Kept armed through the window: a replay arriving late scrolls back again.
+            restoreRef.current = { ...restore, replaying: false };
+            scrollInstantly(term, () => term.scrollToLine(line));
+            followLatest = false;
+            return;
+          }
+        }
+        if (!followLatest) return;
+        scrollInstantly(term, () => term.scrollToBottom());
         followLatest = term.buffer.active.baseY === 0;
       });
     });
@@ -340,6 +386,31 @@ export function useXtermTerminal({
       webglAddonRef.current = null;
     }
   }, [renderer, termRef, enableWebgl]);
+
+  // Layout timing: the switched-to terminal's replay must find its line already set. No terminal
+  // shown (another tab is) is no switch: the server keeps the attached one and replays nothing.
+  useLayoutEffect(() => {
+    const left = shownCockpitTerminalId.current;
+    if (cockpitTerminalId === null || cockpitTerminalId === left) return;
+    shownCockpitTerminalId.current = cockpitTerminalId;
+    const lines = scrolledBackLinesRef.current;
+    const term = termRef.current;
+    const restore = restoreRef.current;
+    const stillRestoring =
+      restore?.cockpitTerminalId === left &&
+      Date.now() - restore.since < SCROLL_RESTORE_WINDOW_MS;
+    const holdsLeftHistory = replayedCockpitTerminalId.current === left;
+    if (left !== null && term && holdsLeftHistory && !stillRestoring) {
+      const line = scrolledBackLine(term.buffer.active);
+      if (line === null) lines.delete(left);
+      else lines.set(left, line);
+    }
+    const line = lines.get(cockpitTerminalId);
+    restoreRef.current =
+      line === undefined
+        ? null
+        : { cockpitTerminalId, line, since: Date.now(), replaying: false };
+  }, [cockpitTerminalId, termRef]);
 
   // When focusNonce increments on new session creation, return focus to the terminal.
   // Don't fire on initial mount (initial value 0) or when unchanged. A disposed term is set to
