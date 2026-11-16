@@ -65,7 +65,7 @@ import {
 import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
-import { pickAndReadFile } from "./lib/open-file-dialog.js";
+import { openPickedFiles, pickAndReadFiles } from "./lib/open-file-dialog.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
 import { createMemoSaver } from "./memo/memo-saver.js";
@@ -122,7 +122,7 @@ import { useCrashReport } from "./ui/useCrashReport.js";
 import { useDashboard } from "./ui/useDashboard.js";
 import { useDiff } from "./ui/useDiff.js";
 import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
-import { useFileDrop } from "./ui/useFileDrop.js";
+import { type FileDropError, useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
@@ -620,10 +620,8 @@ export function App({
     },
     [openViewerTab, openExternalMedia],
   );
-  const fileDrop = useFileDrop(
-    openExternalFile,
-    openExternalMediaFile,
-    (name, error) => {
+  const toastUnreadableFile = useCallback(
+    (name: string, error: FileDropError): void => {
       flashCopyToast(
         t(
           error === "tooLarge"
@@ -633,23 +631,22 @@ export function App({
         ),
       );
     },
+    [flashCopyToast, t],
+  );
+  const fileDrop = useFileDrop(
+    openExternalFile,
+    openExternalMediaFile,
+    toastUnreadableFile,
   );
 
-  // Cmd+O: pick a file via the native dialog and open it read-only in the viewer (external buffer).
+  // Cmd+O: pick files via the native dialog and open each read-only in the viewer (external buffer).
   const openFileFromDialog = useCallback((): void => {
-    void pickAndReadFile(t("openFile.dialogTitle")).then(
-      (picked) => {
-        if (picked !== null) openExternalFile(picked.name, picked.content);
-      },
-      (err: unknown) => {
-        // Tauri rejects with a raw string code; the browser fallback throws an Error with the code.
-        const reason = err instanceof Error ? err.message : String(err);
-        flashCopyToast(
-          t(reason === "tooLarge" ? "openFile.tooLarge" : "openFile.failed"),
-        );
-      },
+    void pickAndReadFiles(t("openFile.dialogTitle")).then(
+      (picked) =>
+        openPickedFiles(picked, openExternalFile, toastUnreadableFile),
+      () => flashCopyToast(t("openFile.failed")),
     );
-  }, [t, openExternalFile, flashCopyToast]);
+  }, [t, openExternalFile, toastUnreadableFile, flashCopyToast]);
 
   // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
   const copyDiffPath = useCallback(

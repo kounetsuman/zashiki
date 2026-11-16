@@ -7,7 +7,7 @@
   "permissions": [
     "core:default",
     "allow-open-devtools",
-    "allow-pick-and-read-file",
+    "allow-pick-and-read-files",
     "allow-report-memo-status",
     "allow-report-memo-saved",
     "allow-set-dashboard-origin",

@@ -71,46 +71,71 @@ fn share_text(text: String) -> Result<(), String> {
     Err("unsupported".to_string())
 }
 
-/// A file chosen via the native open dialog, already read into memory.
-#[derive(serde::Serialize)]
-struct PickedFile {
-    name: String,
-    content: String,
+/// One file chosen via the native open dialog: its text, or the stable code ("tooLarge" /
+/// "readFailed") saying why it could not be read, so the UI can name it in a specific message.
+#[derive(serde::Serialize, Debug, PartialEq)]
+#[serde(untagged)]
+enum PickedFile {
+    Read { name: String, content: String },
+    Failed { name: String, error: &'static str },
 }
 
-/// Cmd+O: shows the native open dialog (with a localized title passed from the UI) and returns the
-/// chosen file's name and text. Returns Ok(None) when the user cancels. `max_bytes` is the single
-/// source of truth for the size cap (the client passes its shared FILE_MAX_BYTES). Errors are the
-/// stable codes "tooLarge" / "readFailed" so the UI can show a specific message. The picker runs off
-/// the main thread (blocking_pick_file dispatches the modal to the main thread itself).
-#[tauri::command]
-async fn pick_and_read_file(
-    app: tauri::AppHandle,
-    title: String,
-    max_bytes: u64,
-) -> Result<Option<PickedFile>, String> {
-    use tauri_plugin_dialog::DialogExt;
-    let picked = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog().file().set_title(&title).blocking_pick_file()
-    })
-    .await
-    .map_err(|_| "readFailed".to_string())?;
-    let Some(file_path) = picked else {
-        return Ok(None);
-    };
-    let path = file_path
-        .into_path()
-        .map_err(|_| "readFailed".to_string())?;
-    let meta = std::fs::metadata(&path).map_err(|_| "readFailed".to_string())?;
-    if meta.len() > max_bytes {
-        return Err("tooLarge".to_string());
-    }
-    let content = std::fs::read_to_string(&path).map_err(|_| "readFailed".to_string())?;
+fn read_picked_file(path: &std::path::Path, max_bytes: u64) -> PickedFile {
     let name = path
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
-    Ok(Some(PickedFile { name, content }))
+    let failed = |error| PickedFile::Failed {
+        name: name.clone(),
+        error,
+    };
+    match std::fs::metadata(path) {
+        Ok(meta) if meta.len() > max_bytes => return failed("tooLarge"),
+        Ok(_) => {}
+        Err(_) => return failed("readFailed"),
+    }
+    match std::fs::read_to_string(path) {
+        Ok(content) => PickedFile::Read {
+            name: name.clone(),
+            content,
+        },
+        Err(_) => failed("readFailed"),
+    }
+}
+
+/// Cmd+O: shows the native open dialog (with a localized title passed from the UI), allowing several
+/// files, and returns each chosen file in order. Returns an empty list when the user cancels.
+/// `max_bytes` is the single source of truth for the size cap (the client passes its shared
+/// FILE_MAX_BYTES). The picker and the reads run off the async runtime (blocking_pick_files dispatches
+/// the modal to the main thread itself).
+#[tauri::command]
+async fn pick_and_read_files(
+    app: tauri::AppHandle,
+    title: String,
+    max_bytes: u64,
+) -> Result<Vec<PickedFile>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title(&title)
+            .blocking_pick_files()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|file_path| {
+                let shown = file_path.to_string();
+                match file_path.into_path() {
+                    Ok(path) => read_picked_file(&path, max_bytes),
+                    Err(_) => PickedFile::Failed {
+                        name: shown,
+                        error: "readFailed",
+                    },
+                }
+            })
+            .collect()
+    })
+    .await
+    .map_err(|_| "readFailed".to_string())
 }
 
 /// Reply channels the quit thread hands to the WebView. The quit gesture runs off the main thread
@@ -202,7 +227,7 @@ fn main() {
         .manage(DashboardOrigin::default())
         .invoke_handler(tauri::generate_handler![
             open_devtools,
-            pick_and_read_file,
+            pick_and_read_files,
             report_memo_status,
             report_memo_saved,
             set_dashboard_origin,
@@ -776,6 +801,67 @@ mod tests {
             MemoQuitAction::DontSave
         ));
         assert!(matches!(memo_quit_action(&R::No), MemoQuitAction::DontSave));
+    }
+
+    #[test]
+    fn picked_file_within_the_limit_is_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.md");
+        std::fs::write(&path, "hello").unwrap();
+        assert_eq!(
+            read_picked_file(&path, 5),
+            PickedFile::Read {
+                name: "a.md".to_string(),
+                content: "hello".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn picked_file_past_the_limit_is_too_large() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("big.md");
+        std::fs::write(&path, "hello!").unwrap();
+        assert_eq!(
+            read_picked_file(&path, 5),
+            PickedFile::Failed {
+                name: "big.md".to_string(),
+                error: "tooLarge"
+            }
+        );
+    }
+
+    #[test]
+    fn picked_file_that_cannot_be_read_as_text_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("bin.dat");
+        std::fs::write(&binary, [0xff, 0xfe, 0x00]).unwrap();
+        let missing = dir.path().join("gone.md");
+        for (path, name) in [(binary, "bin.dat"), (missing, "gone.md")] {
+            assert_eq!(
+                read_picked_file(&path, 100),
+                PickedFile::Failed {
+                    name: name.to_string(),
+                    error: "readFailed"
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn picked_files_serialize_as_the_client_expects() {
+        let read = PickedFile::Read {
+            name: "a.md".to_string(),
+            content: "x".to_string(),
+        };
+        let failed = PickedFile::Failed {
+            name: "b.md".to_string(),
+            error: "tooLarge",
+        };
+        assert_eq!(
+            serde_json::to_string(&[read, failed]).unwrap(),
+            r#"[{"name":"a.md","content":"x"},{"name":"b.md","error":"tooLarge"}]"#
+        );
     }
 
     /// A command reaches the WebView only when it is listed in three places: `generate_handler!`
