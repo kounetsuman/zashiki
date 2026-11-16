@@ -29,17 +29,17 @@ import { useClipboardIndentSetting } from "./useClipboardIndentSetting.js";
 const fromServer = Annotation.define<boolean>();
 
 /**
- * Applies text from the server in place: carets and the scroll offset stay where the reader left
- * them, and the change stays out of the undo history so undo cannot revert the other client's save.
+ * Applies text from the server in place: carets stay where the reader left them, CodeMirror keeps
+ * the top visible line in view, and the change stays out of the undo history so undo cannot revert
+ * the other client's save.
  */
 function applyServerText(view: EditorView, text: string): void {
   const { state } = view;
+  const current = state.doc.toString();
+  if (current === text) return;
   // Compared as CodeMirror's own text, whose line breaks are always \n, so a CRLF memo matches.
-  const incoming = state.toText(text);
-  if (incoming.eq(state.doc)) return;
-  const change = memoSyncChange(state.doc.toString(), incoming.toString());
+  const change = memoSyncChange(current, state.toText(text).toString());
   if (change === null) return;
-  const scrollTop = view.scrollDOM.scrollTop;
   view.dispatch({
     changes: change,
     selection: EditorSelection.create(
@@ -52,12 +52,6 @@ function applyServerText(view: EditorView, text: string): void {
       state.selection.mainIndex,
     ),
     annotations: [fromServer.of(true), Transaction.addToHistory.of(false)],
-  });
-  view.requestMeasure({
-    read: () => undefined,
-    write: () => {
-      view.scrollDOM.scrollTop = scrollTop;
-    },
   });
 }
 

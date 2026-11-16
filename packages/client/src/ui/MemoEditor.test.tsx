@@ -169,14 +169,6 @@ describe("MemoEditor", () => {
       expect(caretOf(memo.content)).toBe(4);
     });
 
-    it("keeps the scroll offset", async () => {
-      const memo = renderMemo(LONG_TEXT);
-      memo.scroller.scrollTop = 420;
-      memo.sync(`${LONG_TEXT}\nappended`);
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      expect(memo.scroller.scrollTop).toBe(420);
-    });
-
     it("cannot be undone, so undo never brings back the text it replaced", () => {
       const memo = renderMemo("mine");
       memo.sync("theirs");
