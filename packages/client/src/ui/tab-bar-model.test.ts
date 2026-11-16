@@ -2,6 +2,7 @@ import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { describe, expect, it } from "vitest";
 import type { TitleMap } from "../lib/conversation-title.js";
 import type { Tab } from "../tabs/tab-model.js";
+import { externalTextKey } from "../viewer/viewer-model.js";
 import { tabLabel } from "./tab-bar-model.js";
 
 function session(
@@ -60,6 +61,25 @@ describe("tabLabel", () => {
     );
     expect(label).toBe("main.ts");
     expect(title).toBe("src/app/main.ts");
+  });
+
+  it("shows only the file name for an external viewer tab, as label and title", () => {
+    const { label, title } = tabLabel(
+      { kind: "viewer", id: externalTextKey("README.md", "hello") } as Tab,
+      [],
+      {} as TitleMap,
+    );
+    expect(label).toBe("README.md");
+    expect(title).toBe("README.md");
+  });
+
+  it("keeps a slash inside an external file's name in the label", () => {
+    const { label } = tabLabel(
+      { kind: "viewer", id: externalTextKey("a/b.txt", "hello") } as Tab,
+      [],
+      {} as TitleMap,
+    );
+    expect(label).toBe("a/b.txt");
   });
 
   it("falls back to the whole id for a viewer tab without a newline", () => {

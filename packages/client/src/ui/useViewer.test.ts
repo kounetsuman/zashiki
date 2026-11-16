@@ -3,7 +3,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FilesApi } from "../api/files.js";
-import { externalViewerKey, viewerKey } from "../viewer/viewer-model.js";
+import { viewerKey } from "../viewer/viewer-model.js";
 import { useViewer } from "./useViewer.js";
 
 const filesApi: FilesApi = {
@@ -51,17 +51,41 @@ describe("useViewer media", () => {
   it("openExternalMedia creates an object URL and revokes the previous one on re-drop", () => {
     const { result } = renderHook(() => useViewer(filesApi, null));
     const file = new File(["x"], "clip.mp4");
+    let key = "";
     act(() => {
-      result.current.openExternalMedia("clip.mp4", file, "video");
+      key = result.current.openExternalMedia("clip.mp4", file, "video");
     });
-    const key = externalViewerKey("clip.mp4");
     expect(result.current.buffers[key]?.media?.url).toBe("blob:0");
 
+    let again = "";
     act(() => {
-      result.current.openExternalMedia("clip.mp4", file, "video");
+      again = result.current.openExternalMedia("clip.mp4", file, "video");
     });
+    expect(again).toBe(key);
     expect(revoked).toContain("blob:0");
     expect(result.current.buffers[key]?.media?.url).toBe("blob:1");
+  });
+
+  it("openExternalMedia gives same-name files from different folders their own buffers", () => {
+    const { result } = renderHook(() => useViewer(filesApi, null));
+    let a = "";
+    let b = "";
+    act(() => {
+      a = result.current.openExternalMedia(
+        "a.png",
+        new File(["x"], "a.png", { lastModified: 1 }),
+        "image",
+      );
+      b = result.current.openExternalMedia(
+        "a.png",
+        new File(["xy"], "a.png", { lastModified: 2 }),
+        "image",
+      );
+    });
+    expect(a).not.toBe(b);
+    expect(result.current.buffers[a]?.media?.url).toBe("blob:0");
+    expect(result.current.buffers[b]?.media?.url).toBe("blob:1");
+    expect(revoked).toEqual([]);
   });
 
   it("openExternalMedia types a dropped pdf as application/pdf whatever File.type says", () => {
@@ -78,14 +102,14 @@ describe("useViewer media", () => {
 
   it("closeBuffer revokes the object URL of a dropped media buffer", () => {
     const { result } = renderHook(() => useViewer(filesApi, null));
+    let key = "";
     act(() => {
-      result.current.openExternalMedia(
+      key = result.current.openExternalMedia(
         "a.png",
         new File(["x"], "a.png"),
         "image",
       );
     });
-    const key = externalViewerKey("a.png");
     act(() => {
       result.current.closeBuffer(key);
     });

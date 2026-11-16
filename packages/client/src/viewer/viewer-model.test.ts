@@ -6,7 +6,8 @@ import {
   bufferShowText,
   bufferTogglePreview,
   closeBuffer,
-  externalViewerKey,
+  externalMediaKey,
+  externalTextKey,
   isHtml,
   isMarkdown,
   openBuffer,
@@ -15,12 +16,22 @@ import {
   openMediaBuffer,
   repoFileOfViewerKey,
   shouldPollBuffer,
+  type ViewerBuffers,
   viewerKey,
   viewerKeysUnderPath,
   viewersAffectedByRename,
 } from "./viewer-model.js";
 
 const REPO = "/ws/repo";
+
+function openText(bufs: ViewerBuffers, name: string, content: string) {
+  return openExternalBuffer(
+    bufs,
+    externalTextKey(name, content),
+    name,
+    content,
+  );
+}
 const REL = "src/app.ts";
 const KEY = viewerKey(REPO, REL);
 
@@ -72,14 +83,16 @@ describe("openBuffer", () => {
     expect(openBuffer({}, REPO, html)[viewerKey(REPO, html)]?.preview).toBe(
       true,
     );
-    const bufs = openExternalBuffer({}, "dropped.html", "<h1>hi</h1>");
-    expect(bufs[externalViewerKey("dropped.html")]?.preview).toBe(true);
+    const bufs = openText({}, "dropped.html", "<h1>hi</h1>");
+    expect(bufs[externalTextKey("dropped.html", "<h1>hi</h1>")]?.preview).toBe(
+      true,
+    );
   });
 
   it("opens a dropped delimited file in the table view", () => {
     const name = "dropped.tsv";
-    const bufs = openExternalBuffer({}, name, "a\tb\n");
-    expect(bufs[externalViewerKey(name)]?.preview).toBe(true);
+    const bufs = openText({}, name, "a\tb\n");
+    expect(bufs[externalTextKey(name, "a\tb\n")]?.preview).toBe(true);
   });
 
   it("leaves an existing entry unchanged with the same reference", () => {
@@ -129,10 +142,10 @@ describe("loading/failure", () => {
 
 describe("external (dropped) buffers", () => {
   const NAME = "notes.md";
-  const EKEY = externalViewerKey(NAME);
+  const EKEY = externalTextKey(NAME, "hello");
 
   it("openExternalBuffer inserts a ready buffer with content and the external flag", () => {
-    const bufs = openExternalBuffer({}, NAME, "hello");
+    const bufs = openText({}, NAME, "hello");
     expect(bufs[EKEY]).toMatchObject({
       relPath: NAME,
       status: "ready",
@@ -141,21 +154,29 @@ describe("external (dropped) buffers", () => {
     });
   });
 
-  it("re-dropping the same name refreshes content while keeping the preview toggle", () => {
-    let bufs = openExternalBuffer({}, NAME, "old");
-    bufs = bufferTogglePreview(bufs, EKEY);
-    const next = openExternalBuffer(bufs, NAME, "new");
-    expect(next[EKEY]).toMatchObject({ content: "new", preview: true });
+  it("gives files that share a name but differ in content their own buffers", () => {
+    let bufs = openText({}, NAME, "from folder a");
+    bufs = openText(bufs, NAME, "from folder b");
+    expect(bufs[externalTextKey(NAME, "from folder a")]?.content).toBe(
+      "from folder a",
+    );
+    expect(bufs[externalTextKey(NAME, "from folder b")]?.content).toBe(
+      "from folder b",
+    );
   });
 
-  it("re-dropping identical content returns the same reference", () => {
-    const bufs = openExternalBuffer({}, NAME, "same");
-    expect(openExternalBuffer(bufs, NAME, "same")).toBe(bufs);
+  it("keys files apart by name even when their content is identical", () => {
+    expect(externalTextKey("a.md", "x")).not.toBe(externalTextKey("b.md", "x"));
+  });
+
+  it("re-opening the same file returns the same reference, keeping its preview toggle", () => {
+    const bufs = bufferTogglePreview(openText({}, NAME, "hello"), EKEY);
+    expect(openText(bufs, NAME, "hello")).toBe(bufs);
   });
 
   it("shouldPollBuffer excludes external buffers but includes repo buffers", () => {
     const repo = openBuffer({}, REPO, REL)[KEY];
-    const ext = openExternalBuffer({}, NAME, "x")[EKEY];
+    const ext = openText({}, NAME, "hello")[EKEY];
     expect(repo && shouldPollBuffer(repo)).toBe(true);
     expect(ext && shouldPollBuffer(ext)).toBe(false);
   });
@@ -163,10 +184,28 @@ describe("external (dropped) buffers", () => {
   // The buffer's external flag and the key's sentinel repoPath express the same fact through
   // two representations; consumers without buffer access (the tab context menu) rely on the key.
   it("keeps the external flag and the key sentinel in agreement", () => {
-    expect(openExternalBuffer({}, NAME, "x")[EKEY]?.external).toBe(true);
+    expect(openText({}, NAME, "hello")[EKEY]?.external).toBe(true);
     expect(repoFileOfViewerKey(EKEY)).toBeNull();
     expect(openBuffer({}, REPO, REL)[KEY]?.external).toBeUndefined();
     expect(repoFileOfViewerKey(KEY)).not.toBeNull();
+  });
+});
+
+describe("externalMediaKey", () => {
+  const stamp = { size: 10, lastModified: 1000 };
+
+  it("is stable for the same name, size and modification time", () => {
+    expect(externalMediaKey("a.png", stamp)).toBe(
+      externalMediaKey("a.png", { ...stamp }),
+    );
+  });
+
+  it("tells apart same-name media that differ in size or modification time", () => {
+    const key = externalMediaKey("a.png", stamp);
+    expect(externalMediaKey("a.png", { ...stamp, size: 11 })).not.toBe(key);
+    expect(
+      externalMediaKey("a.png", { ...stamp, lastModified: 2000 }),
+    ).not.toBe(key);
   });
 });
 
@@ -196,8 +235,8 @@ describe("media buffers", () => {
   });
 
   it("openExternalMediaBuffer marks the dropped buffer external", () => {
-    const key = externalViewerKey("clip.mp4");
-    const bufs = openExternalMediaBuffer({}, "clip.mp4", {
+    const key = externalMediaKey("clip.mp4", { size: 1, lastModified: 1 });
+    const bufs = openExternalMediaBuffer({}, key, "clip.mp4", {
       kind: "video",
       url: "blob:abc",
     });
@@ -252,7 +291,7 @@ describe("repoFileOfViewerKey", () => {
     });
   });
   it("returns null for an external file's key", () => {
-    expect(repoFileOfViewerKey(externalViewerKey("README.md"))).toBeNull();
+    expect(repoFileOfViewerKey(externalTextKey("README.md", "x"))).toBeNull();
   });
 });
 
