@@ -17,17 +17,21 @@ describe("readPickedFile", () => {
     expect(picked).toEqual({ name: "a.md", content: "hello" });
   });
 
-  it("rejects with tooLarge past the size limit", async () => {
-    await expect(
-      readPickedFile(fakeFile({ size: FILE_MAX_BYTES + 1 })),
-    ).rejects.toThrow("tooLarge");
+  it("reports tooLarge with the name past the size limit", async () => {
+    const picked = await readPickedFile(
+      fakeFile({ size: FILE_MAX_BYTES + 1, name: "big.log" }),
+    );
+    expect(picked).toEqual({ name: "big.log", error: "tooLarge" });
   });
 
-  it("rejects with readFailed when the read throws", async () => {
-    await expect(
-      readPickedFile(
-        fakeFile({ size: 5, text: () => Promise.reject(new Error("io")) }),
-      ),
-    ).rejects.toThrow("readFailed");
+  it("reports readFailed with the name when the read throws", async () => {
+    const picked = await readPickedFile(
+      fakeFile({
+        size: 5,
+        name: "gone.md",
+        text: () => Promise.reject(new Error("io")),
+      }),
+    );
+    expect(picked).toEqual({ name: "gone.md", error: "readFailed" });
   });
 });

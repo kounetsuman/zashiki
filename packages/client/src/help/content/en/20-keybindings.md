@@ -10,7 +10,7 @@ You can also use right-click. Right-click an org heading → New session; right-
 
 ## Opening files
 
-- `Cmd+O`: Open the native file picker and show the chosen file read-only in the Viewer.
+- `Cmd+O`: Open the native file picker and show each chosen file read-only in its own Viewer tab (Cmd+click or Shift+click to choose several).
 - `Cmd+P`: Open the quick-open palette to fuzzy-find a file across all orgs (the active org ranks first) and open it. Append `:` and a line number (e.g. `App.tsx:42`) to jump to that line. Arrow keys move the selection, Enter opens, Escape closes.
 
 ## Toggling view visibility (NAVIGATION)

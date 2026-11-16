@@ -168,9 +168,8 @@
     "truncated": "Showing partial results — narrow your search"
   },
   "openFile": {
-    "dialogTitle": "Select a file to open in Zashiki",
-    "tooLarge": "That file is too large to open (max 2 MB)",
-    "failed": "Could not open the selected file"
+    "dialogTitle": "Select files to open in Zashiki",
+    "failed": "Could not open the selected files"
   },
   "git": {
     "stageAll": "Stage all (git add .)",

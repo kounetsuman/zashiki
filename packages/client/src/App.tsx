@@ -65,7 +65,7 @@ import {
 import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
-import { pickAndReadFile } from "./lib/open-file-dialog.js";
+import { pickAndReadFiles } from "./lib/open-file-dialog.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
 import { createMemoSaver } from "./memo/memo-saver.js";
@@ -635,19 +635,26 @@ export function App({
     },
   );
 
-  // Cmd+O: pick a file via the native dialog and open it read-only in the viewer (external buffer).
+  // Cmd+O: pick files via the native dialog and open each read-only in the viewer (external buffer).
   const openFileFromDialog = useCallback((): void => {
-    void pickAndReadFile(t("openFile.dialogTitle")).then(
+    void pickAndReadFiles(t("openFile.dialogTitle")).then(
       (picked) => {
-        if (picked !== null) openExternalFile(picked.name, picked.content);
+        for (const file of picked) {
+          if ("content" in file) {
+            openExternalFile(file.name, file.content);
+          } else {
+            flashCopyToast(
+              t(
+                file.error === "tooLarge"
+                  ? "viewer.dropTooLarge"
+                  : "viewer.dropReadFailed",
+                { name: file.name },
+              ),
+            );
+          }
+        }
       },
-      (err: unknown) => {
-        // Tauri rejects with a raw string code; the browser fallback throws an Error with the code.
-        const reason = err instanceof Error ? err.message : String(err);
-        flashCopyToast(
-          t(reason === "tooLarge" ? "openFile.tooLarge" : "openFile.failed"),
-        );
-      },
+      () => flashCopyToast(t("openFile.failed")),
     );
   }, [t, openExternalFile, flashCopyToast]);
 
