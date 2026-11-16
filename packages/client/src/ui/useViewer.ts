@@ -8,7 +8,8 @@ import {
   bufferShowText,
   bufferTogglePreview,
   closeBuffer as dropBuffer,
-  externalViewerKey,
+  externalMediaKey,
+  externalTextKey,
   openBuffer,
   openExternalBuffer,
   openExternalMediaBuffer,
@@ -126,19 +127,22 @@ export function useViewer(
   );
 
   const openExternal = useCallback((name: string, content: string): string => {
-    setBuffers((prev) => openExternalBuffer(prev, name, content));
-    return externalViewerKey(name);
+    const key = externalTextKey(name, content);
+    setBuffers((prev) => openExternalBuffer(prev, key, name, content));
+    return key;
   }, []);
 
   const openExternalMedia = useCallback(
     (name: string, file: File, kind: MediaKind): string => {
-      const key = externalViewerKey(name);
+      const key = externalMediaKey(name, file);
       revokeObjectUrl(key);
       const url = URL.createObjectURL(
         kind === "pdf" ? new Blob([file], { type: "application/pdf" }) : file,
       );
       objectUrlsRef.current[key] = url;
-      setBuffers((prev) => openExternalMediaBuffer(prev, name, { kind, url }));
+      setBuffers((prev) =>
+        openExternalMediaBuffer(prev, key, name, { kind, url }),
+      );
       return key;
     },
     [revokeObjectUrl],

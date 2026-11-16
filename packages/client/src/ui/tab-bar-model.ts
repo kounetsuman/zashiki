@@ -5,6 +5,10 @@ import {
   type TitleMap,
 } from "../lib/conversation-title.js";
 import type { Tab, TabKind } from "../tabs/tab-model.js";
+import {
+  externalNameOfViewerKey,
+  repoFileOfViewerKey,
+} from "../viewer/viewer-model.js";
 
 /** Icon per tab kind (Material Symbols Outlined ligature). */
 export const TAB_ICON: Record<TabKind, string> = {
@@ -42,6 +46,10 @@ export function tabLabel(
   }
   if (tab.kind === "diff") {
     return basenameLabel(tab.id.split("\n").slice(2).join("\n") || tab.id);
+  }
+  if (repoFileOfViewerKey(tab.id) === null) {
+    const name = externalNameOfViewerKey(tab.id);
+    return { label: name, title: name };
   }
   return basenameLabel(tab.id.split("\n").slice(1).join("\n") || tab.id);
 }

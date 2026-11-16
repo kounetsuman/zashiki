@@ -1,7 +1,7 @@
 /**
  * The state and transitions of the viewer's open files (pure functions).
- * One buffer per tab (tab-model kind:"viewer"). The key is viewerKey (repoPath joined with
- * the repo-relative path; kept equal to the tab's id). Being read-only, it holds no edit
+ * One buffer per tab (tab-model kind:"viewer"). The key is kept equal to the tab's id: viewerKey
+ * for a repo file, externalTextKey / externalMediaKey for an external one. Being read-only, it holds no edit
  * state, only the content last read. Side effects (read) happen on the App/api side; this
  * holds only state transitions. Realtime reflection is driven by polling re-firing bufferLoaded.
  */
@@ -73,9 +73,41 @@ function opensInAlternateView(relPath: string): boolean {
 /** Sentinel repoPath for a buffer that belongs to no repo (dropped file). */
 export const EXTERNAL_VIEWER_REPO = "";
 
-/** Key for an external (dropped) file, keyed by its name so re-dropping the same name refreshes in place. */
-export function externalViewerKey(name: string): string {
-  return viewerKey(EXTERNAL_VIEWER_REPO, name);
+/**
+ * External files carry no folder path, so a fingerprint tells same-name files apart. It sits before
+ * the name so the tab still reads as the file name.
+ */
+function externalViewerKey(name: string, fingerprint: string): string {
+  return viewerKey(EXTERNAL_VIEWER_REPO, `${fingerprint}/${name}`);
+}
+
+/** FNV-1a over the text, plus its length to make a collision between two same-name files even less likely. */
+function textFingerprint(content: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < content.length; i++) {
+    h ^= content.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return `${(h >>> 0).toString(16)}-${content.length}`;
+}
+
+/** Key for an external text file: the same name and content reopen its tab, anything else gets a new one. */
+export function externalTextKey(name: string, content: string): string {
+  return externalViewerKey(name, textFingerprint(content));
+}
+
+/** Key for external media, whose bytes are not read: told apart by size and modification time instead. */
+export function externalMediaKey(
+  name: string,
+  file: Pick<File, "size" | "lastModified">,
+): string {
+  return externalViewerKey(name, `${file.size}-${file.lastModified}`);
+}
+
+/** The file name an external viewer key was built from (the fingerprint holds no "/"). */
+export function externalNameOfViewerKey(key: string): string {
+  const rest = splitViewerKey(key).relPath;
+  return rest.slice(rest.indexOf("/") + 1);
 }
 
 /**
@@ -127,15 +159,14 @@ export function openBuffer(
   };
 }
 
-/** Inserts (or refreshes) a ready buffer whose content is supplied directly, bypassing the repo read path. */
+/** Inserts a ready buffer whose content is supplied directly, bypassing the repo read path (an open one is left as is). */
 export function openExternalBuffer(
   bufs: ViewerBuffers,
+  key: string,
   name: string,
   content: string,
 ): ViewerBuffers {
-  const key = externalViewerKey(name);
-  const existing = bufs[key];
-  if (existing?.status === "ready" && existing.content === content) return bufs;
+  if (bufs[key] !== undefined) return bufs;
   return {
     ...bufs,
     [key]: {
@@ -143,7 +174,7 @@ export function openExternalBuffer(
       relPath: name,
       status: "ready",
       content,
-      preview: existing?.preview ?? opensInAlternateView(name),
+      preview: opensInAlternateView(name),
       external: true,
     },
   };
@@ -174,12 +205,13 @@ export function openMediaBuffer(
 /** Opens a dropped file rendered as image/video/PDF from an object `url` (no repo read). */
 export function openExternalMediaBuffer(
   bufs: ViewerBuffers,
+  key: string,
   name: string,
   media: MediaSource,
 ): ViewerBuffers {
   return {
     ...bufs,
-    [externalViewerKey(name)]: {
+    [key]: {
       repoPath: EXTERNAL_VIEWER_REPO,
       relPath: name,
       status: "ready",
