@@ -106,8 +106,8 @@ fn read_picked_file(path: &std::path::Path, max_bytes: u64) -> PickedFile {
 /// Cmd+O: shows the native open dialog (with a localized title passed from the UI), allowing several
 /// files, and returns each chosen file in order. Returns an empty list when the user cancels.
 /// `max_bytes` is the single source of truth for the size cap (the client passes its shared
-/// FILE_MAX_BYTES). The picker runs off the main thread (blocking_pick_files dispatches the modal to
-/// the main thread itself).
+/// FILE_MAX_BYTES). The picker and the reads run off the async runtime (blocking_pick_files dispatches
+/// the modal to the main thread itself).
 #[tauri::command]
 async fn pick_and_read_files(
     app: tauri::AppHandle,
@@ -115,25 +115,27 @@ async fn pick_and_read_files(
     max_bytes: u64,
 ) -> Result<Vec<PickedFile>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let picked = tauri::async_runtime::spawn_blocking(move || {
-        app.dialog().file().set_title(&title).blocking_pick_files()
+    tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_title(&title)
+            .blocking_pick_files()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|file_path| {
+                let shown = file_path.to_string();
+                match file_path.into_path() {
+                    Ok(path) => read_picked_file(&path, max_bytes),
+                    Err(_) => PickedFile::Failed {
+                        name: shown,
+                        error: "readFailed",
+                    },
+                }
+            })
+            .collect()
     })
     .await
-    .map_err(|_| "readFailed".to_string())?;
-    Ok(picked
-        .unwrap_or_default()
-        .into_iter()
-        .map(|file_path| {
-            let shown = file_path.to_string();
-            match file_path.into_path() {
-                Ok(path) => read_picked_file(&path, max_bytes),
-                Err(_) => PickedFile::Failed {
-                    name: shown,
-                    error: "readFailed",
-                },
-            }
-        })
-        .collect())
+    .map_err(|_| "readFailed".to_string())
 }
 
 /// Reply channels the quit thread hands to the WebView. The quit gesture runs off the main thread
