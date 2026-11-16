@@ -83,7 +83,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     hub.set_notifier(config.notify_mode, config.mac_notify.clone());
     let claude_settings = crate::claude_settings_io::ClaudeSettingsPaths::resolve();
     let (hooks_status, settings_unreadable) =
-        crate::claude_settings_io::current_status_with_readability(&claude_settings);
+        crate::claude_settings_io::current_status_after_top_up(&claude_settings);
     hub.publish_hooks_status(hooks_status);
     if settings_unreadable {
         hub.record_boundary_failure(
