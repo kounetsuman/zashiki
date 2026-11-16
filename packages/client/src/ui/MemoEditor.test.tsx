@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { undo } from "@codemirror/commands";
+import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { createRef, type ReactNode, type RefObject, StrictMode } from "react";
@@ -18,7 +20,7 @@ function renderMemo(
   wrap: (editor: ReactNode) => ReactNode = (editor) => editor,
 ) {
   const onChange = vi.fn<(text: string) => void>();
-  const utils = render(
+  const memo = (text: string) =>
     wrap(
       <MemoEditor
         buffer={{ text, savedText: text }}
@@ -26,13 +28,20 @@ function renderMemo(
         onSave={vi.fn()}
         viewState={viewState}
       />,
-    ),
-  );
+    );
+  const utils = render(memo(text));
   const content = utils.container.querySelector<HTMLElement>(".cm-content");
   const scroller = utils.container.querySelector<HTMLElement>(".cm-scroller");
   if (content === null || scroller === null)
     throw new Error("the Memo editor did not mount");
-  return { onChange, content, scroller, unmount: utils.unmount };
+  return {
+    onChange,
+    content,
+    scroller,
+    unmount: utils.unmount,
+    /** Delivers text from the server, as a memo.sync does for a clean buffer. */
+    sync: (incoming: string) => utils.rerender(memo(incoming)),
+  };
 }
 
 /** Long enough that the scroller has somewhere to scroll to. */
@@ -46,6 +55,13 @@ function editorOf(content: HTMLElement): EditorView {
 
 function caretAt(content: HTMLElement, pos: number): void {
   editorOf(content).dispatch({ selection: { anchor: pos } });
+}
+
+function rangesOf(content: HTMLElement): { anchor: number; head: number }[] {
+  return editorOf(content).state.selection.ranges.map(({ anchor, head }) => ({
+    anchor,
+    head,
+  }));
 }
 
 function caretOf(content: HTMLElement): number {
@@ -126,5 +142,59 @@ describe("MemoEditor", () => {
 
     // "a\r\nb\r\nc" is 7 characters of text, but CodeMirror stores the breaks as \n: a 5 character doc.
     expect(() => renderMemo("a\r\nb\r\nc", viewState)).not.toThrow();
+  });
+
+  describe("text arriving from the server", () => {
+    it("keeps every caret range where it was", () => {
+      const memo = renderMemo("one two three\nfour");
+      editorOf(memo.content).dispatch({
+        selection: EditorSelection.create(
+          [EditorSelection.cursor(2), EditorSelection.range(14, 18)],
+          1,
+        ),
+      });
+
+      memo.sync("one 2 three\nfour");
+      expect(rangesOf(memo.content)).toEqual([
+        { anchor: 2, head: 2 },
+        { anchor: 12, head: 16 },
+      ]);
+      expect(editorOf(memo.content).state.selection.mainIndex).toBe(1);
+    });
+
+    it("keeps a caret on the same character when edits land on both sides of it", () => {
+      const memo = renderMemo("A\nuntouched middle\nZ");
+      caretAt(memo.content, "A\nuntouched ".length);
+      memo.sync("AAAA\nuntouched middle\nZZ");
+      expect(caretOf(memo.content)).toBe("AAAA\nuntouched ".length);
+    });
+
+    it("clamps a caret to text that shrank", () => {
+      const memo = renderMemo(LONG_TEXT);
+      caretAt(memo.content, 600);
+      memo.sync("tiny");
+      expect(caretOf(memo.content)).toBeLessThanOrEqual(4);
+    });
+
+    it("cannot be undone, so undo never brings back the text it replaced", () => {
+      const memo = renderMemo("mine");
+      memo.sync("theirs");
+      const view = editorOf(memo.content);
+      undo(view);
+      expect(view.state.doc.toString()).toBe("theirs");
+      expect(memo.onChange).not.toHaveBeenCalled();
+    });
+
+    it("does not report the server's text back as a local edit", () => {
+      const memo = renderMemo("a");
+      memo.sync("b");
+      expect(memo.onChange).not.toHaveBeenCalled();
+    });
+  });
+
+  it("leaves a CRLF memo untouched on mount", () => {
+    const { onChange, content } = renderMemo("a\r\nb");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(undo(editorOf(content))).toBe(false);
   });
 });
