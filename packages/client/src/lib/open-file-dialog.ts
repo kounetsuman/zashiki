@@ -1,13 +1,12 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { FILE_MAX_BYTES } from "@zashiki/shared";
 
-/** Why a picked file could not be opened. */
-export type PickFileError = "tooLarge" | "readFailed";
+import type { FileDropError } from "../ui/useFileDrop.js";
 
 /** One file chosen in the picker: its text, or why it could not be read. */
 export type PickedFile =
   | { name: string; content: string }
-  | { name: string; error: PickFileError };
+  | { name: string; error: FileDropError };
 
 /** Size-checks a picked File and reads it as text (shared by the browser fallback and tests). */
 export async function readPickedFile(file: File): Promise<PickedFile> {
@@ -18,6 +17,18 @@ export async function readPickedFile(file: File): Promise<PickedFile> {
     return { name: file.name, content: await file.text() };
   } catch {
     return { name: file.name, error: "readFailed" };
+  }
+}
+
+/** Opens the readable files in pick order (so the last one ends up in front) and reports the rest. */
+export function openPickedFiles(
+  picked: readonly PickedFile[],
+  onFile: (name: string, content: string) => void,
+  onError: (name: string, error: FileDropError) => void,
+): void {
+  for (const file of picked) {
+    if ("content" in file) onFile(file.name, file.content);
+    else onError(file.name, file.error);
   }
 }
 
