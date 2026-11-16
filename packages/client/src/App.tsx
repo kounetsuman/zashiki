@@ -1261,6 +1261,7 @@ export function App({
                 renderer={terminalRenderer.renderer}
                 clipboardEditEnabled={clipboardEdit.enabled}
                 onSetClipboardEditEnabled={clipboardEdit.setEnabled}
+                cockpitTerminalId={selectedCockpitTerminalId}
                 claudeTerminalId={
                   activeSession !== undefined &&
                   isClaudeRunning(activeSession.state)

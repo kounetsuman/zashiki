@@ -48,6 +48,7 @@ export function TerminalView({
   clipboardEditEnabled = true,
   onSetClipboardEditEnabled,
   claudeTerminalId = null,
+  cockpitTerminalId = null,
 }: {
   session: TerminalViewSession;
   /**
@@ -79,6 +80,11 @@ export function TerminalView({
    * runs. A pending confirmation belongs to it and is dropped once this changes.
    */
   claudeTerminalId?: string | null;
+  /**
+   * The Cockpit Terminal shown. Each remembers where it was scrolled back to in its history, and is
+   * brought back there when switched back to.
+   */
+  cockpitTerminalId?: string | null;
 }) {
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -147,6 +153,7 @@ export function TerminalView({
     resizeNonce,
     clipboardEditEnabled,
     claudeTerminalId,
+    cockpitTerminalId,
     toggleFind: find.toggleFind,
     openClipboardEdit,
     confirmClaudeExit: requestExitConfirm,

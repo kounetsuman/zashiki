@@ -9,6 +9,7 @@ import {
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { SCROLL_RESTORE_WINDOW_MS } from "../lib/terminal-scroll-memory.js";
 import { TerminalView, type TerminalViewSession } from "./TerminalView.js";
 import { DEFAULT_TERMINAL_FONT_SIZE } from "./terminal-font-size.js";
 import { buildTerminalOptions } from "./terminal-options.js";
@@ -30,7 +31,13 @@ const { MockTerminal } = vi.hoisted(() => {
     renderDisposed = false;
     unicode = { activeVersion: "6" };
     options: { fontSize?: number; smoothScrollDuration?: number } = {};
-    buffer = { active: { baseY: 0, type: "normal" as "normal" | "alternate" } };
+    buffer = {
+      active: {
+        baseY: 0,
+        viewportY: 0,
+        type: "normal" as "normal" | "alternate",
+      },
+    };
 
     constructor(options?: {
       fontSize?: number;
@@ -54,9 +61,17 @@ const { MockTerminal } = vi.hoisted(() => {
     focus(): void {
       this.focusCount += 1;
     }
+    /** When set, write callbacks wait for flushWrites, as xterm parses large output asynchronously. */
+    deferWrites = false;
+    pendingWriteCallbacks: (() => void)[] = [];
     write(d: string, cb?: () => void): void {
       this.written.push(d);
-      cb?.();
+      if (!cb) return;
+      if (this.deferWrites) this.pendingWriteCallbacks.push(cb);
+      else cb();
+    }
+    flushWrites(count = this.pendingWriteCallbacks.length): void {
+      for (const cb of this.pendingWriteCallbacks.splice(0, count)) cb();
     }
     onData(fn: (d: string) => void): { dispose(): void } {
       this.dataHandler = fn;
@@ -88,8 +103,11 @@ const { MockTerminal } = vi.hoisted(() => {
       return this.selectionPosition;
     }
     scrollToLineArg: number | null = null;
+    /** The smooth-scroll setting seen on each scrollToLine. */
+    scrollToLineSmoothness: (number | undefined)[] = [];
     scrollToLine(line: number): void {
       this.scrollToLineArg = line;
+      this.scrollToLineSmoothness.push(this.options.smoothScrollDuration);
     }
     /** The smooth-scroll setting seen on each scrollToBottom, so the jump can be checked for it. */
     scrollToBottomSmoothness: (number | undefined)[] = [];
@@ -432,6 +450,216 @@ describe("TerminalView", () => {
 
       f.emitData("output after the viewport reached the bottom\r\n");
       expect(term.scrollToBottomSmoothness).toHaveLength(3);
+    });
+  });
+
+  describe("scroll position per Cockpit Terminal", () => {
+    const REPLAY = "\x1b[?1049l\x1b[H\x1b[2J\x1b[3Jreplayed history";
+
+    function renderTerminal(cockpitTerminalId: string | null) {
+      const f = fakeSession();
+      fitTarget = { cols: 80, rows: 24 };
+      const view = render(
+        <TerminalView
+          session={f.session}
+          cockpitTerminalId={cockpitTerminalId}
+        />,
+      );
+      const term = MockTerminal.instances[0];
+      if (!term) throw new Error("terminal not created");
+      const switchTo = (id: string | null): void =>
+        view.rerender(
+          <TerminalView session={f.session} cockpitTerminalId={id} />,
+        );
+      f.emitData(REPLAY);
+      term.scrollToBottomSmoothness.length = 0;
+      return { f, term, switchTo };
+    }
+
+    function leaveAt(
+      term: InstanceType<typeof MockTerminal>,
+      viewportY: number,
+      baseY: number,
+    ): void {
+      term.buffer.active.viewportY = viewportY;
+      term.buffer.active.baseY = baseY;
+    }
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("brings a terminal scrolled back into its history back to the same line on return", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      leaveAt(term, 0, 0);
+      f.emitData(REPLAY);
+
+      leaveAt(term, 300, 300);
+      switchTo("a");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+
+      expect(term.scrollToLineArg).toBe(120);
+      expect(term.scrollToLineSmoothness).toEqual([0]);
+      const followsBeforeLater = term.scrollToBottomSmoothness.length;
+      f.emitData("later output\r\n");
+      expect(term.scrollToBottomSmoothness).toHaveLength(followsBeforeLater);
+    });
+
+    it("waits for the replay to reach past the remembered line before scrolling back", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      switchTo("a");
+
+      leaveAt(term, 0, 60);
+      f.emitData(REPLAY);
+      expect(term.scrollToLineArg).toBeNull();
+
+      leaveAt(term, 0, 400);
+      f.emitData("rest of the history\r\n");
+      expect(term.scrollToLineArg).toBe(120);
+    });
+
+    it("remembers each terminal's own line", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+      leaveAt(term, 50, 400);
+      switchTo("a");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+      expect(term.scrollToLineArg).toBe(120);
+
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+      expect(term.scrollToLineArg).toBe(50);
+    });
+
+    it("keeps following the latest output for a terminal left at the bottom", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 400, 400);
+      switchTo("b");
+      switchTo("a");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+      expect(term.scrollToLineArg).toBeNull();
+      expect(term.scrollToBottomSmoothness).toHaveLength(1);
+    });
+
+    it("follows the latest output on a re-attach without a switch", () => {
+      const { f, term } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      f.emitData(REPLAY);
+      expect(term.scrollToLineArg).toBeNull();
+      expect(term.scrollToBottomSmoothness).toHaveLength(1);
+    });
+
+    it("does not carry a terminal's line over to the next one switched to while its replay is still short of it", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      switchTo("a");
+      leaveAt(term, 60, 60);
+      f.emitData(REPLAY);
+
+      switchTo("c");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+      expect(term.scrollToLineArg).toBeNull();
+    });
+
+    it("keeps the line of a terminal left before its replay reached it", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      switchTo("a");
+      leaveAt(term, 60, 60);
+      f.emitData(REPLAY);
+
+      switchTo("c");
+      switchTo("a");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+      expect(term.scrollToLineArg).toBe(120);
+    });
+
+    it("does not take the screen of a terminal passed through before its replay arrived as its position", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      switchTo("c");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+
+      leaveAt(term, 400, 400);
+      switchTo("b");
+      leaveAt(term, 0, 400);
+      f.emitData(REPLAY);
+      expect(term.scrollToLineArg).toBeNull();
+    });
+
+    it("restores against the switched-to replay, not the left terminal's output still being parsed", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      f.emitData(REPLAY);
+      leaveAt(term, 400, 400);
+
+      term.deferWrites = true;
+      f.emitData("b's last output\r\n");
+      switchTo("a");
+      f.emitData(REPLAY);
+      term.flushWrites(1);
+      expect(term.scrollToLineArg).toBeNull();
+
+      leaveAt(term, 0, 400);
+      term.flushWrites();
+      expect(term.scrollToLineArg).toBe(120);
+    });
+
+    it("does not restore on a later clear after coming back from another tab, which replays nothing", () => {
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo(null);
+      switchTo("a");
+      leaveAt(term, 400, 400);
+      f.emitData("\x1b[H\x1b[2J\x1b[3J");
+      expect(term.scrollToLineArg).toBeNull();
+    });
+
+    it("gives up when the switched-to terminal's replay never arrives", () => {
+      vi.useFakeTimers();
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      switchTo("a");
+
+      vi.advanceTimersByTime(SCROLL_RESTORE_WINDOW_MS);
+      leaveAt(term, 0, 400);
+      f.emitData("\x1b[H\x1b[2J\x1b[3J");
+      expect(term.scrollToLineArg).toBeNull();
+    });
+
+    it("gives up on a history that no longer reaches the line, instead of jumping up later", () => {
+      vi.useFakeTimers();
+      const { f, term, switchTo } = renderTerminal("a");
+      leaveAt(term, 120, 400);
+      switchTo("b");
+      switchTo("a");
+      leaveAt(term, 0, 60);
+      f.emitData(REPLAY);
+
+      vi.advanceTimersByTime(SCROLL_RESTORE_WINDOW_MS);
+      leaveAt(term, 400, 400);
+      f.emitData("live output long after the switch\r\n");
+      expect(term.scrollToLineArg).toBeNull();
     });
   });
 
