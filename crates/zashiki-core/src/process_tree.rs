@@ -37,27 +37,33 @@ fn take_uuid_prefix(s: &str) -> Option<&str> {
 }
 
 /// Read the session id from claude's launch arguments (the UUID following `--session-id` / `--resume` / `-r`,
-/// lowercased; None if absent). Follows `(?:--session-id|--resume|-r) +<UUID>`
-/// with leftmost semantics, taking only the first match.
+/// lowercased; None if absent). Follows `(?:--session-id|--resume|-r) +<UUID>`, preferring the first
+/// `--session-id` over the first `--resume` / `-r`: a fork (`--resume <source> --fork-session --session-id <own>`)
+/// runs as `<own>`.
 pub fn sid_from_args(args: &str) -> Option<String> {
-    // At a position following `--resume`, `-r` isn't followed by whitespace+UUID and so fails to match; hence, regardless of order,
-    // multiple tokens don't conflict at the same start position (distinguishable by the first 2 characters).
-    let tokens = ["--session-id", "--resume", "-r"];
+    // The `-r` inside `--resume` is followed by `esume`, so `--resume` and `-r` never both match at one position.
+    let mut first_resume = None;
     for (i, _) in args.char_indices() {
         let rest = &args[i..];
-        for tok in tokens {
-            if let Some(after) = rest.strip_prefix(tok) {
-                let trimmed = after.trim_start_matches(' ');
-                // ` +` (one or more spaces): at least one must have been consumed.
-                if trimmed.len() < after.len() {
-                    if let Some(uuid) = take_uuid_prefix(trimmed) {
-                        return Some(uuid.to_ascii_lowercase());
-                    }
-                }
-            }
+        if let Some(uuid) = uuid_after_flag(rest, "--session-id") {
+            return Some(uuid.to_ascii_lowercase());
+        }
+        if first_resume.is_none() {
+            first_resume = uuid_after_flag(rest, "--resume").or_else(|| uuid_after_flag(rest, "-r"));
         }
     }
-    None
+    first_resume.map(|uuid| uuid.to_ascii_lowercase())
+}
+
+/// The UUID in `<flag> +<UUID>` at the start of `s`.
+fn uuid_after_flag<'a>(s: &'a str, flag: &str) -> Option<&'a str> {
+    let after = s.strip_prefix(flag)?;
+    let trimmed = after.trim_start_matches(' ');
+    // ` +` (one or more spaces): at least one must have been consumed.
+    if trimmed.len() == after.len() {
+        return None;
+    }
+    take_uuid_prefix(trimmed)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -341,10 +347,43 @@ mod tests {
     }
 
     #[test]
-    fn sid_takes_first_match() {
+    fn sid_prefers_session_id_over_resume() {
         let other = "ffffffff-ffff-ffff-ffff-ffffffffffff";
         assert_eq!(
             sid_from_args(&format!("claude --session-id {SID} --resume {other}")),
+            Some(SID.to_string())
+        );
+    }
+
+    #[test]
+    fn sid_of_fork_is_its_own_session_id() {
+        let source = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+        assert_eq!(
+            sid_from_args(&format!("claude --resume {source} --fork-session --session-id {SID}")),
+            Some(SID.to_string())
+        );
+        assert_eq!(
+            sid_from_args(&format!("claude -r {source} --fork-session --session-id {SID}")),
+            Some(SID.to_string())
+        );
+    }
+
+    #[test]
+    fn sid_of_fork_shell_wrapping_the_launch_payload_is_its_own_session_id() {
+        let source = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+        let ps = format!(
+            "  100     1 /bin/zsh -lc /abs/claude --resume {source} --fork-session --session-id {SID} || /abs/claude --session-id {SID}; exec \"${{SHELL:-/bin/sh}}\"\n\
+             \x20 300   100 /abs/claude --resume {source} --fork-session --session-id {SID}\n"
+        );
+        let maps = build_process_maps(&parse_ps_snapshot(&ps));
+        assert_eq!(find_sid_in_tree(100, &maps), Some(SID.to_string()));
+    }
+
+    #[test]
+    fn sid_takes_first_resume_without_session_id() {
+        let other = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+        assert_eq!(
+            sid_from_args(&format!("claude --resume {SID} -r {other}")),
             Some(SID.to_string())
         );
     }
