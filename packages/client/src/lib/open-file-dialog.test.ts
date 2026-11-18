@@ -20,6 +20,14 @@ describe("localFileOfPicked", () => {
     expect(await read.text()).toBe("hello");
   });
 
+  it("accepts the bytes as a number array (the IPC postMessage fallback)", async () => {
+    const file = localFileOfPicked(
+      { id: 1, name: "a.txt", size: 2, lastModified: 0 },
+      () => Promise.resolve([104, 105]),
+    );
+    expect(await (await file.read()).text()).toBe("hi");
+  });
+
   it("turns a file the shell could not resolve into one whose read fails", async () => {
     const readBytes = vi.fn();
     const file = localFileOfPicked(

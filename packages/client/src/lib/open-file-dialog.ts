@@ -10,7 +10,7 @@ type PickedFile =
 /** Reads a picked file's bytes back from the shell only when it is opened (the text cap needs no read). */
 export function localFileOfPicked(
   picked: PickedFile,
-  readBytes: (id: number) => Promise<ArrayBuffer>,
+  readBytes: (id: number) => Promise<ArrayBuffer | number[]>,
 ): LocalFile {
   if ("error" in picked) {
     return {
@@ -23,7 +23,8 @@ export function localFileOfPicked(
     name: picked.name,
     size: picked.size,
     read: async () =>
-      new File([await readBytes(picked.id)], picked.name, {
+      // Tauri's postMessage fallback delivers raw bytes as a number array instead of an ArrayBuffer.
+      new File([new Uint8Array(await readBytes(picked.id))], picked.name, {
         lastModified: picked.lastModified,
       }),
   };
@@ -61,7 +62,7 @@ export async function pickFiles(title: string): Promise<LocalFile[]> {
     const picked = await invoke<PickedFile[]>("pick_files", { title });
     return picked.map((file) =>
       localFileOfPicked(file, (id) =>
-        invoke<ArrayBuffer>("read_picked_file", { id }),
+        invoke<ArrayBuffer | number[]>("read_picked_file", { id }),
       ),
     );
   }
