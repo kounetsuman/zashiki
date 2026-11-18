@@ -23,6 +23,7 @@ pub mod html_frame;
 pub mod jsonl;
 pub mod launchd;
 pub mod logging;
+pub mod lookup_queue;
 pub mod lsof;
 pub mod mac_notifier;
 pub mod notifications;
