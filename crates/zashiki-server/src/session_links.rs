@@ -148,12 +148,12 @@ fn strings_in<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
     }
 }
 
-/// Removes the blocks Claude Code injects into a user message, keeping what the user typed
-/// (slash-command arguments and `!` shell input included).
+/// Removes the blocks Claude Code injects into a user message (reminders, command output, background
+/// task notices), keeping what the user typed (slash-command arguments and `!` shell input included).
 fn strip_injected_blocks(text: &str) -> std::borrow::Cow<'_, str> {
     static INJECTED: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
-            r"(?s)<system-reminder>.*?</system-reminder>|<command-(?:name|message)>.*?</command-(?:name|message)>|<local-command-[a-z]+>.*?</local-command-[a-z]+>|<bash-(?:stdout|stderr)>.*?</bash-(?:stdout|stderr)>",
+            r"(?s)<system-reminder>.*?</system-reminder>|<command-(?:name|message)>.*?</command-(?:name|message)>|<local-command-[a-z]+>.*?</local-command-[a-z]+>|<bash-(?:stdout|stderr)>.*?</bash-(?:stdout|stderr)>|<task-notification>.*?</task-notification>",
         )
         .unwrap()
     });
@@ -361,6 +361,18 @@ mod tests {
             "<command-message>https://example.com/message</command-message>"
         )
         .is_empty());
+    }
+
+    #[test]
+    fn background_task_notifications_are_not_written_by_the_user() {
+        assert!(conversation(
+            "<task-notification>\n<task-id>b1</task-id>\n<summary>Monitor event: \"CI\"</summary>\n<event>https://github.com/o/r/actions/runs/1</event>\n<result>see https://example.com/result</result>\n</task-notification>"
+        )
+        .is_empty());
+        assert_eq!(
+            conversation("<task-notification>https://example.com/n</task-notification> and https://example.com/mine"),
+            vec!["https://example.com/mine"]
+        );
     }
 
     #[test]
