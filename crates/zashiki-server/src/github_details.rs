@@ -119,11 +119,20 @@ struct Entry {
 struct Entries {
     map: HashMap<ItemKey, Entry>,
     reads: u64,
+    round_start: u64,
 }
 
 impl Entries {
+    fn begin_round(&mut self) {
+        self.round_start = self.reads + 1;
+    }
+
     /// The cached details of `key`, and whether a lookup should start now (it is then marked in flight).
-    fn read(&mut self, key: &ItemKey, now: Instant) -> (Option<GithubDetails>, bool) {
+    /// `None` when `key` is new and there is no room for it this round.
+    fn read(&mut self, key: &ItemKey, now: Instant) -> Option<(Option<GithubDetails>, bool)> {
+        if !self.map.contains_key(key) && !self.make_room() {
+            return None;
+        }
         self.reads += 1;
         let reads = self.reads;
         let entry = self.map.entry(key.clone()).or_insert(Entry {
@@ -135,8 +144,7 @@ impl Entries {
         let start = !entry.in_flight && is_due(entry.lookup.as_ref(), now);
         entry.in_flight |= start;
         let details = entry.lookup.as_ref().and_then(|l| l.details.clone());
-        self.evict_beyond_capacity();
-        (details, start)
+        Some((details, start))
     }
 
     fn finish(&mut self, key: &ItemKey, found: Option<GithubDetails>, now: Instant) {
@@ -152,18 +160,24 @@ impl Entries {
         entry.in_flight = false;
     }
 
-    fn evict_beyond_capacity(&mut self) {
-        if self.map.len() <= CACHE_CAPACITY {
-            return;
+    /// Drops the least recently read entry, never one in flight or already read this round, so a
+    /// response with more links than fit keeps the ones it holds instead of churning through them.
+    fn make_room(&mut self) -> bool {
+        if self.map.len() < CACHE_CAPACITY {
+            return true;
         }
+        let round_start = self.round_start;
         let oldest = self
             .map
             .iter()
+            .filter(|(_, e)| !e.in_flight && e.last_read < round_start)
             .min_by_key(|(_, e)| e.last_read)
             .map(|(key, _)| key.clone());
-        if let Some(oldest) = oldest {
-            self.map.remove(&oldest);
-        }
+        let Some(oldest) = oldest else {
+            return false;
+        };
+        self.map.remove(&oldest);
+        true
     }
 }
 
@@ -200,25 +214,30 @@ impl GithubDetailsCache {
     /// Must run inside a Tokio runtime: lookups are spawned onto it.
     pub fn annotate(&self, links: &mut [SessionLink]) {
         let now = (self.now)();
-        for link in links {
-            let Some(github) = link.github.as_mut() else {
-                continue;
-            };
-            if !is_plain_segment(&github.owner) || !is_plain_segment(&github.repo) {
-                continue;
-            }
+        let mut lookups = Vec::new();
+        {
             let Ok(mut entries) = self.entries.lock() else {
                 return;
             };
-            let (details, start) = entries.read(&item_key(github), now);
-            drop(entries);
-            if let Some(details) = details {
-                github.title = Some(details.title);
-                github.state = Some(details.state);
+            entries.begin_round();
+            for github in links.iter_mut().filter_map(|l| l.github.as_mut()) {
+                if !is_plain_segment(&github.owner) || !is_plain_segment(&github.repo) {
+                    continue;
+                }
+                let Some((details, start)) = entries.read(&item_key(github), now) else {
+                    continue;
+                };
+                if let Some(details) = details {
+                    github.title = Some(details.title);
+                    github.state = Some(details.state);
+                }
+                if start {
+                    lookups.push(github.clone());
+                }
             }
-            if start {
-                self.spawn_lookup(github.clone());
-            }
+        }
+        for github in lookups {
+            self.spawn_lookup(github);
         }
     }
 
@@ -584,10 +603,14 @@ mod tests {
         let links: Vec<SessionLink> = (0..=CACHE_CAPACITY as u64)
             .map(|n| github_link("o", n))
             .collect();
-        annotated(&f.cache, &links[..CACHE_CAPACITY]);
-        annotated(&f.cache, &links[..1]);
-        annotated(&f.cache, &links[CACHE_CAPACITY..]);
-        settle(&f.cache).await;
+        for round in [
+            &links[..CACHE_CAPACITY],
+            &links[..1],
+            &links[CACHE_CAPACITY..],
+        ] {
+            annotated(&f.cache, round);
+            settle(&f.cache).await;
+        }
         let entries = f.cache.entries.lock().unwrap();
         assert_eq!(entries.map.len(), CACHE_CAPACITY);
         assert!(entries
@@ -596,5 +619,43 @@ mod tests {
         assert!(!entries
             .map
             .contains_key(&item_key(links[1].github.as_ref().unwrap())));
+    }
+
+    fn key_of(link: &SessionLink) -> ItemKey {
+        item_key(link.github.as_ref().unwrap())
+    }
+
+    #[tokio::test]
+    async fn a_lookup_in_flight_is_never_dropped_to_make_room() {
+        let f = fake(|_| Some(open("x")), Duration::from_secs(60));
+        let links: Vec<SessionLink> = (0..=CACHE_CAPACITY as u64)
+            .map(|n| github_link("o", n))
+            .collect();
+        annotated(&f.cache, &links[..CACHE_CAPACITY]);
+        annotated(&f.cache, &links[CACHE_CAPACITY..]);
+        assert_eq!(f.calls.load(Ordering::SeqCst), CACHE_CAPACITY);
+        let entries = f.cache.entries.lock().unwrap();
+        assert_eq!(entries.map.len(), CACHE_CAPACITY);
+        assert!(links[..CACHE_CAPACITY]
+            .iter()
+            .all(|l| entries.map.contains_key(&key_of(l))));
+    }
+
+    #[tokio::test]
+    async fn more_links_than_the_cache_holds_still_settle_into_cached_results() {
+        let f = fake(|_| Some(open("x")), Duration::ZERO);
+        let links: Vec<SessionLink> = (0..CACHE_CAPACITY as u64 + 50)
+            .map(|n| github_link("o", n))
+            .collect();
+        for _ in 0..3 {
+            annotated(&f.cache, &links);
+            settle(&f.cache).await;
+        }
+        let titled = annotated(&f.cache, &links)
+            .iter()
+            .filter(|l| l.github.as_ref().unwrap().title.is_some())
+            .count();
+        assert_eq!(titled, CACHE_CAPACITY);
+        assert_eq!(f.calls.load(Ordering::SeqCst), CACHE_CAPACITY);
     }
 }
