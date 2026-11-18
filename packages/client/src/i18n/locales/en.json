@@ -321,7 +321,10 @@
       "sourceAssistant": "Claude",
       "empty": "No links have come up in this conversation yet",
       "copy": "Copy link",
-      "open": "Open in browser"
+      "open": "Open in browser",
+      "stateOpen": "Open",
+      "stateMerged": "Merged",
+      "stateClosed": "Closed"
     }
   },
   "update": {

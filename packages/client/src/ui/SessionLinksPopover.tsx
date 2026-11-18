@@ -1,8 +1,4 @@
-import type {
-  SessionLink,
-  SessionLinkKind,
-  SessionLinkTab,
-} from "@zashiki/shared";
+import type { GithubState, SessionLink, SessionLinkTab } from "@zashiki/shared";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -10,6 +6,7 @@ import {
   filterChips,
   groupLinks,
   type LinkFilter,
+  linkIconColor,
   linksInTab,
   linkText,
   selectableFilter,
@@ -37,6 +34,12 @@ const GROUP_LABEL_KEYS = {
   issue: "footer.links.groupIssue",
   other: "footer.links.groupOther",
 } as const;
+
+const STATE_LABEL_KEYS = {
+  open: "footer.links.stateOpen",
+  merged: "footer.links.stateMerged",
+  closed: "footer.links.stateClosed",
+} as const satisfies Record<GithubState, string>;
 
 const PR_ICON_PATH =
   "M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z";
@@ -193,7 +196,7 @@ function LinkRow({
         target="_blank"
         rel="noreferrer"
       >
-        <LinkIcon kind={link.kind} />
+        <LinkIcon link={link} />
         <span className="sl-row-text">
           <span className="sl-row-title">{title}</span>
           <span className="sl-row-detail">{detail}</span>
@@ -234,8 +237,9 @@ function sourceLabel(link: SessionLink, t: (key: string) => string): string {
     : t("footer.links.sourceAssistant");
 }
 
-function LinkIcon({ kind }: { kind: SessionLinkKind }) {
-  if (kind === "other") {
+function LinkIcon({ link }: { link: SessionLink }) {
+  const { t } = useTranslation();
+  if (link.kind === "other") {
     return (
       <span
         className="material-symbols-outlined sl-row-icon"
@@ -245,18 +249,28 @@ function LinkIcon({ kind }: { kind: SessionLinkKind }) {
       </span>
     );
   }
-  const paths = kind === "pr" ? [PR_ICON_PATH] : ISSUE_ICON_PATHS;
+  const paths = link.kind === "pr" ? [PR_ICON_PATH] : ISSUE_ICON_PATHS;
+  const shapes = paths.map((d) => <path key={d} d={d} fill="currentColor" />);
+  const state = link.github?.state;
+  const svg = {
+    className: "sl-row-icon",
+    viewBox: "0 0 16 16",
+    width: "16",
+    height: "16",
+    style: { color: linkIconColor(link) },
+  };
+  if (state === undefined) {
+    return (
+      <svg {...svg} aria-hidden="true">
+        {shapes}
+      </svg>
+    );
+  }
+  const label = t(STATE_LABEL_KEYS[state]);
   return (
-    <svg
-      className="sl-row-icon"
-      viewBox="0 0 16 16"
-      width="16"
-      height="16"
-      aria-hidden="true"
-    >
-      {paths.map((d) => (
-        <path key={d} d={d} fill="currentColor" />
-      ))}
+    <svg {...svg} role="img" aria-label={label}>
+      <title>{label}</title>
+      {shapes}
     </svg>
   );
 }

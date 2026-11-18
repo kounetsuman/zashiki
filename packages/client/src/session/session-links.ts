@@ -89,11 +89,11 @@ function readableRest(url: URL): string {
 /** The row's title and second line, from what the link itself carries. */
 export function linkText(link: SessionLink): { title: string; detail: string } {
   if (link.github !== undefined) {
-    const { owner, repo, number } = link.github;
-    return {
-      title: `${owner}/${repo} #${number}`,
-      detail: `github.com/${owner}/${repo}`,
-    };
+    const { owner, repo, number, title } = link.github;
+    const location = `${owner}/${repo} #${number}`;
+    return title === undefined
+      ? { title: location, detail: `github.com/${owner}/${repo}` }
+      : { title, detail: location };
   }
   let url: URL;
   try {
@@ -105,4 +105,23 @@ export function linkText(link: SessionLink): { title: string; detail: string } {
     title: link.title ?? url.host,
     detail: `${url.host}${readableRest(url)}`,
   };
+}
+
+const NEUTRAL_ICON_COLOR = "#bbb";
+const OPEN_COLOR = "#98c379";
+const MERGED_COLOR = "#c678dd";
+const CLOSED_PR_COLOR = "#e06c75";
+const CLOSED_ISSUE_COLOR = MERGED_COLOR;
+
+export function linkIconColor(link: SessionLink): string {
+  switch (link.github?.state) {
+    case "open":
+      return OPEN_COLOR;
+    case "merged":
+      return MERGED_COLOR;
+    case "closed":
+      return link.kind === "pr" ? CLOSED_PR_COLOR : CLOSED_ISSUE_COLOR;
+    default:
+      return NEUTRAL_ICON_COLOR;
+  }
 }

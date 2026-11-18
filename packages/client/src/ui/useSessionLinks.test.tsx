@@ -54,9 +54,38 @@ describe("useSessionLinks", () => {
 
     rerender({ id: "t2" });
     expect(result.current).toEqual([]);
-    expect(links).toHaveBeenLastCalledWith("t2", expect.any(AbortSignal));
+    expect(links).toHaveBeenLastCalledWith("t2", expect.any(AbortSignal), {
+      details: false,
+    });
     await act(async () => resolve([link("https://t2.example/")]));
     expect(result.current).toEqual([link("https://t2.example/")]);
+  });
+
+  it("asks for GitHub details at once when told to, and stops when told not to", async () => {
+    const links = vi.fn(async () => [] as SessionLink[]);
+    const api = { links };
+    const { rerender } = renderHook(
+      ({ details }) => useSessionLinks(api, "t1", details),
+      { initialProps: { details: false } },
+    );
+    await act(async () => {});
+    rerender({ details: true });
+    await act(async () => {});
+    expect(links).toHaveBeenCalledTimes(2);
+    expect(links).toHaveBeenLastCalledWith("t1", expect.any(AbortSignal), {
+      details: true,
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SESSION_LINKS_POLL_MS);
+    });
+    expect(links).toHaveBeenLastCalledWith("t1", expect.any(AbortSignal), {
+      details: true,
+    });
+    rerender({ details: false });
+    await act(async () => {});
+    expect(links).toHaveBeenLastCalledWith("t1", expect.any(AbortSignal), {
+      details: false,
+    });
   });
 
   it("schedules the next fetch only after the previous one settles", async () => {

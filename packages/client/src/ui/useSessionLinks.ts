@@ -8,13 +8,14 @@ export const SESSION_LINKS_POLL_MS = 5_000;
 const NO_LINKS: SessionLink[] = [];
 
 /**
- * The links of the active Cockpit Terminal's Claude Session, fetched when it becomes active and again
- * a poll interval after each fetch settles while it stays so. An answer arriving after the terminal
- * changed is dropped, and a failed poll keeps the last links shown.
+ * The links of the active Cockpit Terminal's Claude Session, fetched when it becomes active or
+ * `details` changes, and again a poll interval after each fetch settles while it stays so. An answer
+ * arriving after the terminal changed is dropped, and a failed poll keeps the last links shown.
  */
 export function useSessionLinks(
   api: Pick<CockpitTerminalsApi, "links"> | undefined,
   cockpitTerminalId: string | null,
+  details = false,
 ): SessionLink[] {
   const [links, setLinks] = useState<{
     cockpitTerminalId: string;
@@ -27,7 +28,7 @@ export function useSessionLinks(
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       const fresh = await api
-        .links(cockpitTerminalId, controller.signal)
+        .links(cockpitTerminalId, controller.signal, { details })
         .catch(() => null);
       if (controller.signal.aborted) return;
       if (fresh !== null) setLinks({ cockpitTerminalId, links: fresh });
@@ -38,7 +39,7 @@ export function useSessionLinks(
       controller.abort();
       clearTimeout(timer);
     };
-  }, [api, cockpitTerminalId]);
+  }, [api, cockpitTerminalId, details]);
 
   return links !== null && links.cockpitTerminalId === cockpitTerminalId
     ? links.links

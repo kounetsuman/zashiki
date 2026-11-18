@@ -57,6 +57,7 @@ function open(
   links: SessionLink[] = LINKS,
   onCopyLink = vi.fn(),
   onLinksClosed = vi.fn(),
+  onLinksOpenChange = vi.fn(),
 ) {
   render(
     <SessionStatusFooter
@@ -64,6 +65,7 @@ function open(
       links={links}
       onCopyLink={onCopyLink}
       onLinksClosed={onLinksClosed}
+      onLinksOpenChange={onLinksOpenChange}
     />,
   );
   fireEvent.click(linkButton());
@@ -110,6 +112,23 @@ describe("session links button", () => {
       expect(onLinksClosed).toHaveBeenCalledOnce();
       cleanup();
     }
+  });
+});
+
+describe("session links open state", () => {
+  it("reports opening and closing", () => {
+    const onLinksOpenChange = vi.fn();
+    open(LINKS, vi.fn(), vi.fn(), onLinksOpenChange);
+    expect(onLinksOpenChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(linkButton());
+    expect(onLinksOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("reports closed when the footer goes away while it is open", () => {
+    const onLinksOpenChange = vi.fn();
+    open(LINKS, vi.fn(), vi.fn(), onLinksOpenChange);
+    cleanup();
+    expect(onLinksOpenChange).toHaveBeenLastCalledWith(false);
   });
 });
 
@@ -244,5 +263,33 @@ describe("SessionLinksPopover", () => {
       within(row).getByRole("button", { name: "リンクをコピー" }),
     );
     expect(onCopy).toHaveBeenCalledWith("https://github.com/o/r/pull/12");
+  });
+
+  it("shows a GitHub link's real title and labels its icon with the state", () => {
+    open([
+      {
+        ...PR_12,
+        github: {
+          owner: "o",
+          repo: "r",
+          number: 12,
+          title: "Add links",
+          state: "merged",
+        },
+      },
+    ]);
+    const dialog = popover() as HTMLElement;
+    const row = within(dialog)
+      .getByText("Add links")
+      .closest("li") as HTMLElement;
+    expect(within(row).getByText("o/r #12")).toBeTruthy();
+    const icon = within(row).getByRole("img", { name: "マージ済み" });
+    expect(icon.style.color).toBe("rgb(198, 120, 221)");
+  });
+
+  it("leaves the icon unlabelled and neutral while the state is unknown", () => {
+    open([PR_12]);
+    const dialog = popover() as HTMLElement;
+    expect(within(dialog).queryByRole("img")).toBeNull();
   });
 });
