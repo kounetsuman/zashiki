@@ -160,9 +160,11 @@ fn strip_injected_blocks(text: &str) -> std::borrow::Cow<'_, str> {
     INJECTED.replace_all(text, " ")
 }
 
+/// URLs as written in prose: a URL ends at whitespace, a quote, `<>`, a backtick, or the first non-ASCII
+/// character, since Japanese text often follows one with no space between.
 fn urls_in(text: &str) -> Vec<&str> {
     static URL: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r#"https?://[^\s"'<>`。、「」『』（）]+"#).unwrap());
+        LazyLock::new(|| Regex::new(r#"https?://[\x21-\x7E--["'<>`]]+"#).unwrap());
     URL.find_iter(text)
         .map(|m| {
             let url = m.as_str();
@@ -178,7 +180,7 @@ fn trim_url(mut url: &str) -> &str {
             url.matches(open).count() < url.matches(last).count()
         };
         let trailing = match last {
-            '.' | ',' | ';' | ':' | '!' | '?' | '。' | '、' | '」' | '』' | '）' => true,
+            '.' | ',' | ';' | ':' | '!' | '?' => true,
             ')' => unbalanced('('),
             ']' => unbalanced('['),
             _ => false,
@@ -472,6 +474,26 @@ mod tests {
                 "https://example.com/b",
                 "https://example.com/a",
             ]
+        );
+    }
+
+    #[test]
+    fn japanese_prose_right_after_a_url_ends_it() {
+        assert_eq!(
+            conversation("https://github.com/o/r/pull/12を見て"),
+            vec!["https://github.com/o/r/pull/12"]
+        );
+        assert_eq!(
+            conversation("https://example.comをご覧ください"),
+            vec!["https://example.com"]
+        );
+        assert_eq!(
+            conversation("（詳細は https://example.com/detail/1819)と書いた"),
+            vec!["https://example.com/detail/1819"]
+        );
+        assert_eq!(
+            conversation("https://example.com/runs/91974)：失敗"),
+            vec!["https://example.com/runs/91974"]
         );
     }
 
