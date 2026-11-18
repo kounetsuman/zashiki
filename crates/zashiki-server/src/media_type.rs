@@ -1,7 +1,7 @@
 //! The file types `/api/media` is willing to serve, mirroring the client's `viewer/media.ts`.
 
 /// A servable media type: the `Content-Type` we send, and whether it is a PDF (rendered by the
-/// WebView's PDF viewer rather than as an `<img>` / `<video>` subresource).
+/// WebView's PDF viewer rather than as an `<img>` / `<video>` / `<audio>` subresource).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaType {
     pub content_type: &'static str,
@@ -43,6 +43,17 @@ const MEDIA_TYPES: &[(&str, MediaType)] = &[
     ("mov", media("video/quicktime")),
     ("m4v", media("video/x-m4v")),
     ("ogv", media("video/ogg")),
+    ("mp3", media("audio/mpeg")),
+    ("m4a", media("audio/mp4")),
+    ("aac", media("audio/aac")),
+    ("wav", media("audio/wav")),
+    ("aiff", media("audio/aiff")),
+    ("aif", media("audio/aiff")),
+    ("flac", media("audio/flac")),
+    ("ogg", media("audio/ogg")),
+    ("oga", media("audio/ogg")),
+    ("opus", media("audio/ogg")),
+    ("caf", media("audio/x-caf")),
     ("pdf", PDF),
 ];
 
@@ -57,7 +68,7 @@ pub fn media_type_for(file: &str) -> Option<MediaType> {
         .map(|(_, media_type)| *media_type)
 }
 
-/// CSP for non-PDF media: inert for `<img>` / `<video>`, and stops an SVG opened as a page from
+/// CSP for non-PDF media: inert for `<img>` / `<video>` / `<audio>`, and stops an SVG opened as a page from
 /// running script or loading anything. It is left off PDFs because the sandbox could stop the
 /// WebView's built-in PDF viewer.
 pub const MEDIA_CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
@@ -67,7 +78,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn maps_image_video_and_pdf_extensions() {
+    fn maps_image_video_audio_and_pdf_extensions() {
         assert_eq!(
             media_type_for("logo.png").unwrap().content_type,
             "image/png"
@@ -83,6 +94,10 @@ mod tests {
         assert_eq!(
             media_type_for("clip.mov").unwrap().content_type,
             "video/quicktime"
+        );
+        assert_eq!(
+            media_type_for("Hero.AIFF").unwrap().content_type,
+            "audio/aiff"
         );
         assert_eq!(media_type_for("doc.pdf"), Some(PDF));
         assert!(!media_type_for("clip.mp4").unwrap().is_pdf);
@@ -122,12 +137,20 @@ mod tests {
     }
 
     #[test]
-    fn covers_every_extension_the_client_treats_as_media() {
+    fn matches_the_client_media_table() {
         let client = include_str!("../../../packages/client/src/viewer/media.ts");
-        for (ext, _) in MEDIA_TYPES {
+        for (ext, media_type) in MEDIA_TYPES {
+            let content_type = media_type.content_type;
+            let kind = if media_type.is_pdf {
+                "pdf"
+            } else {
+                content_type.split('/').next().unwrap()
+            };
             assert!(
-                client.contains(&format!("\"{ext}\"")),
-                "{ext} missing on the client"
+                client.contains(&format!(
+                    "[\"{ext}\", {{ kind: \"{kind}\", mime: \"{content_type}\" }}]"
+                )),
+                "{ext} missing on the client, or mapped to another kind or MIME type"
             );
         }
         let client_exts = client
@@ -135,7 +158,7 @@ mod tests {
             .skip(1)
             .step_by(2)
             .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric()))
-            .filter(|s| !matches!(*s, "image" | "video"))
+            .filter(|s| !matches!(*s, "image" | "video" | "audio"))
             .collect::<Vec<_>>();
         for ext in client_exts {
             assert!(

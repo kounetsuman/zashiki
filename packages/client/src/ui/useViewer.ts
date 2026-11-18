@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
-import type { MediaKind } from "../viewer/media.js";
+import { type MediaKind, mediaMime } from "../viewer/media.js";
 import {
   bufferFailed,
   bufferLoaded,
@@ -137,7 +137,7 @@ export function useViewer(
       const key = externalMediaKey(name, file);
       revokeObjectUrl(key);
       const url = URL.createObjectURL(
-        kind === "pdf" ? new Blob([file], { type: "application/pdf" }) : file,
+        new Blob([file], { type: mediaMime(name) }),
       );
       objectUrlsRef.current[key] = url;
       setBuffers((prev) =>

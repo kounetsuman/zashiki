@@ -208,6 +208,14 @@ function MediaHost({
       </video>
     );
   }
+  if (media.kind === "audio") {
+    return (
+      // biome-ignore lint/a11y/useMediaCaption: local media preview has no caption track
+      <audio className="viewer-audio" src={media.url} controls>
+        {relPath}
+      </audio>
+    );
+  }
   if (media.kind === "pdf") {
     return (
       <iframe className="viewer-pdf-frame" title={relPath} src={media.url} />
