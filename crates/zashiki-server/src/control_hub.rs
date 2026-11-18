@@ -339,6 +339,18 @@ impl ControlHub {
         self.inner.read().unwrap().account_limits
     }
 
+    /// The cwd and sid of the Claude Session a Cockpit Terminal ran at the last poll (None before one
+    /// is detected).
+    pub(crate) fn claude_session_of(&self, cockpit_terminal_id: &str) -> Option<(String, String)> {
+        let state = self.inner.read().unwrap();
+        let terminal = state
+            .snapshot
+            .sessions
+            .iter()
+            .find(|s| s.cockpit_terminal_id == cockpit_terminal_id)?;
+        Some((terminal.cwd.clone()?, terminal.sid.clone()?))
+    }
+
     /// A count of in-flight work (active sessions / running subagents / resident background shells)
     /// from the currently held snapshot, for the guarded-quit confirmation (`GET /api/activity`).
     pub fn activity_summary(&self) -> ActivitySummary {

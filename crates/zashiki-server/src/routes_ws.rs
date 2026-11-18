@@ -99,6 +99,7 @@ mod ws_control_tests {
             sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
+            projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(std::env::temp_dir())),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             notify_history: true,
