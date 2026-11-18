@@ -1,23 +1,19 @@
 //! Titles and states of the GitHub pull requests and issues a Claude Session links to, looked up with
 //! `gh` in the background and kept for the server's lifetime.
 
-use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::process::Stdio;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
-use tokio::sync::Semaphore;
 
+use crate::lookup_queue::{Clock, Lookup, LookupLimits, LookupQueue};
 use crate::protocol::{GithubLinkRef, GithubState, SessionLink, SessionLinkKind};
 
 const MAX_CONCURRENT_LOOKUPS: usize = 4;
 const LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 const OPEN_RECHECK: Duration = Duration::from_secs(60);
 const FAILURE_RETRY: Duration = Duration::from_secs(5 * 60);
-const DETAILS_REQUEST_LAPSE: Duration = Duration::from_secs(10);
 /// How many pull requests and issues are remembered at once; the least recently read is dropped first.
 const CACHE_CAPACITY: usize = 512;
 
@@ -29,15 +25,7 @@ pub struct GithubDetails {
     pub is_pull_request: bool,
 }
 
-/// The last lookup's outcome. A failed re-check keeps the details an earlier lookup found.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Lookup {
-    details: Option<GithubDetails>,
-    checked_at: Instant,
-    failed: bool,
-}
-
-fn is_due(lookup: Option<&Lookup>, now: Instant) -> bool {
+fn is_due(lookup: Option<&Lookup<GithubDetails>>, now: Instant) -> bool {
     let Some(lookup) = lookup else {
         return true;
     };
@@ -98,9 +86,7 @@ fn is_plain_segment(segment: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
-pub(crate) type LookupFuture = Pin<Box<dyn Future<Output = Option<GithubDetails>> + Send>>;
-pub(crate) type Fetch = Arc<dyn Fn(GithubLinkRef) -> LookupFuture + Send + Sync>;
-pub(crate) type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
+pub(crate) type Fetch = crate::lookup_queue::Fetch<GithubLinkRef, GithubDetails>;
 
 /// One pull request or issue, however its URL was written: `/pull/N` and `/issues/N` name the same
 /// item, and GitHub owner and repo names ignore case.
@@ -114,99 +100,10 @@ fn item_key(github: &GithubLinkRef) -> ItemKey {
     )
 }
 
-struct Entry {
-    lookup: Option<Lookup>,
-    in_flight: bool,
-    last_read: u64,
-}
-
-#[derive(Default)]
-struct Entries {
-    map: HashMap<ItemKey, Entry>,
-    reads: u64,
-    round_start: u64,
-    last_details_request: Option<Instant>,
-}
-
-impl Entries {
-    fn begin_round(&mut self, now: Instant) {
-        self.round_start = self.reads + 1;
-        self.last_details_request = Some(now);
-    }
-
-    fn details_wanted(&self, now: Instant) -> bool {
-        self.last_details_request
-            .is_some_and(|at| now.saturating_duration_since(at) <= DETAILS_REQUEST_LAPSE)
-    }
-
-    fn abandon(&mut self, key: &ItemKey) {
-        if let Some(entry) = self.map.get_mut(key) {
-            entry.in_flight = false;
-        }
-    }
-
-    /// The cached details of `key`, and whether a lookup should start now (it is then marked in flight).
-    /// `None` when `key` is new and there is no room for it this round.
-    fn read(&mut self, key: &ItemKey, now: Instant) -> Option<(Option<GithubDetails>, bool)> {
-        if !self.map.contains_key(key) && !self.make_room() {
-            return None;
-        }
-        self.reads += 1;
-        let reads = self.reads;
-        let entry = self.map.entry(key.clone()).or_insert(Entry {
-            lookup: None,
-            in_flight: false,
-            last_read: reads,
-        });
-        entry.last_read = reads;
-        let start = !entry.in_flight && is_due(entry.lookup.as_ref(), now);
-        entry.in_flight |= start;
-        let details = entry.lookup.as_ref().and_then(|l| l.details.clone());
-        Some((details, start))
-    }
-
-    fn finish(&mut self, key: &ItemKey, found: Option<GithubDetails>, now: Instant) {
-        let Some(entry) = self.map.get_mut(key) else {
-            return;
-        };
-        let previous = entry.lookup.take().and_then(|l| l.details);
-        entry.lookup = Some(Lookup {
-            failed: found.is_none(),
-            details: found.or(previous),
-            checked_at: now,
-        });
-        entry.in_flight = false;
-    }
-
-    /// Drops the least recently read entry, never one in flight or already read this round, so a
-    /// response with more links than fit keeps the ones it holds instead of churning through them.
-    fn make_room(&mut self) -> bool {
-        if self.map.len() < CACHE_CAPACITY {
-            return true;
-        }
-        let round_start = self.round_start;
-        let oldest = self
-            .map
-            .iter()
-            .filter(|(_, e)| !e.in_flight && e.last_read < round_start)
-            .min_by_key(|(_, e)| e.last_read)
-            .map(|(key, _)| key.clone());
-        let Some(oldest) = oldest else {
-            return false;
-        };
-        self.map.remove(&oldest);
-        true
-    }
-}
-
 /// Fills links in from the cache and starts lookups for what is missing or stale, without waiting
 /// for them: their results show on a later read.
 pub struct GithubDetailsCache {
-    entries: Arc<Mutex<Entries>>,
-    permits: Arc<Semaphore>,
-    fetch: Fetch,
-    now: Clock,
-    timeout: Duration,
+    queue: LookupQueue<ItemKey, GithubLinkRef, GithubDetails>,
 }
 
 impl Default for GithubDetailsCache {
@@ -220,91 +117,44 @@ impl Default for GithubDetailsCache {
 
 impl GithubDetailsCache {
     pub(crate) fn with_fetch(fetch: Fetch, now: Clock) -> Self {
-        Self {
-            entries: Arc::default(),
-            permits: Arc::new(Semaphore::new(MAX_CONCURRENT_LOOKUPS)),
-            fetch,
-            now,
+        let limits = LookupLimits {
+            capacity: CACHE_CAPACITY,
+            concurrent: MAX_CONCURRENT_LOOKUPS,
             timeout: LOOKUP_TIMEOUT,
+        };
+        Self {
+            queue: LookupQueue::new(limits, is_due, fetch, now),
         }
     }
 
     /// Must run inside a Tokio runtime: lookups are spawned onto it.
     pub fn annotate(&self, links: &mut [SessionLink]) {
-        let now = (self.now)();
-        let mut lookups = Vec::new();
-        {
-            let Ok(mut entries) = self.entries.lock() else {
-                return;
+        let mut lookable: Vec<&mut SessionLink> = links
+            .iter_mut()
+            .filter(|link| {
+                link.github
+                    .as_ref()
+                    .is_some_and(|g| is_plain_segment(&g.owner) && is_plain_segment(&g.repo))
+            })
+            .collect();
+        let items = lookable
+            .iter()
+            .filter_map(|link| link.github.as_ref())
+            .map(|github| (item_key(github), github.clone()))
+            .collect();
+        let found = self.queue.read(items);
+        for (link, details) in lookable.iter_mut().zip(found) {
+            let (Some(details), Some(github)) = (details, link.github.as_mut()) else {
+                continue;
             };
-            entries.begin_round(now);
-            let mut lookable: Vec<(&mut SessionLink, ItemKey)> = links
-                .iter_mut()
-                .filter_map(|link| {
-                    let key = link
-                        .github
-                        .as_ref()
-                        .filter(|g| is_plain_segment(&g.owner) && is_plain_segment(&g.repo))
-                        .map(item_key)?;
-                    Some((link, key))
-                })
-                .collect();
-            // Cached links are read before new ones so a new link never pushes out one this call shows.
-            lookable.sort_by_key(|(_, key)| !entries.map.contains_key(key));
-            for (link, key) in lookable {
-                let Some((details, start)) = entries.read(&key, now) else {
-                    continue;
-                };
-                let Some(github) = link.github.as_mut() else {
-                    continue;
-                };
-                if let Some(details) = details {
-                    github.title = Some(details.title);
-                    github.state = Some(details.state);
-                    link.kind = if details.is_pull_request {
-                        SessionLinkKind::Pr
-                    } else {
-                        SessionLinkKind::Issue
-                    };
-                }
-                if start {
-                    lookups.push(github.clone());
-                }
-            }
-        }
-        for github in lookups {
-            self.spawn_lookup(github);
-        }
-    }
-
-    /// A lookup still queued when the popover has stopped asking for details is dropped unrun, and
-    /// the next request with details starts it afresh.
-    fn spawn_lookup(&self, github: GithubLinkRef) {
-        let key = item_key(&github);
-        let entries = Arc::clone(&self.entries);
-        let permits = Arc::clone(&self.permits);
-        let fetch = Arc::clone(&self.fetch);
-        let now = Arc::clone(&self.now);
-        let timeout = self.timeout;
-        tokio::spawn(async move {
-            let Ok(_permit) = permits.acquire_owned().await else {
-                return;
+            github.title = Some(details.title);
+            github.state = Some(details.state);
+            link.kind = if details.is_pull_request {
+                SessionLinkKind::Pr
+            } else {
+                SessionLinkKind::Issue
             };
-            let still_wanted = entries.lock().is_ok_and(|e| e.details_wanted(now()));
-            if !still_wanted {
-                if let Ok(mut entries) = entries.lock() {
-                    entries.abandon(&key);
-                }
-                return;
-            }
-            let found = tokio::time::timeout(timeout, fetch(github))
-                .await
-                .ok()
-                .flatten();
-            if let Ok(mut entries) = entries.lock() {
-                entries.finish(&key, found, now());
-            }
-        });
+        }
     }
 }
 
@@ -360,7 +210,7 @@ mod tests {
         duration.as_millis() as u64
     }
 
-    fn checked(state: Option<GithubState>, at_ms: u64, failed: bool) -> Lookup {
+    fn checked(state: Option<GithubState>, at_ms: u64, failed: bool) -> Lookup<GithubDetails> {
         Lookup {
             details: state.map(|state| GithubDetails {
                 title: "t".into(),
@@ -513,20 +363,7 @@ mod tests {
     }
 
     async fn settle(cache: &GithubDetailsCache) {
-        for _ in 0..200 {
-            let busy = cache
-                .entries
-                .lock()
-                .unwrap()
-                .map
-                .values()
-                .any(|e| e.in_flight);
-            if !busy {
-                return;
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-        panic!("lookups never settled");
+        cache.queue.settle().await;
     }
 
     fn annotated(cache: &GithubDetailsCache, links: &[SessionLink]) -> Vec<SessionLink> {
@@ -603,7 +440,7 @@ mod tests {
     #[tokio::test]
     async fn a_lookup_that_overruns_its_timeout_is_a_remembered_failure() {
         let mut f = fake(|_| Some(open("late")), Duration::from_millis(200));
-        f.cache.timeout = Duration::from_millis(10);
+        f.cache.queue.timeout = Duration::from_millis(10);
         let links = [github_link("o", 1)];
         annotated(&f.cache, &links);
         settle(&f.cache).await;
@@ -677,14 +514,10 @@ mod tests {
             annotated(&f.cache, round);
             settle(&f.cache).await;
         }
-        let entries = f.cache.entries.lock().unwrap();
-        assert_eq!(entries.map.len(), CACHE_CAPACITY);
-        assert!(entries
-            .map
-            .contains_key(&item_key(links[0].github.as_ref().unwrap())));
-        assert!(!entries
-            .map
-            .contains_key(&item_key(links[1].github.as_ref().unwrap())));
+        let queue = &f.cache.queue;
+        assert_eq!(queue.len(), CACHE_CAPACITY);
+        assert!(queue.contains(&key_of(&links[0])));
+        assert!(!queue.contains(&key_of(&links[1])));
     }
 
     fn key_of(link: &SessionLink) -> ItemKey {
@@ -699,12 +532,12 @@ mod tests {
             .collect();
         annotated(&f.cache, &links[..CACHE_CAPACITY]);
         annotated(&f.cache, &links[CACHE_CAPACITY..]);
-        let entries = f.cache.entries.lock().unwrap();
-        assert_eq!(entries.map.len(), CACHE_CAPACITY);
+        let queue = &f.cache.queue;
+        assert_eq!(queue.len(), CACHE_CAPACITY);
         assert!(links[..CACHE_CAPACITY]
             .iter()
-            .all(|l| entries.map.get(&key_of(l)).is_some_and(|e| e.in_flight)));
-        assert!(!entries.map.contains_key(&key_of(&links[CACHE_CAPACITY])));
+            .all(|l| queue.in_flight(&key_of(l))));
+        assert!(!queue.contains(&key_of(&links[CACHE_CAPACITY])));
     }
 
     #[tokio::test]
@@ -731,20 +564,13 @@ mod tests {
         let links: Vec<SessionLink> = (1..=6).map(|n| github_link("o", n)).collect();
         annotated(&f.cache, &links);
         tokio::time::sleep(Duration::from_millis(5)).await;
-        f.clock
-            .store(ms(DETAILS_REQUEST_LAPSE) + 1, Ordering::SeqCst);
+        f.clock.store(
+            ms(crate::lookup_queue::DETAILS_REQUEST_LAPSE) + 1,
+            Ordering::SeqCst,
+        );
         settle(&f.cache).await;
         assert_eq!(f.calls.load(Ordering::SeqCst), MAX_CONCURRENT_LOOKUPS);
-        let never_looked_up = f
-            .cache
-            .entries
-            .lock()
-            .unwrap()
-            .map
-            .values()
-            .filter(|e| e.lookup.is_none())
-            .count();
-        assert_eq!(never_looked_up, 2);
+        assert_eq!(f.cache.queue.never_looked_up(), 2);
 
         annotated(&f.cache, &links);
         settle(&f.cache).await;
@@ -794,12 +620,6 @@ mod tests {
             .iter()
             .all(|l| l.github.as_ref().unwrap().title.is_some()));
         assert_eq!(f.calls.load(Ordering::SeqCst), CACHE_CAPACITY);
-        assert!(!f
-            .cache
-            .entries
-            .lock()
-            .unwrap()
-            .map
-            .contains_key(&key_of(&newest)));
+        assert!(!f.cache.queue.contains(&key_of(&newest)));
     }
 }
