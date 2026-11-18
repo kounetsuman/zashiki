@@ -128,6 +128,7 @@ import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
+import { useSessionLinks } from "./ui/useSessionLinks.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useUsageLimitWarning } from "./ui/useUsageLimitWarning.js";
 import { useViewer } from "./ui/useViewer.js";
@@ -427,6 +428,7 @@ export function App({
       : undefined;
   const activeSessionUsage = activeSession?.usage ?? null;
   const activeSessionModel = activeSession?.model;
+  const activeSessionLinks = useSessionLinks(cockpitTerminalsApi, activeSess);
   const activeSessionAccent =
     activeSession !== undefined
       ? resolveOrgColor(activeSession.org, orgColors)
@@ -653,6 +655,16 @@ export function App({
     (repoPath: string, relPath: string): void => {
       void navigator.clipboard?.writeText(`${repoPath}/${relPath}`).then(
         () => flashCopyToast(t("toast.pathCopied")),
+        () => undefined,
+      );
+    },
+    [flashCopyToast, t],
+  );
+
+  const copySessionLink = useCallback(
+    (url: string): void => {
+      void navigator.clipboard?.writeText(url).then(
+        () => flashCopyToast(t("toast.linkCopied")),
         () => undefined,
       );
     },
@@ -1338,6 +1350,8 @@ export function App({
               thresholds={footerThresholds}
               beforeCompactionOpen={beforeCompactionOpen}
               onToggleBeforeCompaction={toggleBeforeCompaction}
+              links={activeSessionLinks}
+              onCopyLink={copySessionLink}
             />
           )}
         </div>

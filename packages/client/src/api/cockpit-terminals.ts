@@ -2,16 +2,23 @@ import {
   type CockpitTerminalLastActivityResponse,
   cockpitTerminalLastActivityResponseSchema,
   cockpitTerminalTailResponseSchema,
+  type SessionLink,
+  sessionLinksResponseSchema,
 } from "@zashiki/shared";
 
 import { authHeaders } from "../lib/token.js";
 
-/** The read REST for how long each Cockpit Terminal has been left alone and what it last showed. */
+/** The read REST for how long each Cockpit Terminal has been left alone, what it last showed, and
+ * the links its Claude Session has seen. */
 export interface CockpitTerminalsApi {
   lastActivity(
     signal?: AbortSignal,
   ): Promise<CockpitTerminalLastActivityResponse>;
   tail(cockpitTerminalId: string, signal?: AbortSignal): Promise<string[]>;
+  links(
+    cockpitTerminalId: string,
+    signal?: AbortSignal,
+  ): Promise<SessionLink[]>;
 }
 
 export function createCockpitTerminalsApi(
@@ -39,6 +46,13 @@ export function createCockpitTerminalsApi(
         await getJson(`/api/cockpit-terminals/tail?${query}`, signal),
       );
       return body.lines;
+    },
+    async links(cockpitTerminalId, signal) {
+      const query = new URLSearchParams({ id: cockpitTerminalId });
+      const body = sessionLinksResponseSchema.parse(
+        await getJson(`/api/cockpit-terminals/links?${query}`, signal),
+      );
+      return body.links;
     },
   };
 }

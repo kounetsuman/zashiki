@@ -59,6 +59,7 @@ function apiReturning(
   return {
     lastActivity: vi.fn(async () => ({ terminals })),
     tail: vi.fn(async () => []),
+    links: vi.fn(async () => []),
   };
 }
 

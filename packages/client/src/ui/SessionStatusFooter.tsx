@@ -1,11 +1,14 @@
 import {
   DEFAULT_FOOTER_THRESHOLDS,
   type FooterThresholds,
+  type SessionLink,
   type SessionUsage,
   type UsageBeforeCompaction,
 } from "@zashiki/shared";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { distinctLinkCount } from "../session/session-links.js";
 import {
   durationSeverity,
   fmtDuration,
@@ -13,6 +16,7 @@ import {
   fmtTokens,
   tokenSeverity,
 } from "../session/status-footer.js";
+import { SessionLinksPopover } from "./SessionLinksPopover.js";
 import { BG_AGENT_GLYPH } from "./SessionStateIcons.js";
 import { StatusCell } from "./StatusCell.js";
 import { Tooltip } from "./Tooltip.js";
@@ -30,14 +34,17 @@ export interface SessionStatusFooterProps {
   /** Whether the totals from before the last compaction are expanded (they are only offered once compacted). */
   beforeCompactionOpen?: boolean;
   onToggleBeforeCompaction?: () => void;
+  /** The links the active Claude Session has seen, newest first. */
+  links?: readonly SessionLink[];
+  onCopyLink?: (url: string) => void;
 }
 
 const DASH = "–";
 
 /**
  * Status area docked under the terminal for the active session: tokens (this turn / this session /
- * its subagents) and elapsed time (this turn / this session). Elapsed re-ticks each second off the
- * server-provided epoch anchors.
+ * its subagents), elapsed time (this turn / this session), and the button that opens its links.
+ * Elapsed re-ticks each second off the server-provided epoch anchors.
  */
 export function SessionStatusFooter({
   usage,
@@ -46,92 +53,142 @@ export function SessionStatusFooter({
   thresholds = DEFAULT_FOOTER_THRESHOLDS,
   beforeCompactionOpen = false,
   onToggleBeforeCompaction,
+  links = [],
+  onCopyLink = () => undefined,
 }: SessionStatusFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
+  const [linksOpen, setLinksOpen] = useState(false);
+  const linksButton = useRef<HTMLButtonElement>(null);
 
   return (
-    <footer
-      className="session-status"
-      style={accentColor ? { borderTopColor: accentColor } : undefined}
-    >
-      <Tooltip className="ss-group" label={t("footer.status.modelTitle")}>
-        <span className="material-symbols-outlined ss-icon" aria-hidden="true">
-          neurology
-        </span>
-        <StatusCell
-          value={model ? fmtModel(model) : DASH}
-          caption={t("footer.status.model")}
-        />
-      </Tooltip>
-
-      <Tooltip className="ss-group" label={t("footer.status.tokensTitle")}>
-        <span className="material-symbols-outlined ss-icon" aria-hidden="true">
-          generating_tokens
-        </span>
-        <StatusCell
-          value={usage ? fmtTokens(usage.turnTokens) : DASH}
-          caption={t("footer.status.turn")}
-        />
-        <StatusCell
-          value={usage ? fmtTokens(usage.sessionTokens) : DASH}
-          caption={t("footer.status.session")}
-          severity={
-            usage
-              ? tokenSeverity(usage.sessionTokens, thresholds.sessionTokens)
-              : undefined
-          }
-        />
-      </Tooltip>
-
-      <Tooltip className="ss-group" label={t("footer.status.agentTokensTitle")}>
-        <span className="material-symbols-outlined ss-icon" aria-hidden="true">
-          {BG_AGENT_GLYPH}
-        </span>
-        <StatusCell
-          value={usage ? fmtTokens(usage.subagentTokens) : DASH}
-          caption={t("footer.status.agents")}
-        />
-      </Tooltip>
-
-      <Tooltip className="ss-group" label={t("footer.status.elapsedTitle")}>
-        <span className="material-symbols-outlined ss-icon" aria-hidden="true">
-          schedule
-        </span>
-        <StatusCell
-          value={usage ? fmtDuration(now - usage.turnStartedAt) : DASH}
-          caption={t("footer.status.turn")}
-          severity={
-            usage
-              ? durationSeverity(
-                  now - usage.turnStartedAt,
-                  thresholds.elapsedMs,
-                )
-              : undefined
-          }
-        />
-        <StatusCell
-          value={usage ? fmtDuration(now - usage.sessionStartedAt) : DASH}
-          caption={t("footer.status.session")}
-          severity={
-            usage
-              ? durationSeverity(
-                  now - usage.sessionStartedAt,
-                  thresholds.elapsedMs,
-                )
-              : undefined
-          }
-        />
-      </Tooltip>
-
-      {usage?.beforeCompaction && (
-        <BeforeCompaction
-          totals={usage.beforeCompaction}
-          open={beforeCompactionOpen}
-          onToggle={onToggleBeforeCompaction}
+    <div className="session-status-dock">
+      {linksOpen && (
+        <SessionLinksPopover
+          links={links}
+          onCopy={onCopyLink}
+          onClose={() => {
+            setLinksOpen(false);
+            linksButton.current?.focus();
+          }}
         />
       )}
-    </footer>
+      <footer
+        className="session-status"
+        style={accentColor ? { borderTopColor: accentColor } : undefined}
+      >
+        <Tooltip className="ss-group" label={t("footer.status.modelTitle")}>
+          <span
+            className="material-symbols-outlined ss-icon"
+            aria-hidden="true"
+          >
+            neurology
+          </span>
+          <StatusCell
+            value={model ? fmtModel(model) : DASH}
+            caption={t("footer.status.model")}
+          />
+        </Tooltip>
+
+        <Tooltip className="ss-group" label={t("footer.status.tokensTitle")}>
+          <span
+            className="material-symbols-outlined ss-icon"
+            aria-hidden="true"
+          >
+            generating_tokens
+          </span>
+          <StatusCell
+            value={usage ? fmtTokens(usage.turnTokens) : DASH}
+            caption={t("footer.status.turn")}
+          />
+          <StatusCell
+            value={usage ? fmtTokens(usage.sessionTokens) : DASH}
+            caption={t("footer.status.session")}
+            severity={
+              usage
+                ? tokenSeverity(usage.sessionTokens, thresholds.sessionTokens)
+                : undefined
+            }
+          />
+        </Tooltip>
+
+        <Tooltip
+          className="ss-group"
+          label={t("footer.status.agentTokensTitle")}
+        >
+          <span
+            className="material-symbols-outlined ss-icon"
+            aria-hidden="true"
+          >
+            {BG_AGENT_GLYPH}
+          </span>
+          <StatusCell
+            value={usage ? fmtTokens(usage.subagentTokens) : DASH}
+            caption={t("footer.status.agents")}
+          />
+        </Tooltip>
+
+        <Tooltip className="ss-group" label={t("footer.status.elapsedTitle")}>
+          <span
+            className="material-symbols-outlined ss-icon"
+            aria-hidden="true"
+          >
+            schedule
+          </span>
+          <StatusCell
+            value={usage ? fmtDuration(now - usage.turnStartedAt) : DASH}
+            caption={t("footer.status.turn")}
+            severity={
+              usage
+                ? durationSeverity(
+                    now - usage.turnStartedAt,
+                    thresholds.elapsedMs,
+                  )
+                : undefined
+            }
+          />
+          <StatusCell
+            value={usage ? fmtDuration(now - usage.sessionStartedAt) : DASH}
+            caption={t("footer.status.session")}
+            severity={
+              usage
+                ? durationSeverity(
+                    now - usage.sessionStartedAt,
+                    thresholds.elapsedMs,
+                  )
+                : undefined
+            }
+          />
+        </Tooltip>
+
+        {usage?.beforeCompaction && (
+          <BeforeCompaction
+            totals={usage.beforeCompaction}
+            open={beforeCompactionOpen}
+            onToggle={onToggleBeforeCompaction}
+          />
+        )}
+
+        <Tooltip className="ss-group ss-links" label={t("footer.links.title")}>
+          <button
+            ref={linksButton}
+            type="button"
+            className="ss-links-button"
+            aria-expanded={linksOpen}
+            aria-label={t("footer.links.title")}
+            onClick={() => setLinksOpen((open) => !open)}
+          >
+            <span
+              className="material-symbols-outlined ss-icon"
+              aria-hidden="true"
+            >
+              link
+            </span>
+            <span className="ss-val">{distinctLinkCount(links)}</span>
+          </button>
+        </Tooltip>
+      </footer>
+    </div>
   );
 }
 
