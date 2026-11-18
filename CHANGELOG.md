@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The session status footer reports the tokens this session's subagents spent, beside the turn and session totals (#435)
 - The session status footer can show the totals from before the last compaction (session tokens, agent tokens, elapsed), collapsed by default behind a toggle on its right end (#474)
+- Audio files (`.aiff`, `.mp3`, `.wav`, `.m4a`, …) play in the Viewer with a simple player, and files chosen with Cmd+O open the same way as dropped ones, so images, videos, audio and PDFs picked there are previewed instead of failing to open (#509)
 
 ### Fixed
 

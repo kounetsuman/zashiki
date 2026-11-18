@@ -10,7 +10,8 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "open_devtools",
-            "pick_and_read_files",
+            "pick_files",
+            "read_picked_file",
             "report_memo_status",
             "report_memo_saved",
             "set_dashboard_origin",

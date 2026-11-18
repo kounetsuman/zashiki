@@ -14,7 +14,8 @@ mod sidecar;
 #[cfg(target_os = "macos")]
 mod wake;
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -71,71 +72,127 @@ fn share_text(text: String) -> Result<(), String> {
     Err("unsupported".to_string())
 }
 
-/// One file chosen via the native open dialog: its text, or the stable code ("tooLarge" /
-/// "readFailed") saying why it could not be read, so the UI can name it in a specific message.
+/// Files chosen in the latest Cmd+O pick, by the id handed to the UI. Only these can be read back,
+/// so the read command cannot be pointed at an arbitrary path.
+#[derive(Default)]
+struct PickedPaths(Mutex<PickedPathTable>);
+
+#[derive(Default)]
+struct PickedPathTable {
+    next_id: u64,
+    paths: HashMap<u64, PathBuf>,
+}
+
+impl PickedPathTable {
+    /// Hands out an id for `path`. Ids are never reused, so a read meant for an earlier pick cannot
+    /// land on a file from a later one.
+    fn register(&mut self, path: PathBuf) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.paths.insert(id, path);
+        id
+    }
+}
+
+/// One file chosen via the native open dialog: what the UI needs to decide how to open it before
+/// reading it (`size` for the text cap, `lastModified` for the tab's identity), or the stable code
+/// ("readFailed") saying why it cannot be opened.
 #[derive(serde::Serialize, Debug, PartialEq)]
 #[serde(untagged)]
 enum PickedFile {
-    Read { name: String, content: String },
+    #[serde(rename_all = "camelCase")]
+    Picked {
+        id: u64,
+        name: String,
+        size: u64,
+        last_modified: u64,
+    },
     Failed { name: String, error: &'static str },
 }
 
-fn read_picked_file(path: &std::path::Path, max_bytes: u64) -> PickedFile {
+fn describe_picked_file(id: u64, path: &Path) -> PickedFile {
     let name = path
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
-    let failed = |error| PickedFile::Failed {
-        name: name.clone(),
-        error,
+    let Ok(meta) = std::fs::metadata(path) else {
+        return PickedFile::Failed {
+            name,
+            error: "readFailed",
+        };
     };
-    match std::fs::metadata(path) {
-        Ok(meta) if meta.len() > max_bytes => return failed("tooLarge"),
-        Ok(_) => {}
-        Err(_) => return failed("readFailed"),
-    }
-    match std::fs::read_to_string(path) {
-        Ok(content) => PickedFile::Read {
-            name: name.clone(),
-            content,
-        },
-        Err(_) => failed("readFailed"),
+    let last_modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_millis() as u64);
+    PickedFile::Picked {
+        id,
+        name,
+        size: meta.len(),
+        last_modified,
     }
 }
 
 /// Cmd+O: shows the native open dialog (with a localized title passed from the UI), allowing several
-/// files, and returns each chosen file in order. Returns an empty list when the user cancels.
-/// `max_bytes` is the single source of truth for the size cap (the client passes its shared
-/// FILE_MAX_BYTES). The picker and the reads run off the async runtime (blocking_pick_files dispatches
-/// the modal to the main thread itself).
+/// files, and returns each chosen file in order. Returns an empty list when the user cancels. The
+/// picker runs off the async runtime (blocking_pick_files dispatches the modal to the main thread
+/// itself).
 #[tauri::command]
-async fn pick_and_read_files(
+async fn pick_files(
     app: tauri::AppHandle,
+    picked_paths: tauri::State<'_, PickedPaths>,
     title: String,
-    max_bytes: u64,
 ) -> Result<Vec<PickedFile>, String> {
     use tauri_plugin_dialog::DialogExt;
-    tauri::async_runtime::spawn_blocking(move || {
+    let chosen = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
             .set_title(&title)
             .blocking_pick_files()
             .unwrap_or_default()
-            .into_iter()
-            .map(|file_path| {
-                let shown = file_path.to_string();
-                match file_path.into_path() {
-                    Ok(path) => read_picked_file(&path, max_bytes),
-                    Err(_) => PickedFile::Failed {
-                        name: shown,
-                        error: "readFailed",
-                    },
-                }
-            })
-            .collect()
     })
     .await
-    .map_err(|_| "readFailed".to_string())
+    .map_err(|_| "readFailed".to_string())?;
+    let mut table = picked_paths
+        .0
+        .lock()
+        .map_err(|_| "readFailed".to_string())?;
+    table.paths.clear();
+    Ok(chosen
+        .into_iter()
+        .map(|file_path| {
+            let shown = file_path.to_string();
+            match file_path.into_path() {
+                Ok(path) => describe_picked_file(table.register(path.clone()), &path),
+                Err(_) => PickedFile::Failed {
+                    name: shown,
+                    error: "readFailed",
+                },
+            }
+        })
+        .collect())
+}
+
+/// The raw bytes of a file from the latest Cmd+O pick, delivered to the WebView as an ArrayBuffer.
+#[tauri::command]
+async fn read_picked_file(
+    picked_paths: tauri::State<'_, PickedPaths>,
+    id: u64,
+) -> Result<tauri::ipc::Response, String> {
+    let path = picked_paths
+        .0
+        .lock()
+        .map_err(|_| "readFailed".to_string())?
+        .paths
+        .get(&id)
+        .cloned()
+        .ok_or_else(|| "readFailed".to_string())?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(path))
+        .await
+        .map_err(|_| "readFailed".to_string())?
+        .map_err(|_| "readFailed".to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// Reply channels the quit thread hands to the WebView. The quit gesture runs off the main thread
@@ -225,9 +282,11 @@ fn main() {
     let build_result = builder
         .manage(QuitBridge::default())
         .manage(DashboardOrigin::default())
+        .manage(PickedPaths::default())
         .invoke_handler(tauri::generate_handler![
             open_devtools,
-            pick_and_read_files,
+            pick_files,
+            read_picked_file,
             report_memo_status,
             report_memo_saved,
             set_dashboard_origin,
@@ -804,63 +863,61 @@ mod tests {
     }
 
     #[test]
-    fn picked_file_within_the_limit_is_read() {
+    fn picked_file_is_described_by_size_and_modification_time() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("a.md");
-        std::fs::write(&path, "hello").unwrap();
-        assert_eq!(
-            read_picked_file(&path, 5),
-            PickedFile::Read {
-                name: "a.md".to_string(),
-                content: "hello".to_string()
-            }
-        );
+        let path = dir.path().join("Hero.aiff");
+        std::fs::write(&path, [0xff, 0xfe, 0x00]).unwrap();
+        let PickedFile::Picked {
+            id,
+            name,
+            size,
+            last_modified,
+        } = describe_picked_file(7, &path)
+        else {
+            panic!("an existing file should be described");
+        };
+        assert_eq!((id, name.as_str(), size), (7, "Hero.aiff", 3));
+        assert!(last_modified > 0);
     }
 
     #[test]
-    fn picked_file_past_the_limit_is_too_large() {
+    fn picked_file_that_is_gone_fails() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("big.md");
-        std::fs::write(&path, "hello!").unwrap();
         assert_eq!(
-            read_picked_file(&path, 5),
+            describe_picked_file(0, &dir.path().join("gone.md")),
             PickedFile::Failed {
-                name: "big.md".to_string(),
-                error: "tooLarge"
+                name: "gone.md".to_string(),
+                error: "readFailed"
             }
         );
     }
 
     #[test]
-    fn picked_file_that_cannot_be_read_as_text_fails() {
-        let dir = tempfile::tempdir().unwrap();
-        let binary = dir.path().join("bin.dat");
-        std::fs::write(&binary, [0xff, 0xfe, 0x00]).unwrap();
-        let missing = dir.path().join("gone.md");
-        for (path, name) in [(binary, "bin.dat"), (missing, "gone.md")] {
-            assert_eq!(
-                read_picked_file(&path, 100),
-                PickedFile::Failed {
-                    name: name.to_string(),
-                    error: "readFailed"
-                }
-            );
-        }
+    fn picked_path_ids_are_never_reused_across_picks() {
+        let mut table = PickedPathTable::default();
+        let first = table.register(PathBuf::from("/a"));
+        table.paths.clear();
+        let second = table.register(PathBuf::from("/b"));
+        assert_ne!(first, second);
+        assert_eq!(table.paths.get(&first), None);
+        assert_eq!(table.paths.get(&second), Some(&PathBuf::from("/b")));
     }
 
     #[test]
     fn picked_files_serialize_as_the_client_expects() {
-        let read = PickedFile::Read {
+        let picked = PickedFile::Picked {
+            id: 3,
             name: "a.md".to_string(),
-            content: "x".to_string(),
+            size: 5,
+            last_modified: 9,
         };
         let failed = PickedFile::Failed {
             name: "b.md".to_string(),
-            error: "tooLarge",
+            error: "readFailed",
         };
         assert_eq!(
-            serde_json::to_string(&[read, failed]).unwrap(),
-            r#"[{"name":"a.md","content":"x"},{"name":"b.md","error":"tooLarge"}]"#
+            serde_json::to_string(&[picked, failed]).unwrap(),
+            r#"[{"id":3,"name":"a.md","size":5,"lastModified":9},{"name":"b.md","error":"readFailed"}]"#
         );
     }
 

@@ -22,6 +22,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -65,7 +66,7 @@ import {
 import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
-import { openPickedFiles, pickAndReadFiles } from "./lib/open-file-dialog.js";
+import { pickFiles } from "./lib/open-file-dialog.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
 import { createMemoSaver } from "./memo/memo-saver.js";
@@ -122,7 +123,7 @@ import { useCrashReport } from "./ui/useCrashReport.js";
 import { useDashboard } from "./ui/useDashboard.js";
 import { useDiff } from "./ui/useDiff.js";
 import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
-import { type FileDropError, useFileDrop } from "./ui/useFileDrop.js";
+import { useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
@@ -136,6 +137,10 @@ import { useXtermRenderer } from "./ui/useXtermRenderer.js";
 import { Viewer } from "./ui/Viewer.js";
 import { WelcomeOnboardingModal } from "./ui/WelcomeOnboardingModal.js";
 import { type MediaKind, mediaKind } from "./viewer/media.js";
+import {
+  type LocalFileError,
+  openLocalFiles,
+} from "./viewer/open-local-files.js";
 import {
   viewerKeysUnderPath,
   viewersAffectedByRename,
@@ -621,7 +626,7 @@ export function App({
     [openViewerTab, openExternalMedia],
   );
   const toastUnreadableFile = useCallback(
-    (name: string, error: FileDropError): void => {
+    (name: string, error: LocalFileError): void => {
       flashCopyToast(
         t(
           error === "tooLarge"
@@ -633,20 +638,23 @@ export function App({
     },
     [flashCopyToast, t],
   );
-  const fileDrop = useFileDrop(
-    openExternalFile,
-    openExternalMediaFile,
-    toastUnreadableFile,
+  const localFileHandlers = useMemo(
+    () => ({
+      onText: openExternalFile,
+      onMedia: openExternalMediaFile,
+      onError: toastUnreadableFile,
+    }),
+    [openExternalFile, openExternalMediaFile, toastUnreadableFile],
   );
+  const fileDrop = useFileDrop(localFileHandlers);
 
   // Cmd+O: pick files via the native dialog and open each read-only in the viewer (external buffer).
   const openFileFromDialog = useCallback((): void => {
-    void pickAndReadFiles(t("openFile.dialogTitle")).then(
-      (picked) =>
-        openPickedFiles(picked, openExternalFile, toastUnreadableFile),
+    void pickFiles(t("openFile.dialogTitle")).then(
+      (picked) => openLocalFiles(picked, localFileHandlers),
       () => flashCopyToast(t("openFile.failed")),
     );
-  }, [t, openExternalFile, toastUnreadableFile, flashCopyToast]);
+  }, [t, localFileHandlers, flashCopyToast]);
 
   // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
   const copyDiffPath = useCallback(
