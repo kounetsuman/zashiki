@@ -1,6 +1,6 @@
 //! Serves the media files chosen with Cmd+O to the WebView as `zkpicked://localhost/<id>?type=<mime>`,
 //! in byte ranges, so a large video streams and seeks without being read into memory. Files are looked
-//! up by the id of the latest pick, never by path, and served as the MIME type the client derived from
+//! up by the id of their pick, never by path, and served as the MIME type the client derived from
 //! the extension (never sniffed), so a file cannot turn into a page that runs script.
 
 use std::fs::File;
@@ -13,6 +13,9 @@ pub const SCHEME: &str = "zkpicked";
 
 /// The most bytes one ranged response carries; the WebView asks again for the rest.
 const MAX_RANGE_BYTES: u64 = 4 * 1024 * 1024;
+
+/// The largest file served whole to a request without a `Range` header (`<img>`, the PDF viewer).
+const MAX_WHOLE_BYTES: u64 = 512 * 1024 * 1024;
 
 /// Same policy as the server's `/api/media`: inert for `<img>` / `<video>` / `<audio>`, and stops an
 /// SVG opened as a page from running script. Left off PDFs, where it could stop the PDF viewer.
@@ -101,7 +104,7 @@ fn status(code: StatusCode) -> Response<Vec<u8>> {
 
 fn read_span(file: &mut File, start: u64, len: u64) -> std::io::Result<Vec<u8>> {
     file.seek(SeekFrom::Start(start))?;
-    let mut body = Vec::with_capacity(len as usize);
+    let mut body = Vec::new();
     file.take(len).read_to_end(&mut body)?;
     Ok(body)
 }
@@ -124,6 +127,7 @@ pub fn respond(path: &Path, mime: &str, range: Option<&str>) -> Response<Vec<u8>
         return status(StatusCode::UNSUPPORTED_MEDIA_TYPE);
     }
     let (code, start, end) = match range {
+        None if len > MAX_WHOLE_BYTES => return status(StatusCode::PAYLOAD_TOO_LARGE),
         None => (StatusCode::OK, 0, len.saturating_sub(1)),
         Some(range) => match requested_range(range, len) {
             Some((start, end)) => (StatusCode::PARTIAL_CONTENT, start, end),
