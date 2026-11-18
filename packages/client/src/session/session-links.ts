@@ -76,12 +76,13 @@ export function groupLinks(
     .filter((group) => group.links.length > 0);
 }
 
-function readablePath(pathname: string): string {
-  const path = pathname === "/" ? "" : pathname;
+function readableRest(url: URL): string {
+  const rest = `${url.pathname}${url.search}${url.hash}`;
+  const trimmed = rest === "/" ? "" : rest;
   try {
-    return decodeURI(path);
+    return decodeURI(trimmed);
   } catch {
-    return path;
+    return trimmed;
   }
 }
 
@@ -102,6 +103,6 @@ export function linkText(link: SessionLink): { title: string; detail: string } {
   }
   return {
     title: link.title ?? url.host,
-    detail: `${url.host}${readablePath(url.pathname)}`,
+    detail: `${url.host}${readableRest(url)}`,
   };
 }

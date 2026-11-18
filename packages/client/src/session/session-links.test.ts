@@ -114,13 +114,19 @@ describe("linkText", () => {
     });
   });
 
-  it("names another link by its host and shows host and path below", () => {
+  it("names another link by its host and shows the rest of the URL below", () => {
     expect(
       linkText(other("https://docs.example.com/guide/start?x=1#top")),
     ).toEqual({
       title: "docs.example.com",
-      detail: "docs.example.com/guide/start",
+      detail: "docs.example.com/guide/start?x=1#top",
     });
+  });
+
+  it("tells apart links that differ only by query", () => {
+    expect(linkText(other("https://example.com/?page=2")).detail).toBe(
+      "example.com/?page=2",
+    );
   });
 
   it("shows the bare host for a site root", () => {
