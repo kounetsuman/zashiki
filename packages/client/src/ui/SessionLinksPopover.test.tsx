@@ -53,9 +53,18 @@ function popover() {
   return screen.queryByRole("dialog", { name: "このセッションのリンク" });
 }
 
-function open(links: SessionLink[] = LINKS, onCopyLink = vi.fn()) {
+function open(
+  links: SessionLink[] = LINKS,
+  onCopyLink = vi.fn(),
+  onLinksClosed = vi.fn(),
+) {
   render(
-    <SessionStatusFooter usage={null} links={links} onCopyLink={onCopyLink} />,
+    <SessionStatusFooter
+      usage={null}
+      links={links}
+      onCopyLink={onCopyLink}
+      onLinksClosed={onLinksClosed}
+    />,
   );
   fireEvent.click(linkButton());
   return onCopyLink;
@@ -86,6 +95,22 @@ describe("session links button", () => {
     fireEvent.click(screen.getByRole("button", { name: "閉じる" }));
     expect(popover()).toBeNull();
   });
+
+  it("hands focus back to the terminal however it closes", () => {
+    const closeBy = [
+      () => fireEvent.click(screen.getByRole("button", { name: "閉じる" })),
+      () => fireEvent.click(linkButton()),
+      () => fireEvent.keyDown(popover() as HTMLElement, { key: "Escape" }),
+    ];
+    for (const close of closeBy) {
+      const onLinksClosed = vi.fn();
+      open(LINKS, vi.fn(), onLinksClosed);
+      close();
+      expect(popover()).toBeNull();
+      expect(onLinksClosed).toHaveBeenCalledOnce();
+      cleanup();
+    }
+  });
 });
 
 describe("SessionLinksPopover", () => {
@@ -107,7 +132,6 @@ describe("SessionLinksPopover", () => {
       fireEvent.keyDown(tab, { key: "Escape" });
       expect(popover()).toBeNull();
       expect(outer).not.toHaveBeenCalled();
-      expect(document.activeElement).toBe(linkButton());
     } finally {
       window.removeEventListener("keydown", outer);
     }

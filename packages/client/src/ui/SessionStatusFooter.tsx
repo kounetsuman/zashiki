@@ -5,7 +5,7 @@ import {
   type SessionUsage,
   type UsageBeforeCompaction,
 } from "@zashiki/shared";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { distinctLinkCount } from "../session/session-links.js";
@@ -37,6 +37,8 @@ export interface SessionStatusFooterProps {
   /** The links the active Claude Session has seen, newest first. */
   links?: readonly SessionLink[];
   onCopyLink?: (url: string) => void;
+  /** Called once the links popover closes, to hand focus back to the terminal. */
+  onLinksClosed?: () => void;
 }
 
 const DASH = "–";
@@ -55,11 +57,15 @@ export function SessionStatusFooter({
   onToggleBeforeCompaction,
   links = [],
   onCopyLink = () => undefined,
+  onLinksClosed = () => undefined,
 }: SessionStatusFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
   const [linksOpen, setLinksOpen] = useState(false);
-  const linksButton = useRef<HTMLButtonElement>(null);
+  const closeLinks = () => {
+    setLinksOpen(false);
+    onLinksClosed();
+  };
 
   return (
     <div className="session-status-dock">
@@ -67,10 +73,7 @@ export function SessionStatusFooter({
         <SessionLinksPopover
           links={links}
           onCopy={onCopyLink}
-          onClose={() => {
-            setLinksOpen(false);
-            linksButton.current?.focus();
-          }}
+          onClose={closeLinks}
         />
       )}
       <footer
@@ -171,12 +174,11 @@ export function SessionStatusFooter({
 
         <Tooltip className="ss-group ss-links" label={t("footer.links.title")}>
           <button
-            ref={linksButton}
             type="button"
             className="ss-links-button"
             aria-expanded={linksOpen}
             aria-label={t("footer.links.title")}
-            onClick={() => setLinksOpen((open) => !open)}
+            onClick={() => (linksOpen ? closeLinks() : setLinksOpen(true))}
           >
             <span
               className="material-symbols-outlined ss-icon"

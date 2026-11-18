@@ -1352,6 +1352,7 @@ export function App({
               onToggleBeforeCompaction={toggleBeforeCompaction}
               links={activeSessionLinks}
               onCopyLink={copySessionLink}
+              onLinksClosed={store.focusTerminal}
             />
           )}
         </div>
