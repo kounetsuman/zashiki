@@ -7,6 +7,7 @@ mod ipc_capability;
 mod menu;
 mod navigation;
 mod pages;
+mod picked_media;
 mod quit_log;
 #[cfg(target_os = "macos")]
 mod share;
@@ -73,10 +74,16 @@ fn share_text(text: String) -> Result<(), String> {
 }
 
 /// Files chosen in the latest Cmd+O pick, by the id handed to the UI. Only these can be read back,
-/// so the read command cannot be pointed at an arbitrary path. (Picked files are also allowed on the
-/// asset protocol, which streams media; that allowance lasts until the app quits.)
+/// so neither the read command nor the media stream (`picked_media`) can be pointed at an arbitrary
+/// path.
 #[derive(Default)]
 struct PickedPaths(Mutex<PickedPathTable>);
+
+impl PickedPaths {
+    fn path_of(&self, id: u64) -> Option<PathBuf> {
+        self.0.lock().ok()?.paths.get(&id).cloned()
+    }
+}
 
 #[derive(Default)]
 struct PickedPathTable {
@@ -96,8 +103,8 @@ impl PickedPathTable {
 }
 
 /// One file chosen via the native open dialog: what the UI needs to open it without reading it first
-/// (`path` to stream media from the asset protocol, `size` for the text cap, `lastModified` for the
-/// tab's identity), or the stable code ("readFailed") saying why it cannot be opened.
+/// (`id` to read or stream it, `size` for the text cap, `lastModified` for the tab's identity), or
+/// the stable code ("readFailed") saying why it cannot be opened.
 #[derive(serde::Serialize, Debug, PartialEq)]
 #[serde(untagged)]
 enum PickedFile {
@@ -105,21 +112,20 @@ enum PickedFile {
     Picked {
         id: u64,
         name: String,
-        path: String,
         size: u64,
         last_modified: u64,
     },
-    Failed { name: String, error: &'static str },
-}
-
-fn path_name(path: &Path) -> String {
-    path.file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| path.to_string_lossy().into_owned())
+    Failed {
+        name: String,
+        error: &'static str,
+    },
 }
 
 fn describe_picked_file(id: u64, path: &Path) -> PickedFile {
-    let name = path_name(path);
+    let name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string_lossy().into_owned());
     let Ok(meta) = std::fs::metadata(path) else {
         return PickedFile::Failed {
             name,
@@ -134,7 +140,6 @@ fn describe_picked_file(id: u64, path: &Path) -> PickedFile {
     PickedFile::Picked {
         id,
         name,
-        path: path.to_string_lossy().into_owned(),
         size: meta.len(),
         last_modified,
     }
@@ -151,10 +156,8 @@ async fn pick_files(
     title: String,
 ) -> Result<Vec<PickedFile>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let dialog_app = app.clone();
     let described = tauri::async_runtime::spawn_blocking(move || {
-        dialog_app
-            .dialog()
+        app.dialog()
             .file()
             .set_title(&title)
             .blocking_pick_files()
@@ -193,12 +196,6 @@ async fn pick_files(
         .into_iter()
         .map(|(path, mut file)| {
             if let (Some(path), PickedFile::Picked { id, .. }) = (path, &mut file) {
-                if app.asset_protocol_scope().allow_file(&path).is_err() {
-                    return PickedFile::Failed {
-                        name: path_name(&path),
-                        error: "readFailed",
-                    };
-                }
                 *id = table.register(path);
             }
             file
@@ -213,12 +210,7 @@ async fn read_picked_file(
     id: u64,
 ) -> Result<tauri::ipc::Response, String> {
     let path = picked_paths
-        .0
-        .lock()
-        .map_err(|_| "readFailed".to_string())?
-        .paths
-        .get(&id)
-        .cloned()
+        .path_of(id)
         .ok_or_else(|| "readFailed".to_string())?;
     let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(path))
         .await
@@ -315,6 +307,29 @@ fn main() {
         .manage(QuitBridge::default())
         .manage(DashboardOrigin::default())
         .manage(PickedPaths::default())
+        .register_asynchronous_uri_scheme_protocol(
+            picked_media::SCHEME,
+            |ctx, request, responder| {
+                let app = ctx.app_handle().clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    let response = match picked_media::parse_request(request.uri()) {
+                        Some(media) => match app.state::<PickedPaths>().path_of(media.id) {
+                            Some(path) => picked_media::respond(
+                                &path,
+                                &media.mime,
+                                request
+                                    .headers()
+                                    .get(tauri::http::header::RANGE)
+                                    .and_then(|v| v.to_str().ok()),
+                            ),
+                            None => picked_media::not_found(),
+                        },
+                        None => picked_media::not_found(),
+                    };
+                    responder.respond(response);
+                });
+            },
+        )
         .invoke_handler(tauri::generate_handler![
             open_devtools,
             pick_files,
@@ -902,7 +917,6 @@ mod tests {
         let PickedFile::Picked {
             id,
             name,
-            path: shown,
             size,
             last_modified,
         } = describe_picked_file(7, &path)
@@ -910,7 +924,6 @@ mod tests {
             panic!("an existing file should be described");
         };
         assert_eq!((id, name.as_str(), size), (7, "Hero.aiff", 3));
-        assert_eq!(shown, path.to_string_lossy());
         assert!(last_modified > 0);
     }
 
@@ -942,7 +955,6 @@ mod tests {
         let picked = PickedFile::Picked {
             id: 3,
             name: "a.md".to_string(),
-            path: "/tmp/a.md".to_string(),
             size: 5,
             last_modified: 9,
         };
@@ -952,7 +964,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&[picked, failed]).unwrap(),
-            r#"[{"id":3,"name":"a.md","path":"/tmp/a.md","size":5,"lastModified":9},{"name":"b.md","error":"readFailed"}]"#
+            r#"[{"id":3,"name":"a.md","size":5,"lastModified":9},{"name":"b.md","error":"readFailed"}]"#
         );
     }
 

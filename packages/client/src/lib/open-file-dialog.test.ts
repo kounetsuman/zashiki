@@ -5,23 +5,19 @@ import { localFileOfPicked } from "./open-file-dialog.js";
 const picked = {
   id: 4,
   name: "Hero.aiff",
-  path: "/System/Library/Sounds/Hero.aiff",
   size: 5,
   lastModified: 1234,
 };
 
 describe("localFileOfPicked", () => {
-  it("streams media from the shell's URL for the picked path, without reading it", () => {
+  it("streams media from the shell by id, as the type its extension maps to, without reading it", () => {
     const readBytes = vi.fn();
-    const file = localFileOfPicked(picked, {
-      streamUrl: (path) => `asset://localhost/${encodeURIComponent(path)}`,
-      readBytes,
-    });
+    const file = localFileOfPicked(picked, { readBytes });
     expect(file).toMatchObject({
       name: "Hero.aiff",
       size: 5,
       media: {
-        url: "asset://localhost/%2FSystem%2FLibrary%2FSounds%2FHero.aiff",
+        url: "zkpicked://localhost/4?type=audio%2Faiff",
         size: 5,
         lastModified: 1234,
       },
@@ -33,7 +29,7 @@ describe("localFileOfPicked", () => {
     const readBytes = vi.fn(() =>
       Promise.resolve(new TextEncoder().encode("hello").buffer),
     );
-    const file = localFileOfPicked(picked, { streamUrl: String, readBytes });
+    const file = localFileOfPicked(picked, { readBytes });
     if ("error" in file) throw new Error("expected a readable file");
     const read = await file.read();
     expect(readBytes).toHaveBeenCalledWith(4);
@@ -44,7 +40,6 @@ describe("localFileOfPicked", () => {
 
   it("accepts the bytes as a number array (the IPC postMessage fallback)", async () => {
     const file = localFileOfPicked(picked, {
-      streamUrl: String,
       readBytes: () => Promise.resolve([104, 105]),
     });
     if ("error" in file) throw new Error("expected a readable file");
@@ -55,7 +50,7 @@ describe("localFileOfPicked", () => {
     expect(
       localFileOfPicked(
         { name: "gone.md", error: "readFailed" },
-        { streamUrl: String, readBytes: vi.fn() },
+        { readBytes: vi.fn() },
       ),
     ).toEqual({ name: "gone.md", error: "readFailed" });
   });

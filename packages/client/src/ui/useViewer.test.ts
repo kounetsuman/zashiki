@@ -72,13 +72,17 @@ describe("useViewer media", () => {
     act(() => {
       key = result.current.openExternalMedia(
         "Hero.aiff",
-        { url: "asset://localhost/Hero.aiff", size: 3, lastModified: 1 },
+        {
+          url: "zkpicked://localhost/1?type=audio%2Faiff",
+          size: 3,
+          lastModified: 1,
+        },
         "audio",
       );
     });
     expect(result.current.buffers[key]?.media).toEqual({
       kind: "audio",
-      url: "asset://localhost/Hero.aiff",
+      url: "zkpicked://localhost/1?type=audio%2Faiff",
     });
     expect(created).toEqual([]);
   });

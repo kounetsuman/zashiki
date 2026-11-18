@@ -1,22 +1,20 @@
-import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 
+import { mediaMime } from "../viewer/media.js";
 import { type LocalFile, localFileOf } from "../viewer/open-local-files.js";
 
 /** One file chosen in the native picker, as described by the desktop shell before it is read. */
 export type PickedFile =
-  | {
-      id: number;
-      name: string;
-      path: string;
-      size: number;
-      lastModified: number;
-    }
+  | { id: number; name: string; size: number; lastModified: number }
   | { name: string; error: "readFailed" };
 
 export interface PickedFileAccess {
-  /** The URL the WebView streams a picked file from (the shell allows only picked paths). */
-  streamUrl(path: string): string;
   readBytes(id: number): Promise<ArrayBuffer | number[]>;
+}
+
+/** The desktop shell's stream of a picked media file, served as the type its extension maps to. */
+export function pickedMediaUrl(id: number, name: string): string {
+  return `zkpicked://localhost/${id}?type=${encodeURIComponent(mediaMime(name))}`;
 }
 
 export function localFileOfPicked(
@@ -28,7 +26,7 @@ export function localFileOfPicked(
     name: picked.name,
     size: picked.size,
     media: {
-      url: access.streamUrl(picked.path),
+      url: pickedMediaUrl(picked.id, picked.name),
       size: picked.size,
       lastModified: picked.lastModified,
     },
@@ -45,7 +43,6 @@ export function localFileOfPicked(
 }
 
 const tauriPickedFileAccess: PickedFileAccess = {
-  streamUrl: (path) => convertFileSrc(path),
   readBytes: (id) => invoke<ArrayBuffer | number[]>("read_picked_file", { id }),
 };
 
