@@ -229,6 +229,7 @@ fn github_ref(url: &str) -> Option<(SessionLinkKind, &'static str, GithubLinkRef
         owner: owner.to_ascii_lowercase(),
         repo: repo.to_ascii_lowercase(),
         number,
+        ..Default::default()
     };
     Some((kind, path, github))
 }
@@ -546,12 +547,12 @@ mod tests {
                 (
                     "https://github.com/o/r/issues/3",
                     SessionLinkKind::Issue,
-                    Some(&GithubLinkRef { owner: "o".into(), repo: "r".into(), number: 3 })
+                    Some(&GithubLinkRef { owner: "o".into(), repo: "r".into(), number: 3, ..Default::default() })
                 ),
                 (
                     "https://github.com/o/r/pull/12",
                     SessionLinkKind::Pr,
-                    Some(&GithubLinkRef { owner: "o".into(), repo: "r".into(), number: 12 })
+                    Some(&GithubLinkRef { owner: "o".into(), repo: "r".into(), number: 12, ..Default::default() })
                 ),
             ]
         );
@@ -566,7 +567,7 @@ mod tests {
         assert_eq!(links[0].url, "https://github.com/kounetsuman/zashiki/pull/5");
         assert_eq!(
             links[0].github,
-            Some(GithubLinkRef { owner: "kounetsuman".into(), repo: "zashiki".into(), number: 5 })
+            Some(GithubLinkRef { owner: "kounetsuman".into(), repo: "zashiki".into(), number: 5, ..Default::default() })
         );
     }
 

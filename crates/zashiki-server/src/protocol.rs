@@ -617,12 +617,26 @@ pub enum SessionLinkKind {
     Other,
 }
 
-/// The repository and number of a GitHub pull request or issue link.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// Whether a GitHub pull request or issue is still open. `Merged` is only ever a pull request's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GithubState {
+    Open,
+    Closed,
+    Merged,
+}
+
+/// The repository and number of a GitHub pull request or issue link, with its title and state once
+/// they have been looked up.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct GithubLinkRef {
     pub owner: String,
     pub repo: String,
     pub number: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state: Option<GithubState>,
 }
 
 /// One URL seen in a Claude Session's transcript. A GitHub pull request or issue `url` is the

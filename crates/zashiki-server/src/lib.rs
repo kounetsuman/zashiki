@@ -16,6 +16,7 @@ pub mod file;
 pub mod file_list;
 pub mod fs;
 pub mod git;
+pub mod github_details;
 pub mod hook_event_store;
 pub mod hooks;
 pub mod html_frame;
