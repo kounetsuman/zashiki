@@ -113,6 +113,38 @@ describe("SessionLinksPopover", () => {
     }
   });
 
+  it("takes focus when it opens, so Escape reaches it without a click", () => {
+    open();
+    expect(document.activeElement).toBe(popover());
+    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+    expect(popover()).toBeNull();
+  });
+
+  it("pulls focus back inside when clicked while focus is elsewhere", () => {
+    const outside = document.createElement("textarea");
+    document.body.append(outside);
+    try {
+      open();
+      outside.focus();
+      const chip = screen.getByRole("button", { name: /^PR/ });
+      const pressed = fireEvent.mouseDown(chip);
+      expect(pressed).toBe(false);
+      expect(document.activeElement).toBe(popover());
+      fireEvent.keyDown(outside, { key: "Escape" });
+      expect(popover()).not.toBeNull();
+    } finally {
+      outside.remove();
+    }
+  });
+
+  it("leaves focus on a control inside it that already has it", () => {
+    open();
+    const tab = screen.getByRole("tab", { name: /会話に出たもの/ });
+    tab.focus();
+    fireEvent.mouseDown(screen.getByRole("button", { name: /^PR/ }));
+    expect(document.activeElement).toBe(tab);
+  });
+
   it("opens on the conversation tab with links grouped PR, Issue, Other", () => {
     open();
     const dialog = popover() as HTMLElement;

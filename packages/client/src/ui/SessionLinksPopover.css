@@ -12,6 +12,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   color: #ddd;
   font-size: 12px;
+  outline: none;
 }
 
 .sl-header {

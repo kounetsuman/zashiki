@@ -3,7 +3,7 @@ import type {
   SessionLinkKind,
   SessionLinkTab,
 } from "@zashiki/shared";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -54,7 +54,8 @@ export interface SessionLinksPopoverProps {
 
 /**
  * The active Claude Session's links, laid over the terminal without taking it over: no backdrop, no
- * focus trap, and Escape closes it only while focus is inside.
+ * focus trap, and Escape closes it only while focus is inside. It takes focus when it opens and when
+ * clicked, because the macOS WebView does not focus a button that is clicked.
  */
 export function SessionLinksPopover({
   links,
@@ -64,6 +65,11 @@ export function SessionLinksPopover({
   const { t } = useTranslation();
   const [tab, setTab] = useState<SessionLinkTab>("conversation");
   const [chosenFilter, setChosenFilter] = useState<LinkFilter>("all");
+  const root = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    root.current?.focus();
+  }, []);
 
   const counts = tabCounts(links);
   const tabLinks = linksInTab(links, tab);
@@ -76,6 +82,13 @@ export function SessionLinksPopover({
       className="session-links"
       role="dialog"
       aria-label={t("footer.links.title")}
+      ref={root}
+      tabIndex={-1}
+      onMouseDown={(e) => {
+        if (e.currentTarget.contains(document.activeElement)) return;
+        e.preventDefault();
+        e.currentTarget.focus();
+      }}
       onKeyDown={(e) => {
         if (e.key !== "Escape") return;
         e.stopPropagation();
