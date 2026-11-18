@@ -136,8 +136,8 @@ fn describe_picked_file(id: u64, path: &Path) -> PickedFile {
 
 /// Cmd+O: shows the native open dialog (with a localized title passed from the UI), allowing several
 /// files, and returns each chosen file in order. Returns an empty list when the user cancels. The
-/// picker runs off the async runtime (blocking_pick_files dispatches the modal to the main thread
-/// itself).
+/// picker and the metadata reads run off the async runtime (blocking_pick_files dispatches the modal
+/// to the main thread itself).
 #[tauri::command]
 async fn pick_files(
     app: tauri::AppHandle,
@@ -145,31 +145,49 @@ async fn pick_files(
     title: String,
 ) -> Result<Vec<PickedFile>, String> {
     use tauri_plugin_dialog::DialogExt;
-    let chosen = tauri::async_runtime::spawn_blocking(move || {
+    let described = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
             .set_title(&title)
             .blocking_pick_files()
             .unwrap_or_default()
+            .into_iter()
+            .map(|file_path| {
+                let shown = file_path.to_string();
+                match file_path.into_path() {
+                    Ok(path) => {
+                        let file = describe_picked_file(0, &path);
+                        (Some(path), file)
+                    }
+                    Err(_) => (
+                        None,
+                        PickedFile::Failed {
+                            name: shown,
+                            error: "readFailed",
+                        },
+                    ),
+                }
+            })
+            .collect::<Vec<_>>()
     })
     .await
     .map_err(|_| "readFailed".to_string())?;
+    // A cancelled dialog keeps the previous pick readable: its files may still be opening.
+    if described.is_empty() {
+        return Ok(Vec::new());
+    }
     let mut table = picked_paths
         .0
         .lock()
         .map_err(|_| "readFailed".to_string())?;
     table.paths.clear();
-    Ok(chosen
+    Ok(described
         .into_iter()
-        .map(|file_path| {
-            let shown = file_path.to_string();
-            match file_path.into_path() {
-                Ok(path) => describe_picked_file(table.register(path.clone()), &path),
-                Err(_) => PickedFile::Failed {
-                    name: shown,
-                    error: "readFailed",
-                },
+        .map(|(path, mut file)| {
+            if let (Some(path), PickedFile::Picked { id, .. }) = (path, &mut file) {
+                *id = table.register(path);
             }
+            file
         })
         .collect())
 }
