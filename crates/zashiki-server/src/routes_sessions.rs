@@ -553,7 +553,7 @@ mod sessions_persist_rest_tests {
                     Some(GithubDetails { title: "Add links".into(), state: GithubState::Merged })
                 })
             }),
-            Arc::new(|| 0),
+            Arc::new(std::time::Instant::now),
         ));
         let sessions = sessions_running("sleep 5").await;
         let app = links_app_looking_up(

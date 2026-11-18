@@ -6,7 +6,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use tokio::sync::Semaphore;
@@ -15,8 +15,8 @@ use crate::protocol::{GithubLinkRef, GithubState, SessionLink};
 
 const MAX_CONCURRENT_LOOKUPS: usize = 4;
 const LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
-const OPEN_RECHECK_MS: u64 = 60_000;
-const FAILURE_RETRY_MS: u64 = 5 * 60_000;
+const OPEN_RECHECK: Duration = Duration::from_secs(60);
+const FAILURE_RETRY: Duration = Duration::from_secs(5 * 60);
 /// How many pull requests and issues are remembered at once; the least recently read is dropped first.
 const CACHE_CAPACITY: usize = 512;
 
@@ -30,26 +30,26 @@ pub struct GithubDetails {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Lookup {
     details: Option<GithubDetails>,
-    checked_at_ms: u64,
+    checked_at: Instant,
     failed: bool,
 }
 
-fn is_due(lookup: Option<&Lookup>, now_ms: u64) -> bool {
+fn is_due(lookup: Option<&Lookup>, now: Instant) -> bool {
     let Some(lookup) = lookup else {
         return true;
     };
     let wait = if lookup.failed {
-        FAILURE_RETRY_MS
+        FAILURE_RETRY
     } else if lookup
         .details
         .as_ref()
         .is_some_and(|d| d.state == GithubState::Open)
     {
-        OPEN_RECHECK_MS
+        OPEN_RECHECK
     } else {
         return false;
     };
-    now_ms.saturating_sub(lookup.checked_at_ms) >= wait
+    now.saturating_duration_since(lookup.checked_at) >= wait
 }
 
 fn github_state(state: &str, merged: bool) -> Option<GithubState> {
@@ -95,7 +95,7 @@ fn is_plain_segment(segment: &str) -> bool {
 
 pub(crate) type LookupFuture = Pin<Box<dyn Future<Output = Option<GithubDetails>> + Send>>;
 pub(crate) type Fetch = Arc<dyn Fn(GithubLinkRef) -> LookupFuture + Send + Sync>;
-pub(crate) type NowMs = Arc<dyn Fn() -> u64 + Send + Sync>;
+pub(crate) type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
 
 struct Entry {
     lookup: Option<Lookup>,
@@ -111,7 +111,7 @@ struct Entries {
 
 impl Entries {
     /// The cached details of `url`, and whether a lookup should start now (it is then marked in flight).
-    fn read(&mut self, url: &str, now_ms: u64) -> (Option<GithubDetails>, bool) {
+    fn read(&mut self, url: &str, now: Instant) -> (Option<GithubDetails>, bool) {
         self.reads += 1;
         let reads = self.reads;
         let entry = self.map.entry(url.to_string()).or_insert(Entry {
@@ -120,14 +120,14 @@ impl Entries {
             last_read: reads,
         });
         entry.last_read = reads;
-        let start = !entry.in_flight && is_due(entry.lookup.as_ref(), now_ms);
+        let start = !entry.in_flight && is_due(entry.lookup.as_ref(), now);
         entry.in_flight |= start;
         let details = entry.lookup.as_ref().and_then(|l| l.details.clone());
         self.evict_beyond_capacity();
         (details, start)
     }
 
-    fn finish(&mut self, url: &str, found: Option<GithubDetails>, now_ms: u64) {
+    fn finish(&mut self, url: &str, found: Option<GithubDetails>, now: Instant) {
         let Some(entry) = self.map.get_mut(url) else {
             return;
         };
@@ -135,7 +135,7 @@ impl Entries {
         entry.lookup = Some(Lookup {
             failed: found.is_none(),
             details: found.or(previous),
-            checked_at_ms: now_ms,
+            checked_at: now,
         });
         entry.in_flight = false;
     }
@@ -161,7 +161,7 @@ pub struct GithubDetailsCache {
     entries: Arc<Mutex<Entries>>,
     permits: Arc<Semaphore>,
     fetch: Fetch,
-    now_ms: NowMs,
+    now: Clock,
     timeout: Duration,
 }
 
@@ -169,32 +169,25 @@ impl Default for GithubDetailsCache {
     fn default() -> Self {
         Self::with_fetch(
             Arc::new(|github| Box::pin(gh_issue(github))),
-            Arc::new(real_now_ms),
+            Arc::new(Instant::now),
         )
     }
 }
 
-fn real_now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 impl GithubDetailsCache {
-    pub(crate) fn with_fetch(fetch: Fetch, now_ms: NowMs) -> Self {
+    pub(crate) fn with_fetch(fetch: Fetch, now: Clock) -> Self {
         Self {
             entries: Arc::default(),
             permits: Arc::new(Semaphore::new(MAX_CONCURRENT_LOOKUPS)),
             fetch,
-            now_ms,
+            now,
             timeout: LOOKUP_TIMEOUT,
         }
     }
 
     /// Must run inside a Tokio runtime: lookups are spawned onto it.
     pub fn annotate(&self, links: &mut [SessionLink]) {
-        let now_ms = (self.now_ms)();
+        let now = (self.now)();
         for link in links {
             let Some(github) = link.github.as_mut() else {
                 continue;
@@ -205,7 +198,7 @@ impl GithubDetailsCache {
             let Ok(mut entries) = self.entries.lock() else {
                 return;
             };
-            let (details, start) = entries.read(&link.url, now_ms);
+            let (details, start) = entries.read(&link.url, now);
             drop(entries);
             if let Some(details) = details {
                 github.title = Some(details.title);
@@ -221,7 +214,7 @@ impl GithubDetailsCache {
         let entries = Arc::clone(&self.entries);
         let permits = Arc::clone(&self.permits);
         let lookup = (self.fetch)(github);
-        let now_ms = Arc::clone(&self.now_ms);
+        let now = Arc::clone(&self.now);
         let timeout = self.timeout;
         tokio::spawn(async move {
             let found = match permits.acquire_owned().await {
@@ -229,7 +222,7 @@ impl GithubDetailsCache {
                 Err(_) => None,
             };
             if let Ok(mut entries) = entries.lock() {
-                entries.finish(&url, found, now_ms());
+                entries.finish(&url, found, now());
             }
         });
     }
@@ -276,34 +269,47 @@ mod tests {
         }
     }
 
-    fn checked(state: Option<GithubState>, at: u64, failed: bool) -> Lookup {
+    static BASE: std::sync::LazyLock<Instant> = std::sync::LazyLock::new(Instant::now);
+
+    fn at(ms: u64) -> Instant {
+        *BASE + Duration::from_millis(ms)
+    }
+
+    fn ms(duration: Duration) -> u64 {
+        duration.as_millis() as u64
+    }
+
+    fn checked(state: Option<GithubState>, at_ms: u64, failed: bool) -> Lookup {
         Lookup {
             details: state.map(|state| GithubDetails {
                 title: "t".into(),
                 state,
             }),
-            checked_at_ms: at,
+            checked_at: at(at_ms),
             failed,
         }
     }
 
     #[test]
     fn anything_never_looked_up_is_due() {
-        assert!(is_due(None, 0));
+        assert!(is_due(None, at(0)));
     }
 
     #[test]
     fn merged_and_closed_results_are_kept_for_good() {
         for state in [GithubState::Merged, GithubState::Closed] {
-            assert!(!is_due(Some(&checked(Some(state), 0, false)), u64::MAX));
+            assert!(!is_due(
+                Some(&checked(Some(state), 0, false)),
+                at(u64::MAX / 4)
+            ));
         }
     }
 
     #[test]
     fn an_open_result_is_rechecked_after_a_minute() {
         let lookup = checked(Some(GithubState::Open), 1_000, false);
-        assert!(!is_due(Some(&lookup), 1_000 + OPEN_RECHECK_MS - 1));
-        assert!(is_due(Some(&lookup), 1_000 + OPEN_RECHECK_MS));
+        assert!(!is_due(Some(&lookup), at(1_000 + ms(OPEN_RECHECK) - 1)));
+        assert!(is_due(Some(&lookup), at(1_000 + ms(OPEN_RECHECK))));
     }
 
     #[test]
@@ -312,8 +318,8 @@ mod tests {
             checked(None, 1_000, true),
             checked(Some(GithubState::Merged), 1_000, true),
         ] {
-            assert!(!is_due(Some(&lookup), 1_000 + FAILURE_RETRY_MS - 1));
-            assert!(is_due(Some(&lookup), 1_000 + FAILURE_RETRY_MS));
+            assert!(!is_due(Some(&lookup), at(1_000 + ms(FAILURE_RETRY) - 1)));
+            assert!(is_due(Some(&lookup), at(1_000 + ms(FAILURE_RETRY))));
         }
     }
 
@@ -402,7 +408,7 @@ mod tests {
         });
         let now = Arc::clone(&clock);
         let cache =
-            GithubDetailsCache::with_fetch(fetch, Arc::new(move || now.load(Ordering::SeqCst)));
+            GithubDetailsCache::with_fetch(fetch, Arc::new(move || at(now.load(Ordering::SeqCst))));
         Fake {
             cache,
             calls,
@@ -474,7 +480,7 @@ mod tests {
                 Some(open("x"))
             })
         });
-        let cache = GithubDetailsCache::with_fetch(fetch, Arc::new(|| 0));
+        let cache = GithubDetailsCache::with_fetch(fetch, Arc::new(|| at(0)));
         let links: Vec<SessionLink> = (1..=10).map(|n| github_link("o", n)).collect();
         annotated(&cache, &links);
         settle(&cache).await;
@@ -490,7 +496,7 @@ mod tests {
         settle(&f.cache).await;
         annotated(&f.cache, &links);
         assert_eq!(f.calls.load(Ordering::SeqCst), 1);
-        f.clock.store(FAILURE_RETRY_MS, Ordering::SeqCst);
+        f.clock.store(ms(FAILURE_RETRY), Ordering::SeqCst);
         annotated(&f.cache, &links);
         assert_eq!(f.calls.load(Ordering::SeqCst), 2);
     }
@@ -501,7 +507,7 @@ mod tests {
         let links = [github_link("o", 1)];
         annotated(&f.cache, &links);
         settle(&f.cache).await;
-        f.clock.store(OPEN_RECHECK_MS, Ordering::SeqCst);
+        f.clock.store(ms(OPEN_RECHECK), Ordering::SeqCst);
         let during = annotated(&f.cache, &links);
         assert_eq!(
             during[0].github.as_ref().unwrap().title.as_deref(),
@@ -522,7 +528,7 @@ mod tests {
         annotated(&f.cache, &links);
         settle(&f.cache).await;
         fail.store(true, Ordering::SeqCst);
-        f.clock.store(OPEN_RECHECK_MS, Ordering::SeqCst);
+        f.clock.store(ms(OPEN_RECHECK), Ordering::SeqCst);
         annotated(&f.cache, &links);
         settle(&f.cache).await;
         let after = annotated(&f.cache, &links);
