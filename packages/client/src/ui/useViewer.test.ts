@@ -66,6 +66,27 @@ describe("useViewer media", () => {
     expect(result.current.buffers[key]?.media?.url).toBe("blob:1");
   });
 
+  it("openExternalMedia shows streamed media from its own URL without an object URL", () => {
+    const { result } = renderHook(() => useViewer(filesApi, null));
+    let key = "";
+    act(() => {
+      key = result.current.openExternalMedia(
+        "Hero.aiff",
+        {
+          url: "zkpicked://localhost/1?type=audio%2Faiff",
+          size: 3,
+          lastModified: 1,
+        },
+        "audio",
+      );
+    });
+    expect(result.current.buffers[key]?.media).toEqual({
+      kind: "audio",
+      url: "zkpicked://localhost/1?type=audio%2Faiff",
+    });
+    expect(created).toEqual([]);
+  });
+
   it("openExternalMedia gives same-name files from different folders their own buffers", () => {
     const { result } = renderHook(() => useViewer(filesApi, null));
     let a = "";

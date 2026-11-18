@@ -1,67 +1,57 @@
-import { FILE_MAX_BYTES } from "@zashiki/shared";
 import { describe, expect, it, vi } from "vitest";
 
-import { openPickedFiles, readPickedFile } from "./open-file-dialog.js";
+import { localFileOfPicked } from "./open-file-dialog.js";
 
-function fakeFile(over: Partial<File> & { size: number }): File {
-  return {
-    name: "note.txt",
-    text: () => Promise.resolve("hello"),
-    ...over,
-  } as unknown as File;
-}
+const picked = {
+  id: 4,
+  name: "Hero.aiff",
+  size: 5,
+  lastModified: 1234,
+};
 
-describe("readPickedFile", () => {
-  it("returns the name and text for a file within the limit", async () => {
-    const picked = await readPickedFile(fakeFile({ size: 5, name: "a.md" }));
-    expect(picked).toEqual({ name: "a.md", content: "hello" });
-  });
-
-  it("reports tooLarge with the name past the size limit", async () => {
-    const picked = await readPickedFile(
-      fakeFile({ size: FILE_MAX_BYTES + 1, name: "big.log" }),
-    );
-    expect(picked).toEqual({ name: "big.log", error: "tooLarge" });
-  });
-
-  it("reports readFailed with the name when the read throws", async () => {
-    const picked = await readPickedFile(
-      fakeFile({
+describe("localFileOfPicked", () => {
+  it("streams media from the shell by id, as the type its extension maps to, without reading it", () => {
+    const readBytes = vi.fn();
+    const file = localFileOfPicked(picked, { readBytes });
+    expect(file).toMatchObject({
+      name: "Hero.aiff",
+      size: 5,
+      media: {
+        url: "zkpicked://localhost/4?type=audio%2Faiff",
         size: 5,
-        name: "gone.md",
-        text: () => Promise.reject(new Error("io")),
-      }),
-    );
-    expect(picked).toEqual({ name: "gone.md", error: "readFailed" });
+        lastModified: 1234,
+      },
+    });
+    expect(readBytes).not.toHaveBeenCalled();
   });
-});
 
-describe("openPickedFiles", () => {
-  it("opens readable files in pick order and reports each unreadable one by name", () => {
-    const events: string[] = [];
-    openPickedFiles(
-      [
-        { name: "a.md", content: "A" },
-        { name: "big.log", error: "tooLarge" },
-        { name: "b.md", content: "B" },
+  it("reads the bytes by id only when read, keeping name and mtime", async () => {
+    const readBytes = vi.fn(() =>
+      Promise.resolve(new TextEncoder().encode("hello").buffer),
+    );
+    const file = localFileOfPicked(picked, { readBytes });
+    if ("error" in file) throw new Error("expected a readable file");
+    const read = await file.read();
+    expect(readBytes).toHaveBeenCalledWith(4);
+    expect(read.name).toBe("Hero.aiff");
+    expect(read.lastModified).toBe(1234);
+    expect(await read.text()).toBe("hello");
+  });
+
+  it("accepts the bytes as a number array (the IPC postMessage fallback)", async () => {
+    const file = localFileOfPicked(picked, {
+      readBytes: () => Promise.resolve([104, 105]),
+    });
+    if ("error" in file) throw new Error("expected a readable file");
+    expect(await (await file.read()).text()).toBe("hi");
+  });
+
+  it("passes on a file the shell could not resolve as its error", () => {
+    expect(
+      localFileOfPicked(
         { name: "gone.md", error: "readFailed" },
-      ],
-      (name, content) => events.push(`open ${name}=${content}`),
-      (name, error) => events.push(`fail ${name} ${error}`),
-    );
-    expect(events).toEqual([
-      "open a.md=A",
-      "fail big.log tooLarge",
-      "open b.md=B",
-      "fail gone.md readFailed",
-    ]);
-  });
-
-  it("does nothing for a cancelled pick", () => {
-    const onFile = vi.fn();
-    const onError = vi.fn();
-    openPickedFiles([], onFile, onError);
-    expect(onFile).not.toHaveBeenCalled();
-    expect(onError).not.toHaveBeenCalled();
+        { readBytes: vi.fn() },
+      ),
+    ).toEqual({ name: "gone.md", error: "readFailed" });
   });
 });

@@ -1092,6 +1092,14 @@ textarea {
   object-fit: contain;
 }
 
+/* Audio preview: the player alone, centered in the body. */
+.viewer-audio {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: min(480px, calc(100% - 32px));
+}
+
 /* HTML / PDF preview: fill the body. */
 .viewer-html-frame,
 .viewer-pdf-frame {

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
-import type { MediaKind } from "../viewer/media.js";
+import { type MediaKind, mediaMime } from "../viewer/media.js";
+import type { StreamedMedia } from "../viewer/open-local-files.js";
 import {
   bufferFailed,
   bufferLoaded,
@@ -40,8 +41,12 @@ export interface Viewer {
   ensureMediaBuffer(repoPath: string, relPath: string, kind: MediaKind): string;
   /** Opens a dropped file from content already in hand (no repo read) and returns its key. */
   openExternal(name: string, content: string): string;
-  /** Opens a dropped image/video/PDF from an object URL created for the file, and returns its key. */
-  openExternalMedia(name: string, file: File, kind: MediaKind): string;
+  /** Opens external media (a dropped File via an object URL, or a streamed URL) and returns its key. */
+  openExternalMedia(
+    name: string,
+    media: File | StreamedMedia,
+    kind: MediaKind,
+  ): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
   /** Leaves the alternate rendering, so a line can be revealed in the text view. */
@@ -133,13 +138,16 @@ export function useViewer(
   }, []);
 
   const openExternalMedia = useCallback(
-    (name: string, file: File, kind: MediaKind): string => {
-      const key = externalMediaKey(name, file);
+    (name: string, media: File | StreamedMedia, kind: MediaKind): string => {
+      const key = externalMediaKey(name, media);
       revokeObjectUrl(key);
-      const url = URL.createObjectURL(
-        kind === "pdf" ? new Blob([file], { type: "application/pdf" }) : file,
-      );
-      objectUrlsRef.current[key] = url;
+      let url: string;
+      if (media instanceof File) {
+        url = URL.createObjectURL(new Blob([media], { type: mediaMime(name) }));
+        objectUrlsRef.current[key] = url;
+      } else {
+        url = media.url;
+      }
       setBuffers((prev) =>
         openExternalMediaBuffer(prev, key, name, { kind, url }),
       );

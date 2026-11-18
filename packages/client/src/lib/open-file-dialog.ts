@@ -1,38 +1,52 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { FILE_MAX_BYTES } from "@zashiki/shared";
 
-import type { FileDropError } from "../ui/useFileDrop.js";
+import { mediaMime } from "../viewer/media.js";
+import { type LocalFile, localFileOf } from "../viewer/open-local-files.js";
 
-/** One file chosen in the picker: its text, or why it could not be read. */
+/** One file chosen in the native picker, as described by the desktop shell before it is read. */
 export type PickedFile =
-  | { name: string; content: string }
-  | { name: string; error: FileDropError };
+  | { id: number; name: string; size: number; lastModified: number }
+  | { name: string; error: "readFailed" };
 
-/** Size-checks a picked File and reads it as text (shared by the browser fallback and tests). */
-export async function readPickedFile(file: File): Promise<PickedFile> {
-  if (file.size > FILE_MAX_BYTES) {
-    return { name: file.name, error: "tooLarge" };
-  }
-  try {
-    return { name: file.name, content: await file.text() };
-  } catch {
-    return { name: file.name, error: "readFailed" };
-  }
+export interface PickedFileAccess {
+  readBytes(id: number): Promise<ArrayBuffer | number[]>;
 }
 
-/** Opens the readable files in pick order (so the last one ends up in front) and reports the rest. */
-export function openPickedFiles(
-  picked: readonly PickedFile[],
-  onFile: (name: string, content: string) => void,
-  onError: (name: string, error: FileDropError) => void,
-): void {
-  for (const file of picked) {
-    if ("content" in file) onFile(file.name, file.content);
-    else onError(file.name, file.error);
-  }
+/** The desktop shell's stream of a picked media file, served as the type its extension maps to. */
+export function pickedMediaUrl(id: number, name: string): string {
+  return `zkpicked://localhost/${id}?type=${encodeURIComponent(mediaMime(name))}`;
 }
 
-function pickViaInput(): Promise<PickedFile[]> {
+export function localFileOfPicked(
+  picked: PickedFile,
+  access: PickedFileAccess,
+): LocalFile {
+  if ("error" in picked) return picked;
+  return {
+    name: picked.name,
+    size: picked.size,
+    media: {
+      url: pickedMediaUrl(picked.id, picked.name),
+      size: picked.size,
+      lastModified: picked.lastModified,
+    },
+    read: async () =>
+      // Tauri's postMessage fallback delivers raw bytes as a number array instead of an ArrayBuffer.
+      new File(
+        [new Uint8Array(await access.readBytes(picked.id))],
+        picked.name,
+        {
+          lastModified: picked.lastModified,
+        },
+      ),
+  };
+}
+
+const tauriPickedFileAccess: PickedFileAccess = {
+  readBytes: (id) => invoke<ArrayBuffer | number[]>("read_picked_file", { id }),
+};
+
+function pickViaInput(): Promise<LocalFile[]> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
@@ -47,10 +61,8 @@ function pickViaInput(): Promise<PickedFile[]> {
     });
     input.addEventListener("change", () => {
       const files = Array.from(input.files ?? []);
-      void Promise.all(files.map(readPickedFile)).then((picked) => {
-        cleanup();
-        resolve(picked);
-      });
+      cleanup();
+      resolve(files.map(localFileOf));
     });
     input.click();
   });
@@ -61,12 +73,10 @@ function pickViaInput(): Promise<PickedFile[]> {
  * order, or an empty list if the user cancels. Under Tauri a Rust command sets the localized dialog
  * title; in a browser it falls back to a hidden file input (the title is not settable there).
  */
-export async function pickAndReadFiles(title: string): Promise<PickedFile[]> {
+export async function pickFiles(title: string): Promise<LocalFile[]> {
   if (isTauri()) {
-    return invoke<PickedFile[]>("pick_and_read_files", {
-      title,
-      maxBytes: FILE_MAX_BYTES,
-    });
+    const picked = await invoke<PickedFile[]>("pick_files", { title });
+    return picked.map((file) => localFileOfPicked(file, tauriPickedFileAccess));
   }
   return pickViaInput();
 }
