@@ -238,14 +238,24 @@ impl GithubDetailsCache {
                 return;
             };
             entries.begin_round(now);
-            for link in links.iter_mut() {
-                let Some(github) = link.github.as_mut() else {
+            let mut lookable: Vec<(&mut SessionLink, ItemKey)> = links
+                .iter_mut()
+                .filter_map(|link| {
+                    let key = link
+                        .github
+                        .as_ref()
+                        .filter(|g| is_plain_segment(&g.owner) && is_plain_segment(&g.repo))
+                        .map(item_key)?;
+                    Some((link, key))
+                })
+                .collect();
+            // Cached links are read before new ones so a new link never pushes out one this call shows.
+            lookable.sort_by_key(|(_, key)| !entries.map.contains_key(key));
+            for (link, key) in lookable {
+                let Some((details, start)) = entries.read(&key, now) else {
                     continue;
                 };
-                if !is_plain_segment(&github.owner) || !is_plain_segment(&github.repo) {
-                    continue;
-                }
-                let Some((details, start)) = entries.read(&item_key(github), now) else {
+                let Some(github) = link.github.as_mut() else {
                     continue;
                 };
                 if let Some(details) = details {
@@ -763,5 +773,33 @@ mod tests {
         let kinds: Vec<SessionLinkKind> =
             annotated(&f.cache, &links).iter().map(|l| l.kind).collect();
         assert_eq!(kinds, vec![SessionLinkKind::Pr, SessionLinkKind::Issue]);
+    }
+
+    #[tokio::test]
+    async fn a_new_link_ahead_of_a_full_cache_drops_nothing_already_resolved() {
+        let f = fake(|_| Some(open("x")), Duration::ZERO);
+        let held: Vec<SessionLink> = (0..CACHE_CAPACITY as u64)
+            .map(|n| github_link("o", n))
+            .collect();
+        annotated(&f.cache, &held);
+        settle(&f.cache).await;
+
+        let newest = github_link("o", CACHE_CAPACITY as u64);
+        let mut links = vec![newest.clone()];
+        links.extend(held.iter().cloned());
+        let shown = annotated(&f.cache, &links);
+        settle(&f.cache).await;
+
+        assert!(shown[1..]
+            .iter()
+            .all(|l| l.github.as_ref().unwrap().title.is_some()));
+        assert_eq!(f.calls.load(Ordering::SeqCst), CACHE_CAPACITY);
+        assert!(!f
+            .cache
+            .entries
+            .lock()
+            .unwrap()
+            .map
+            .contains_key(&key_of(&newest)));
     }
 }
