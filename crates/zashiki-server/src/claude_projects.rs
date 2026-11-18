@@ -48,14 +48,54 @@ struct TitleProgress {
 
 type TitleScans = Arc<Mutex<HashMap<PathBuf, TitleProgress>>>;
 
+/// How many transcripts' links are held at once; the least recently read is dropped first.
+const LINK_CACHE_CAPACITY: usize = 32;
+
 /// The links a transcript held at the size and mtime it was read at.
 struct CachedLinks {
     len: u64,
     mtime_ms: u64,
     links: Vec<SessionLink>,
+    last_read: u64,
 }
 
-type LinkCache = Arc<Mutex<HashMap<PathBuf, CachedLinks>>>;
+#[derive(Default)]
+struct LinkCacheEntries {
+    entries: HashMap<PathBuf, CachedLinks>,
+    reads: u64,
+}
+
+impl LinkCacheEntries {
+    fn fresh(&mut self, path: &Path, len: u64, mtime_ms: u64) -> Option<Vec<SessionLink>> {
+        self.reads += 1;
+        let reads = self.reads;
+        let cached = self
+            .entries
+            .get_mut(path)
+            .filter(|c| c.len == len && c.mtime_ms == mtime_ms)?;
+        cached.last_read = reads;
+        Some(cached.links.clone())
+    }
+
+    fn insert(&mut self, path: &Path, len: u64, mtime_ms: u64, links: Vec<SessionLink>) {
+        self.entries.insert(
+            path.to_path_buf(),
+            CachedLinks { len, mtime_ms, links, last_read: self.reads },
+        );
+        if self.entries.len() > LINK_CACHE_CAPACITY {
+            let oldest = self
+                .entries
+                .iter()
+                .min_by_key(|(_, c)| c.last_read)
+                .map(|(p, _)| p.clone());
+            if let Some(oldest) = oldest {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+}
+
+type LinkCache = Arc<Mutex<LinkCacheEntries>>;
 
 /// Adapter for reading jsonl slices plus subagents mtime.
 pub struct ClaudeProjectsAdapter {
@@ -200,28 +240,23 @@ impl ClaudeProjectsAdapter {
     }
 }
 
-fn session_links_sync(path: &Path, cache: &Mutex<HashMap<PathBuf, CachedLinks>>) -> Vec<SessionLink> {
+fn session_links_sync(path: &Path, cache: &Mutex<LinkCacheEntries>) -> Vec<SessionLink> {
     let Ok(meta) = fs::metadata(path) else {
         if let Ok(mut cache) = cache.lock() {
-            cache.remove(path);
+            cache.entries.remove(path);
         }
         return Vec::new();
     };
     let (len, mtime) = (meta.len(), mtime_ms(&meta));
-    if let Ok(cache) = cache.lock() {
-        if let Some(cached) = cache.get(path).filter(|c| c.len == len && c.mtime_ms == mtime) {
-            return cached.links.clone();
-        }
+    if let Some(links) = cache.lock().ok().and_then(|mut c| c.fresh(path, len, mtime)) {
+        return links;
     }
     let Ok(bytes) = fs::read(path) else {
         return Vec::new();
     };
     let links = session_links(&String::from_utf8_lossy(&bytes));
     if let Ok(mut cache) = cache.lock() {
-        cache.insert(
-            path.to_path_buf(),
-            CachedLinks { len, mtime_ms: mtime, links: links.clone() },
-        );
+        cache.insert(path, len, mtime, links.clone());
     }
     links
 }
@@ -543,6 +578,27 @@ mod tests {
         write_jsonl(tmp.path(), SID, &link_line("https://example.com/ccccc"), BASE_SEC + 1);
         let grown = adapter.session_links(CWD, SID).await;
         assert_eq!(link_urls(&grown), vec!["https://example.com/ccccc"]);
+    }
+
+    #[tokio::test]
+    async fn session_links_keeps_only_the_most_recently_read_transcripts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let sids: Vec<String> = (0..=LINK_CACHE_CAPACITY).map(|i| format!("sid-{i}")).collect();
+        for sid in &sids {
+            write_jsonl(tmp.path(), sid, &link_line("https://example.com/x"), BASE_SEC);
+        }
+        for sid in &sids[..LINK_CACHE_CAPACITY] {
+            adapter.session_links(CWD, sid).await;
+        }
+        adapter.session_links(CWD, &sids[0]).await;
+        adapter.session_links(CWD, &sids[LINK_CACHE_CAPACITY]).await;
+
+        let cache = &adapter.link_cache.lock().unwrap().entries;
+        assert_eq!(cache.len(), LINK_CACHE_CAPACITY);
+        assert!(cache.contains_key(&slices_path(tmp.path(), &sids[0])));
+        assert!(!cache.contains_key(&slices_path(tmp.path(), &sids[1])));
+        assert!(cache.contains_key(&slices_path(tmp.path(), &sids[LINK_CACHE_CAPACITY])));
     }
 
     #[tokio::test]
