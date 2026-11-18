@@ -550,7 +550,11 @@ mod sessions_persist_rest_tests {
             Arc::new(move |_| {
                 counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 Box::pin(async {
-                    Some(GithubDetails { title: "Add links".into(), state: GithubState::Merged })
+                    Some(GithubDetails {
+                        title: "Add links".into(),
+                        state: GithubState::Merged,
+                        is_pull_request: true,
+                    })
                 })
             }),
             Arc::new(std::time::Instant::now),

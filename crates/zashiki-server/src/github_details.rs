@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 use tokio::sync::Semaphore;
 
-use crate::protocol::{GithubLinkRef, GithubState, SessionLink};
+use crate::protocol::{GithubLinkRef, GithubState, SessionLink, SessionLinkKind};
 
 const MAX_CONCURRENT_LOOKUPS: usize = 4;
 const LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -25,6 +25,8 @@ const CACHE_CAPACITY: usize = 512;
 pub struct GithubDetails {
     pub title: String,
     pub state: GithubState,
+    /// GitHub serves a pull request at `/issues/N` too, so the URL alone does not settle the kind.
+    pub is_pull_request: bool,
 }
 
 /// The last lookup's outcome. A failed re-check keeps the details an earlier lookup found.
@@ -78,10 +80,12 @@ struct RawPullRequest {
 /// requests too (with a `pull_request` object carrying `merged_at`).
 fn parse_issue(json: &str) -> Option<GithubDetails> {
     let raw: RawIssue = serde_json::from_str(json).ok()?;
+    let is_pull_request = raw.pull_request.is_some();
     let merged = raw.pull_request.is_some_and(|pr| pr.merged_at.is_some());
     Some(GithubDetails {
         state: github_state(&raw.state, merged)?,
         title: raw.title,
+        is_pull_request,
     })
 }
 
@@ -234,7 +238,10 @@ impl GithubDetailsCache {
                 return;
             };
             entries.begin_round(now);
-            for github in links.iter_mut().filter_map(|l| l.github.as_mut()) {
+            for link in links.iter_mut() {
+                let Some(github) = link.github.as_mut() else {
+                    continue;
+                };
                 if !is_plain_segment(&github.owner) || !is_plain_segment(&github.repo) {
                     continue;
                 }
@@ -244,6 +251,11 @@ impl GithubDetailsCache {
                 if let Some(details) = details {
                     github.title = Some(details.title);
                     github.state = Some(details.state);
+                    link.kind = if details.is_pull_request {
+                        SessionLinkKind::Pr
+                    } else {
+                        SessionLinkKind::Issue
+                    };
                 }
                 if start {
                     lookups.push(github.clone());
@@ -317,13 +329,14 @@ async fn gh_issue(github: GithubLinkRef) -> Option<GithubDetails> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{SessionLinkKind, SessionLinkTab};
+    use crate::protocol::SessionLinkTab;
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
     fn open(title: &str) -> GithubDetails {
         GithubDetails {
             title: title.into(),
             state: GithubState::Open,
+            is_pull_request: true,
         }
     }
 
@@ -342,6 +355,7 @@ mod tests {
             details: state.map(|state| GithubDetails {
                 title: "t".into(),
                 state,
+                is_pull_request: true,
             }),
             checked_at: at(at_ms),
             failed,
@@ -392,7 +406,21 @@ mod tests {
     #[test]
     fn an_issue_response_gives_its_title_and_state() {
         let json = r#"{"number":3,"title":"Crash on start","state":"open","body":"long"}"#;
-        assert_eq!(parse_issue(json), Some(open("Crash on start")));
+        assert_eq!(
+            parse_issue(json),
+            Some(GithubDetails {
+                is_pull_request: false,
+                ..open("Crash on start")
+            })
+        );
+    }
+
+    #[test]
+    fn a_response_tells_a_pull_request_from_an_issue() {
+        let issue = r#"{"title":"x","state":"open"}"#;
+        let pull = r#"{"title":"x","state":"open","pull_request":{"merged_at":null}}"#;
+        assert_eq!(parse_issue(issue).map(|d| d.is_pull_request), Some(false));
+        assert_eq!(parse_issue(pull).map(|d| d.is_pull_request), Some(true));
     }
 
     #[test]
@@ -711,5 +739,29 @@ mod tests {
         annotated(&f.cache, &links);
         settle(&f.cache).await;
         assert_eq!(f.calls.load(Ordering::SeqCst), 6);
+    }
+
+    #[tokio::test]
+    async fn a_link_takes_the_kind_github_reports_whichever_url_it_came_from() {
+        let f = fake(
+            |n| {
+                Some(GithubDetails {
+                    title: "x".into(),
+                    state: GithubState::Closed,
+                    is_pull_request: n == 5,
+                })
+            },
+            Duration::ZERO,
+        );
+        let mut pull_via_issues = github_link("o", 5);
+        pull_via_issues.url = "https://github.com/o/r/issues/5".into();
+        pull_via_issues.kind = SessionLinkKind::Issue;
+        let issue_via_pull = github_link("o", 6);
+        let links = [pull_via_issues, issue_via_pull];
+        annotated(&f.cache, &links);
+        settle(&f.cache).await;
+        let kinds: Vec<SessionLinkKind> =
+            annotated(&f.cache, &links).iter().map(|l| l.kind).collect();
+        assert_eq!(kinds, vec![SessionLinkKind::Pr, SessionLinkKind::Issue]);
     }
 }
