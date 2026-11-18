@@ -17,6 +17,7 @@ const MAX_CONCURRENT_LOOKUPS: usize = 4;
 const LOOKUP_TIMEOUT: Duration = Duration::from_secs(10);
 const OPEN_RECHECK: Duration = Duration::from_secs(60);
 const FAILURE_RETRY: Duration = Duration::from_secs(5 * 60);
+const DETAILS_REQUEST_LAPSE: Duration = Duration::from_secs(10);
 /// How many pull requests and issues are remembered at once; the least recently read is dropped first.
 const CACHE_CAPACITY: usize = 512;
 
@@ -120,11 +121,24 @@ struct Entries {
     map: HashMap<ItemKey, Entry>,
     reads: u64,
     round_start: u64,
+    last_details_request: Option<Instant>,
 }
 
 impl Entries {
-    fn begin_round(&mut self) {
+    fn begin_round(&mut self, now: Instant) {
         self.round_start = self.reads + 1;
+        self.last_details_request = Some(now);
+    }
+
+    fn details_wanted(&self, now: Instant) -> bool {
+        self.last_details_request
+            .is_some_and(|at| now.saturating_duration_since(at) <= DETAILS_REQUEST_LAPSE)
+    }
+
+    fn abandon(&mut self, key: &ItemKey) {
+        if let Some(entry) = self.map.get_mut(key) {
+            entry.in_flight = false;
+        }
     }
 
     /// The cached details of `key`, and whether a lookup should start now (it is then marked in flight).
@@ -219,7 +233,7 @@ impl GithubDetailsCache {
             let Ok(mut entries) = self.entries.lock() else {
                 return;
             };
-            entries.begin_round();
+            entries.begin_round(now);
             for github in links.iter_mut().filter_map(|l| l.github.as_mut()) {
                 if !is_plain_segment(&github.owner) || !is_plain_segment(&github.repo) {
                     continue;
@@ -241,18 +255,30 @@ impl GithubDetailsCache {
         }
     }
 
+    /// A lookup still queued when the popover has stopped asking for details is dropped unrun, and
+    /// the next request with details starts it afresh.
     fn spawn_lookup(&self, github: GithubLinkRef) {
         let key = item_key(&github);
         let entries = Arc::clone(&self.entries);
         let permits = Arc::clone(&self.permits);
-        let lookup = (self.fetch)(github);
+        let fetch = Arc::clone(&self.fetch);
         let now = Arc::clone(&self.now);
         let timeout = self.timeout;
         tokio::spawn(async move {
-            let found = match permits.acquire_owned().await {
-                Ok(_permit) => tokio::time::timeout(timeout, lookup).await.ok().flatten(),
-                Err(_) => None,
+            let Ok(_permit) = permits.acquire_owned().await else {
+                return;
             };
+            let still_wanted = entries.lock().is_ok_and(|e| e.details_wanted(now()));
+            if !still_wanted {
+                if let Ok(mut entries) = entries.lock() {
+                    entries.abandon(&key);
+                }
+                return;
+            }
+            let found = tokio::time::timeout(timeout, fetch(github))
+                .await
+                .ok()
+                .flatten();
             if let Ok(mut entries) = entries.lock() {
                 entries.finish(&key, found, now());
             }
@@ -547,6 +573,7 @@ mod tests {
         assert_eq!(f.calls.load(Ordering::SeqCst), 1);
         f.clock.store(ms(FAILURE_RETRY), Ordering::SeqCst);
         annotated(&f.cache, &links);
+        settle(&f.cache).await;
         assert_eq!(f.calls.load(Ordering::SeqCst), 2);
     }
 
@@ -562,6 +589,7 @@ mod tests {
             during[0].github.as_ref().unwrap().title.as_deref(),
             Some("x")
         );
+        settle(&f.cache).await;
         assert_eq!(f.calls.load(Ordering::SeqCst), 2);
     }
 
@@ -633,12 +661,12 @@ mod tests {
             .collect();
         annotated(&f.cache, &links[..CACHE_CAPACITY]);
         annotated(&f.cache, &links[CACHE_CAPACITY..]);
-        assert_eq!(f.calls.load(Ordering::SeqCst), CACHE_CAPACITY);
         let entries = f.cache.entries.lock().unwrap();
         assert_eq!(entries.map.len(), CACHE_CAPACITY);
         assert!(links[..CACHE_CAPACITY]
             .iter()
-            .all(|l| entries.map.contains_key(&key_of(l))));
+            .all(|l| entries.map.get(&key_of(l)).is_some_and(|e| e.in_flight)));
+        assert!(!entries.map.contains_key(&key_of(&links[CACHE_CAPACITY])));
     }
 
     #[tokio::test]
@@ -657,5 +685,31 @@ mod tests {
             .count();
         assert_eq!(titled, CACHE_CAPACITY);
         assert_eq!(f.calls.load(Ordering::SeqCst), CACHE_CAPACITY);
+    }
+
+    #[tokio::test]
+    async fn queued_lookups_are_skipped_once_details_stop_being_asked_for() {
+        let f = fake(|_| Some(open("x")), Duration::from_millis(30));
+        let links: Vec<SessionLink> = (1..=6).map(|n| github_link("o", n)).collect();
+        annotated(&f.cache, &links);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+        f.clock
+            .store(ms(DETAILS_REQUEST_LAPSE) + 1, Ordering::SeqCst);
+        settle(&f.cache).await;
+        assert_eq!(f.calls.load(Ordering::SeqCst), MAX_CONCURRENT_LOOKUPS);
+        let never_looked_up = f
+            .cache
+            .entries
+            .lock()
+            .unwrap()
+            .map
+            .values()
+            .filter(|e| e.lookup.is_none())
+            .count();
+        assert_eq!(never_looked_up, 2);
+
+        annotated(&f.cache, &links);
+        settle(&f.cache).await;
+        assert_eq!(f.calls.load(Ordering::SeqCst), 6);
     }
 }
