@@ -993,7 +993,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn session_without_monitor_omits_monitors_running() {
+    async fn cockpit_terminal_without_monitor_omits_monitors_running() {
         let ports = FakePorts {
             windows: vec![window(
                 "@1",
