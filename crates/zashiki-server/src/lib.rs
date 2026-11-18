@@ -48,6 +48,7 @@ pub mod scrollback_monitor;
 pub mod search;
 pub mod self_update;
 pub mod session_launch;
+pub mod session_links;
 pub mod session_model_store;
 pub mod session_persist;
 pub mod session_registry;

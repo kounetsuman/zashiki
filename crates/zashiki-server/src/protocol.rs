@@ -601,6 +601,53 @@ pub struct CockpitTerminalTailResponse {
     pub lines: Vec<String>,
 }
 
+/// Which popover tab a session link belongs to: written in the conversation, or handed to a tool.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionLinkTab {
+    Conversation,
+    AiReferenced,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionLinkKind {
+    Pr,
+    Issue,
+    Other,
+}
+
+/// The repository and number of a GitHub pull request or issue link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GithubLinkRef {
+    pub owner: String,
+    pub repo: String,
+    pub number: u64,
+}
+
+/// One URL seen in a Claude Session's transcript. A GitHub pull request or issue `url` is the
+/// canonical `https://github.com/{owner}/{repo}/pull|issues/{n}`, whatever sub-page was seen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionLink {
+    pub url: String,
+    pub tab: SessionLinkTab,
+    pub kind: SessionLinkKind,
+    /// `user` / `assistant` in the conversation tab; the tool name (`WebFetch`, `Bash`, …) otherwise.
+    pub source: String,
+    /// A title already known from the transcript (a WebSearch result's title).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub github: Option<GithubLinkRef>,
+}
+
+/// Response for `GET /api/cockpit-terminals/links?id=`: newest appearance first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionLinksResponse {
+    pub links: Vec<SessionLink>,
+}
+
 /// In-app notification level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
