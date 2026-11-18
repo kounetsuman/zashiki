@@ -650,36 +650,32 @@ export function App({
     );
   }, [t, openExternalFile, toastUnreadableFile, flashCopyToast]);
 
-  // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
-  const copyDiffPath = useCallback(
-    (repoPath: string, relPath: string): void => {
-      void navigator.clipboard?.writeText(`${repoPath}/${relPath}`).then(
-        () => flashCopyToast(t("toast.pathCopied")),
+  const copyWithToast = useCallback(
+    (text: string, toastKey: "toast.pathCopied" | "toast.linkCopied"): void => {
+      void navigator.clipboard?.writeText(text).then(
+        () => flashCopyToast(t(toastKey)),
         () => undefined,
       );
     },
     [flashCopyToast, t],
   );
 
+  // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
+  const copyDiffPath = useCallback(
+    (repoPath: string, relPath: string): void =>
+      copyWithToast(`${repoPath}/${relPath}`, "toast.pathCopied"),
+    [copyWithToast],
+  );
+
   const copySessionLink = useCallback(
-    (url: string): void => {
-      void navigator.clipboard?.writeText(url).then(
-        () => flashCopyToast(t("toast.linkCopied")),
-        () => undefined,
-      );
-    },
-    [flashCopyToast, t],
+    (url: string): void => copyWithToast(url, "toast.linkCopied"),
+    [copyWithToast],
   );
 
   // Copy arbitrary text (context-menu path copies) with the shared "path copied" toast.
   const copyExplorerText = useCallback(
-    (text: string): void => {
-      void navigator.clipboard?.writeText(text).then(
-        () => flashCopyToast(t("toast.pathCopied")),
-        () => undefined,
-      );
-    },
-    [flashCopyToast, t],
+    (text: string): void => copyWithToast(text, "toast.pathCopied"),
+    [copyWithToast],
   );
 
   const closeViewerTabByBufferKey = useCallback(
