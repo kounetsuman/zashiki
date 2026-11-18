@@ -252,12 +252,13 @@ function LinkIcon({ link }: { link: SessionLink }) {
   const paths = link.kind === "pr" ? [PR_ICON_PATH] : ISSUE_ICON_PATHS;
   const shapes = paths.map((d) => <path key={d} d={d} fill="currentColor" />);
   const state = link.github?.state;
+  const color = linkIconColor(link);
   const svg = {
     className: "sl-row-icon",
     viewBox: "0 0 16 16",
     width: "16",
     height: "16",
-    style: { color: linkIconColor(link) },
+    style: color === undefined ? undefined : { color },
   };
   if (state === undefined) {
     return (

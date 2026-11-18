@@ -179,9 +179,9 @@ describe("linkIconColor", () => {
     expect(linkIconColor(withState(pr(1), "closed"))).toBe("#e06c75");
   });
 
-  it("stays neutral while the state is unknown and for other links", () => {
-    expect(linkIconColor(pr(1))).toBe("#bbb");
-    expect(linkIconColor(withState(issue(1), undefined))).toBe("#bbb");
-    expect(linkIconColor(other("https://example.com/"))).toBe("#bbb");
+  it("leaves the colour to the stylesheet while the state is unknown and for other links", () => {
+    expect(linkIconColor(pr(1))).toBeUndefined();
+    expect(linkIconColor(withState(issue(1), undefined))).toBeUndefined();
+    expect(linkIconColor(other("https://example.com/"))).toBeUndefined();
   });
 });

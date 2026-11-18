@@ -291,5 +291,7 @@ describe("SessionLinksPopover", () => {
     open([PR_12]);
     const dialog = popover() as HTMLElement;
     expect(within(dialog).queryByRole("img")).toBeNull();
+    const icon = dialog.querySelector("svg.sl-row-icon") as SVGElement;
+    expect(icon.getAttribute("style")).toBeNull();
   });
 });

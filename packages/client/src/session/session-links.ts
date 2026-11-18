@@ -107,13 +107,13 @@ export function linkText(link: SessionLink): { title: string; detail: string } {
   };
 }
 
-const NEUTRAL_ICON_COLOR = "#bbb";
 const OPEN_COLOR = "#98c379";
 const MERGED_COLOR = "#c678dd";
 const CLOSED_PR_COLOR = "#e06c75";
 const CLOSED_ISSUE_COLOR = MERGED_COLOR;
 
-export function linkIconColor(link: SessionLink): string {
+/** The icon colour for a known state; otherwise the stylesheet's neutral one applies. */
+export function linkIconColor(link: SessionLink): string | undefined {
   switch (link.github?.state) {
     case "open":
       return OPEN_COLOR;
@@ -122,6 +122,6 @@ export function linkIconColor(link: SessionLink): string {
     case "closed":
       return link.kind === "pr" ? CLOSED_PR_COLOR : CLOSED_ISSUE_COLOR;
     default:
-      return NEUTRAL_ICON_COLOR;
+      return undefined;
   }
 }
