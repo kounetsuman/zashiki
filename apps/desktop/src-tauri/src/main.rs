@@ -73,9 +73,9 @@ fn share_text(text: String) -> Result<(), String> {
     Err("unsupported".to_string())
 }
 
-/// Files chosen in the latest Cmd+O pick, by the id handed to the UI. Only these can be read back,
-/// so neither the read command nor the media stream (`picked_media`) can be pointed at an arbitrary
-/// path.
+/// Files chosen with Cmd+O since launch, by the id handed to the UI. Only these can be read back, so
+/// neither the read command nor the media stream (`picked_media`) can be pointed at an arbitrary
+/// path. They are kept until quit because an open video keeps requesting byte ranges.
 #[derive(Default)]
 struct PickedPaths(Mutex<PickedPathTable>);
 
@@ -92,8 +92,7 @@ struct PickedPathTable {
 }
 
 impl PickedPathTable {
-    /// Hands out an id for `path`. Ids are never reused, so a read meant for an earlier pick cannot
-    /// land on a file from a later one.
+    /// Hands out an id for `path`. Ids are never reused, so a read cannot land on another file.
     fn register(&mut self, path: PathBuf) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
@@ -183,15 +182,10 @@ async fn pick_files(
     })
     .await
     .map_err(|_| "readFailed".to_string())?;
-    // A cancelled dialog keeps the previous pick readable: its files may still be opening.
-    if described.is_empty() {
-        return Ok(Vec::new());
-    }
     let mut table = picked_paths
         .0
         .lock()
         .map_err(|_| "readFailed".to_string())?;
-    table.paths.clear();
     Ok(described
         .into_iter()
         .map(|(path, mut file)| {
@@ -203,7 +197,7 @@ async fn pick_files(
         .collect())
 }
 
-/// The raw bytes of a file from the latest Cmd+O pick, delivered to the WebView as an ArrayBuffer.
+/// The raw bytes of a file chosen with Cmd+O, delivered to the WebView as an ArrayBuffer.
 #[tauri::command]
 async fn read_picked_file(
     picked_paths: tauri::State<'_, PickedPaths>,
@@ -940,13 +934,12 @@ mod tests {
     }
 
     #[test]
-    fn picked_path_ids_are_never_reused_across_picks() {
+    fn picked_paths_keep_every_pick_under_its_own_id() {
         let mut table = PickedPathTable::default();
         let first = table.register(PathBuf::from("/a"));
-        table.paths.clear();
         let second = table.register(PathBuf::from("/b"));
         assert_ne!(first, second);
-        assert_eq!(table.paths.get(&first), None);
+        assert_eq!(table.paths.get(&first), Some(&PathBuf::from("/a")));
         assert_eq!(table.paths.get(&second), Some(&PathBuf::from("/b")));
     }
 
