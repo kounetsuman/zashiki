@@ -97,6 +97,18 @@ pub(crate) type LookupFuture = Pin<Box<dyn Future<Output = Option<GithubDetails>
 pub(crate) type Fetch = Arc<dyn Fn(GithubLinkRef) -> LookupFuture + Send + Sync>;
 pub(crate) type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
 
+/// One pull request or issue, however its URL was written: `/pull/N` and `/issues/N` name the same
+/// item, and GitHub owner and repo names ignore case.
+type ItemKey = (String, String, u64);
+
+fn item_key(github: &GithubLinkRef) -> ItemKey {
+    (
+        github.owner.to_ascii_lowercase(),
+        github.repo.to_ascii_lowercase(),
+        github.number,
+    )
+}
+
 struct Entry {
     lookup: Option<Lookup>,
     in_flight: bool,
@@ -105,16 +117,16 @@ struct Entry {
 
 #[derive(Default)]
 struct Entries {
-    map: HashMap<String, Entry>,
+    map: HashMap<ItemKey, Entry>,
     reads: u64,
 }
 
 impl Entries {
-    /// The cached details of `url`, and whether a lookup should start now (it is then marked in flight).
-    fn read(&mut self, url: &str, now: Instant) -> (Option<GithubDetails>, bool) {
+    /// The cached details of `key`, and whether a lookup should start now (it is then marked in flight).
+    fn read(&mut self, key: &ItemKey, now: Instant) -> (Option<GithubDetails>, bool) {
         self.reads += 1;
         let reads = self.reads;
-        let entry = self.map.entry(url.to_string()).or_insert(Entry {
+        let entry = self.map.entry(key.clone()).or_insert(Entry {
             lookup: None,
             in_flight: false,
             last_read: reads,
@@ -127,8 +139,8 @@ impl Entries {
         (details, start)
     }
 
-    fn finish(&mut self, url: &str, found: Option<GithubDetails>, now: Instant) {
-        let Some(entry) = self.map.get_mut(url) else {
+    fn finish(&mut self, key: &ItemKey, found: Option<GithubDetails>, now: Instant) {
+        let Some(entry) = self.map.get_mut(key) else {
             return;
         };
         let previous = entry.lookup.take().and_then(|l| l.details);
@@ -148,7 +160,7 @@ impl Entries {
             .map
             .iter()
             .min_by_key(|(_, e)| e.last_read)
-            .map(|(url, _)| url.clone());
+            .map(|(key, _)| key.clone());
         if let Some(oldest) = oldest {
             self.map.remove(&oldest);
         }
@@ -198,19 +210,20 @@ impl GithubDetailsCache {
             let Ok(mut entries) = self.entries.lock() else {
                 return;
             };
-            let (details, start) = entries.read(&link.url, now);
+            let (details, start) = entries.read(&item_key(github), now);
             drop(entries);
             if let Some(details) = details {
                 github.title = Some(details.title);
                 github.state = Some(details.state);
             }
             if start {
-                self.spawn_lookup(link.url.clone(), github.clone());
+                self.spawn_lookup(github.clone());
             }
         }
     }
 
-    fn spawn_lookup(&self, url: String, github: GithubLinkRef) {
+    fn spawn_lookup(&self, github: GithubLinkRef) {
+        let key = item_key(&github);
         let entries = Arc::clone(&self.entries);
         let permits = Arc::clone(&self.permits);
         let lookup = (self.fetch)(github);
@@ -222,7 +235,7 @@ impl GithubDetailsCache {
                 Err(_) => None,
             };
             if let Ok(mut entries) = entries.lock() {
-                entries.finish(&url, found, now());
+                entries.finish(&key, found, now());
             }
         });
     }
@@ -456,6 +469,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_pull_and_an_issues_url_for_the_same_number_share_one_lookup() {
+        let f = fake(|n| Some(open(&format!("#{n}"))), Duration::from_millis(5));
+        let mut as_issue = github_link("o", 5);
+        as_issue.url = "https://github.com/o/r/issues/5".into();
+        let mut upper = github_link("o", 5);
+        upper.github.as_mut().unwrap().owner = "O".into();
+        let links = [github_link("o", 5), as_issue, upper];
+        annotated(&f.cache, &links);
+        settle(&f.cache).await;
+        let later = annotated(&f.cache, &links);
+        assert_eq!(f.calls.load(Ordering::SeqCst), 1);
+        assert!(later
+            .iter()
+            .all(|l| l.github.as_ref().unwrap().title.as_deref() == Some("#5")));
+    }
+
+    #[tokio::test]
     async fn a_link_in_flight_is_not_looked_up_again() {
         let f = fake(|_| Some(open("x")), Duration::from_millis(30));
         let links = [github_link("o", 1), github_link("o", 1)];
@@ -560,7 +590,11 @@ mod tests {
         settle(&f.cache).await;
         let entries = f.cache.entries.lock().unwrap();
         assert_eq!(entries.map.len(), CACHE_CAPACITY);
-        assert!(entries.map.contains_key(&links[0].url));
-        assert!(!entries.map.contains_key(&links[1].url));
+        assert!(entries
+            .map
+            .contains_key(&item_key(links[0].github.as_ref().unwrap())));
+        assert!(!entries
+            .map
+            .contains_key(&item_key(links[1].github.as_ref().unwrap())));
     }
 }
