@@ -131,6 +131,8 @@ pub struct ProcessMaps {
     pub claude_pids: HashSet<i64>,
     /// pid -> ppid.
     pub parent_of: HashMap<i64, i64>,
+    /// pids of the shells Claude Code runs a Bash or Monitor command in (classified by `is_tool_shell`).
+    pub tool_shell_pids: HashSet<i64>,
 }
 
 impl ProcessMaps {
@@ -188,6 +190,12 @@ pub fn is_claude_command(args: &str) -> bool {
     }
 }
 
+/// Whether a ps `args` string is the shell Claude Code wraps a Bash or Monitor command in, which
+/// sources a `shell-snapshots/snapshot-*` file before running the command.
+pub fn is_tool_shell(args: &str) -> bool {
+    args.contains("/shell-snapshots/snapshot-")
+}
+
 /// Build the sid map and the parent-child map from a ps snapshot (non-claude processes are not added to the sid map).
 pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
     let mut pid_to_sid = HashMap::new();
@@ -195,6 +203,7 @@ pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
     let mut vitest_pids = HashSet::new();
     let mut claude_pids = HashSet::new();
     let mut parent_of = HashMap::new();
+    let mut tool_shell_pids = HashSet::new();
     for e in entries {
         if is_claude_command(&e.args) {
             claude_pids.insert(e.pid);
@@ -209,6 +218,9 @@ pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
         if is_vitest(&e.args) {
             vitest_pids.insert(e.pid);
         }
+        if is_tool_shell(&e.args) {
+            tool_shell_pids.insert(e.pid);
+        }
         children_of.entry(e.ppid).or_default().push(e.pid);
     }
     ProcessMaps {
@@ -217,6 +229,7 @@ pub fn build_process_maps(entries: &[ProcessEntry]) -> ProcessMaps {
         vitest_pids,
         claude_pids,
         parent_of,
+        tool_shell_pids,
     }
 }
 
@@ -288,6 +301,18 @@ pub fn count_vitest_in_tree(start_pid: i64, maps: &ProcessMaps) -> u32 {
     subtree(start_pid, maps)
         .filter(|pid| maps.vitest_pids.contains(pid))
         .count() as u32
+}
+
+/// The Monitors `claude_pid` is running: tool shells it spawned directly whose stdout streams back to
+/// it (`socket_stdout_pids`). A Bash command's tool shell writes to a task output file instead.
+pub fn count_monitors(claude_pid: i64, maps: &ProcessMaps, socket_stdout_pids: &HashSet<i64>) -> u32 {
+    maps.children_of
+        .get(&claude_pid)
+        .map_or(0, |kids| {
+            kids.iter()
+                .filter(|pid| maps.tool_shell_pids.contains(pid) && socket_stdout_pids.contains(pid))
+                .count() as u32
+        })
 }
 
 #[cfg(test)]
@@ -562,5 +587,44 @@ mod tests {
         ));
         assert_eq!(count_vitest_in_tree(100, &maps), 0);
         assert_eq!(count_vitest_in_tree(200, &maps), 1);
+    }
+
+    const TOOL_SHELL: &str = "/bin/zsh -c source /Users/u/.claude/shell-snapshots/snapshot-zsh-1-abc.sh 2>/dev/null || true && eval 'tail -f log' < /dev/null";
+
+    fn monitor_maps() -> ProcessMaps {
+        build_process_maps(&parse_ps_snapshot(&format!(
+            "  300    1 claude --session-id {SID}\n  \
+             400  300 {TOOL_SHELL}\n  \
+             401  400 tail -f log\n  \
+             410  300 {TOOL_SHELL}\n  \
+             420  300 /bin/sh -c ~/.claude/hooks/stop.sh\n  \
+             430  401 {TOOL_SHELL}\n"
+        )))
+    }
+
+    #[test]
+    fn count_monitors_counts_tool_shells_of_claude_whose_stdout_is_a_socket() {
+        let maps = monitor_maps();
+        assert_eq!(count_monitors(300, &maps, &HashSet::from([400, 410])), 2);
+    }
+
+    /// A Bash command's tool shell writes to a task output file, so it is absent from the socket set.
+    #[test]
+    fn count_monitors_skips_tool_shells_writing_to_a_file() {
+        let maps = monitor_maps();
+        assert_eq!(count_monitors(300, &maps, &HashSet::from([400])), 1);
+    }
+
+    /// A hook command or a process nested deeper in a Monitor's own tree is not a Monitor of its own.
+    #[test]
+    fn count_monitors_ignores_non_tool_shells_and_grandchildren() {
+        let maps = monitor_maps();
+        assert_eq!(count_monitors(300, &maps, &HashSet::from([401, 420, 430])), 0);
+    }
+
+    #[test]
+    fn count_monitors_is_zero_for_another_claude() {
+        let maps = monitor_maps();
+        assert_eq!(count_monitors(999, &maps, &HashSet::from([400, 410])), 0);
     }
 }

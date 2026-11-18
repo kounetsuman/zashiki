@@ -5,7 +5,9 @@
 
 use std::collections::{HashMap, HashSet};
 
-use zashiki_core::process_tree::{build_process_maps, count_vitest_in_tree, parse_ps_snapshot};
+use zashiki_core::process_tree::{
+    build_process_maps, count_monitors, count_vitest_in_tree, parse_ps_snapshot,
+};
 use zashiki_core::repos::org_of_cwd;
 use zashiki_core::session_state::{
     apply_jsonl_fallback, apply_loop_pending, apply_startup_grace, count_running_subagents,
@@ -18,7 +20,9 @@ use zashiki_core::session_state::{
 use crate::jsonl::{last_user_or_assistant_event, loop_wakeup_pending, TranscriptTitle};
 use crate::hooks::NotifyEvent;
 use crate::protocol::{CockpitTerminalInfo, NotifyKind, SessionUsage, UsageBeforeCompaction};
-use crate::shells::{count_running_shells_for_sid, parse_lsof_fd_outputs, ShellOutput};
+use crate::shells::{
+    count_running_shells_for_sid, parse_lsof_fd_outputs, parse_lsof_socket_stdout_pids, ShellOutput,
+};
 
 const TITLE_MAX_CHARS: usize = 30;
 
@@ -171,16 +175,18 @@ impl StatusPoller {
         let windows = ports.list_work_windows().await;
         let maps = build_process_maps(&parse_ps_snapshot(&ports.ps_snapshot().await));
         // No windows = no session to attribute a shell to, so skip the lsof spawn entirely.
-        let shell_outputs = if windows.is_empty() {
-            Vec::new()
+        let lsof = if windows.is_empty() {
+            String::new()
         } else {
-            parse_lsof_fd_outputs(&ports.lsof_fd_outputs().await)
+            ports.lsof_fd_outputs().await
         };
+        let shell_outputs = parse_lsof_fd_outputs(&lsof);
+        let socket_stdout_pids = parse_lsof_socket_stdout_pids(&lsof);
 
         let mut sessions = Vec::new();
         for win in &windows {
             if let Some(info) = self
-                .evaluate_window(win, &maps, &shell_outputs, ports, config)
+                .evaluate_window(win, &maps, &shell_outputs, &socket_stdout_pids, ports, config)
                 .await
             {
                 sessions.push(info);
@@ -218,6 +224,7 @@ impl StatusPoller {
         win: &CockpitTerminal,
         maps: &zashiki_core::process_tree::ProcessMaps,
         shell_outputs: &[ShellOutput],
+        socket_stdout_pids: &HashSet<i64>,
         ports: &P,
         config: &PollConfig,
     ) -> Option<CockpitTerminalInfo> {
@@ -492,6 +499,11 @@ impl StatusPoller {
             n => Some(n),
         };
 
+        let monitors_running = match claude_pid.map(|p| count_monitors(p, maps, socket_stdout_pids)) {
+            None | Some(0) => None,
+            n => n,
+        };
+
         let footer_sid = sid.as_deref().filter(|_| claude_is_alive(state));
         let usage_data = match footer_sid {
             Some(sid) => ports.session_usage(&cwd, sid).await,
@@ -545,6 +557,7 @@ impl StatusPoller {
             active: win.active,
             running_subagents: Some(running_subagents as u32),
             shells_running,
+            monitors_running,
             vitest_running,
             limited,
             menu_open,
@@ -949,6 +962,52 @@ mod tests {
         let mut poller = StatusPoller::new();
         let (snap, _) = poller.evaluate(&ports, &config()).await;
         assert_eq!(snap.sessions[0].shells_running, None);
+    }
+
+    /// A Monitor is a tool shell directly under the session's claude whose stdout is a socket; a Bash
+    /// tool shell writing to its task output file is not one.
+    #[tokio::test]
+    async fn monitor_tool_shell_sets_monitors_running() {
+        let tool_shell = "/bin/zsh -c source /Users/u/.claude/shell-snapshots/snapshot-zsh-1-abc.sh 2>/dev/null || true && eval 'x' < /dev/null";
+        let ps = format!(
+            "  100    1 -zsh\n  300 100 claude --session-id {SID}\n  \
+             400 300 {tool_shell}\n  410 300 {tool_shell}\n"
+        );
+        let lsof = format!(
+            "p400\nf1\nn->0x53a9e97bc9b28cea\np410\nf1\nn/private/tmp/x/{SID}/tasks/fgtask999.output\n"
+        );
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps,
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            lsof,
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].monitors_running, Some(1));
+    }
+
+    #[tokio::test]
+    async fn cockpit_terminal_without_monitor_omits_monitors_running() {
+        let ports = FakePorts {
+            windows: vec![window(
+                "@1",
+                "work",
+                vec![pane("%1", 100, 0, "/repos/charlie/app")],
+            )],
+            ps: ps_with_claude(100),
+            captures: HashMap::from([("%1".to_string(), RUN_CAPTURE.to_string())]),
+            lsof: "p300\nf1\nn->0x1\n".to_string(),
+            ..Default::default()
+        };
+        let mut poller = StatusPoller::new();
+        let (snap, _) = poller.evaluate(&ports, &config()).await;
+        assert_eq!(snap.sessions[0].monitors_running, None);
     }
 
     /// Two concurrent vitest runs under the session's claude are counted; an idle session omits the
@@ -2010,6 +2069,7 @@ mod tests {
             active: true,
             running_subagents: subagents,
             shells_running: shells,
+            monitors_running: None,
             vitest_running: None,
             limited: false,
             menu_open: false,

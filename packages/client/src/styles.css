@@ -463,7 +463,7 @@ textarea {
     0 0 2px #141414;
 }
 
-/* 併走アクティビティのチップ: agent / shell / vitest を状態グリフの隣に添える。 */
+/* 併走アクティビティのチップ: agent / shell / monitor / vitest を状態グリフの隣に添える。 */
 .session-activity {
   display: inline-flex;
   align-items: center;

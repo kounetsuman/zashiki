@@ -335,6 +335,35 @@ describe("CockpitTerminalListView: session rows", () => {
     expect(screen.queryByText("terminal")).toBeNull();
   });
 
+  it("shows a monitor activity chip with the count in any state", () => {
+    renderView({
+      cockpitTerminals: [
+        {
+          ...cockpitTerminals[0],
+          state: "idle",
+          monitorsRunning: 2,
+        } as CockpitTerminalInfo,
+      ],
+    });
+    const chip = screen.getByText("monitor_heart").parentElement;
+    expect(chip?.className).toContain("session-activity-monitor");
+    expect(chip?.textContent).toContain("2");
+  });
+
+  it("shows no monitor chip when monitorsRunning is 0/undefined", () => {
+    renderView({
+      cockpitTerminals: [
+        {
+          ...cockpitTerminals[0],
+          state: "running",
+          monitorsRunning: 0,
+        } as CockpitTerminalInfo,
+        { ...cockpitTerminals[1] } as CockpitTerminalInfo,
+      ],
+    });
+    expect(screen.queryByText("monitor_heart")).toBeNull();
+  });
+
   it("shows a vitest activity chip with the count in any state", () => {
     renderView({
       cockpitTerminals: [

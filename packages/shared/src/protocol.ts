@@ -161,6 +161,11 @@ export const cockpitTerminalInfoSchema = z.object({
    */
   shellsRunning: z.number().int().min(0).optional(),
   /**
+   * Number of running command-based Monitors (Claude Code's background watchers). Orthogonal to the
+   * main state (meaningful in any state). optional for old-server compatibility (absent means zero or unfetched).
+   */
+  monitorsRunning: z.number().int().min(0).optional(),
+  /**
    * Number of running vitest processes in this session's process subtree — the sustained signal for
    * which worktree's tests are eating the CPU. Orthogonal to the main state (meaningful in any state).
    * optional for old-server compatibility (absent means zero or unfetched).

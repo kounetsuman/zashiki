@@ -52,6 +52,36 @@ pub fn parse_lsof_fd_outputs(lsof_output: &str) -> Vec<ShellOutput> {
     outputs
 }
 
+/// From the same `lsof -F pfn -a -d 1` output, the pids whose fd1 is a socket or pipe (macOS lsof names
+/// both `->0x…`) rather than a file: the shape of a Monitor's tool shell, whose stdout streams back to
+/// claude.
+pub fn parse_lsof_socket_stdout_pids(lsof_output: &str) -> HashSet<i64> {
+    let mut pids = HashSet::new();
+    let mut pid: Option<i64> = None;
+    let mut fd: Option<&str> = None;
+    for line in lsof_output.split('\n') {
+        let mut chars = line.chars();
+        let Some(tag) = chars.next() else {
+            continue;
+        };
+        let rest = chars.as_str();
+        match tag {
+            'p' => {
+                pid = rest.parse().ok();
+                fd = None;
+            }
+            'f' => fd = Some(rest),
+            'n' if fd == Some("1") && rest.starts_with("->") => {
+                if let Some(pid) = pid {
+                    pids.insert(pid);
+                }
+            }
+            _ => {}
+        }
+    }
+    pids
+}
+
 /// Counts, for one sid, the live tasks whose task_id is in that sid's backgroundTaskId set (fg =
 /// task_ids absent from the set are excluded). Deduplicates by task_id: the wrapper and any
 /// children inheriting its fd1 are one shell.
@@ -114,6 +144,20 @@ mod tests {
     fn parse_empty_and_malformed_is_empty() {
         assert_eq!(parse_lsof_fd_outputs(""), vec![]);
         assert_eq!(parse_lsof_fd_outputs("garbage\n\n"), vec![]);
+    }
+
+    #[test]
+    fn socket_stdout_pids_keeps_only_fd1_sockets() {
+        let lsof = format!(
+            "p100\nf1\nn->0x53a9e97bc9b28cea\np200\nf1\nn/private/tmp/claude-501/-Users-x/{SID_A}/tasks/abc12345x.output\np300\nf1\nn/dev/ttys003\np400\nf2\nn->0x1111\n"
+        );
+        assert_eq!(parse_lsof_socket_stdout_pids(&lsof), HashSet::from([100]));
+    }
+
+    #[test]
+    fn socket_stdout_pids_of_empty_and_malformed_is_empty() {
+        assert!(parse_lsof_socket_stdout_pids("").is_empty());
+        assert!(parse_lsof_socket_stdout_pids("pabc\nf1\nn->0x1\n").is_empty());
     }
 
     #[test]
