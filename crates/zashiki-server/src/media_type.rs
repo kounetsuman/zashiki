@@ -53,7 +53,6 @@ const MEDIA_TYPES: &[(&str, MediaType)] = &[
     ("ogg", media("audio/ogg")),
     ("oga", media("audio/ogg")),
     ("opus", media("audio/ogg")),
-    ("caf", media("audio/x-caf")),
     ("pdf", PDF),
 ];
 

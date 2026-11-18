@@ -11,6 +11,7 @@ function localFile(
   return {
     name,
     size: over.size ?? file.size,
+    media: file,
     read: over.read ?? (() => Promise.resolve(file)),
   };
 }
@@ -22,7 +23,7 @@ function recorder() {
     handlers: {
       onText: (name: string, content: string) =>
         events.push(`text ${name}=${content}`),
-      onMedia: (name: string, _file: File, kind: string) =>
+      onMedia: (name: string, _media: unknown, kind: string) =>
         events.push(`media ${name} ${kind}`),
       onError: (name: string, error: string) =>
         events.push(`error ${name} ${error}`),
@@ -44,34 +45,41 @@ describe("openLocalFiles", () => {
     ]);
   });
 
-  it("rejects text past the size cap without reading it, but not media", async () => {
+  it("opens media without reading it, whatever its size", async () => {
     const { events, handlers } = recorder();
-    const read = vi.fn(() => Promise.resolve(new File([""], "big.log")));
+    const read = vi.fn();
     await openLocalFiles(
-      [
-        localFile("big.log", { size: FILE_MAX_BYTES + 1, read }),
-        localFile("movie.mov", { size: FILE_MAX_BYTES + 1 }),
-      ],
+      [localFile("movie.mov", { size: FILE_MAX_BYTES * 1000, read })],
       handlers,
     );
     expect(read).not.toHaveBeenCalled();
-    expect(events).toEqual(["error big.log tooLarge", "media movie.mov video"]);
+    expect(events).toEqual(["media movie.mov video"]);
   });
 
-  it("reports readFailed when a file cannot be read, and keeps going", async () => {
+  it("rejects text past the size cap without reading it", async () => {
     const { events, handlers } = recorder();
-    const gone = () => Promise.reject(new Error("io"));
+    const read = vi.fn();
+    await openLocalFiles(
+      [localFile("big.log", { size: FILE_MAX_BYTES + 1, read })],
+      handlers,
+    );
+    expect(read).not.toHaveBeenCalled();
+    expect(events).toEqual(["error big.log tooLarge"]);
+  });
+
+  it("reports unreadable files and keeps going", async () => {
+    const { events, handlers } = recorder();
     await openLocalFiles(
       [
-        localFile("gone.md", { read: gone }),
-        localFile("gone.png", { read: gone }),
+        localFile("gone.md", { read: () => Promise.reject(new Error("io")) }),
+        { name: "lost.png", error: "readFailed" },
         localFile("b.md"),
       ],
       handlers,
     );
     expect(events).toEqual([
       "error gone.md readFailed",
-      "error gone.png readFailed",
+      "error lost.png readFailed",
       "text b.md=content of b.md",
     ]);
   });

@@ -1,34 +1,53 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke, isTauri } from "@tauri-apps/api/core";
 
 import { type LocalFile, localFileOf } from "../viewer/open-local-files.js";
 
 /** One file chosen in the native picker, as described by the desktop shell before it is read. */
-type PickedFile =
-  | { id: number; name: string; size: number; lastModified: number }
+export type PickedFile =
+  | {
+      id: number;
+      name: string;
+      path: string;
+      size: number;
+      lastModified: number;
+    }
   | { name: string; error: "readFailed" };
 
-/** Reads a picked file's bytes back from the shell only when it is opened (the text cap needs no read). */
+export interface PickedFileAccess {
+  /** The URL the WebView streams a picked file from (the shell allows only picked paths). */
+  streamUrl(path: string): string;
+  readBytes(id: number): Promise<ArrayBuffer | number[]>;
+}
+
 export function localFileOfPicked(
   picked: PickedFile,
-  readBytes: (id: number) => Promise<ArrayBuffer | number[]>,
+  access: PickedFileAccess,
 ): LocalFile {
-  if ("error" in picked) {
-    return {
-      name: picked.name,
-      size: 0,
-      read: () => Promise.reject(new Error(picked.error)),
-    };
-  }
+  if ("error" in picked) return picked;
   return {
     name: picked.name,
     size: picked.size,
+    media: {
+      url: access.streamUrl(picked.path),
+      size: picked.size,
+      lastModified: picked.lastModified,
+    },
     read: async () =>
       // Tauri's postMessage fallback delivers raw bytes as a number array instead of an ArrayBuffer.
-      new File([new Uint8Array(await readBytes(picked.id))], picked.name, {
-        lastModified: picked.lastModified,
-      }),
+      new File(
+        [new Uint8Array(await access.readBytes(picked.id))],
+        picked.name,
+        {
+          lastModified: picked.lastModified,
+        },
+      ),
   };
 }
+
+const tauriPickedFileAccess: PickedFileAccess = {
+  streamUrl: (path) => convertFileSrc(path),
+  readBytes: (id) => invoke<ArrayBuffer | number[]>("read_picked_file", { id }),
+};
 
 function pickViaInput(): Promise<LocalFile[]> {
   return new Promise((resolve) => {
@@ -60,11 +79,7 @@ function pickViaInput(): Promise<LocalFile[]> {
 export async function pickFiles(title: string): Promise<LocalFile[]> {
   if (isTauri()) {
     const picked = await invoke<PickedFile[]>("pick_files", { title });
-    return picked.map((file) =>
-      localFileOfPicked(file, (id) =>
-        invoke<ArrayBuffer | number[]>("read_picked_file", { id }),
-      ),
-    );
+    return picked.map((file) => localFileOfPicked(file, tauriPickedFileAccess));
   }
   return pickViaInput();
 }

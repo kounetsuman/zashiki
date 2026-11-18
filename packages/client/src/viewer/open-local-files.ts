@@ -4,16 +4,29 @@ import { type MediaKind, mediaKind } from "./media.js";
 
 export type LocalFileError = "tooLarge" | "readFailed";
 
-/** A file from outside the repos (dropped from Finder or chosen with Cmd+O), read only once it is opened. */
-export interface LocalFile {
-  readonly name: string;
+/** Media the WebView streams from a URL (a file chosen with Cmd+O), with what identifies its tab. */
+export interface StreamedMedia {
+  readonly url: string;
   readonly size: number;
-  read(): Promise<File>;
+  readonly lastModified: number;
 }
+
+/**
+ * A file from outside the repos (dropped from Finder or chosen with Cmd+O). Media is shown from
+ * `media` without reading it into memory; anything else is read as text only once it is opened.
+ */
+export type LocalFile =
+  | {
+      readonly name: string;
+      readonly size: number;
+      readonly media: File | StreamedMedia;
+      read(): Promise<File>;
+    }
+  | { readonly name: string; readonly error: LocalFileError };
 
 export interface LocalFileHandlers {
   onText(name: string, content: string): void;
-  onMedia(name: string, file: File, kind: MediaKind): void;
+  onMedia(name: string, media: File | StreamedMedia, kind: MediaKind): void;
   onError(name: string, error: LocalFileError): void;
 }
 
@@ -21,21 +34,23 @@ export function localFileOf(file: File): LocalFile {
   return {
     name: file.name,
     size: file.size,
+    media: file,
     read: () => Promise.resolve(file),
   };
 }
 
-type ReadResult =
+type OpenResult =
   | { readonly text: string }
-  | { readonly media: File; readonly kind: MediaKind }
+  | { readonly media: File | StreamedMedia; readonly kind: MediaKind }
   | { readonly error: LocalFileError };
 
-async function readLocalFile(file: LocalFile): Promise<ReadResult> {
+async function resolveLocalFile(file: LocalFile): Promise<OpenResult> {
+  if ("error" in file) return { error: file.error };
   const kind = mediaKind(file.name);
-  if (kind === null && file.size > FILE_MAX_BYTES) return { error: "tooLarge" };
+  if (kind !== null) return { media: file.media, kind };
+  if (file.size > FILE_MAX_BYTES) return { error: "tooLarge" };
   try {
-    const read = await file.read();
-    return kind === null ? { text: await read.text() } : { media: read, kind };
+    return { text: await (await file.read()).text() };
   } catch {
     return { error: "readFailed" };
   }
@@ -50,9 +65,9 @@ export async function openLocalFiles(
   handlers: LocalFileHandlers,
 ): Promise<void> {
   for (const file of files) {
-    const read = await readLocalFile(file);
-    if ("error" in read) handlers.onError(file.name, read.error);
-    else if ("text" in read) handlers.onText(file.name, read.text);
-    else handlers.onMedia(file.name, read.media, read.kind);
+    const opened = await resolveLocalFile(file);
+    if ("error" in opened) handlers.onError(file.name, opened.error);
+    else if ("text" in opened) handlers.onText(file.name, opened.text);
+    else handlers.onMedia(file.name, opened.media, opened.kind);
   }
 }

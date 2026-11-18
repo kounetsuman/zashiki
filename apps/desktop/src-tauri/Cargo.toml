@@ -19,7 +19,7 @@ tauri-build = { version = "2", features = [] }
 # webview-data-url: ローディング/エラーページを data: URL で表示するため（issue #38）
 # devtools: 配布（release）ビルドでも WebView の web inspector を有効化可能にするため（issue #310）。
 #   debug ビルドは feature 無しでも有効なので、release で効かせるためだけに付ける。
-tauri = { version = "2", features = ["webview-data-url", "devtools"] }
+tauri = { version = "2", features = ["webview-data-url", "devtools", "protocol-asset"] }
 # 実行中セッション/エージェント/バックグラウンドシェルがある時、quit 前に確認ダイアログを出す（issue #65）。
 tauri-plugin-dialog = "2"
 # config.json（~/.zashiki/config.json）の debug フラグ読み取り用（issue #310）。server と同じ設定ファイル。

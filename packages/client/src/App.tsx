@@ -140,6 +140,7 @@ import { type MediaKind, mediaKind } from "./viewer/media.js";
 import {
   type LocalFileError,
   openLocalFiles,
+  type StreamedMedia,
 } from "./viewer/open-local-files.js";
 import {
   viewerKeysUnderPath,
@@ -619,8 +620,8 @@ export function App({
     [openViewerTab, openExternalViewer],
   );
   const openExternalMediaFile = useCallback(
-    (name: string, file: File, kind: MediaKind): void => {
-      openViewerTab(openExternalMedia(name, file, kind));
+    (name: string, media: File | StreamedMedia, kind: MediaKind): void => {
+      openViewerTab(openExternalMedia(name, media, kind));
       setViewerFocusNonce((n) => n + 1);
     },
     [openViewerTab, openExternalMedia],

@@ -31,7 +31,6 @@ const MEDIA_TYPES: ReadonlyMap<string, MediaType> = new Map([
   ["ogg", { kind: "audio", mime: "audio/ogg" }],
   ["oga", { kind: "audio", mime: "audio/ogg" }],
   ["opus", { kind: "audio", mime: "audio/ogg" }],
-  ["caf", { kind: "audio", mime: "audio/x-caf" }],
   ["pdf", { kind: "pdf", mime: "application/pdf" }],
 ] satisfies [string, MediaType][]);
 
