@@ -17,7 +17,7 @@ Main Area
 └ Cockpit View — shows a Cockpit Terminal | a Viewer (one per Cockpit Tab)
      └ Cockpit Terminal — the durable unit; a Claude Session (sid) runs inside it
           ├ CockpitTerminalState — waiting_input / running / running_bg_agent / idle / watching / no_claude / exited / starting / unknown
-          ├ Background Activity — runningSubagents / shellsRunning / vitestRunning / limited (orthogonal flags)
+          ├ Background Activity — runningSubagents / shellsRunning / monitorsRunning / vitestRunning / limited (orthogonal flags)
           ├ menuOpen — orthogonal flag; a Claude Code menu/overlay overrides the state glyph with a gear
           ├ apiError — orthogonal flag; a turn that ended on an API error overrides an idle state glyph
           └ term / termId — the xterm.js render slot (attaches to a Cockpit Terminal)

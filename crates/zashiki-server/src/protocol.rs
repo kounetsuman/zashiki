@@ -286,6 +286,10 @@ pub struct CockpitTerminalInfo {
     /// or unfetched (older servers).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shells_running: Option<u32>,
+    /// Number of running command-based Monitors (Claude Code's background watchers). Orthogonal to the
+    /// primary state (meaningful in any state). Absent when zero or unfetched (older servers).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitors_running: Option<u32>,
     /// Number of running vitest processes in this session's process subtree — the sustained signal for
     /// which worktree's tests are eating the CPU. Orthogonal to the primary state (meaningful in any
     /// state). Absent when zero or unfetched (older servers).
@@ -889,6 +893,7 @@ mod tests {
                 active: true,
                 running_subagents: None,
                 shells_running: None,
+                monitors_running: None,
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
@@ -1035,6 +1040,7 @@ mod tests {
                 active: true,
                 running_subagents: Some(3),
                 shells_running: None,
+                monitors_running: None,
                 vitest_running: None,
                 limited: false,
                 menu_open: false,
@@ -1066,6 +1072,7 @@ mod tests {
             active: false,
             running_subagents: None,
             shells_running: None,
+            monitors_running: None,
             vitest_running: None,
             limited: false,
             menu_open: false,
@@ -1092,6 +1099,7 @@ mod tests {
             active: false,
             running_subagents: None,
             shells_running: Some(2),
+            monitors_running: None,
             vitest_running: None,
             limited: false,
             menu_open: false,
@@ -1102,6 +1110,14 @@ mod tests {
         let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"shellsRunning":2}"#;
         assert_eq!(to_json(&info), json);
         assert_eq!(serde_json::from_str::<CockpitTerminalInfo>(json).unwrap(), info);
+    }
+
+    #[test]
+    fn session_info_round_trips_monitors_running() {
+        let json = r#"{"cockpitTerminalId":"@1","name":"repo","org":"o","repo":"repo","state":"idle","title":null,"active":false,"monitorsRunning":2}"#;
+        let info: CockpitTerminalInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.monitors_running, Some(2));
+        assert!(serde_json::to_string(&info).unwrap().contains(r#""monitorsRunning":2"#));
     }
 
     #[test]
@@ -1118,6 +1134,7 @@ mod tests {
             active: true,
             running_subagents: None,
             shells_running: None,
+            monitors_running: None,
             vitest_running: Some(4),
             limited: false,
             menu_open: false,
@@ -1145,6 +1162,7 @@ mod tests {
             active: false,
             running_subagents: None,
             shells_running: None,
+            monitors_running: None,
             vitest_running: None,
             limited: false,
             menu_open: false,
@@ -1172,6 +1190,7 @@ mod tests {
             active: true,
             running_subagents: None,
             shells_running: None,
+            monitors_running: None,
             vitest_running: None,
             limited: false,
             menu_open: false,
@@ -1222,6 +1241,7 @@ mod tests {
             active: false,
             running_subagents: None,
             shells_running: None,
+            monitors_running: None,
             vitest_running: None,
             limited: false,
             menu_open: false,
@@ -1281,6 +1301,7 @@ mod tests {
             active: false,
             running_subagents: None,
             shells_running: None,
+            monitors_running: None,
             vitest_running: None,
             limited: false,
             menu_open: false,

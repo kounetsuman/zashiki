@@ -28,6 +28,7 @@ const API_ERROR_ICON = "cloud_off";
 // Activity-chip glyphs. These sit beside the state glyph as chips, not overlaid on it.
 export const BG_AGENT_GLYPH = "robot_2";
 const SHELL_GLYPH = "terminal";
+const MONITOR_GLYPH = "monitor_heart";
 const VITEST_GLYPH = "science";
 
 // Reaching the usage limit overlays this top-right badge on the state glyph. Orthogonal to the state.
@@ -92,12 +93,13 @@ export function StateIcon({
   );
 }
 
-/** Concurrent background activity as chips: agent follows runningSubagents, shell follows shellsRunning, vitest follows vitestRunning; all are orthogonal attributes, so a session that also reads as running does not hide any. */
+/** Concurrent background activity as chips: agent follows runningSubagents, shell follows shellsRunning, monitor follows monitorsRunning, vitest follows vitestRunning; all are orthogonal attributes, so a session that also reads as running does not hide any. */
 export function ActivityChips({ session }: { session: CockpitTerminalInfo }) {
   const { t } = useTranslation();
   const agentCount = session.runningSubagents ?? 0;
   const showAgent = agentCount > 0;
   const shellCount = session.shellsRunning ?? 0;
+  const monitorCount = session.monitorsRunning ?? 0;
   const vitestCount = session.vitestRunning ?? 0;
   return (
     <>
@@ -121,6 +123,17 @@ export function ActivityChips({ session }: { session: CockpitTerminalInfo }) {
             {SHELL_GLYPH}
           </span>
           {shellCount}
+        </span>
+      )}
+      {monitorCount > 0 && (
+        <span
+          className="session-activity session-activity-monitor"
+          title={t("sessionList.monitorCountTitle")}
+        >
+          <span className="material-symbols-outlined session-activity-glyph">
+            {MONITOR_GLYPH}
+          </span>
+          {monitorCount}
         </span>
       )}
       {vitestCount > 0 && (
