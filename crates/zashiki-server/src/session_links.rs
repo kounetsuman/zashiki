@@ -193,8 +193,8 @@ fn trim_url(mut url: &str) -> &str {
     url
 }
 
-/// The link a URL is listed as: a GitHub pull request or issue, whatever sub-page, collapses to its
-/// canonical URL.
+/// The link a URL is listed as: a GitHub pull request or issue, whatever sub-page or letter case,
+/// collapses to its canonical lowercase URL.
 fn classify(url: &str) -> (String, SessionLinkKind, Option<GithubLinkRef>) {
     match github_ref(url) {
         Some((kind, path, github)) => (
@@ -226,8 +226,8 @@ fn github_ref(url: &str) -> Option<(SessionLinkKind, &'static str, GithubLinkRef
     };
     let number = segments.next()?.parse::<u64>().ok()?;
     let github = GithubLinkRef {
-        owner: owner.to_string(),
-        repo: repo.to_string(),
+        owner: owner.to_ascii_lowercase(),
+        repo: repo.to_ascii_lowercase(),
         number,
     };
     Some((kind, path, github))
@@ -554,6 +554,19 @@ mod tests {
                     Some(&GithubLinkRef { owner: "o".into(), repo: "r".into(), number: 12 })
                 ),
             ]
+        );
+    }
+
+    #[test]
+    fn github_owner_and_repo_are_matched_without_regard_to_case() {
+        let links = session_links(&jsonl(&[user(json!(
+            "https://github.com/Kounetsuman/Zashiki/pull/5 https://GitHub.com/kounetsuman/zashiki/pull/5/files"
+        ))]));
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].url, "https://github.com/kounetsuman/zashiki/pull/5");
+        assert_eq!(
+            links[0].github,
+            Some(GithubLinkRef { owner: "kounetsuman".into(), repo: "zashiki".into(), number: 5 })
         );
     }
 
