@@ -457,6 +457,7 @@ mod tests {
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
             projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(std::env::temp_dir())),
+            github_details: Arc::default(),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             notify_history: true,

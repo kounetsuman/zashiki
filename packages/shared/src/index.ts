@@ -195,6 +195,8 @@ export {
   type FocusResponse,
   focusRequestSchema,
   focusResponseSchema,
+  type GithubState,
+  githubStateSchema,
   type HealthResponse,
   type HookEventKind,
   type HookEventRequest,

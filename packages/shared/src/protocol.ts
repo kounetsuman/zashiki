@@ -855,6 +855,11 @@ export const sessionLinkKindSchema = z.enum(["pr", "issue", "other"]);
 
 export type SessionLinkKind = z.infer<typeof sessionLinkKindSchema>;
 
+/** `merged` is only ever a pull request's. */
+export const githubStateSchema = z.enum(["open", "closed", "merged"]);
+
+export type GithubState = z.infer<typeof githubStateSchema>;
+
 /** A GitHub pull request or issue link's `url` is canonical, whatever sub-page was seen. */
 export const sessionLinkSchema = z.object({
   url: z.string(),
@@ -865,13 +870,21 @@ export const sessionLinkSchema = z.object({
   /** A title already known from the transcript (a WebSearch result's title). */
   title: z.string().optional(),
   github: z
-    .object({ owner: z.string(), repo: z.string(), number: z.number().int() })
+    .object({
+      owner: z.string(),
+      repo: z.string(),
+      number: z.number().int(),
+      /** Looked up only when the links are fetched with `details=1`. */
+      title: z.string().optional(),
+      /** A state this client does not know leaves the row neutral rather than failing the list. */
+      state: githubStateSchema.optional().catch(undefined),
+    })
     .optional(),
 });
 
 export type SessionLink = z.infer<typeof sessionLinkSchema>;
 
-/** `GET /api/cockpit-terminals/links?id=`: newest appearance first. */
+/** `GET /api/cockpit-terminals/links?id=[&details=1]`: newest appearance first. */
 export const sessionLinksResponseSchema = z.object({
   links: z.array(sessionLinkSchema),
 });

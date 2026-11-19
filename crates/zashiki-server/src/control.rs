@@ -79,6 +79,8 @@ pub struct ControlServices {
     pub session_models: Arc<crate::session_model_store::SessionModelStore>,
     /// Transcript reads made on request (the session links), apart from the poller's own adapter.
     pub projects: Arc<crate::claude_projects::ClaudeProjectsAdapter>,
+    /// GitHub titles and states for the session links, shared so lookups are cached across requests.
+    pub github_details: Arc<crate::github_details::GithubDetailsCache>,
     /// The ping interval for WS liveness monitoring (default `HEARTBEAT_INTERVAL`; tests shorten it).
     pub heartbeat: Duration,
     /// The destination for hooks notifications (ZK_NOTIFY; default web).
@@ -206,6 +208,7 @@ mod tests {
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
                 projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(std::env::temp_dir())),
+                github_details: Arc::default(),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 notify_history: true,
@@ -288,6 +291,7 @@ mod tests {
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
                 projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(std::env::temp_dir())),
+                github_details: Arc::default(),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 notify_history: true,
@@ -311,6 +315,7 @@ mod tests {
                 hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
                 session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
                 projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(std::env::temp_dir())),
+                github_details: Arc::default(),
                 heartbeat: Duration::from_secs(30),
                 notify_mode: crate::hooks::NotifyMode::Web,
                 notify_history: true,

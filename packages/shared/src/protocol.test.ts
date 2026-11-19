@@ -778,6 +778,47 @@ describe("cockpit terminal REST responses", () => {
     expect(parsed.links).toHaveLength(1);
   });
 
+  it("parses a GitHub link's title and state once the server has them", () => {
+    const github = {
+      owner: "o",
+      repo: "r",
+      number: 7,
+      title: "Add links",
+      state: "merged",
+    };
+    const body = {
+      links: [
+        {
+          url: "https://github.com/o/r/pull/7",
+          tab: "conversation",
+          kind: "pr",
+          source: "user",
+          github,
+        },
+      ],
+    };
+    expect(sessionLinksResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it("drops a GitHub state the wire does not define but keeps the link", () => {
+    const parsed = sessionLinksResponseSchema.parse({
+      links: [
+        {
+          url: "https://github.com/o/r/pull/7",
+          tab: "conversation",
+          kind: "pr",
+          source: "user",
+          github: { owner: "o", repo: "r", number: 7, state: "draft" },
+        },
+      ],
+    });
+    expect(parsed.links[0]?.github).toEqual({
+      owner: "o",
+      repo: "r",
+      number: 7,
+    });
+  });
+
   it("rejects a tab or kind the wire does not define", () => {
     const link = {
       url: "https://example.com/",

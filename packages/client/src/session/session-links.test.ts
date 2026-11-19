@@ -5,6 +5,7 @@ import {
   distinctLinkCount,
   filterChips,
   groupLinks,
+  linkIconColor,
   linksInTab,
   linkText,
   selectableFilter,
@@ -114,6 +115,12 @@ describe("linkText", () => {
     });
   });
 
+  it("uses a GitHub link's real title and moves its repository and number below", () => {
+    const titled = pr(12);
+    titled.github = { owner: "o", repo: "r", number: 12, title: "Add links" };
+    expect(linkText(titled)).toEqual({ title: "Add links", detail: "o/r #12" });
+  });
+
   it("names another link by its host and shows the rest of the URL below", () => {
     expect(
       linkText(other("https://docs.example.com/guide/start?x=1#top")),
@@ -147,5 +154,34 @@ describe("linkText", () => {
       title: "https://",
       detail: "https://",
     });
+  });
+});
+
+describe("linkIconColor", () => {
+  function withState(
+    link: SessionLink,
+    state: "open" | "closed" | "merged" | undefined,
+  ): SessionLink {
+    return { ...link, github: { owner: "o", repo: "r", number: 1, state } };
+  }
+
+  it("colours open pull requests and issues green", () => {
+    expect(linkIconColor(withState(pr(1), "open"))).toBe("#98c379");
+    expect(linkIconColor(withState(issue(1), "open"))).toBe("#98c379");
+  });
+
+  it("colours a merged pull request and a closed issue purple", () => {
+    expect(linkIconColor(withState(pr(1), "merged"))).toBe("#c678dd");
+    expect(linkIconColor(withState(issue(1), "closed"))).toBe("#c678dd");
+  });
+
+  it("colours a closed pull request red", () => {
+    expect(linkIconColor(withState(pr(1), "closed"))).toBe("#e06c75");
+  });
+
+  it("leaves the colour to the stylesheet while the state is unknown and for other links", () => {
+    expect(linkIconColor(pr(1))).toBeUndefined();
+    expect(linkIconColor(withState(issue(1), undefined))).toBeUndefined();
+    expect(linkIconColor(other("https://example.com/"))).toBeUndefined();
   });
 });

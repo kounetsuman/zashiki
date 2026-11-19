@@ -15,9 +15,12 @@ export interface CockpitTerminalsApi {
     signal?: AbortSignal,
   ): Promise<CockpitTerminalLastActivityResponse>;
   tail(cockpitTerminalId: string, signal?: AbortSignal): Promise<string[]>;
+  /** `details` adds GitHub titles and states as far as the server has looked them up, and starts
+   * looking up the rest; leave it off for polls that only need the count. */
   links(
     cockpitTerminalId: string,
     signal?: AbortSignal,
+    options?: { details?: boolean },
   ): Promise<SessionLink[]>;
 }
 
@@ -47,8 +50,9 @@ export function createCockpitTerminalsApi(
       );
       return body.lines;
     },
-    async links(cockpitTerminalId, signal) {
+    async links(cockpitTerminalId, signal, options) {
       const query = new URLSearchParams({ id: cockpitTerminalId });
+      if (options?.details === true) query.set("details", "1");
       const body = sessionLinksResponseSchema.parse(
         await getJson(`/api/cockpit-terminals/links?${query}`, signal),
       );

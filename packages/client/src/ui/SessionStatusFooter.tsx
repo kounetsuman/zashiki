@@ -5,7 +5,7 @@ import {
   type SessionUsage,
   type UsageBeforeCompaction,
 } from "@zashiki/shared";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { distinctLinkCount } from "../session/session-links.js";
@@ -39,6 +39,8 @@ export interface SessionStatusFooterProps {
   onCopyLink?: (url: string) => void;
   /** Called once the links popover closes, to hand focus back to the terminal. */
   onLinksClosed?: () => void;
+  /** Whether the links popover is showing, including closed when the footer itself goes away. */
+  onLinksOpenChange?: (open: boolean) => void;
 }
 
 const DASH = "–";
@@ -58,10 +60,16 @@ export function SessionStatusFooter({
   links = [],
   onCopyLink = () => undefined,
   onLinksClosed = () => undefined,
+  onLinksOpenChange,
 }: SessionStatusFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
   const [linksOpen, setLinksOpen] = useState(false);
+  useEffect(() => {
+    if (!linksOpen || onLinksOpenChange === undefined) return;
+    onLinksOpenChange(true);
+    return () => onLinksOpenChange(false);
+  }, [linksOpen, onLinksOpenChange]);
   const closeLinks = () => {
     setLinksOpen(false);
     onLinksClosed();

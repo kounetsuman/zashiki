@@ -130,11 +130,18 @@ pub(crate) async fn cockpit_terminal_tail(
     }
 }
 
-/// `GET /api/cockpit-terminals/links?id=`. The links seen by the Claude Session running in a Cockpit
-/// Terminal (empty until one is detected).
+#[derive(Deserialize)]
+pub(crate) struct LinksQuery {
+    id: String,
+    details: Option<String>,
+}
+
+/// `GET /api/cockpit-terminals/links?id=[&details=1]`. The links seen by the Claude Session running in
+/// a Cockpit Terminal (empty until one is detected). `details=1` adds the GitHub titles and states
+/// cached so far and starts looking up the rest, without waiting for them.
 pub(crate) async fn cockpit_terminal_links(
     State(state): State<AppState>,
-    Query(query): Query<CockpitTerminalQuery>,
+    Query(query): Query<LinksQuery>,
 ) -> Response {
     let Some(control) = state.control.as_ref() else {
         return json_error(
@@ -145,10 +152,13 @@ pub(crate) async fn cockpit_terminal_links(
     if control.sessions.get(&query.id).await.is_none() {
         return json_error(StatusCode::NOT_FOUND, "no such cockpit terminal");
     }
-    let links = match control.hub.claude_session_of(&query.id) {
+    let mut links = match control.hub.claude_session_of(&query.id) {
         Some((cwd, sid)) => control.projects.session_links(&cwd, &sid).await,
         None => Vec::new(),
     };
+    if query.details.as_deref() == Some("1") {
+        control.github_details.annotate(&mut links);
+    }
     Json(SessionLinksResponse { links }).into_response()
 }
 
@@ -157,6 +167,8 @@ pub(crate) async fn cockpit_terminal_links(
 #[cfg(test)]
 mod sessions_persist_rest_tests {
     use crate::control::{ConfigView, ControlHub, ControlServices};
+    use crate::github_details::{GithubDetails, GithubDetailsCache};
+    use crate::protocol::GithubState;
     use crate::session_launch::{plan_new_session, plan_to_config};
     use crate::session_registry::{SessionMeta, SessionRegistry};
     use crate::status_poller::StateSnapshot;
@@ -202,6 +214,7 @@ mod sessions_persist_rest_tests {
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
             projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(projects_root)),
+            github_details: Arc::default(),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             notify_history: true,
@@ -456,9 +469,21 @@ mod sessions_persist_rest_tests {
         snapshot: StateSnapshot,
         projects_root: &std::path::Path,
     ) -> axum::Router {
+        links_app_looking_up(dir, sessions, snapshot, projects_root, Arc::default())
+    }
+
+    fn links_app_looking_up(
+        dir: &std::path::Path,
+        sessions: Arc<SessionRegistry>,
+        snapshot: StateSnapshot,
+        projects_root: &std::path::Path,
+        github_details: Arc<GithubDetailsCache>,
+    ) -> axum::Router {
+        let mut services = services_seeing(sessions, snapshot, projects_root.to_path_buf());
+        services.github_details = github_details;
         build_router(ServerConfig {
             expected_token: Some(secrecy::SecretString::new("t".to_string())),
-            control: Some(services_seeing(sessions, snapshot, projects_root.to_path_buf())),
+            control: Some(services),
             saves_dir: Some(dir.to_path_buf()),
             ..Default::default()
         })
@@ -502,6 +527,71 @@ mod sessions_persist_rest_tests {
                 "github": {"owner": "o", "repo": "r", "number": 7},
             }]})
         );
+        sessions.shutdown_all().await;
+    }
+
+    fn write_links_transcript(projects: &std::path::Path, line: &str) {
+        let project_dir = projects.join(crate::jsonl::claude_project_dir_name(LINKS_CWD));
+        std::fs::create_dir_all(&project_dir).unwrap();
+        std::fs::write(project_dir.join(format!("{LINKS_SID}.jsonl")), line).unwrap();
+    }
+
+    #[tokio::test]
+    async fn links_carry_github_titles_only_when_details_are_asked_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        write_links_transcript(
+            projects.path(),
+            r#"{"type":"user","message":{"content":"https://github.com/o/r/pull/7"}}"#,
+        );
+        let lookups = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = Arc::clone(&lookups);
+        let github_details = Arc::new(GithubDetailsCache::with_fetch(
+            Arc::new(move |_| {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                Box::pin(async {
+                    Some(GithubDetails {
+                        title: "Add links".into(),
+                        state: GithubState::Merged,
+                        is_pull_request: true,
+                    })
+                })
+            }),
+            Arc::new(std::time::Instant::now),
+        ));
+        let sessions = sessions_running("sleep 5").await;
+        let app = links_app_looking_up(
+            dir.path(),
+            sessions.clone(),
+            snapshot_with_claude("t1", Some(LINKS_SID)),
+            projects.path(),
+            github_details,
+        );
+        let github_of = |body: &str| {
+            serde_json::from_str::<serde_json::Value>(body).unwrap()["links"][0]["github"].clone()
+        };
+
+        let (_, plain) = send(app.clone(), "GET", "/api/cockpit-terminals/links?id=t1", "").await;
+        assert_eq!(github_of(&plain), serde_json::json!({"owner": "o", "repo": "r", "number": 7}));
+        assert_eq!(lookups.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        let detailed_uri = "/api/cockpit-terminals/links?id=t1&details=1";
+        let (_, first) = send(app.clone(), "GET", detailed_uri, "").await;
+        assert_eq!(github_of(&first)["title"], serde_json::Value::Null);
+        let mut found = serde_json::Value::Null;
+        for _ in 0..100 {
+            let (_, body) = send(app.clone(), "GET", detailed_uri, "").await;
+            found = github_of(&body);
+            if found.get("title").is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert_eq!(
+            found,
+            serde_json::json!({"owner": "o", "repo": "r", "number": 7, "title": "Add links", "state": "merged"})
+        );
+        assert_eq!(lookups.load(std::sync::atomic::Ordering::SeqCst), 1);
         sessions.shutdown_all().await;
     }
 

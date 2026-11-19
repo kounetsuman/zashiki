@@ -428,7 +428,12 @@ export function App({
       : undefined;
   const activeSessionUsage = activeSession?.usage ?? null;
   const activeSessionModel = activeSession?.model;
-  const activeSessionLinks = useSessionLinks(cockpitTerminalsApi, activeSess);
+  const [sessionLinksOpen, setSessionLinksOpen] = useState(false);
+  const activeSessionLinks = useSessionLinks(
+    cockpitTerminalsApi,
+    activeSess,
+    sessionLinksOpen,
+  );
   const activeSessionAccent =
     activeSession !== undefined
       ? resolveOrgColor(activeSession.org, orgColors)
@@ -1349,6 +1354,7 @@ export function App({
               links={activeSessionLinks}
               onCopyLink={copySessionLink}
               onLinksClosed={store.focusTerminal}
+              onLinksOpenChange={setSessionLinksOpen}
             />
           )}
         </div>

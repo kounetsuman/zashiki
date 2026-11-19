@@ -321,7 +321,10 @@
       "sourceAssistant": "Claude",
       "empty": "この会話にはまだリンクが出ていません",
       "copy": "リンクをコピー",
-      "open": "ブラウザで開く"
+      "open": "ブラウザで開く",
+      "stateOpen": "オープン",
+      "stateMerged": "マージ済み",
+      "stateClosed": "クローズ済み"
     }
   },
   "update": {
