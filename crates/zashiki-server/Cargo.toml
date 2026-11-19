@@ -8,7 +8,7 @@ description = "デスクトップアプリのバックエンドとなる独立 R
 
 [dependencies]
 axum = { version = "0.7", features = ["ws"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "sync", "time", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "process", "sync", "time", "signal", "fs", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 # rg --json（JSONL）のパース。transcript(jsonl) のイベント読みにも使う。
 # preserve_order: ~/.claude/settings.json をユーザーのキー順のまま読み書きするため（無変更登録が
@@ -53,6 +53,8 @@ secrecy = "0.8"
 trash = "5"
 # Decodes Shift_JIS / EUC-JP text files for the viewer (the WHATWG decoders browsers use).
 encoding_rs = "0.8"
+# Turns a file read chunk by chunk into the body of a streamed `/api/file` response.
+futures-util = "0.3"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
@@ -63,4 +65,3 @@ tempfile = "3"
 filetime = "0.2"
 # /ws/control の結線を実 WS クライアントで検証する。
 tokio-tungstenite = "0.24"
-futures-util = "0.3"

@@ -114,7 +114,7 @@ const fakeSearchApi: SearchApi = {
 };
 
 const fakeFilesApi: FilesApi = {
-  read: () => Promise.resolve(""),
+  read: () => Promise.resolve({ content: "", version: null }),
   mediaUrl: (repoPath, file) => `/api/media?repoPath=${repoPath}&file=${file}`,
 };
 

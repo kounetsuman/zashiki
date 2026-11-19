@@ -6,8 +6,12 @@ import type { FilesApi } from "../api/files.js";
 import { viewerKey } from "../viewer/viewer-model.js";
 import { useViewer } from "./useViewer.js";
 
+function text(content: string, version: string | null = null) {
+  return { content, version };
+}
+
 const filesApi: FilesApi = {
-  read: () => Promise.resolve(""),
+  read: () => Promise.resolve({ content: "", version: null }),
   mediaUrl: (repoPath, file) => `/api/media?repoPath=${repoPath}&file=${file}`,
 };
 
@@ -153,7 +157,9 @@ describe("useViewer media", () => {
 
 describe("useViewer media text", () => {
   it("reads a repo media file as text only when first switched to it", async () => {
-    const read = vi.fn<FilesApi["read"]>(() => Promise.resolve("\u0000raw"));
+    const read = vi.fn<FilesApi["read"]>(() =>
+      Promise.resolve(text("\u0000raw")),
+    );
     const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
     let key = "";
     act(() => {
@@ -168,6 +174,7 @@ describe("useViewer media text", () => {
       "a.png",
       "utf8",
       expect.anything(),
+      undefined,
     );
     expect(result.current.buffers[key]).toMatchObject({
       preview: true,
@@ -228,7 +235,7 @@ describe("useViewer encoding", () => {
   it("setEncoding re-reads the file with the encoding, and the polls keep using it", async () => {
     vi.useFakeTimers();
     const read = vi.fn<FilesApi["read"]>((_repo, _file, encoding) =>
-      Promise.resolve(`as ${encoding}`),
+      Promise.resolve(text(`as ${encoding}`)),
     );
     const key = viewerKey("/repo", "data.csv");
     const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
@@ -267,7 +274,7 @@ describe("useViewer encoding switches", () => {
         new Promise((resolve, reject) => {
           pending.push({
             encoding,
-            settle: (c) => (c instanceof Error ? reject(c) : resolve(c)),
+            settle: (c) => (c instanceof Error ? reject(c) : resolve(text(c))),
           });
         }),
     );
@@ -345,6 +352,70 @@ describe("useViewer encoding switches", () => {
     });
     expect(pending.map((p) => p.encoding)).toEqual(["euc_jp"]);
     expect(result.current.buffers[key]?.encoding).toBe("euc_jp");
+  });
+});
+
+describe("useViewer polling", () => {
+  const key = viewerKey("/repo", "big.html");
+
+  it("a poll sends the version it has and keeps the content when the file is unchanged", async () => {
+    vi.useFakeTimers();
+    const read = vi
+      .fn<FilesApi["read"]>()
+      .mockResolvedValueOnce(text("v1", "tag-1"))
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(text("v2", "tag-2"))
+      .mockResolvedValue(null);
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.html");
+    });
+    const loaded = result.current.buffers[key];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.buffers[key]).toBe(loaded);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.buffers[key]?.content).toBe("v2");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(read.mock.calls.map((c) => c[4])).toEqual([
+      undefined,
+      "tag-1",
+      "tag-1",
+      "tag-2",
+    ]);
+    vi.useRealTimers();
+  });
+
+  it("after a failed read the next poll asks for the content again", async () => {
+    vi.useFakeTimers();
+    const read = vi
+      .fn<FilesApi["read"]>()
+      .mockResolvedValueOnce(text("v1", "tag-1"))
+      .mockResolvedValue(text("v1", "tag-1"));
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.html");
+    });
+    read.mockRejectedValueOnce(new Error("fs error"));
+    await act(async () => {
+      result.current.setEncoding(key, "shift_jis");
+    });
+    expect(result.current.buffers[key]?.status).toBe("error");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(read.mock.calls.map((c) => c[4])).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    expect(result.current.buffers[key]?.status).toBe("ready");
+    vi.useRealTimers();
   });
 });
 

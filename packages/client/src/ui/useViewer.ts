@@ -82,6 +82,8 @@ export function useViewer(
   const buffersRef = useRef(buffers);
   buffersRef.current = buffers;
   const readSeqRef = useRef<Record<string, number>>({});
+  // The version each ready buffer's content was read at, so a poll of an unchanged file transfers nothing.
+  const versionsRef = useRef<Record<string, string>>({});
   // Keys whose latest non-silent read has not settled yet: a poll superseding it reports its error instead.
   const awaitingVisibleReadRef = useRef<Set<string>>(new Set());
   const objectUrlsRef = useRef<Record<string, string>>({});
@@ -107,17 +109,22 @@ export function useViewer(
       if (!silent) awaitingVisibleReadRef.current.add(key);
       const ctrl = new AbortController();
       const timer = window.setTimeout(() => ctrl.abort(), FILE_READ_TIMEOUT_MS);
+      const knownVersion = silent ? versionsRef.current[key] : undefined;
       return filesApi
-        .read(repoPath, relPath, encoding, ctrl.signal)
+        .read(repoPath, relPath, encoding, ctrl.signal, knownVersion)
         .then(
-          (content) => {
+          (read) => {
             if (readSeqRef.current[key] !== seq) return;
             awaitingVisibleReadRef.current.delete(key);
-            setBuffers((cur) => bufferLoaded(cur, key, content));
+            if (read === null) return;
+            if (read.version === null) delete versionsRef.current[key];
+            else versionsRef.current[key] = read.version;
+            setBuffers((cur) => bufferLoaded(cur, key, read.content));
           },
           (e: unknown) => {
             if (readSeqRef.current[key] !== seq) return;
             const visible = awaitingVisibleReadRef.current.delete(key);
+            if (visible) delete versionsRef.current[key];
             setBuffers((cur) => {
               if (!visible || cur[key]?.status === "ready") return cur;
               return bufferFailed(cur, key, readErrorMessage(e));
@@ -184,6 +191,7 @@ export function useViewer(
     (key: string): void => {
       revokeObjectUrl(key);
       delete droppedFilesRef.current[key];
+      delete versionsRef.current[key];
       setBuffers((prev) => dropBuffer(prev, key));
     },
     [revokeObjectUrl],

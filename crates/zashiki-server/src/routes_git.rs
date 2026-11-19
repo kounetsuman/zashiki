@@ -750,7 +750,7 @@ mod git_file_rest_tests {
         let fx = fixture();
         let (s, b) = read(app(&fx), &fx.repo_a, "README.md").await;
         assert_eq!(s, StatusCode::OK);
-        assert_eq!(b, r##"{"content":"# hello\n"}"##);
+        assert_eq!(b, "# hello\n");
 
         // Nonexistent -> 404
         let (s, _) = read(app(&fx), &fx.repo_a, "nope.txt").await;
@@ -784,7 +784,7 @@ mod git_file_rest_tests {
         };
         let (s, b) = request(app(&fx), &query("shift_jis"), Some(OK_HOST), &[]).await;
         assert_eq!(s, StatusCode::OK);
-        assert_eq!(b, r#"{"content":"名前\n"}"#);
+        assert_eq!(b, "名前\n");
         // Every value of TEXT_ENCODINGS (packages/shared/src/files.ts) is accepted.
         for encoding in ["utf8", "shift_jis", "euc_jp"] {
             let (s, _) = request(app(&fx), &query(encoding), Some(OK_HOST), &[]).await;
@@ -793,6 +793,70 @@ mod git_file_rest_tests {
         let (s, b) = request(app(&fx), &query("latin9"), Some(OK_HOST), &[]).await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
         assert_eq!(b, r#"{"error":"unknown encoding"}"#);
+    }
+
+    async fn read_with(
+        app: axum::Router,
+        repo_path: &str,
+        file: &str,
+        if_none_match: Option<&str>,
+    ) -> (StatusCode, axum::http::HeaderMap, String) {
+        let q = format!(
+            "/api/file?token=t&repoPath={}&file={}",
+            urlencoding(repo_path),
+            urlencoding(file)
+        );
+        let mut builder = HttpRequest::builder().uri(&q).header("host", OK_HOST);
+        if let Some(tag) = if_none_match {
+            builder = builder.header("if-none-match", tag);
+        }
+        let resp = app
+            .oneshot(builder.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        let status = resp.status();
+        let headers = resp.headers().clone();
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        (status, headers, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    #[tokio::test]
+    async fn file_read_is_not_resent_while_the_version_the_client_has_is_current() {
+        let fx = fixture();
+        let (s, h, b) = read_with(app(&fx), &fx.repo_a, "README.md", None).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b, "# hello\n");
+        assert_eq!(h["content-type"], "text/plain; charset=utf-8");
+        assert_eq!(h["cache-control"], "no-store");
+        let tag = h["etag"].to_str().unwrap().to_string();
+
+        let (s, h, b) = read_with(app(&fx), &fx.repo_a, "README.md", Some(&tag)).await;
+        assert_eq!(s, StatusCode::NOT_MODIFIED);
+        assert_eq!(b, "");
+        assert_eq!(h["etag"].to_str().unwrap(), tag);
+
+        let readme = Path::new(&fx.repo_a).join("README.md");
+        std::fs::write(&readme, "# changed\n").unwrap();
+        filetime::set_file_mtime(&readme, filetime::FileTime::from_unix_time(1_000_000, 0)).unwrap();
+        let (s, h, b) = read_with(app(&fx), &fx.repo_a, "README.md", Some(&tag)).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b, "# changed\n");
+        assert_ne!(h["etag"].to_str().unwrap(), tag);
+    }
+
+    #[tokio::test]
+    async fn file_read_streams_a_file_larger_than_one_chunk_whole() {
+        let fx = fixture();
+        let app = build_router(ServerConfig {
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
+            repos_conf: Some(fx.conf.clone()),
+            ..Default::default()
+        });
+        let content = "0123456789abcdef".repeat(20_000);
+        std::fs::write(Path::new(&fx.repo_a).join("long.txt"), &content).unwrap();
+        let (s, b) = read(app, &fx.repo_a, "long.txt").await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b, content);
     }
 
     #[cfg(unix)]
