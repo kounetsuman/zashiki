@@ -27,7 +27,7 @@ export interface ViewerBuffer {
   readonly preview: boolean;
   /** Content was supplied directly (e.g. a file dropped from Finder), not read from a repo. */
   readonly external?: boolean;
-  /** Present when the buffer is an image/video/PDF; the Viewer renders it from the URL. */
+  /** Present when the buffer is an image/video/audio/PDF; the Viewer renders it from the URL. */
   readonly media?: MediaSource;
 }
 
@@ -180,7 +180,7 @@ export function openExternalBuffer(
   };
 }
 
-/** Opens (or refreshes) a repo file rendered as image/video/PDF, streamed from `url` rather than read as text. */
+/** Opens (or refreshes) a repo file rendered as image/video/audio/PDF, streamed from `url` rather than read as text. */
 export function openMediaBuffer(
   bufs: ViewerBuffers,
   repoPath: string,
@@ -202,7 +202,7 @@ export function openMediaBuffer(
   };
 }
 
-/** Opens a dropped file rendered as image/video/PDF from an object `url` (no repo read). */
+/** Opens a dropped file rendered as image/video/audio/PDF from an object `url` (no repo read). */
 export function openExternalMediaBuffer(
   bufs: ViewerBuffers,
   key: string,

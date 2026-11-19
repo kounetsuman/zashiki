@@ -67,7 +67,7 @@ pub fn media_type_for(file: &str) -> Option<MediaType> {
         .map(|(_, media_type)| *media_type)
 }
 
-/// CSP for non-PDF media: inert for `<img>` / `<video>`, and stops an SVG opened as a page from
+/// CSP for non-PDF media: inert for `<img>` / `<video>` / `<audio>`, and stops an SVG opened as a page from
 /// running script or loading anything. It is left off PDFs because the sandbox could stop the
 /// WebView's built-in PDF viewer.
 pub const MEDIA_CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
