@@ -21,7 +21,6 @@
     "fileAssociations": [
       {
         "ext": ["md", "markdown"],
-        "contentTypes": ["net.daringfireball.markdown"],
         "name": "Markdown",
         "role": "Viewer",
         "rank": "Alternate"
