@@ -466,7 +466,7 @@ describe("Viewer", () => {
     expect(screen.queryByText("このファイルはプレビューできません")).toBeNull();
     expect(
       screen
-        .getByRole("button", { name: "プレビュー" })
+        .getByRole("button", { name: "テキスト" })
         .getAttribute("aria-pressed"),
     ).toBe("true");
   });

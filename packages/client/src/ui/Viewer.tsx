@@ -41,7 +41,7 @@ const TOGGLE_LABEL: Record<AlternateView, { show: string; hide: string }> = {
   markdownPreview: { show: "viewer.preview", hide: "viewer.code" },
   htmlPreview: { show: "viewer.preview", hide: "viewer.code" },
   table: { show: "viewer.table", hide: "viewer.text" },
-  binaryText: { show: "viewer.text", hide: "viewer.preview" },
+  binaryText: { show: "viewer.text", hide: "viewer.text" },
 };
 
 const NO_REMOTE_IMAGES: ReadonlySet<string> = new Set();
