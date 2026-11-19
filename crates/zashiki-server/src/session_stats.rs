@@ -60,10 +60,10 @@ pub fn session_events(jsonl: &str, cwd: &str) -> Vec<SessionEvent> {
                     events.push(tool_call(item, at, cwd));
                 }
             }
-            Some("system") => {
-                if entry.get("subtype").and_then(Value::as_str) == Some("compact_boundary") {
-                    events.push(compaction(&entry, at));
-                }
+            Some("system")
+                if entry.get("subtype").and_then(Value::as_str) == Some("compact_boundary") =>
+            {
+                events.push(compaction(&entry, at));
             }
             _ => {}
         }
