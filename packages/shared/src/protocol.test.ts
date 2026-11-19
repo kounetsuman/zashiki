@@ -873,6 +873,14 @@ describe("cockpit terminal REST responses", () => {
         },
         {
           at: 3,
+          kind: "command",
+          text: "sleep 99",
+          tool: "Bash",
+          target: "sleep",
+          outcome: "interrupted",
+        },
+        {
+          at: 4,
           kind: "compaction",
           text: "auto",
           preTokens: 162000,

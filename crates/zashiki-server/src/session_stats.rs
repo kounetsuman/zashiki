@@ -199,6 +199,14 @@ fn outcome_of(
             Some(SessionEventDeniedBy::Hook),
         );
     }
+    if text.starts_with(INTERRUPT_PREFIX)
+        || entry
+            .get("toolUseResult")
+            .and_then(Value::as_str)
+            .is_some_and(|r| r.starts_with(INTERRUPT_PREFIX))
+    {
+        return (SessionEventOutcome::Interrupted, None);
+    }
     if result.get("is_error").and_then(Value::as_bool) == Some(true) {
         (SessionEventOutcome::Failed, None)
     } else {
@@ -800,6 +808,28 @@ mod tests {
         ]);
         assert_eq!(event.outcome, Some(SessionEventOutcome::Failed));
         assert_eq!(event.denied_by, None);
+    }
+
+    #[test]
+    fn a_call_the_user_interrupted_is_interrupted_not_failed() {
+        let event = one(&[
+            tool_use("t1", "Bash", json!({"command": "sleep 99"})),
+            tool_result(
+                "t1",
+                json!("[Request interrupted by user for tool use]"),
+                true,
+            ),
+        ]);
+        assert_eq!(event.outcome, Some(SessionEventOutcome::Interrupted));
+        assert_eq!(event.denied_by, None);
+
+        let mut result = tool_result("t1", json!([{"type": "text", "text": "partial"}]), true);
+        result["toolUseResult"] = json!("[Request interrupted by user]");
+        let event = one(&[
+            tool_use("t1", "Bash", json!({"command": "sleep 99"})),
+            result,
+        ]);
+        assert_eq!(event.outcome, Some(SessionEventOutcome::Interrupted));
     }
 
     #[test]

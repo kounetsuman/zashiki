@@ -911,7 +911,12 @@ export const sessionEventKindSchema = z.enum([
 
 export type SessionEventKind = z.infer<typeof sessionEventKindSchema>;
 
-export const sessionEventOutcomeSchema = z.enum(["ok", "failed", "denied"]);
+export const sessionEventOutcomeSchema = z.enum([
+  "ok",
+  "failed",
+  "denied",
+  "interrupted",
+]);
 
 export type SessionEventOutcome = z.infer<typeof sessionEventOutcomeSchema>;
 

@@ -82,6 +82,13 @@ describe("summarize: commands", () => {
     expect(commands.failures).toBe(2);
   });
 
+  it("an interrupted command is a run but not a failure", () => {
+    const { commands } = summarize([
+      command("sleep 9", "sleep", "interrupted"),
+    ]);
+    expect(commands.rows).toEqual([{ key: "sleep", runs: 1, failures: 0 }]);
+  });
+
   it("a denied command is a run but not a failure", () => {
     const { commands } = summarize([command("rm -rf x", "rm", "denied")]);
     expect(commands.rows).toEqual([{ key: "rm", runs: 1, failures: 0 }]);
@@ -263,6 +270,7 @@ describe("isHighlighted", () => {
     expect(isHighlighted(command("x", "x", "failed"))).toBe(true);
     expect(isHighlighted(command("x", "x", "denied"))).toBe(true);
     expect(isHighlighted(command("x", "x", "ok"))).toBe(false);
+    expect(isHighlighted(command("x", "x", "interrupted"))).toBe(false);
     expect(isHighlighted(ev({ kind: "command" }))).toBe(false);
   });
 });

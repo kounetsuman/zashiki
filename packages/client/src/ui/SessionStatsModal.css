@@ -260,6 +260,11 @@
   background: var(--sst-bad-bg);
 }
 
+.sst-event-interrupted .sst-text,
+.sst-event-interrupted .sst-kind {
+  color: var(--modal-text-muted);
+}
+
 .sst-time {
   color: var(--modal-text-muted);
   font-family: var(--sst-mono);

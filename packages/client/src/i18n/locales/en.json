@@ -580,6 +580,7 @@
     "compactedBare": "context compacted",
     "running": "running",
     "failed": "failed",
+    "interrupted": "interrupted",
     "kind": {
       "prompt": "Prompt",
       "read": "Read",

@@ -372,6 +372,7 @@ function TimelineRow({ event }: { event: SessionEvent }) {
   }
   const classes = ["sst-event", `sst-kind-${event.kind}`];
   if (isHighlighted(event)) classes.push("sst-event-flagged");
+  if (event.outcome === "interrupted") classes.push("sst-event-interrupted");
   return (
     <li className={classes.join(" ")}>
       <span className="sst-time">{fmtClock(event.at)}</span>
@@ -390,6 +391,8 @@ function eventMeta(event: SessionEvent, t: (key: string) => string): string {
   if (event.outcome === "denied" && event.deniedBy !== undefined)
     parts.push(t(`sessionStats.deniedBy.${event.deniedBy}`));
   if (event.outcome === "failed") parts.push(t("sessionStats.failed"));
+  if (event.outcome === "interrupted")
+    parts.push(t("sessionStats.interrupted"));
   if (event.durationMs !== undefined)
     parts.push(fmtEventDuration(event.durationMs));
   return parts.join(" · ");

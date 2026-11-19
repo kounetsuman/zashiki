@@ -580,6 +580,7 @@
     "compactedBare": "コンテキスト圧縮",
     "running": "実行中",
     "failed": "失敗",
+    "interrupted": "中断",
     "kind": {
       "prompt": "プロンプト",
       "read": "読込",

@@ -113,6 +113,24 @@ describe("SessionStatsModal", () => {
     ).toBeTruthy();
   });
 
+  it("mutes an interrupted call instead of flagging it", () => {
+    renderModal([
+      {
+        at: 1,
+        kind: "command",
+        tool: "Bash",
+        text: "sleep 99",
+        target: "sleep",
+        outcome: "interrupted",
+      },
+    ]);
+    fireEvent.click(screen.getByRole("radio", { name: "タイムライン" }));
+    const row = document.querySelector(".sst-event") as HTMLElement;
+    expect(row.classList.contains("sst-event-interrupted")).toBe(true);
+    expect(row.classList.contains("sst-event-flagged")).toBe(false);
+    expect(row.querySelector(".sst-meta")?.textContent).toBe("中断");
+  });
+
   it("leaves out a compaction's missing token count", () => {
     renderModal([
       { at: 1, kind: "compaction", text: "auto", preTokens: 162_000 },

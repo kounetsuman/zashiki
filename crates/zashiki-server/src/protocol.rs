@@ -690,6 +690,7 @@ pub enum SessionEventOutcome {
     Ok,
     Failed,
     Denied,
+    Interrupted,
 }
 
 /// Who stopped a denied tool call: the user, a PreToolUse hook, the auto-mode classifier, or a
