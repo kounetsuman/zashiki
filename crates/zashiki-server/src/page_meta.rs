@@ -99,13 +99,24 @@ fn tag_starts<'a>(lower: &'a str, name: &'a str) -> impl Iterator<Item = usize> 
 
 type Attrs = Vec<(String, String)>;
 
-/// The attributes of each `<name …>` start tag, names lower-cased and values entity-decoded.
+/// The longest start tag read; a longer one is read up to here.
+const TAG_MAX_BYTES: usize = 8 * 1024;
+
+/// The attributes of each `<name …>` start tag, names lower-cased and values entity-decoded. A tag
+/// is read no further than the next `<`, so unclosed tags cost no more than the body's length.
 fn start_tags<'a>(
     html: &'a str,
     lower: &'a str,
     name: &'a str,
 ) -> impl Iterator<Item = Attrs> + 'a {
-    tag_starts(lower, name).map(move |i| parse_attrs(&html[i + name.len() + 1..]))
+    tag_starts(lower, name).map(move |i| {
+        let rest = &html[i + name.len() + 1..];
+        let mut end = rest.find('<').unwrap_or(rest.len()).min(TAG_MAX_BYTES);
+        while !rest.is_char_boundary(end) {
+            end -= 1;
+        }
+        parse_attrs(&rest[..end])
+    })
 }
 
 fn parse_attrs(rest: &str) -> Attrs {
@@ -240,6 +251,7 @@ fn decode_entities(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn the_title_element_gives_the_title() {
@@ -364,6 +376,26 @@ mod tests {
         assert_eq!(
             parse_attrs(r#" ="x" rel="icon">"#),
             vec![("rel".to_string(), "icon".to_string())]
+        );
+    }
+
+    #[test]
+    fn a_body_of_unclosed_tags_is_read_in_linear_time() {
+        let page_max = 256 * 1024;
+        let bodies = [
+            "<meta ".repeat(page_max / 6),
+            "<link rel=\"".repeat(page_max / 11),
+            format!("<meta content=\"{}", "x".repeat(page_max)),
+        ];
+        let started = std::time::Instant::now();
+        for html in &bodies {
+            assert_eq!(page_title(html), None);
+            favicon_url(&page(), Some(html));
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
         );
     }
 
