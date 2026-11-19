@@ -527,6 +527,37 @@ describe("useViewer large files", () => {
     vi.useRealTimers();
   });
 
+  it("a poll does not start while the Open anyway read is still running", async () => {
+    vi.useFakeTimers();
+    let finish = (): void => undefined;
+    const read = sizedReads(
+      1.5 * MIB,
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve(text("all"));
+        }),
+    );
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    act(() => {
+      result.current.openAnyway(key);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    await act(async () => finish());
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "ready",
+      content: "all",
+    });
+    vi.useRealTimers();
+  });
+
   it("a file over the maximum says so, with the maximum, and cannot be opened anyway", async () => {
     const read = sizedReads(3 * MIB, () => Promise.resolve(text("all")));
     const { result } = renderHook(() =>

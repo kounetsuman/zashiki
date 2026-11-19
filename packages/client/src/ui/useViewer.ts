@@ -319,6 +319,10 @@ export function useViewer(
       if (buf === undefined || !shouldPollBuffer(buf) || gaveUpForSize(buf)) {
         return;
       }
+      // A full read can take most of the timeout; superseding it would restart it from the beginning.
+      const readingAnyway =
+        buf.openAnyway === true && awaitingVisibleReadRef.current.has(key);
+      if (readingAnyway) return;
       inflight = true;
       const encoding = encodingOf(buf);
       void loadFile(key, buf.repoPath, buf.relPath, encoding, true).finally(
