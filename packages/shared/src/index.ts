@@ -57,8 +57,8 @@ export {
   type ScoredFile,
 } from "./file-list.js";
 export {
+  type DashboardReadResponse,
   FILE_MAX_BYTES,
-  type FileReadResponse,
   type FileWriteRequest,
   type FileWriteResponse,
   fileWriteRequestSchema,
