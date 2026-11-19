@@ -54,6 +54,22 @@ fn set_dashboard_origin(dashboard: tauri::State<'_, DashboardOrigin>, url: Strin
 #[derive(Default)]
 struct DashboardOrigin(Mutex<Option<String>>);
 
+/// Opens a web link the user clicked in the default browser. The page sends its links here because
+/// macOS WebKit puts a link that opens a new window through the navigation guard first, which
+/// refuses it before the new-window handler is reached.
+#[tauri::command]
+fn open_in_browser(
+    guard: tauri::State<'_, Arc<navigation::Guard>>,
+    url: String,
+) -> Result<(), String> {
+    let url: tauri::Url = url.parse().map_err(|_| "not a URL".to_string())?;
+    if !navigation::opens_in_browser(&url, guard.app_origins()) {
+        return Err("not a web page outside the app".to_string());
+    }
+    navigation::open_in_browser(&url);
+    Ok(())
+}
+
 /// Opens the macOS share sheet for `text`, pointing at `anchor` (the Share button's rect).
 #[cfg(target_os = "macos")]
 #[tauri::command]
@@ -227,6 +243,7 @@ fn main() {
         .manage(DashboardOrigin::default())
         .invoke_handler(tauri::generate_handler![
             open_devtools,
+            open_in_browser,
             pick_and_read_files,
             report_memo_status,
             report_memo_saved,
@@ -259,6 +276,7 @@ fn main() {
             let guard = Arc::new(navigation::Guard::new(navigation::app_origins(
                 &base, cfg.port,
             )));
+            app.manage(Arc::clone(&guard));
             let new_window_guard = Arc::clone(&guard);
             let guard_handle = app.handle().clone();
             let loading: tauri::Url = pages::data_url(&pages::loading_html())

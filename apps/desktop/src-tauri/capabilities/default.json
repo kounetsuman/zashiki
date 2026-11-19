@@ -7,6 +7,7 @@
   "permissions": [
     "core:default",
     "allow-open-devtools",
+    "allow-open-in-browser",
     "allow-pick-and-read-files",
     "allow-report-memo-status",
     "allow-report-memo-saved",
