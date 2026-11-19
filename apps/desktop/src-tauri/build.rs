@@ -16,6 +16,10 @@ fn main() {
             "report_memo_saved",
             "set_dashboard_origin",
             "share_text",
+            "open_popout",
+            "focus_popout",
+            "close_popout",
+            "list_popouts",
             "take_opened_files",
         ]),
     ))

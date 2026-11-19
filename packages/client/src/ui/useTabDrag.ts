@@ -1,4 +1,8 @@
 import { type DragEvent, useState } from "react";
+import { dropOutsideWindow, type ScreenPoint } from "../lib/pop-out.js";
+
+/** Not text, so a tab let go over another app is refused there rather than dropped in as its key. */
+export const TAB_DRAG_TYPE = "application/x-zashiki-tab";
 
 export interface TabDrag {
   dragKey: string | null;
@@ -7,16 +11,18 @@ export interface TabDrag {
   markDropTarget(key: string, e: DragEvent): void;
   onDragLeave(key: string): void;
   onDrop(key: string, e: DragEvent): void;
-  endDrag(): void;
+  onDragEnd(key: string, e: DragEvent): void;
 }
 
 /**
- * Drag & drop tab reordering. WebKit (Tauri WKWebView) only fires drop when the default is prevented
- * on both dragenter and dragover, so markDropTarget always suppresses the default and only updates the
- * visual highlight/dropEffect for other tabs.
+ * Drag & drop tab reordering, and (with `onDragOut`) letting a tab go outside the window. WebKit
+ * (Tauri WKWebView) only fires drop when the default is prevented on both dragenter and dragover, so
+ * markDropTarget always suppresses the default and only updates the visual highlight/dropEffect for
+ * other tabs.
  */
 export function useTabDrag(
   onReorder?: (fromKey: string, toKey: string) => void,
+  onDragOut?: (key: string, at: ScreenPoint) => void,
 ): TabDrag {
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
@@ -30,7 +36,7 @@ export function useTabDrag(
     setDragKey(key);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", key);
+      e.dataTransfer.setData(TAB_DRAG_TYPE, key);
     }
   };
 
@@ -51,6 +57,22 @@ export function useTabDrag(
     endDrag();
   };
 
+  const onDragEnd = (key: string, e: DragEvent): void => {
+    endDrag();
+    if (onDragOut === undefined) return;
+    const at = dropOutsideWindow(
+      {
+        dropEffect: e.dataTransfer?.dropEffect ?? "none",
+        clientX: e.clientX,
+        clientY: e.clientY,
+        screenX: e.screenX,
+        screenY: e.screenY,
+      },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    if (at !== null) onDragOut(key, at);
+  };
+
   return {
     dragKey,
     dragOverKey,
@@ -58,6 +80,6 @@ export function useTabDrag(
     markDropTarget,
     onDragLeave,
     onDrop,
-    endDrag,
+    onDragEnd,
   };
 }

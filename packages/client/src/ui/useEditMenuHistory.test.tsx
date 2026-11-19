@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useEditMenuHistory } from "./useEditMenuHistory.js";
 
 const listeners = new Map<string, () => void>();
+const listenTargets = new Map<string, unknown>();
 const unlistenSpy = vi.fn();
 const isTauriMock = vi.fn(() => true);
 const runEditorHistory =
@@ -15,13 +16,22 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: (event: string, handler: () => void) => {
+  listen: (
+    event: string,
+    handler: () => void,
+    options?: { target?: unknown },
+  ) => {
     listeners.set(event, handler);
+    listenTargets.set(event, options?.target);
     return Promise.resolve(() => {
       listeners.delete(event);
       unlistenSpy();
     });
   },
+}));
+
+vi.mock("@tauri-apps/api/webviewWindow", () => ({
+  getCurrentWebviewWindow: () => ({ label: "popout-4031" }),
 }));
 
 vi.mock("./editor-history.js", () => ({
@@ -49,6 +59,17 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useEditMenuHistory", () => {
+  it("hears only the commands sent to its own window", () => {
+    render(<Harness />);
+
+    for (const event of ["zashiki:edit-undo", "zashiki:edit-redo"]) {
+      expect(listenTargets.get(event)).toEqual({
+        kind: "WebviewWindow",
+        label: "popout-4031",
+      });
+    }
+  });
+
   it("applies the shell's Undo to the element holding the caret", () => {
     render(<Harness />);
 

@@ -1,5 +1,5 @@
 use tauri::menu::{Menu, MenuEvent, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 const UNDO_ITEM_ID: &str = "edit-undo";
 const REDO_ITEM_ID: &str = "edit-redo";
@@ -51,12 +51,18 @@ fn edit_submenu_position<R: Runtime>(menu: &Menu<R>) -> tauri::Result<Option<usi
     Ok(None)
 }
 
-/// Hands the two forwarded commands to the page. Every other item is the platform's own to run.
+/// Hands the two forwarded commands to the page of the window in front, so an Undo pressed in a
+/// pop-out window never edits the main window's Memo. Every other item is the platform's own to run.
 pub fn on_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     let Some(forwarded) = forwarded_event(event.id().as_ref()) else {
         return;
     };
-    if let Err(e) = app.emit(forwarded, ()) {
+    let target = app
+        .webview_windows()
+        .into_iter()
+        .find(|(_, window)| window.is_focused().unwrap_or(false))
+        .map_or_else(|| "main".to_string(), |(label, _)| label);
+    if let Err(e) = app.emit_to(target.as_str(), forwarded, ()) {
         eprintln!("zashiki: {forwarded} の送信に失敗しました: {e}");
     }
 }
@@ -88,7 +94,10 @@ mod tests {
         let hook = include_str!("../../../../packages/client/src/ui/useEditMenuHistory.ts");
 
         for event in [UNDO_EVENT, REDO_EVENT] {
-            assert!(hook.contains(event), "useEditMenuHistory must listen for {event}");
+            assert!(
+                hook.contains(event),
+                "useEditMenuHistory must listen for {event}"
+            );
         }
     }
 }
