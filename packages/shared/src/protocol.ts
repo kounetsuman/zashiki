@@ -880,6 +880,10 @@ export const sessionLinkSchema = z.object({
       state: githubStateSchema.optional().catch(undefined),
     })
     .optional(),
+  /** The linked page's own title, fetched for a link to another site with `details=1`. */
+  pageTitle: z.string().optional(),
+  /** Present once the page's favicon is cached: the `origin` for `/api/session-links/favicon`. */
+  faviconOrigin: z.string().optional(),
 });
 
 export type SessionLink = z.infer<typeof sessionLinkSchema>;

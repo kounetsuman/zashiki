@@ -47,3 +47,12 @@ describe("createCockpitTerminalsApi.links", () => {
     await expect(api.links("@1")).rejects.toThrow("HTTP 404");
   });
 });
+
+describe("createCockpitTerminalsApi.faviconUrl", () => {
+  it("points an image at a cached favicon, with the token in the query", () => {
+    const api = createCockpitTerminalsApi("http://host", "tok", vi.fn());
+    expect(api.faviconUrl("https://example.com")).toBe(
+      "http://host/api/session-links/favicon?origin=https%3A%2F%2Fexample.com&token=tok",
+    );
+  });
+});

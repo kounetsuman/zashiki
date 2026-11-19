@@ -182,6 +182,10 @@
   color: #bbb;
 }
 
+img.sl-row-icon {
+  object-fit: contain;
+}
+
 .sl-row-text {
   min-width: 0;
   display: flex;

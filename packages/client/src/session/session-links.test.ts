@@ -149,6 +149,22 @@ describe("linkText", () => {
     ).toEqual({ title: "Rust Lang", detail: "www.rust-lang.org" });
   });
 
+  it("uses another site's fetched page title over its host", () => {
+    expect(
+      linkText({ ...other("https://example.com/a"), pageTitle: "Example" }),
+    ).toEqual({ title: "Example", detail: "example.com/a" });
+  });
+
+  it("keeps a title known from the transcript over a fetched one", () => {
+    expect(
+      linkText({
+        ...other("https://www.rust-lang.org/"),
+        title: "Rust Lang",
+        pageTitle: "Rust Programming Language",
+      }).title,
+    ).toBe("Rust Lang");
+  });
+
   it("falls back to the raw URL when it cannot be parsed", () => {
     expect(linkText(other("https://"))).toEqual({
       title: "https://",

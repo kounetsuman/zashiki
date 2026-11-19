@@ -7,6 +7,7 @@ import {
 } from "@zashiki/shared";
 
 import { authHeaders } from "../lib/token.js";
+import { sessionLinkFaviconUrl } from "../lib/url.js";
 
 /** The read REST for how long each Cockpit Terminal has been left alone, what it last showed, and
  * the links its Claude Session has seen. */
@@ -15,13 +16,16 @@ export interface CockpitTerminalsApi {
     signal?: AbortSignal,
   ): Promise<CockpitTerminalLastActivityResponse>;
   tail(cockpitTerminalId: string, signal?: AbortSignal): Promise<string[]>;
-  /** `details` adds GitHub titles and states as far as the server has looked them up, and starts
-   * looking up the rest; leave it off for polls that only need the count. */
+  /** `details` adds GitHub titles and states and other sites' page titles and favicons as far as the
+   * server has looked them up, and starts looking up the rest; leave it off for polls that only need
+   * the count. */
   links(
     cockpitTerminalId: string,
     signal?: AbortSignal,
     options?: { details?: boolean },
   ): Promise<SessionLink[]>;
+  /** The image URL for a link's `faviconOrigin`. */
+  faviconUrl(origin: string): string;
 }
 
 export function createCockpitTerminalsApi(
@@ -57,6 +61,9 @@ export function createCockpitTerminalsApi(
         await getJson(`/api/cockpit-terminals/links?${query}`, signal),
       );
       return body.links;
+    },
+    faviconUrl(origin) {
+      return sessionLinkFaviconUrl(base, origin, token);
     },
   };
 }

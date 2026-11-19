@@ -2089,6 +2089,7 @@ dependencies = [
  "tracing-subscriber",
  "trash",
  "ureq",
+ "url",
  "uuid",
  "vt100",
  "zashiki-core",

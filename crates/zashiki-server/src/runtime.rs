@@ -198,6 +198,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         session_models,
         projects,
         github_details: Arc::default(),
+        page_details: Arc::default(),
         heartbeat: crate::control::HEARTBEAT_INTERVAL,
         notify_mode: config.notify_mode,
         notify_history: config.notify_history,

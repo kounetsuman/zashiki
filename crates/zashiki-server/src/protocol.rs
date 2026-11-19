@@ -654,6 +654,12 @@ pub struct SessionLink {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub github: Option<GithubLinkRef>,
+    /// The linked page's own title, fetched for a link to another site.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_title: Option<String>,
+    /// Present once the page's favicon is cached: the `origin` to ask `/api/session-links/favicon` for.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub favicon_origin: Option<String>,
 }
 
 /// Response for `GET /api/cockpit-terminals/links?id=`: newest appearance first.

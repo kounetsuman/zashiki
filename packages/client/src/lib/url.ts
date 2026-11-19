@@ -28,3 +28,14 @@ export function mediaUrl(
   const q = new URLSearchParams({ repoPath, file, token });
   return `${base.origin}/api/media?${q.toString()}`;
 }
+
+/** A cached session link favicon for `<img>`; the token rides as a query for the same reason as `mediaUrl`. */
+export function sessionLinkFaviconUrl(
+  httpBase: string,
+  origin: string,
+  token: string,
+): string {
+  const base = new URL(httpBase);
+  const q = new URLSearchParams({ origin, token });
+  return `${base.origin}/api/session-links/favicon?${q.toString()}`;
+}

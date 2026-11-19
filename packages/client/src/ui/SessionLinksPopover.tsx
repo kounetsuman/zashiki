@@ -51,6 +51,7 @@ const ISSUE_ICON_PATHS = [
 
 export interface SessionLinksPopoverProps {
   links: readonly SessionLink[];
+  faviconUrl?: (origin: string) => string;
   onClose(): void;
   onCopy(url: string): void;
 }
@@ -62,6 +63,7 @@ export interface SessionLinksPopoverProps {
  */
 export function SessionLinksPopover({
   links,
+  faviconUrl,
   onClose,
   onCopy,
 }: SessionLinksPopoverProps) {
@@ -167,7 +169,12 @@ export function SessionLinksPopover({
                 </h3>
                 <ul className="sl-rows">
                   {group.links.map((link) => (
-                    <LinkRow key={link.url} link={link} onCopy={onCopy} />
+                    <LinkRow
+                      key={link.url}
+                      link={link}
+                      faviconUrl={faviconUrl}
+                      onCopy={onCopy}
+                    />
                   ))}
                 </ul>
               </section>
@@ -181,9 +188,11 @@ export function SessionLinksPopover({
 
 function LinkRow({
   link,
+  faviconUrl,
   onCopy,
 }: {
   link: SessionLink;
+  faviconUrl?: (origin: string) => string;
   onCopy(url: string): void;
 }) {
   const { t } = useTranslation();
@@ -196,7 +205,7 @@ function LinkRow({
         target="_blank"
         rel="noreferrer"
       >
-        <LinkIcon link={link} />
+        <LinkIcon link={link} faviconUrl={faviconUrl} />
         <span className="sl-row-text">
           <span className="sl-row-title">{title}</span>
           <span className="sl-row-detail">{detail}</span>
@@ -237,9 +246,37 @@ function sourceLabel(link: SessionLink, t: (key: string) => string): string {
     : t("footer.links.sourceAssistant");
 }
 
-function LinkIcon({ link }: { link: SessionLink }) {
+function LinkIcon({
+  link,
+  faviconUrl,
+}: {
+  link: SessionLink;
+  faviconUrl?: (origin: string) => string;
+}) {
   const { t } = useTranslation();
+  const [failedFavicon, setFailedFavicon] = useState<{
+    link: SessionLink;
+    src: string;
+  } | null>(null);
   if (link.kind === "other") {
+    const src =
+      link.faviconOrigin === undefined || faviconUrl === undefined
+        ? undefined
+        : faviconUrl(link.faviconOrigin);
+    // Each poll hands over new link objects, so a failure is retried on the next one.
+    const failed = failedFavicon?.link === link && failedFavicon.src === src;
+    if (src !== undefined && !failed) {
+      return (
+        <img
+          className="sl-row-icon"
+          src={src}
+          width={16}
+          height={16}
+          alt=""
+          onError={() => setFailedFavicon({ link, src })}
+        />
+      );
+    }
     return (
       <span
         className="material-symbols-outlined sl-row-icon"

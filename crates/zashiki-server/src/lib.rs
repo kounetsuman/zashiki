@@ -32,6 +32,7 @@ pub mod orphan_detector;
 pub mod poller_driver;
 pub mod poller_ports_pty;
 pub mod protocol;
+pub mod public_destination;
 pub mod ps;
 pub mod shells;
 pub mod pty_host;
@@ -40,6 +41,9 @@ pub mod memo;
 pub mod memo_watch;
 pub mod notes;
 pub mod notes_watch;
+pub mod page_details;
+pub mod page_fetch;
+pub mod page_meta;
 pub mod page_policy;
 pub mod repos;
 pub mod repos_watch;
@@ -105,7 +109,8 @@ use crate::routes_files::files_route;
 use crate::routes_hooks::{focus_session, hooks_event, hooks_statusline};
 use crate::routes_search::search_route;
 use crate::routes_sessions::{
-    cockpit_terminal_links, cockpit_terminal_tail, cockpit_terminals_last_activity, sessions_restore, sessions_save,
+    cockpit_terminal_links, cockpit_terminal_tail, cockpit_terminals_last_activity, session_link_favicon,
+    sessions_restore, sessions_save,
 };
 use crate::routes_ws::{activity, ws_control, ws_term};
 
@@ -208,6 +213,7 @@ pub fn build_router(config: ServerConfig) -> Router {
         )
         .route("/api/cockpit-terminals/tail", get(cockpit_terminal_tail))
         .route("/api/cockpit-terminals/links", get(cockpit_terminal_links))
+        .route("/api/session-links/favicon", get(session_link_favicon))
         .route("/api/hooks/event", post(hooks_event))
         .route("/api/hooks/statusline", post(hooks_statusline))
         .route("/api/focus", post(focus_session))

@@ -800,6 +800,22 @@ describe("cockpit terminal REST responses", () => {
     expect(sessionLinksResponseSchema.parse(body)).toEqual(body);
   });
 
+  it("parses another site's page title and favicon origin once the server has them", () => {
+    const body = {
+      links: [
+        {
+          url: "https://www.rust-lang.org/learn",
+          tab: "conversation",
+          kind: "other",
+          source: "assistant",
+          pageTitle: "Learn Rust",
+          faviconOrigin: "https://www.rust-lang.org",
+        },
+      ],
+    };
+    expect(sessionLinksResponseSchema.parse(body)).toEqual(body);
+  });
+
   it("drops a GitHub state the wire does not define but keeps the link", () => {
     const parsed = sessionLinksResponseSchema.parse({
       links: [

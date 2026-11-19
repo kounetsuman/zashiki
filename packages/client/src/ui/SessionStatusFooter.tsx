@@ -37,6 +37,8 @@ export interface SessionStatusFooterProps {
   /** The links the active Claude Session has seen, newest first. */
   links?: readonly SessionLink[];
   onCopyLink?: (url: string) => void;
+  /** The image URL for a link's `faviconOrigin`; without it every other-site link shows the generic icon. */
+  faviconUrl?: (origin: string) => string;
   /** Called once the links popover closes, to hand focus back to the terminal. */
   onLinksClosed?: () => void;
   /** Whether the links popover is showing, including closed when the footer itself goes away. */
@@ -59,6 +61,7 @@ export function SessionStatusFooter({
   onToggleBeforeCompaction,
   links = [],
   onCopyLink = () => undefined,
+  faviconUrl,
   onLinksClosed = () => undefined,
   onLinksOpenChange,
 }: SessionStatusFooterProps) {
@@ -80,6 +83,7 @@ export function SessionStatusFooter({
       {linksOpen && (
         <SessionLinksPopover
           links={links}
+          faviconUrl={faviconUrl}
           onCopy={onCopyLink}
           onClose={closeLinks}
         />
