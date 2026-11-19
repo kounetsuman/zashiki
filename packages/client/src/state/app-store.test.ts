@@ -165,6 +165,19 @@ describe("createAppStore", () => {
     expect(t.changes.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("marks the terminal list as known once the first state.sync arrives", () => {
+    const t = setup();
+    expect(t.store.getSnapshot().cockpitTerminalsSynced).toBe(false);
+    t.control.emit({
+      t: "state.sync",
+      cockpitTerminals: [],
+      orgs: [],
+      orgColors: {},
+      orgAliases: {},
+    });
+    expect(t.store.getSnapshot().cockpitTerminalsSynced).toBe(true);
+  });
+
   it("mirrors notes.sync into the snapshot (full replacement)", () => {
     const t = setup();
     t.control.emit({ t: "notes.sync", notes: { o: "# O\n- customer\n" } });

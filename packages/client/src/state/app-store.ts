@@ -42,6 +42,8 @@ const RESTART_ANSWERS: Record<string, string> = {
 /** State the App uses for rendering (the useSyncExternalStore snapshot). */
 export interface AppState {
   cockpitTerminals: CockpitTerminalInfo[];
+  /** Whether the first state.sync has arrived; until then the empty list means "not known yet". */
+  cockpitTerminalsSynced: boolean;
   orgs: string[];
   /** org name -> display color (declared alongside repos.conf). Unspecified orgs are absent and rendered with the default color. */
   orgColors: Record<string, string>;
@@ -177,6 +179,7 @@ export function newestAddedCockpitTerminalId(
 
 const INITIAL_STATE: AppState = {
   cockpitTerminals: [],
+  cockpitTerminalsSynced: false,
   orgs: [],
   orgColors: {},
   orgAliases: {},
@@ -273,6 +276,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
         // Advance the nonce at the same time as the auto-select so TerminalView reacts.
         setState({
           cockpitTerminals: m.cockpitTerminals,
+          cockpitTerminalsSynced: true,
           orgs: m.orgs,
           orgColors: m.orgColors,
           orgAliases: m.orgAliases,
@@ -286,6 +290,7 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
       } else {
         setState({
           cockpitTerminals: m.cockpitTerminals,
+          cockpitTerminalsSynced: true,
           orgs: m.orgs,
           orgColors: m.orgColors,
           orgAliases: m.orgAliases,

@@ -312,6 +312,7 @@ export function App({
   );
   const {
     cockpitTerminals,
+    cockpitTerminalsSynced,
     orgs,
     orgColors,
     orgAliases,
@@ -669,6 +670,7 @@ export function App({
   useOpenedFiles(
     (picked) => openPickedFiles(picked, openExternalFile, toastUnreadableFile),
     () => flashCopyToast(t("openFile.failed")),
+    cockpitTerminalsSynced,
   );
 
   const copyWithToast = useCallback(
