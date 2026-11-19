@@ -116,6 +116,7 @@ import { UsageLimitWarningDialog } from "./ui/UsageLimitWarningDialog.js";
 import { useAppKeyboardShortcuts } from "./ui/useAppKeyboardShortcuts.js";
 import { useAppTabs } from "./ui/useAppTabs.js";
 import { useBeforeUnloadGuard } from "./ui/useBeforeUnloadGuard.js";
+import { useBrowserLinks } from "./ui/useBrowserLinks.js";
 import { useClipboardCopy } from "./ui/useClipboardCopy.js";
 import { useClipboardEditEnabled } from "./ui/useClipboardEditEnabled.js";
 import { useCopyToast } from "./ui/useCopyToast.js";
@@ -594,6 +595,7 @@ export function App({
     memoSaver.flush,
   );
   useEditMenuHistory();
+  useBrowserLinks();
 
   // Delete (dismiss) notifications from the read tab; shared by the ACTIVITY and NOTIFICATION views.
   const deleteNotifications = useCallback(
