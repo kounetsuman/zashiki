@@ -3,6 +3,7 @@ use axum::http::{header, HeaderValue};
 use serde::Deserialize;
 
 use crate::app_state::AppState;
+use crate::media_type::MEDIA_CSP;
 use crate::protocol::{
     CockpitTerminalLastActivity, CockpitTerminalLastActivityResponse, CockpitTerminalTailResponse,
     SessionLinksResponse,
@@ -191,7 +192,7 @@ pub(crate) async fn session_link_favicon(
             res.headers_mut().insert(header::CONTENT_TYPE, content_type);
             res.headers_mut().insert(
                 header::CONTENT_SECURITY_POLICY,
-                HeaderValue::from_static("sandbox"),
+                HeaderValue::from_static(MEDIA_CSP),
             );
             res
         }
@@ -762,7 +763,10 @@ mod sessions_persist_rest_tests {
         let headers = resp.headers();
         assert_eq!(headers[axum::http::header::CONTENT_TYPE], "image/png");
         assert_eq!(headers[axum::http::header::X_CONTENT_TYPE_OPTIONS], "nosniff");
-        assert_eq!(headers[axum::http::header::CONTENT_SECURITY_POLICY], "sandbox");
+        assert_eq!(
+            headers[axum::http::header::CONTENT_SECURITY_POLICY],
+            crate::media_type::MEDIA_CSP
+        );
         let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
         assert_eq!(&bytes[..], b"PNGBYTES");
 
