@@ -264,7 +264,7 @@ const FONT_SAMPLE_LATIN_GLYPHS = [
 
 const FONT_SAMPLE_SIZES = [12, 16, 24, 36, 48, 72];
 
-/** Gives up on a font that never finishes loading, so the pane says so instead of loading forever. */
+/** After this long a still-loading font is reported as unloadable; it is still shown if it finishes later. */
 const FONT_LOAD_TIMEOUT_MS = 8000;
 
 let fontPreviewCount = 0;
@@ -284,34 +284,33 @@ function FontHost({ url }: { url: string }) {
   useEffect(() => {
     const face = new FontFace(nextFontPreviewFamily(), `url("${url}")`);
     let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timedOut = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error("font load timed out")),
-        FONT_LOAD_TIMEOUT_MS,
-      );
-    });
-    Promise.race([face.load(), timedOut])
-      .then(
-        () => {
-          if (!active) return;
-          document.fonts.add(face);
-          setLoaded({ url, family: face.family });
-        },
-        () => {
-          if (active) setFailedUrl(url);
-        },
-      )
-      .finally(() => clearTimeout(timer));
+    const timer = setTimeout(() => setFailedUrl(url), FONT_LOAD_TIMEOUT_MS);
+    face.load().then(
+      () => {
+        if (!active) return;
+        clearTimeout(timer);
+        document.fonts.add(face);
+        setLoaded({ url, family: face.family });
+      },
+      () => {
+        if (!active) return;
+        clearTimeout(timer);
+        setFailedUrl(url);
+      },
+    );
     return () => {
       active = false;
       clearTimeout(timer);
       document.fonts.delete(face);
     };
   }, [url]);
-  if (failedUrl === url)
-    return <div className="viewer-message">{t("viewer.fontUnsupported")}</div>;
-  if (loaded?.url !== url) return <Loading />;
+  if (loaded?.url !== url) {
+    return failedUrl === url ? (
+      <div className="viewer-message">{t("viewer.fontUnsupported")}</div>
+    ) : (
+      <Loading />
+    );
+  }
   const fontFamily = `"${loaded.family}"`;
   const glyphs = [...FONT_SAMPLE_LATIN_GLYPHS, t("viewer.fontSampleCjk")];
   return (

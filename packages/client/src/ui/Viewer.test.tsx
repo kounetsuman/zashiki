@@ -583,6 +583,33 @@ describe("Viewer", () => {
     expect(screen.getByText("このフォントは読み込めません")).toBeTruthy();
   });
 
+  it("shows a slow font once it finishes loading after the timeout", async () => {
+    vi.useFakeTimers();
+    let finish = noop;
+    stubFontLoading(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    expect(screen.getByText("このフォントは読み込めません")).toBeTruthy();
+    await act(async () => {
+      finish();
+    });
+    expect(screen.queryByText("このフォントは読み込めません")).toBeNull();
+    expect(
+      screen.getAllByText(
+        "The quick brown fox jumps over the lazy dog. いろはにほへと 色は匂へど",
+      ),
+    ).toHaveLength(6);
+  });
+
   it("removes the loaded font from the document when the tab closes", async () => {
     const { fonts } = stubFontLoading(async () => undefined);
     const { unmount } = render(
