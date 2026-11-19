@@ -19,6 +19,7 @@ import {
   saveViewerLineWrap,
 } from "../lib/viewer-line-wrap.js";
 import { isDelimitedText } from "../viewer/delimited.js";
+import { formatFileSize, type TooLargeFile } from "../viewer/large-file.js";
 import { renderMarkdown } from "../viewer/markdown.js";
 import { renderMermaidBlocks } from "../viewer/mermaid.js";
 import {
@@ -112,6 +113,8 @@ export interface ViewerProps {
   onEncodingChange?(encoding: TextEncoding): void;
   /** The copy button at the header's left edge copies the file's absolute path. */
   onCopyPath(): void;
+  /** Reads a file held back for its size (the button shown while it waits for confirmation). */
+  onOpenAnyway?(): void;
   /**
    * Request counter for focusing the viewer. Each time it changes, focuses the section.
    * App bumps it when a file is opened so opening a file focuses the viewer even on re-open
@@ -124,6 +127,49 @@ export interface ViewerProps {
   revealNonce?: number;
   /** Called once a pending reveal has been applied, so the owner can clear it (no re-scroll on remount). */
   onRevealed?(): void;
+}
+
+function TooLargeMessage({
+  tooLarge,
+  onOpenAnyway,
+}: {
+  tooLarge: TooLargeFile;
+  onOpenAnyway?(): void;
+}) {
+  const { t } = useTranslation();
+  if (tooLarge.reason === "failedAfterConfirm") {
+    return (
+      <div className="viewer-message viewer-error" role="alert">
+        {t("viewer.largeFileFailed")}
+      </div>
+    );
+  }
+  if (tooLarge.reason === "overMax") {
+    return (
+      <div className="viewer-message" role="status">
+        {t("viewer.largeFileOverMax", {
+          size: formatFileSize(tooLarge.size),
+          max: formatFileSize(tooLarge.maxBytes),
+        })}
+      </div>
+    );
+  }
+  return (
+    <div className="viewer-message viewer-large-file" role="status">
+      <span>
+        {t("viewer.largeFileConfirm", { size: formatFileSize(tooLarge.size) })}
+      </span>
+      {onOpenAnyway !== undefined && (
+        <button
+          type="button"
+          className="viewer-toggle viewer-open-anyway"
+          onClick={onOpenAnyway}
+        >
+          {t("viewer.openAnyway")}
+        </button>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -373,6 +419,7 @@ export function Viewer({
   onTogglePreview,
   onEncodingChange,
   onCopyPath,
+  onOpenAnyway,
   focusNonce = 0,
   revealLine,
   revealNonce,
@@ -610,6 +657,12 @@ export function Viewer({
           <div className="viewer-message viewer-error" role="alert">
             {t("viewer.openFailed", { error: buffer.error })}
           </div>
+        )}
+        {buffer.status === "tooLarge" && buffer.tooLarge !== undefined && (
+          <TooLargeMessage
+            tooLarge={buffer.tooLarge}
+            onOpenAnyway={onOpenAnyway}
+          />
         )}
         {buffer.status === "ready" && readyContent()}
       </div>

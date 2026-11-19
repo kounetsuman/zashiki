@@ -12,6 +12,7 @@ import {
   type CockpitTerminalInfo,
   type DashboardSettings,
   DEFAULT_DASHBOARD_SETTINGS,
+  DEFAULT_FILE_SIZE_LIMITS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   type ServerMessage,
@@ -345,6 +346,7 @@ describe("App", () => {
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
         memoEnabled: false,
         dashboard: DEFAULT_DASHBOARD_SETTINGS,
+        fileSizeLimits: DEFAULT_FILE_SIZE_LIMITS,
       }),
     );
     expect(i18n.language).toBe("en");
@@ -1210,6 +1212,7 @@ describe("App", () => {
       notifications: { ...DEFAULT_NOTIFICATION_SETTINGS, enabled },
       memoEnabled: false,
       dashboard: DEFAULT_DASHBOARD_SETTINGS,
+      fileSizeLimits: DEFAULT_FILE_SIZE_LIMITS,
     });
     act(() => control.emit(configSync(false)));
     expect(notifier.isEnabled()).toBe(false);
@@ -1980,6 +1983,7 @@ describe("App dashboard on launch", () => {
     footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
     notifications: DEFAULT_NOTIFICATION_SETTINGS,
     dashboard,
+    fileSizeLimits: DEFAULT_FILE_SIZE_LIMITS,
   });
 
   it("puts the configured page in front of the cockpit once the settings arrive, and Escape dismisses it", async () => {

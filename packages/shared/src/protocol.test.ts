@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_DASHBOARD_SETTINGS,
+  DEFAULT_FILE_SIZE_LIMITS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
 } from "./config.js";
@@ -329,6 +330,18 @@ describe("clientMessageSchema", () => {
         },
       },
     ],
+    [
+      {
+        t: "config.setFileSizeLimits",
+        fileSizeLimits: DEFAULT_FILE_SIZE_LIMITS,
+      },
+    ],
+    [
+      {
+        t: "config.setFileSizeLimits",
+        fileSizeLimits: { confirmBytes: 1_048_576, maxBytes: 2_097_152 },
+      },
+    ],
     [{ t: "update.check" }],
     [{ t: "update.perform" }],
     [{ t: "account.refresh", restartSessions: true }],
@@ -469,6 +482,7 @@ describe("serverMessageSchema", () => {
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
         dashboard: DEFAULT_DASHBOARD_SETTINGS,
+        fileSizeLimits: DEFAULT_FILE_SIZE_LIMITS,
       },
     ],
     [
@@ -508,6 +522,7 @@ describe("serverMessageSchema", () => {
           showOn: "wake",
           frequency: "once_per_day",
         },
+        fileSizeLimits: { confirmBytes: 5_242_880, maxBytes: 52_428_800 },
       },
     ],
     [{ t: "update.check.result", status: "available", version: "0.2.0" }],
@@ -561,7 +576,7 @@ describe("serverMessageSchema", () => {
     });
   });
 
-  it("defaults omitted config.sync updateCheck/language/accountUsage/memoEnabled/editor/footerThresholds/notifications/dashboard (compatible with old servers)", () => {
+  it("defaults omitted config.sync updateCheck/language/accountUsage/memoEnabled/editor/footerThresholds/notifications/dashboard/fileSizeLimits (compatible with old servers)", () => {
     expect(
       serverMessageSchema.parse({
         t: "config.sync",
@@ -578,6 +593,7 @@ describe("serverMessageSchema", () => {
       footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
       notifications: DEFAULT_NOTIFICATION_SETTINGS,
       dashboard: DEFAULT_DASHBOARD_SETTINGS,
+      fileSizeLimits: DEFAULT_FILE_SIZE_LIMITS,
     });
   });
 

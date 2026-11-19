@@ -1,19 +1,23 @@
-import type { TextEncoding } from "@zashiki/shared";
+import type { FileSizeLimits, TextEncoding } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
 import { readPickedFile } from "../lib/open-file-dialog.js";
+import { classifyReadFailure, formatFileSize } from "../viewer/large-file.js";
 import { audioContentType, type MediaKind } from "../viewer/media.js";
 import {
   bufferFailed,
   bufferLoaded,
+  bufferOpenAnyway,
   bufferSetEncoding,
   bufferShowText,
   bufferTogglePreview,
+  bufferTooLarge,
   closeBuffer as dropBuffer,
   encodingOf,
   externalMediaKey,
   externalTextKey,
+  gaveUpForSize,
   openBuffer,
   openExternalBuffer,
   openExternalMediaBuffer,
@@ -55,6 +59,8 @@ export interface Viewer {
   togglePreview(key: string): void;
   /** Re-reads a repo text file decoded with `encoding`, which later polls keep using. */
   setEncoding(key: string, encoding: TextEncoding): void;
+  /** Reads a file held back for its size in full, which later polls keep doing. */
+  openAnyway(key: string): void;
   /** Leaves the alternate rendering, so a line can be revealed in the text view. */
   showText(key: string): void;
   /** Absolute path of the buffer at key, or null when it is gone or external (no repo path). */
@@ -73,14 +79,18 @@ function typedMedia(name: string, file: File, kind: MediaKind): Blob {
  * even if the read hangs, and a per-key generation guard keeps a slow response from overwriting newer
  * content. The active buffer is re-read on an interval so external edits (from the claude code side)
  * are reflected; when the content is unchanged the buffer keeps its reference and does not re-render.
+ * A repo file over `limits.confirmBytes` waits for {@link Viewer.openAnyway} before it is read.
  */
 export function useViewer(
   filesApi: FilesApi,
   activeViewerKey: string | null,
+  limits: FileSizeLimits,
 ): Viewer {
   const [buffers, setBuffers] = useState<ViewerBuffers>({});
   const buffersRef = useRef(buffers);
   buffersRef.current = buffers;
+  const limitsRef = useRef(limits);
+  limitsRef.current = limits;
   const readSeqRef = useRef<Record<string, number>>({});
   // The version each ready buffer's content was read at, so a poll of an unchanged file transfers nothing.
   const versionsRef = useRef<Record<string, string>>({});
@@ -112,8 +122,14 @@ export function useViewer(
       const showsContent = buffersRef.current[key]?.status === "ready";
       const knownVersion =
         silent && showsContent ? versionsRef.current[key] : undefined;
+      const openedAnyway = buffersRef.current[key]?.openAnyway === true;
+      const limit = openedAnyway ? undefined : limitsRef.current.confirmBytes;
       return filesApi
-        .read(repoPath, relPath, encoding, ctrl.signal, knownVersion)
+        .read(repoPath, relPath, encoding, {
+          signal: ctrl.signal,
+          knownVersion,
+          limit,
+        })
         .then(
           (read) => {
             if (readSeqRef.current[key] !== seq) return;
@@ -127,9 +143,22 @@ export function useViewer(
             if (readSeqRef.current[key] !== seq) return;
             const visible = awaitingVisibleReadRef.current.delete(key);
             if (visible) delete versionsRef.current[key];
+            // A poll's size refusal means the file's size changed, so the tab shows the new size state.
+            const failure = classifyReadFailure(
+              e,
+              visible && openedAnyway,
+              limitsRef.current.maxBytes,
+            );
             setBuffers((cur) => {
-              if (!visible || cur[key]?.status === "ready") return cur;
-              return bufferFailed(cur, key, readErrorMessage(e));
+              if (!visible) {
+                return failure.tooLarge === null
+                  ? cur
+                  : bufferTooLarge(cur, key, failure.tooLarge);
+              }
+              if (cur[key]?.status === "ready") return cur;
+              return failure.tooLarge === null
+                ? bufferFailed(cur, key, readErrorMessage(failure.error))
+                : bufferTooLarge(cur, key, failure.tooLarge);
             });
           },
         )
@@ -221,11 +250,15 @@ export function useViewer(
         readFailed();
         return;
       }
-      void readPickedFile(file).then((picked) => {
+      const { maxBytes } = limitsRef.current;
+      void readPickedFile(file, maxBytes).then((picked) => {
         if ("content" in picked) {
           settle((cur) => bufferLoaded(cur, key, picked.content));
         } else if (picked.error === "tooLarge") {
-          const error = i18n.t("viewer.dropTooLarge", { name: buf.relPath });
+          const error = i18n.t("viewer.dropTooLarge", {
+            name: buf.relPath,
+            max: formatFileSize(maxBytes),
+          });
           settle((cur) => bufferFailed(cur, key, error));
         } else {
           readFailed();
@@ -260,6 +293,18 @@ export function useViewer(
     [loadFile],
   );
 
+  const openAnyway = useCallback(
+    (key: string): void => {
+      const buf = buffersRef.current[key];
+      if (buf?.tooLarge?.reason !== "confirm") return;
+      // Updated ahead of the render so the read below already skips the confirmation limit.
+      buffersRef.current = bufferOpenAnyway(buffersRef.current, key);
+      setBuffers((prev) => bufferOpenAnyway(prev, key));
+      void loadFile(key, buf.repoPath, buf.relPath, encodingOf(buf), false);
+    },
+    [loadFile],
+  );
+
   const showText = useCallback((key: string): void => {
     setBuffers((prev) => bufferShowText(prev, key));
   }, []);
@@ -277,7 +322,13 @@ export function useViewer(
     const tick = (): void => {
       if (inflight) return;
       const buf = buffersRef.current[key];
-      if (buf === undefined || !shouldPollBuffer(buf)) return;
+      if (buf === undefined || !shouldPollBuffer(buf) || gaveUpForSize(buf)) {
+        return;
+      }
+      // A full read can take most of the timeout; superseding it would restart it from the beginning.
+      const readingAnyway =
+        buf.openAnyway === true && awaitingVisibleReadRef.current.has(key);
+      if (readingAnyway) return;
       inflight = true;
       const encoding = encodingOf(buf);
       void loadFile(key, buf.repoPath, buf.relPath, encoding, true).finally(
@@ -306,6 +357,7 @@ export function useViewer(
     closeBuffer,
     togglePreview,
     setEncoding,
+    openAnyway,
     showText,
     pathOf,
   };

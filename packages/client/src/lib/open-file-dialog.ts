@@ -1,5 +1,4 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
-import { FILE_MAX_BYTES } from "@zashiki/shared";
 
 import type { FileDropError } from "../ui/useFileDrop.js";
 
@@ -8,9 +7,12 @@ export type PickedFile =
   | { name: string; content: string }
   | { name: string; error: FileDropError };
 
-/** Size-checks a picked File and reads it as text (shared by the browser fallback and tests). */
-export async function readPickedFile(file: File): Promise<PickedFile> {
-  if (file.size > FILE_MAX_BYTES) {
+/** Size-checks a picked File against `maxBytes` and reads it as text (shared by the browser fallback and tests). */
+export async function readPickedFile(
+  file: File,
+  maxBytes: number,
+): Promise<PickedFile> {
+  if (file.size > maxBytes) {
     return { name: file.name, error: "tooLarge" };
   }
   try {
@@ -32,7 +34,7 @@ export function openPickedFiles(
   }
 }
 
-function pickViaInput(): Promise<PickedFile[]> {
+function pickViaInput(maxBytes: number): Promise<PickedFile[]> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
@@ -47,7 +49,8 @@ function pickViaInput(): Promise<PickedFile[]> {
     });
     input.addEventListener("change", () => {
       const files = Array.from(input.files ?? []);
-      void Promise.all(files.map(readPickedFile)).then((picked) => {
+      const reads = files.map((file) => readPickedFile(file, maxBytes));
+      void Promise.all(reads).then((picked) => {
         cleanup();
         resolve(picked);
       });
@@ -61,19 +64,17 @@ function pickViaInput(): Promise<PickedFile[]> {
  * order, or an empty list if the user cancels. Under Tauri a Rust command sets the localized dialog
  * title; in a browser it falls back to a hidden file input (the title is not settable there).
  */
-export async function pickAndReadFiles(title: string): Promise<PickedFile[]> {
+export async function pickAndReadFiles(
+  title: string,
+  maxBytes: number,
+): Promise<PickedFile[]> {
   if (isTauri()) {
-    return invoke<PickedFile[]>("pick_and_read_files", {
-      title,
-      maxBytes: FILE_MAX_BYTES,
-    });
+    return invoke<PickedFile[]>("pick_and_read_files", { title, maxBytes });
   }
-  return pickViaInput();
+  return pickViaInput(maxBytes);
 }
 
 /** Reads the files macOS has handed to the app since the last call (Tauri only). */
-export function takeOpenedFiles(): Promise<PickedFile[]> {
-  return invoke<PickedFile[]>("take_opened_files", {
-    maxBytes: FILE_MAX_BYTES,
-  });
+export function takeOpenedFiles(maxBytes: number): Promise<PickedFile[]> {
+  return invoke<PickedFile[]>("take_opened_files", { maxBytes });
 }

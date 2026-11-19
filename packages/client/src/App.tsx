@@ -4,8 +4,10 @@ import {
   type ClientMessage,
   claudeSessionId,
   type DashboardSettings,
+  DEFAULT_FILE_SIZE_LIMITS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
+  type FileSizeLimits,
   type FooterThresholds,
   type HooksStatusMessage,
   isClaudeRunning,
@@ -158,6 +160,7 @@ import { useViewSelection } from "./ui/useViewSelection.js";
 import { useXtermRenderer } from "./ui/useXtermRenderer.js";
 import { Viewer } from "./ui/Viewer.js";
 import { WelcomeOnboardingModal } from "./ui/WelcomeOnboardingModal.js";
+import { formatFileSize } from "./viewer/large-file.js";
 import { type MediaKind, mediaKind } from "./viewer/media.js";
 import {
   encodingOf,
@@ -268,6 +271,9 @@ export function App({
   // null until the server's config.sync arrives, which is also what marks the launch moment.
   const [dashboardSettings, setDashboardSettings] =
     useState<DashboardSettings | null>(null);
+  const [fileSizeLimits, setFileSizeLimits] = useState<FileSizeLimits>(
+    DEFAULT_FILE_SIZE_LIMITS,
+  );
   const [accountUsageModalOpen, setAccountUsageModalOpen] = useState(false);
   const [hooksStatus, setHooksStatus] = useState<HooksStatusMessage | null>(
     null,
@@ -550,9 +556,10 @@ export function App({
     closeBuffer: closeViewerBuffer,
     togglePreview: toggleViewerPreview,
     setEncoding: setViewerEncoding,
+    openAnyway: openViewerAnyway,
     showText: showViewerText,
     pathOf: viewerPathOf,
-  } = useViewer(filesApi, activeViewerKey);
+  } = useViewer(filesApi, activeViewerKey, fileSizeLimits);
   const activeBuffer =
     activeViewerKey !== null ? (viewerBuffers[activeViewerKey] ?? null) : null;
 
@@ -743,16 +750,17 @@ export function App({
           error === "tooLarge"
             ? "viewer.dropTooLarge"
             : "viewer.dropReadFailed",
-          { name },
+          { name, max: formatFileSize(fileSizeLimits.maxBytes) },
         ),
       );
     },
-    [flashCopyToast, t],
+    [flashCopyToast, t, fileSizeLimits.maxBytes],
   );
   const fileDrop = useFileDrop(
     openExternalFile,
     openExternalMediaFile,
     toastUnreadableFile,
+    fileSizeLimits.maxBytes,
   );
 
   // Files from Cmd+O and from macOS (open -a, Open With) open read-only in the viewer (external buffer).
@@ -766,12 +774,12 @@ export function App({
     [flashCopyToast, t],
   );
   const openFileFromDialog = useCallback((): void => {
-    void pickAndReadFiles(t("openFile.dialogTitle")).then(
-      openPicked,
-      toastOpenFailed,
-    );
-  }, [t, openPicked, toastOpenFailed]);
-  useOpenedFiles(openPicked, toastOpenFailed);
+    void pickAndReadFiles(
+      t("openFile.dialogTitle"),
+      fileSizeLimits.maxBytes,
+    ).then(openPicked, toastOpenFailed);
+  }, [t, openPicked, toastOpenFailed, fileSizeLimits.maxBytes]);
+  useOpenedFiles(openPicked, toastOpenFailed, fileSizeLimits.maxBytes);
 
   const copyWithToast = useCallback(
     (text: string, toastKey: "toast.pathCopied" | "toast.linkCopied"): void => {
@@ -1001,6 +1009,7 @@ export function App({
       setEditor(m.editor);
       setFooterThresholds(m.footerThresholds);
       setDashboardSettings(m.dashboard);
+      setFileSizeLimits(m.fileSizeLimits);
       // Apply the display language if the config file has one (unset = null keeps browser detection).
       if (m.language) void i18n.changeLanguage(m.language);
     });
@@ -1062,6 +1071,14 @@ export function App({
     (dashboard: DashboardSettings): void => {
       setDashboardSettings(dashboard);
       control.send({ t: "config.setDashboard", dashboard });
+    },
+    [control],
+  );
+
+  const saveFileSizeLimits = useCallback(
+    (limits: FileSizeLimits): void => {
+      setFileSizeLimits(limits);
+      control.send({ t: "config.setFileSizeLimits", fileSizeLimits: limits });
     },
     [control],
   );
@@ -1445,6 +1462,7 @@ export function App({
                   setViewerEncoding(activeViewerKey, encoding)
                 }
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
+                onOpenAnyway={() => openViewerAnyway(activeViewerKey)}
                 focusNonce={viewerFocusNonce}
                 revealLine={
                   viewerReveal?.key === activeViewerKey
@@ -1584,6 +1602,8 @@ export function App({
           footerThresholds={footerThresholds}
           dashboard={dashboardSettings ?? undefined}
           onSaveDashboard={saveDashboard}
+          fileSizeLimits={fileSizeLimits}
+          onSaveFileSizeLimits={saveFileSizeLimits}
           onSaveFooterThresholds={saveFooterThresholds}
           stallRules={stallRules}
           onSaveStallRules={saveStallRules}

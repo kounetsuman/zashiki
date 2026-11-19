@@ -47,6 +47,8 @@ pub struct ConfigView {
     pub notifications: crate::protocol::NotificationSettings,
     /// The page shown in front of the cockpit at launch / on wake (SETTINGS). A blank url is off.
     pub dashboard: crate::protocol::DashboardSettings,
+    /// How large a file the Viewer opens (SETTINGS); `/api/file` refuses a read over `max_bytes`.
+    pub file_size_limits: crate::protocol::FileSizeLimits,
 }
 
 /// An immediate re-evaluation request to the poller. If `reply` is present, the
@@ -99,6 +101,37 @@ pub struct ControlServices {
     /// Parsed running app version for the on-demand "Check for updates" (SETTINGS). None (dev /
     /// placeholder / unparseable) means the manual check reports it can't determine the version.
     pub app_version: Option<semver::Version>,
+}
+
+#[cfg(test)]
+impl ControlServices {
+    /// Services around `hub` with no poller, PTYs or config file, for routes that only read the hub.
+    pub(crate) fn around_hub(hub: Arc<ControlHub>) -> Self {
+        let (refresh, rx) = mpsc::channel(8);
+        drop(rx);
+        ControlServices {
+            hub,
+            refresh,
+            repos: crate::repos::shared_repos(vec![], Default::default(), Default::default()),
+            launch_claude: false,
+            terms: Arc::new(Mutex::new(TermRegistry::new())),
+            sessions: Arc::new(crate::session_registry::SessionRegistry::new()),
+            hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
+            session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
+            projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(
+                std::env::temp_dir(),
+            )),
+            github_details: Arc::default(),
+            page_details: Arc::default(),
+            heartbeat: HEARTBEAT_INTERVAL,
+            notify_mode: crate::hooks::NotifyMode::Web,
+            notify_history: true,
+            mac_notify: Arc::new(|_| {}),
+            config_path: None,
+            claude_settings: None,
+            app_version: None,
+        }
+    }
 }
 
 pub(crate) fn to_text(msg: &ServerMessage) -> Message {
@@ -437,6 +470,37 @@ mod tests {
             assert_eq!(msg["dashboard"]["frequency"], "once_per_day");
             let c = crate::config::read_config(&path);
             assert_eq!(c.dashboard.url, "https://dash.example/board");
+            assert!(c.notify_sound); // existing fields are preserved
+        }
+
+        /// config.setFileSizeLimits: persists the sizes to config.json (preserving existing fields) and
+        /// broadcasts config.sync with them, re-read so an out-of-range size comes back as its fallback.
+        #[tokio::test]
+        async fn config_set_file_size_limits_writes_file_and_broadcasts_config_sync() {
+            const MIB: u64 = 1024 * 1024;
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("config.json");
+            std::fs::write(&path, r#"{"notifySound": true}"#).unwrap();
+            let port = serve(services_with_config_path(path.clone())).await;
+            let mut ws = connect(port).await;
+
+            send(
+                &mut ws,
+                serde_json::json!({"t":"config.setFileSizeLimits","fileSizeLimits":{
+                    "confirmBytes": 4 * MIB,
+                    "maxBytes": 2048 * MIB
+                }}),
+            )
+            .await;
+
+            let msg = next_json(&mut ws)
+                .await
+                .expect("config.sync should be broadcast after config.setFileSizeLimits");
+            assert_eq!(msg["t"], "config.sync");
+            assert_eq!(msg["fileSizeLimits"]["confirmBytes"], 4 * MIB);
+            assert_eq!(msg["fileSizeLimits"]["maxBytes"], 200 * MIB); // over the ceiling
+            let c = crate::config::read_config(&path);
+            assert_eq!(c.file_size_limits.confirm_bytes, 4 * MIB);
             assert!(c.notify_sound); // existing fields are preserved
         }
 

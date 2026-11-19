@@ -248,6 +248,7 @@ mod ws_control_tests {
                 footer_thresholds: Default::default(),
                 notifications: Default::default(),
                 dashboard: Default::default(),
+                file_size_limits: Default::default(),
             },
             vec![],
             snapshot("@1"),

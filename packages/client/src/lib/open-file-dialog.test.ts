@@ -1,7 +1,19 @@
-import { FILE_MAX_BYTES } from "@zashiki/shared";
 import { describe, expect, it, vi } from "vitest";
 
-import { openPickedFiles, readPickedFile } from "./open-file-dialog.js";
+import {
+  openPickedFiles,
+  pickAndReadFiles,
+  readPickedFile,
+  takeOpenedFiles,
+} from "./open-file-dialog.js";
+
+const { invoke } = vi.hoisted(() => ({
+  invoke: vi.fn((_cmd: string, _args: unknown) => Promise.resolve([])),
+}));
+vi.mock("@tauri-apps/api/core", () => ({ isTauri: () => true, invoke }));
+
+/** A configured maximum, so the tests show the limit comes from the caller. */
+const MAX = 5 * 1024 * 1024;
 
 function fakeFile(over: Partial<File> & { size: number }): File {
   return {
@@ -13,13 +25,17 @@ function fakeFile(over: Partial<File> & { size: number }): File {
 
 describe("readPickedFile", () => {
   it("returns the name and text for a file within the limit", async () => {
-    const picked = await readPickedFile(fakeFile({ size: 5, name: "a.md" }));
+    const picked = await readPickedFile(
+      fakeFile({ size: MAX, name: "a.md" }),
+      MAX,
+    );
     expect(picked).toEqual({ name: "a.md", content: "hello" });
   });
 
   it("reports tooLarge with the name past the size limit", async () => {
     const picked = await readPickedFile(
-      fakeFile({ size: FILE_MAX_BYTES + 1, name: "big.log" }),
+      fakeFile({ size: MAX + 1, name: "big.log" }),
+      MAX,
     );
     expect(picked).toEqual({ name: "big.log", error: "tooLarge" });
   });
@@ -31,8 +47,20 @@ describe("readPickedFile", () => {
         name: "gone.md",
         text: () => Promise.reject(new Error("io")),
       }),
+      MAX,
     );
     expect(picked).toEqual({ name: "gone.md", error: "readFailed" });
+  });
+});
+
+describe("the Tauri open dialog and Open With", () => {
+  it("read up to the configured maximum", async () => {
+    await pickAndReadFiles("Open", MAX);
+    await takeOpenedFiles(MAX);
+    expect(invoke.mock.calls).toEqual([
+      ["pick_and_read_files", { title: "Open", maxBytes: MAX }],
+      ["take_opened_files", { maxBytes: MAX }],
+    ]);
   });
 });
 

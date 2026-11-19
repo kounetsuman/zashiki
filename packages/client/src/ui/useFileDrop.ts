@@ -1,4 +1,3 @@
-import { FILE_MAX_BYTES } from "@zashiki/shared";
 import { type DragEvent, useCallback } from "react";
 
 import { dragCarriesFiles, droppedFiles } from "../viewer/dropped-file.js";
@@ -13,13 +12,14 @@ export interface FileDropHandlers {
 
 /**
  * Opens files dropped from Finder in the Viewer. Images/videos/PDFs go to `onMedia` (rendered from an
- * object URL, no size cap); other files are read as text via `onFile`. Only acts on drags carrying
- * OS files, so in-page drags (e.g. tab reordering) pass through untouched.
+ * object URL, no size cap); other files up to `maxBytes` are read as text via `onFile`. Only acts on
+ * drags carrying OS files, so in-page drags (e.g. tab reordering) pass through untouched.
  */
 export function useFileDrop(
   onFile: (name: string, content: string) => void,
   onMedia: (name: string, file: File, kind: MediaKind) => void,
   onError: (name: string, error: FileDropError) => void,
+  maxBytes: number,
 ): FileDropHandlers {
   const onDragOver = useCallback((e: DragEvent): void => {
     if (dragCarriesFiles(e.dataTransfer)) e.preventDefault();
@@ -37,7 +37,7 @@ export function useFileDrop(
             onMedia(file.name, file, kind);
             continue;
           }
-          if (file.size > FILE_MAX_BYTES) {
+          if (file.size > maxBytes) {
             onError(file.name, "tooLarge");
             continue;
           }
@@ -49,7 +49,7 @@ export function useFileDrop(
         }
       })();
     },
-    [onFile, onMedia, onError],
+    [onFile, onMedia, onError, maxBytes],
   );
 
   return { onDragOver, onDrop };

@@ -28,10 +28,13 @@ pub(crate) struct FileTextReadParams {
     repo_path: Option<String>,
     file: Option<String>,
     encoding: Option<String>,
+    /// Refuse the file when it is over this many bytes, below the configured maximum.
+    limit: Option<u64>,
 }
 
 /// `GET /api/file`: streams the file as UTF-8 text with its version as the ETag. A client that sends
-/// that version back in `If-None-Match` gets 304 with no body while the file is unchanged. Errors stay JSON.
+/// that version back in `If-None-Match` gets 304 with no body while the file is unchanged. Errors stay
+/// JSON; a file over the cap (the configured maximum, or `limit` when lower) is 413 with its `size`.
 pub(crate) async fn file_read(
     State(state): State<AppState>,
     Query(params): Query<FileTextReadParams>,
@@ -49,16 +52,21 @@ pub(crate) async fn file_read(
     if let Err((status, msg)) = guard_file_path(&state, &repo_path, &file).await {
         return json_error(status, &msg);
     }
-    let max = state.file_max_bytes;
+    let max_bytes = state.file_read_max_bytes();
+    let max = params.limit.map_or(max_bytes, |limit| limit.min(max_bytes));
     let resolved =
         tokio::task::spawn_blocking(move || file::text_file_within_repo(&repo_path, &file, max))
             .await
             .unwrap_or_else(|_| {
-                Err((StatusCode::INTERNAL_SERVER_ERROR, "read task failed".to_string()))
+                Err(file::TextReadRefusal::Failed(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "read task failed".to_string(),
+                ))
             });
     let (abs, meta) = match resolved {
         Ok(v) => v,
-        Err((status, msg)) => return json_error(status, &msg),
+        Err(file::TextReadRefusal::TooLarge { size }) => return too_large_response(size, max_bytes),
+        Err(file::TextReadRefusal::Failed(status, msg)) => return json_error(status, &msg),
     };
     let tag = file::version_tag(&meta, encoding);
     if client_has_version(&headers, &tag) {
@@ -78,6 +86,20 @@ pub(crate) async fn file_read(
         READ_CHUNK_BYTES,
     ));
     text_response(StatusCode::OK, &tag, body)
+}
+
+/// `maxBytes` is the server's maximum (not the request's `limit`), so the client can tell whether the
+/// file could still be opened anyway.
+fn too_large_response(size: u64, max_bytes: u64) -> Response {
+    (
+        StatusCode::PAYLOAD_TOO_LARGE,
+        Json(serde_json::json!({
+            "error": "file too large to open in the viewer",
+            "size": size,
+            "maxBytes": max_bytes,
+        })),
+    )
+        .into_response()
 }
 
 const READ_CHUNK_BYTES: usize = 64 * 1024;
@@ -175,7 +197,9 @@ pub(crate) async fn dashboard_read(State(state): State<AppState>) -> Response {
     else {
         return json_error(StatusCode::NOT_FOUND, "no dashboard is configured");
     };
-    let max = state.file_max_bytes;
+    let max = state
+        .file_max_bytes_override
+        .unwrap_or(dashboard::DASHBOARD_MAX_BYTES);
     let result = tokio::task::spawn_blocking(move || {
         let url = crate::config::read_config(&config_path).dashboard.url;
         let home = std::env::var_os("HOME")
@@ -218,7 +242,7 @@ pub(crate) async fn file_write(State(state): State<AppState>, body: axum::body::
     if repo_path.is_empty() || file.is_empty() {
         return json_error(StatusCode::BAD_REQUEST, "request failed schema validation");
     }
-    if content.len() as u64 > state.file_max_bytes {
+    if content.len() as u64 > state.file_write_max_bytes {
         return json_error(StatusCode::PAYLOAD_TOO_LARGE, "content too large to save");
     }
     if let Err((status, msg)) = guard_file_path(&state, &repo_path, &file).await {
@@ -393,6 +417,55 @@ pub(crate) async fn fs_delete(State(state): State<AppState>, body: axum::body::B
     match result {
         Ok(()) => json_ok(),
         Err((status, msg)) => json_error(status, &msg),
+    }
+}
+
+#[cfg(test)]
+mod dashboard_rest_tests {
+    use crate::control::{ConfigView, ControlHub, ControlServices};
+    use crate::{build_router, ServerConfig};
+    use axum::body::Body;
+    use axum::http::{Request as HttpRequest, StatusCode};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn dashboard_keeps_its_own_cap_whatever_the_viewer_maximum() {
+        let dir = tempfile::tempdir().unwrap();
+        let board = dir.path().join("board.html");
+        let cap = crate::dashboard::DASHBOARD_MAX_BYTES as usize;
+        std::fs::write(&board, "x".repeat(cap + 1)).unwrap();
+        let config_path = dir.path().join("config.json");
+        let url = format!("file://{}", board.display());
+        std::fs::write(&config_path, serde_json::json!({ "dashboard": { "url": url } }).to_string())
+            .unwrap();
+        let hub = ControlHub::new(
+            ConfigView::default(),
+            vec![],
+            crate::status_poller::StateSnapshot {
+                sessions: vec![],
+                orgs: vec![],
+                org_colors: Default::default(),
+                org_aliases: Default::default(),
+            },
+        );
+        let mut control = ControlServices::around_hub(hub);
+        control.config_path = Some(config_path);
+        let app = build_router(ServerConfig {
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
+            control: Some(control),
+            ..Default::default()
+        });
+        let status = |app: axum::Router| async move {
+            let req = HttpRequest::builder()
+                .uri("/api/dashboard?token=t")
+                .header("host", "127.0.0.1:8790")
+                .body(Body::empty())
+                .unwrap();
+            app.oneshot(req).await.unwrap().status()
+        };
+        assert_eq!(status(app.clone()).await, StatusCode::PAYLOAD_TOO_LARGE);
+        std::fs::write(&board, "x".repeat(cap)).unwrap();
+        assert_eq!(status(app).await, StatusCode::OK);
     }
 }
 

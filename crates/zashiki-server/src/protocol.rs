@@ -223,6 +223,35 @@ pub struct DashboardSettings {
     pub frequency: DashboardFrequency,
 }
 
+const MIB: u64 = 1024 * 1024;
+
+/// How large a file the Viewer opens: over `confirm_bytes` it asks before reading, and over
+/// `max_bytes` it refuses. Mirrors the shared `FileSizeLimits`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSizeLimits {
+    pub confirm_bytes: u64,
+    pub max_bytes: u64,
+}
+
+impl FileSizeLimits {
+    pub const DEFAULT_CONFIRM_BYTES: u64 = 20 * MIB;
+    pub const DEFAULT_MAX_BYTES: u64 = 200 * MIB;
+    /// The smallest either size may be set to.
+    pub const FLOOR_BYTES: u64 = MIB;
+    /// The largest `max_bytes` may be set to.
+    pub const CEILING_BYTES: u64 = 1024 * MIB;
+}
+
+impl Default for FileSizeLimits {
+    fn default() -> Self {
+        Self {
+            confirm_bytes: Self::DEFAULT_CONFIRM_BYTES,
+            max_bytes: Self::DEFAULT_MAX_BYTES,
+        }
+    }
+}
+
 /// Session status-footer material: token totals plus the epoch-ms starting points for live elapsed.
 /// `turn` is measured from the most recent human prompt; `session` from the most recent compaction
 /// (the whole transcript when it was never compacted).
@@ -402,6 +431,10 @@ pub enum ClientMessage {
     /// like the notification-switches change.
     #[serde(rename = "config.setDashboard", rename_all = "camelCase")]
     ConfigSetDashboard { dashboard: DashboardSettings },
+    /// Viewer file-size limits change from SETTINGS. Persisted to config.json and distributed via
+    /// config.sync, like the dashboard change.
+    #[serde(rename = "config.setFileSizeLimits", rename_all = "camelCase")]
+    ConfigSetFileSizeLimits { file_size_limits: FileSizeLimits },
     /// Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run
     /// wizard or SETTINGS). Idempotent merge; the resulting hooks.status is broadcast.
     #[serde(rename = "hooks.register")]
@@ -881,6 +914,7 @@ pub enum ServerMessage {
         footer_thresholds: FooterThresholds,
         notifications: NotificationSettings,
         dashboard: DashboardSettings,
+        file_size_limits: FileSizeLimits,
     },
     /// Full distribution of in-app notifications (to all control connections right after connecting
     /// and on changes; a full replacement, not a diff).
@@ -1533,6 +1567,10 @@ mod tests {
                 show_on: DashboardShowOn::Both,
                 frequency: DashboardFrequency::OncePerDay,
             },
+            file_size_limits: FileSizeLimits {
+                confirm_bytes: 5 * 1024 * 1024,
+                max_bytes: 50 * 1024 * 1024,
+            },
         };
         let json = concat!(
             r#"{"t":"config.sync","notifySound":true,"updateCheck":true,"language":"ja","accountUsage":false,"memoEnabled":false,"editor":"cursor -g","footerThresholds":"#,
@@ -1540,7 +1578,8 @@ mod tests {
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
             r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}},"#,
             r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true,"soundType":"descend"},"done":{"notify":true,"sound":true,"soundType":"chime"},"subagentStart":{"notify":false,"sound":false,"soundType":"ping"},"subagentEnd":{"notify":false,"sound":false,"soundType":"pong"},"shellStart":{"notify":false,"sound":false,"soundType":"tick"},"shellEnd":{"notify":false,"sound":false,"soundType":"tock"}}},"#,
-            r#""dashboard":{"url":"file:///Users/me/board.html","showOn":"both","frequency":"once_per_day"}"#,
+            r#""dashboard":{"url":"file:///Users/me/board.html","showOn":"both","frequency":"once_per_day"},"#,
+            r#""fileSizeLimits":{"confirmBytes":5242880,"maxBytes":52428800}"#,
             r#"}"#
         );
         assert_eq!(to_json(&msg), json);
@@ -1559,6 +1598,7 @@ mod tests {
             footer_thresholds: FooterThresholds::default(),
             notifications: NotificationSettings::default(),
             dashboard: DashboardSettings::default(),
+            file_size_limits: FileSizeLimits::default(),
         };
         let json = concat!(
             r#"{"t":"config.sync","notifySound":true,"updateCheck":false,"language":null,"accountUsage":true,"memoEnabled":true,"editor":null,"footerThresholds":"#,
@@ -1566,7 +1606,8 @@ mod tests {
             r#""sessionTokens":{"warn":{"enabled":true,"value":1500000},"crit":{"enabled":true,"value":3000000}},"#,
             r#""elapsedMs":{"crit":{"enabled":true,"value":86400000}}},"#,
             r#""notifications":{"enabled":true,"categories":{"waiting":{"notify":true,"sound":true,"soundType":"descend"},"done":{"notify":true,"sound":true,"soundType":"chime"},"subagentStart":{"notify":false,"sound":false,"soundType":"ping"},"subagentEnd":{"notify":false,"sound":false,"soundType":"pong"},"shellStart":{"notify":false,"sound":false,"soundType":"tick"},"shellEnd":{"notify":false,"sound":false,"soundType":"tock"}}},"#,
-            r#""dashboard":{"url":"","showOn":"launch","frequency":"every_time"}"#,
+            r#""dashboard":{"url":"","showOn":"launch","frequency":"every_time"},"#,
+            r#""fileSizeLimits":{"confirmBytes":20971520,"maxBytes":209715200}"#,
             r#"}"#
         );
         assert_eq!(to_json(&msg), json);
@@ -1611,6 +1652,22 @@ mod tests {
                     url: "https://dash.example/board".into(),
                     show_on: DashboardShowOn::Wake,
                     frequency: DashboardFrequency::OncePerDay,
+                },
+            }
+        );
+        assert_eq!(to_json(&msg), json);
+    }
+
+    #[test]
+    fn config_set_file_size_limits_roundtrips_and_matches_wire() {
+        let json = r#"{"t":"config.setFileSizeLimits","fileSizeLimits":{"confirmBytes":1048576,"maxBytes":2097152}}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            msg,
+            ClientMessage::ConfigSetFileSizeLimits {
+                file_size_limits: FileSizeLimits {
+                    confirm_bytes: 1024 * 1024,
+                    max_bytes: 2 * 1024 * 1024,
                 },
             }
         );

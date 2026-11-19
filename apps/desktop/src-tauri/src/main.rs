@@ -202,8 +202,8 @@ fn read_picked_file(path: &std::path::Path, max_bytes: u64) -> PickedFile {
 
 /// Cmd+O: shows the native open dialog (with a localized title passed from the UI), allowing several
 /// files, and returns each chosen file in order. Returns an empty list when the user cancels.
-/// `max_bytes` is the single source of truth for the size cap (the client passes its shared
-/// FILE_MAX_BYTES). The picker and the reads run off the async runtime (blocking_pick_files dispatches
+/// `max_bytes` is the single source of truth for the size cap (the client passes the configured
+/// `fileSizeLimits.maxBytes`). The picker and the reads run off the async runtime (blocking_pick_files dispatches
 /// the modal to the main thread itself).
 #[tauri::command]
 async fn pick_and_read_files(

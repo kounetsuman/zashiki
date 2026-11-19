@@ -1,6 +1,7 @@
 import type {
   ClaudeInstall,
   DashboardSettings,
+  FileSizeLimits,
   FooterThresholds,
   HooksStatusMessage,
   NotificationSettings,
@@ -13,6 +14,7 @@ import { useTranslation } from "react-i18next";
 
 import { type Locale, SUPPORTED_LOCALES } from "../i18n/detect.js";
 import { DashboardSettingsField } from "./DashboardSettingsField.js";
+import { FileSizeLimitsField } from "./FileSizeLimitsField.js";
 import { FooterThresholdsField } from "./FooterThresholdsField.js";
 import { Modal } from "./Modal.js";
 import { NotificationSettingsField } from "./NotificationSettingsField.js";
@@ -101,6 +103,10 @@ export interface SettingsModalProps {
   editor?: string;
   /** Persist the editor command (Save). A blank value clears it back to the ZK_EDITOR / cursor -g fallback. */
   onSaveEditor?(command: string): void;
+  /** How large a file the Viewer opens. Omit (with the handler) to hide the section. */
+  fileSizeLimits?: FileSizeLimits;
+  /** Persist the Viewer file-size limits (Save). */
+  onSaveFileSizeLimits?(limits: FileSizeLimits): void;
   /** Current dashboard page settings. Omit (with the handler) to hide the section. */
   dashboard?: DashboardSettings;
   /** Persist the dashboard page settings (Save). A blank address turns the feature off. */
@@ -181,6 +187,8 @@ export function SettingsModal({
   onSetMemoEnabled,
   editor,
   onSaveEditor,
+  fileSizeLimits,
+  onSaveFileSizeLimits,
   dashboard,
   onSaveDashboard,
   footerThresholds,
@@ -476,6 +484,13 @@ export function SettingsModal({
                 />
               </div>
             )}
+            {onSaveFileSizeLimits !== undefined &&
+              fileSizeLimits !== undefined && (
+                <FileSizeLimitsField
+                  value={fileSizeLimits}
+                  onSave={onSaveFileSizeLimits}
+                />
+              )}
             {onSaveDashboard !== undefined && dashboard !== undefined && (
               <DashboardSettingsField
                 value={dashboard}

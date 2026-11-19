@@ -24,7 +24,9 @@ pub(crate) struct AppState {
     pub(crate) control: Option<ControlServices>,
     pub(crate) editor: Arc<String>,
     pub(crate) open_file: Option<OpenFile>,
-    pub(crate) file_max_bytes: u64,
+    /// Caps every file read and write when set (tests); otherwise reads follow the live `fileSizeLimits`.
+    pub(crate) file_max_bytes_override: Option<u64>,
+    pub(crate) file_write_max_bytes: u64,
     pub(crate) saves_dir: Arc<PathBuf>,
     /// Serializes save/restore (a series of destructive operations) within the server.
     pub(crate) persist_lock: Arc<tokio::sync::Mutex<()>>,
@@ -32,6 +34,18 @@ pub(crate) struct AppState {
     pub(crate) scan_cache: ScanCache,
     /// The previous run's crash log tail, cleared by `POST /api/last-crash/ack` once the client has shown it.
     pub(crate) last_crash: Arc<std::sync::Mutex<Option<String>>>,
+}
+
+impl AppState {
+    /// The largest file `/api/file` reads: the live config's `maxBytes`.
+    pub(crate) fn file_read_max_bytes(&self) -> u64 {
+        self.file_max_bytes_override.unwrap_or_else(|| {
+            self.control.as_ref().map_or(
+                crate::protocol::FileSizeLimits::DEFAULT_MAX_BYTES,
+                |control| control.hub.file_size_limits().max_bytes,
+            )
+        })
+    }
 }
 
 /// Default destination for session save/restore (`~/.zashiki/saves`).

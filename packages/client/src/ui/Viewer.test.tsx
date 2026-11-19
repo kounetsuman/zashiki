@@ -74,6 +74,69 @@ describe("Viewer", () => {
     expect(screen.getByRole("alert").textContent).toContain("file not found");
   });
 
+  it("shows a file held back for its size with its size and an Open anyway button", () => {
+    const onOpenAnyway = vi.fn();
+    render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "dump.html",
+          status: "tooLarge",
+          content: null,
+          tooLarge: { reason: "confirm", size: 30 * 1024 * 1024 },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        onOpenAnyway={onOpenAnyway}
+      />,
+    );
+    expect(screen.getByRole("status").textContent).toContain("30 MB");
+    fireEvent.click(screen.getByRole("button", { name: "それでも開く" }));
+    expect(onOpenAnyway).toHaveBeenCalledOnce();
+  });
+
+  it("says a file over the maximum is over it, naming the maximum, with no Open anyway", () => {
+    render(
+      <Viewer
+        buffer={{
+          ...base,
+          status: "tooLarge",
+          content: null,
+          tooLarge: {
+            reason: "overMax",
+            size: 300 * 1024 * 1024,
+            maxBytes: 200 * 1024 * 1024,
+          },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+        onOpenAnyway={noop}
+      />,
+    );
+    const text = screen.getByRole("status").textContent;
+    expect(text).toContain("300 MB");
+    expect(text).toContain("200 MB");
+    expect(screen.queryByRole("button", { name: "それでも開く" })).toBeNull();
+  });
+
+  it("says a file opened anyway that could not be read is too large to open", () => {
+    render(
+      <Viewer
+        buffer={{
+          ...base,
+          status: "tooLarge",
+          content: null,
+          tooLarge: { reason: "failedAfterConfirm" },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toBe(
+      "このファイルは大きすぎて開けません。",
+    );
+  });
+
   it("has no save button since it is read-only", () => {
     render(<Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />);
     expect(screen.queryByRole("button", { name: /保存/ })).toBeNull();

@@ -9,31 +9,56 @@ export interface FileRead {
   version: string | null;
 }
 
+export interface FileReadOptions {
+  /** Allows a timeout/abort. */
+  signal?: AbortSignal;
+  /** The version already in hand: while the file is unchanged the read resolves null without its content. */
+  knownVersion?: string;
+  /** Refuse the file (FileTooLargeError) when it is over this many bytes. */
+  limit?: number;
+}
+
+/** The server refused the read for the file's size; `size` and its `maxBytes` are null when it did not say. */
+export class FileTooLargeError extends Error {
+  constructor(
+    message: string,
+    readonly size: number | null,
+    readonly maxBytes: number | null = null,
+  ) {
+    super(message);
+    this.name = "FileTooLargeError";
+  }
+}
+
 /** The file read REST the viewer calls (read-only). */
 export interface FilesApi {
-  /**
-   * Reads a repo-relative file decoded with `encoding` (signal allows timeout/abort). Given the
-   * `knownVersion` already in hand, resolves null without transferring the content while the file is unchanged.
-   */
+  /** Reads a repo-relative file decoded with `encoding`. */
   read(
     repoPath: string,
     file: string,
     encoding: TextEncoding,
-    signal?: AbortSignal,
-    knownVersion?: string,
+    options?: FileReadOptions,
   ): Promise<FileRead | null>;
   /** URL streaming the file's raw bytes for `<img>` / `<video>` / `<audio>` / the PDF `<iframe>` (token in the query). */
   mediaUrl(repoPath: string, file: string): string;
 }
 
-async function errorOf(res: Response): Promise<string> {
+async function errorOf(res: Response): Promise<Error> {
+  let body: { error?: unknown; size?: unknown; maxBytes?: unknown } = {};
   try {
-    const body = (await res.json()) as { error?: string };
-    if (typeof body.error === "string") return body.error;
+    body = (await res.json()) as typeof body;
   } catch {
     // If not JSON, just the status
   }
-  return `HTTP ${res.status}`;
+  const message =
+    typeof body.error === "string" ? body.error : `HTTP ${res.status}`;
+  if (res.status !== 413) return new Error(message);
+  const numberOrNull = (v: unknown) => (typeof v === "number" ? v : null);
+  return new FileTooLargeError(
+    message,
+    numberOrNull(body.size),
+    numberOrNull(body.maxBytes),
+  );
 }
 
 export function createFilesApi(
@@ -42,17 +67,20 @@ export function createFilesApi(
   fetchFn: typeof fetch = fetch,
 ): FilesApi {
   return {
-    async read(repoPath, file, encoding, signal, knownVersion) {
+    async read(repoPath, file, encoding, options = {}) {
       const q = new URLSearchParams({ repoPath, file, encoding });
+      if (options.limit !== undefined) q.set("limit", String(options.limit));
       const headers: Record<string, string> = authHeaders(token);
-      if (knownVersion !== undefined) headers["If-None-Match"] = knownVersion;
+      if (options.knownVersion !== undefined) {
+        headers["If-None-Match"] = options.knownVersion;
+      }
       const res = await fetchFn(`${base}/api/file?${q.toString()}`, {
         headers,
-        signal,
+        signal: options.signal,
         cache: "no-store",
       });
       if (res.status === 304) return null;
-      if (!res.ok) throw new Error(await errorOf(res));
+      if (!res.ok) throw await errorOf(res);
       // The server already decoded to UTF-8; a leading BOM is file content and stays.
       const content = new TextDecoder("utf-8", { ignoreBOM: true }).decode(
         await res.arrayBuffer(),

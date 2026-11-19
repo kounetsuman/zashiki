@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_CONFIG,
   DEFAULT_DASHBOARD_SETTINGS,
+  DEFAULT_FILE_SIZE_LIMITS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_STARTUP_CONFIG,
   dashboardSettingsSchema,
+  fileSizeLimitsSchema,
   footerThresholdsSchema,
   notificationSettingsSchema,
   parseConfig,
@@ -127,6 +129,55 @@ describe("dashboardSettingsSchema", () => {
   });
 });
 
+describe("fileSizeLimitsSchema", () => {
+  const MIB = 1024 * 1024;
+  const parse = (input: unknown) => fileSizeLimitsSchema.parse(input);
+
+  it("is 20 MiB / 200 MiB for empty/absent input", () => {
+    expect(DEFAULT_FILE_SIZE_LIMITS).toEqual({
+      confirmBytes: 20 * MIB,
+      maxBytes: 200 * MIB,
+    });
+    expect(parse(undefined)).toEqual(DEFAULT_FILE_SIZE_LIMITS);
+    expect(parse({})).toEqual(DEFAULT_FILE_SIZE_LIMITS);
+    expect(parse("nope")).toEqual(DEFAULT_FILE_SIZE_LIMITS);
+  });
+
+  it("keeps whole sizes from 1 MiB up to 1 GiB, with the confirm size at most the maximum", () => {
+    for (const limits of [
+      { confirmBytes: 5 * MIB, maxBytes: 50 * MIB },
+      { confirmBytes: MIB, maxBytes: 1024 * MIB },
+      { confirmBytes: 30 * MIB, maxBytes: 30 * MIB },
+    ]) {
+      expect(parse(limits)).toEqual(limits);
+    }
+  });
+
+  it("falls back per size when one is out of range or not a whole number", () => {
+    for (const maxBytes of [
+      MIB - 1,
+      1024 * MIB + 1,
+      5 * MIB + 0.5,
+      -1,
+      "big",
+    ]) {
+      expect(parse({ confirmBytes: 5 * MIB, maxBytes }).maxBytes).toBe(
+        200 * MIB,
+      );
+    }
+    for (const confirmBytes of [MIB - 1, 100 * MIB, 5 * MIB + 0.5, null]) {
+      expect(parse({ confirmBytes, maxBytes: 50 * MIB })).toEqual({
+        confirmBytes: 20 * MIB,
+        maxBytes: 50 * MIB,
+      });
+    }
+    expect(parse({ maxBytes: 10 * MIB })).toEqual({
+      confirmBytes: 10 * MIB,
+      maxBytes: 10 * MIB,
+    });
+  });
+});
+
 describe("notificationSettingsSchema", () => {
   const parse = (input: unknown) => notificationSettingsSchema.parse(input);
 
@@ -231,6 +282,7 @@ describe("defaults filled in by the schemas", () => {
     const notifications = notificationSettingsSchema.parse(undefined);
     const nested = notificationSettingsSchema.parse({});
     const dashboard = dashboardSettingsSchema.parse(undefined);
+    const fileSizeLimits = fileSizeLimitsSchema.parse(undefined);
     const footer = footerThresholdsSchema.parse(undefined);
     const nestedFooter = footerThresholdsSchema.parse({});
 
@@ -245,6 +297,7 @@ describe("defaults filled in by the schemas", () => {
       DEFAULT_NOTIFICATION_SETTINGS.categories.waiting,
     );
     expect(dashboard).not.toBe(DEFAULT_DASHBOARD_SETTINGS);
+    expect(fileSizeLimits).not.toBe(DEFAULT_FILE_SIZE_LIMITS);
     expect(footer).not.toBe(DEFAULT_FOOTER_THRESHOLDS);
     expect(footer.usagePercent).not.toBe(
       DEFAULT_FOOTER_THRESHOLDS.usagePercent,
@@ -263,6 +316,9 @@ describe("defaults filled in by the schemas", () => {
     );
     expect(dashboardSettingsSchema.parse("bad")).not.toBe(
       DEFAULT_DASHBOARD_SETTINGS,
+    );
+    expect(fileSizeLimitsSchema.parse("bad")).not.toBe(
+      DEFAULT_FILE_SIZE_LIMITS,
     );
     expect(footerThresholdsSchema.parse("bad")).not.toBe(
       DEFAULT_FOOTER_THRESHOLDS,

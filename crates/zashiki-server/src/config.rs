@@ -16,8 +16,8 @@ use std::time::{Duration, SystemTime};
 
 use crate::control::{ConfigView, ControlHub};
 use crate::protocol::{
-    DashboardFrequency, DashboardSettings, DashboardShowOn, ElapsedBands, FooterBand,
-    FooterThresholds, NotificationSettings, NotifyCategories, NotifyCategoryPref, SoundPreset,
+    DashboardFrequency, DashboardSettings, DashboardShowOn, ElapsedBands, FileSizeLimits,
+    FooterBand, FooterThresholds, NotificationSettings, NotifyCategories, NotifyCategoryPref, SoundPreset,
     TokenBands, UsageBands,
 };
 
@@ -63,7 +63,28 @@ fn parse_config(input: Option<&serde_json::Value>) -> ConfigView {
         footer_thresholds: parse_footer_thresholds(obj),
         notifications: parse_notifications(obj),
         dashboard: parse_dashboard(obj),
+        file_size_limits: parse_file_size_limits(obj),
     }
+}
+
+/// Parse `fileSizeLimits`. A size that is not a whole number of bytes in range falls back on its
+/// own: `maxBytes` to its default, `confirmBytes` to its default or `maxBytes` when that is smaller.
+fn parse_file_size_limits(
+    obj: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> FileSizeLimits {
+    let node = obj
+        .and_then(|o| o.get("fileSizeLimits"))
+        .and_then(|v| v.as_object());
+    let size_in = |key: &str, ceiling: u64| {
+        node.and_then(|o| o.get(key))
+            .and_then(serde_json::Value::as_u64)
+            .filter(|n| (FileSizeLimits::FLOOR_BYTES..=ceiling).contains(n))
+    };
+    let max_bytes = size_in("maxBytes", FileSizeLimits::CEILING_BYTES)
+        .unwrap_or(FileSizeLimits::DEFAULT_MAX_BYTES);
+    let confirm_bytes = size_in("confirmBytes", max_bytes)
+        .unwrap_or(FileSizeLimits::DEFAULT_CONFIRM_BYTES.min(max_bytes));
+    FileSizeLimits { confirm_bytes, max_bytes }
 }
 
 /// Parse `dashboard`, defaulting each field independently. The url is trimmed here so the sanitized
@@ -245,6 +266,14 @@ pub fn write_config_dashboard(
 ) -> std::io::Result<()> {
     let value = serde_json::to_value(dashboard).unwrap_or(serde_json::Value::Null);
     write_config_field(path, "dashboard", value)
+}
+
+pub fn write_config_file_size_limits(
+    path: &Path,
+    limits: &FileSizeLimits,
+) -> std::io::Result<()> {
+    let value = serde_json::to_value(limits).unwrap_or(serde_json::Value::Null);
+    write_config_field(path, "fileSizeLimits", value)
 }
 
 /// Read the live-applied settings along with whether they were read successfully.
@@ -481,6 +510,71 @@ mod tests {
 
         let c = read_config(&path);
         assert_eq!(c.dashboard, dashboard);
+        assert_eq!(c.language, Some("en".into())); // existing fields are preserved
+    }
+
+    const MIB: u64 = 1024 * 1024;
+
+    #[test]
+    fn parse_config_file_size_limits_defaults_to_20_and_200_mib() {
+        assert_eq!(
+            parse(json!({})).file_size_limits,
+            FileSizeLimits { confirm_bytes: 20 * MIB, max_bytes: 200 * MIB }
+        );
+    }
+
+    #[test]
+    fn parse_config_file_size_limits_reads_sizes_in_range() {
+        let limits = |v: serde_json::Value| parse(json!({ "fileSizeLimits": v })).file_size_limits;
+        assert_eq!(
+            limits(json!({ "confirmBytes": 5 * MIB, "maxBytes": 50 * MIB })),
+            FileSizeLimits { confirm_bytes: 5 * MIB, max_bytes: 50 * MIB }
+        );
+        // Both ends of each range are accepted.
+        assert_eq!(
+            limits(json!({ "confirmBytes": MIB, "maxBytes": 1024 * MIB })),
+            FileSizeLimits { confirm_bytes: MIB, max_bytes: 1024 * MIB }
+        );
+        assert_eq!(
+            limits(json!({ "confirmBytes": 30 * MIB, "maxBytes": 30 * MIB })),
+            FileSizeLimits { confirm_bytes: 30 * MIB, max_bytes: 30 * MIB }
+        );
+    }
+
+    #[test]
+    fn parse_config_file_size_limits_falls_back_per_size() {
+        let limits = |v: serde_json::Value| parse(json!({ "fileSizeLimits": v })).file_size_limits;
+        let d = FileSizeLimits::default();
+        // A max out of range, fractional, negative or of another type falls back to its default.
+        for bad in [json!(MIB - 1), json!(1024 * MIB + 1), json!(1.5), json!(-1), json!("big")] {
+            assert_eq!(limits(json!({ "confirmBytes": 5 * MIB, "maxBytes": bad })).max_bytes, d.max_bytes);
+        }
+        // A confirm size out of range (including over max) falls back to its default.
+        for bad in [json!(MIB - 1), json!(100 * MIB), json!(2.5), json!(null)] {
+            assert_eq!(
+                limits(json!({ "confirmBytes": bad, "maxBytes": 50 * MIB })),
+                FileSizeLimits { confirm_bytes: d.confirm_bytes, max_bytes: 50 * MIB }
+            );
+        }
+        // ...or to max when the default would be over it.
+        assert_eq!(
+            limits(json!({ "maxBytes": 10 * MIB })),
+            FileSizeLimits { confirm_bytes: 10 * MIB, max_bytes: 10 * MIB }
+        );
+        assert_eq!(limits(json!("bad")), d);
+    }
+
+    #[test]
+    fn write_config_file_size_limits_round_trips_and_preserves_other_fields() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, r#"{"language": "en"}"#).unwrap();
+
+        let limits = FileSizeLimits { confirm_bytes: 8 * MIB, max_bytes: 64 * MIB };
+        write_config_file_size_limits(&path, &limits).unwrap();
+
+        let c = read_config(&path);
+        assert_eq!(c.file_size_limits, limits);
         assert_eq!(c.language, Some("en".into())); // existing fields are preserved
     }
 

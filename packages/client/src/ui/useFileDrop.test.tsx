@@ -6,12 +6,13 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { FILE_MAX_BYTES } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MediaKind } from "../viewer/media.js";
 import { type FileDropError, useFileDrop } from "./useFileDrop.js";
 
 afterEach(cleanup);
+
+const MAX = 5 * 1024 * 1024;
 
 function Harness(props: {
   onFile: (name: string, content: string) => void;
@@ -22,6 +23,7 @@ function Harness(props: {
     props.onFile,
     props.onMedia ?? vi.fn(),
     props.onError,
+    MAX,
   );
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: drop receiver under test, not an interactive widget
@@ -92,7 +94,7 @@ describe("useFileDrop", () => {
     const onError = vi.fn();
     render(<Harness onFile={vi.fn()} onMedia={onMedia} onError={onError} />);
     const big = new File(["x"], "clip.mp4");
-    Object.defineProperty(big, "size", { value: FILE_MAX_BYTES + 1 });
+    Object.defineProperty(big, "size", { value: MAX + 1 });
     fireEvent.drop(screen.getByTestId("zone"), {
       dataTransfer: transfer(["Files"], [big]),
     });
@@ -100,12 +102,12 @@ describe("useFileDrop", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("rejects a file over the size cap without reading it", () => {
+  it("rejects a file over the configured maximum without reading it", () => {
     const onFile = vi.fn();
     const onError = vi.fn();
     render(<Harness onFile={onFile} onError={onError} />);
     const big = new File(["x"], "big.bin");
-    Object.defineProperty(big, "size", { value: FILE_MAX_BYTES + 1 });
+    Object.defineProperty(big, "size", { value: MAX + 1 });
     fireEvent.drop(screen.getByTestId("zone"), {
       dataTransfer: transfer(["Files"], [big]),
     });

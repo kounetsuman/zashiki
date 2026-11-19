@@ -2,9 +2,13 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { FilesApi } from "../api/files.js";
+import { type FilesApi, FileTooLargeError } from "../api/files.js";
+import i18n from "../i18n/index.js";
 import { viewerKey } from "../viewer/viewer-model.js";
 import { useViewer } from "./useViewer.js";
+
+const MIB = 1024 * 1024;
+const LIMITS = { confirmBytes: MIB, maxBytes: 2 * MIB };
 
 function text(content: string, version: string | null = null) {
   return { content, version };
@@ -39,7 +43,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("useViewer media", () => {
   it("ensureMediaBuffer opens a repo buffer from the server URL without an object URL", () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     let key = "";
     act(() => {
       key = result.current.ensureMediaBuffer("/repo", "a.png", "image");
@@ -53,7 +57,7 @@ describe("useViewer media", () => {
   });
 
   it("openExternalMedia creates an object URL and revokes the previous one on re-drop", () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     const file = new File(["x"], "clip.mp4");
     let key = "";
     act(() => {
@@ -71,7 +75,7 @@ describe("useViewer media", () => {
   });
 
   it("openExternalMedia gives same-name files from different folders their own buffers", () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     let a = "";
     let b = "";
     act(() => {
@@ -93,7 +97,7 @@ describe("useViewer media", () => {
   });
 
   it("openExternalMedia types a dropped pdf as application/pdf whatever File.type says", () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     act(() => {
       result.current.openExternalMedia(
         "spec.pdf",
@@ -105,7 +109,7 @@ describe("useViewer media", () => {
   });
 
   it("openExternalMedia types dropped audio by its extension whatever File.type says", () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     act(() => {
       result.current.openExternalMedia(
         "voice.opus",
@@ -125,7 +129,7 @@ describe("useViewer media", () => {
   });
 
   it("closeBuffer revokes the object URL of a dropped media buffer", () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     let key = "";
     act(() => {
       key = result.current.openExternalMedia(
@@ -142,7 +146,9 @@ describe("useViewer media", () => {
   });
 
   it("revokes any remaining object URLs on unmount", () => {
-    const { result, unmount } = renderHook(() => useViewer(filesApi, null));
+    const { result, unmount } = renderHook(() =>
+      useViewer(filesApi, null, LIMITS),
+    );
     act(() => {
       result.current.openExternalMedia(
         "a.png",
@@ -160,7 +166,9 @@ describe("useViewer media text", () => {
     const read = vi.fn<FilesApi["read"]>(() =>
       Promise.resolve(text("\u0000raw")),
     );
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, null, LIMITS),
+    );
     let key = "";
     act(() => {
       key = result.current.ensureMediaBuffer("/repo", "a.png", "image");
@@ -169,13 +177,11 @@ describe("useViewer media text", () => {
     await act(async () => {
       result.current.togglePreview(key);
     });
-    expect(read).toHaveBeenCalledWith(
-      "/repo",
-      "a.png",
-      "utf8",
-      expect.anything(),
-      undefined,
-    );
+    expect(read).toHaveBeenCalledWith("/repo", "a.png", "utf8", {
+      signal: expect.anything(),
+      knownVersion: undefined,
+      limit: MIB,
+    });
     expect(result.current.buffers[key]).toMatchObject({
       preview: true,
       status: "ready",
@@ -190,7 +196,9 @@ describe("useViewer media text", () => {
 
   it("reads a dropped media file as text from the file itself", async () => {
     const read = vi.fn<FilesApi["read"]>();
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, null, LIMITS),
+    );
     let key = "";
     act(() => {
       key = result.current.openExternalMedia(
@@ -210,7 +218,7 @@ describe("useViewer media text", () => {
   });
 
   it("a dropped media file over the read limit shows an error, and toggling back shows the media", async () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     const big = new File(["x"], "big.mp4");
     Object.defineProperty(big, "size", { value: 3 * 1024 * 1024 });
     let key = "";
@@ -238,7 +246,9 @@ describe("useViewer encoding", () => {
       Promise.resolve(text(`as ${encoding}`)),
     );
     const key = viewerKey("/repo", "data.csv");
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
     await act(async () => {
       result.current.ensureBuffer("/repo", "data.csv");
     });
@@ -283,7 +293,9 @@ describe("useViewer encoding switches", () => {
 
   it("a read started before the switch never overwrites the newer encoding's content", async () => {
     const { read, pending } = deferredReads();
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, null, LIMITS),
+    );
     act(() => {
       result.current.ensureBuffer("/repo", "data.csv");
     });
@@ -299,7 +311,9 @@ describe("useViewer encoding switches", () => {
 
   it("a failed re-read with the new encoding shows its error instead of the old text", async () => {
     const { read, pending } = deferredReads();
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, null, LIMITS),
+    );
     act(() => {
       result.current.ensureBuffer("/repo", "data.csv");
     });
@@ -317,7 +331,9 @@ describe("useViewer encoding switches", () => {
   it("a poll that supersedes the switch read still reports its failure", async () => {
     vi.useFakeTimers();
     const { read, pending } = deferredReads();
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
     act(() => {
       result.current.ensureBuffer("/repo", "data.csv");
     });
@@ -346,7 +362,9 @@ describe("useViewer encoding switches", () => {
 
   it("ensureBuffer reads a file opened with an encoding (a renamed tab) in it", () => {
     const { read, pending } = deferredReads();
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, null, LIMITS),
+    );
     act(() => {
       result.current.ensureBuffer("/repo", "data.csv", "euc_jp");
     });
@@ -366,7 +384,9 @@ describe("useViewer polling", () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(text("v2", "tag-2"))
       .mockResolvedValue(null);
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
     await act(async () => {
       result.current.ensureBuffer("/repo", "big.html");
     });
@@ -382,7 +402,7 @@ describe("useViewer polling", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    expect(read.mock.calls.map((c) => c[4])).toEqual([
+    expect(read.mock.calls.map((c) => c[3]?.knownVersion)).toEqual([
       undefined,
       "tag-1",
       "tag-1",
@@ -399,7 +419,9 @@ describe("useViewer polling", () => {
       .mockReturnValueOnce(new Promise(() => {}))
       .mockReturnValueOnce(new Promise(() => {}))
       .mockResolvedValue(text("v1", "tag-u"));
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
     await act(async () => {
       result.current.ensureBuffer("/repo", "big.html");
     });
@@ -410,7 +432,7 @@ describe("useViewer polling", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    expect(read.mock.calls[3]?.[4]).toBeUndefined();
+    expect(read.mock.calls[3]?.[3]?.knownVersion).toBeUndefined();
     expect(result.current.buffers[key]).toMatchObject({
       status: "ready",
       content: "v1",
@@ -424,7 +446,9 @@ describe("useViewer polling", () => {
       .fn<FilesApi["read"]>()
       .mockResolvedValueOnce(text("v1", "tag-1"))
       .mockResolvedValue(text("v1", "tag-1"));
-    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
     await act(async () => {
       result.current.ensureBuffer("/repo", "big.html");
     });
@@ -436,7 +460,7 @@ describe("useViewer polling", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
     });
-    expect(read.mock.calls.map((c) => c[4])).toEqual([
+    expect(read.mock.calls.map((c) => c[3]?.knownVersion)).toEqual([
       undefined,
       undefined,
       undefined,
@@ -446,9 +470,226 @@ describe("useViewer polling", () => {
   });
 });
 
+describe("useViewer large files", () => {
+  const key = viewerKey("/repo", "big.log");
+
+  /** Refuses any read carrying a limit below `size`, like the server; otherwise answers with `onFull`. */
+  function sizedReads(
+    size: number,
+    onFull: () => Promise<{ content: string; version: string | null }>,
+  ) {
+    return vi.fn<FilesApi["read"]>((_repo, _file, _encoding, options) =>
+      options?.limit !== undefined && size > options.limit
+        ? Promise.reject(new FileTooLargeError("too large", size))
+        : onFull(),
+    );
+  }
+
+  it("reads a repo file with the confirmation size as its limit and waits when it is over", async () => {
+    const read = sizedReads(1.5 * MIB, () => Promise.resolve(text("all")));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, null, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    expect(read.mock.calls[0]?.[3]?.limit).toBe(MIB);
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "tooLarge",
+      tooLarge: { reason: "confirm", size: 1.5 * MIB },
+    });
+  });
+
+  it("Open anyway re-reads without the limit, and the polls keep reading without it", async () => {
+    vi.useFakeTimers();
+    const read = sizedReads(1.5 * MIB, () => Promise.resolve(text("all")));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    await act(async () => {
+      result.current.openAnyway(key);
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "ready",
+      content: "all",
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(read.mock.calls.map((c) => c[3]?.limit)).toEqual([
+      MIB,
+      undefined,
+      undefined,
+    ]);
+    vi.useRealTimers();
+  });
+
+  it("a poll does not start while the Open anyway read is still running", async () => {
+    vi.useFakeTimers();
+    let finish = (): void => undefined;
+    const read = sizedReads(
+      1.5 * MIB,
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve(text("all"));
+        }),
+    );
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    act(() => {
+      result.current.openAnyway(key);
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    await act(async () => finish());
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "ready",
+      content: "all",
+    });
+    vi.useRealTimers();
+  });
+
+  it("raising the maximum turns a tab over the old maximum into the confirmation on the next poll", async () => {
+    vi.useFakeTimers();
+    const read = sizedReads(3 * MIB, () => Promise.resolve(text("all")));
+    const { result, rerender } = renderHook(
+      ({ limits }) => useViewer({ ...filesApi, read }, key, limits),
+      { initialProps: { limits: LIMITS } },
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    expect(result.current.buffers[key]?.tooLarge?.reason).toBe("overMax");
+    rerender({ limits: { confirmBytes: MIB, maxBytes: 4 * MIB } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "tooLarge",
+      tooLarge: { reason: "confirm", size: 3 * MIB },
+    });
+    vi.useRealTimers();
+  });
+
+  it("a shown file that grows past the confirmation size asks again instead of going stale", async () => {
+    vi.useFakeTimers();
+    let size = MIB / 2;
+    const read = vi.fn<FilesApi["read"]>((_repo, _file, _encoding, options) =>
+      options?.limit !== undefined && size > options.limit
+        ? Promise.reject(new FileTooLargeError("too large", size))
+        : Promise.resolve(text(`${size}`)),
+    );
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    expect(result.current.buffers[key]?.status).toBe("ready");
+    size = 1.5 * MIB;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "tooLarge",
+      tooLarge: { reason: "confirm", size: 1.5 * MIB },
+    });
+    vi.useRealTimers();
+  });
+
+  it("a poll that fails for another reason leaves the shown file as it is", async () => {
+    vi.useFakeTimers();
+    const read = vi
+      .fn<FilesApi["read"]>()
+      .mockResolvedValueOnce(text("v1"))
+      .mockRejectedValue(new DOMException("aborted", "AbortError"));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    const shown = result.current.buffers[key];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.buffers[key]).toBe(shown);
+    vi.useRealTimers();
+  });
+
+  it("a file over the maximum says so, with the maximum, and cannot be opened anyway", async () => {
+    const read = sizedReads(3 * MIB, () => Promise.resolve(text("all")));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, null, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    expect(result.current.buffers[key]?.tooLarge).toEqual({
+      reason: "overMax",
+      size: 3 * MIB,
+      maxBytes: 2 * MIB,
+    });
+    await act(async () => {
+      result.current.openAnyway(key);
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("a read opened anyway that times out is reported as too large to open, and is not polled again", async () => {
+    vi.useFakeTimers();
+    const read = sizedReads(1.5 * MIB, () =>
+      Promise.reject(new DOMException("aborted", "AbortError")),
+    );
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    await act(async () => {
+      result.current.openAnyway(key);
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "tooLarge",
+      tooLarge: { reason: "failedAfterConfirm" },
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(read).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("a timeout on a file within the confirmation size keeps the usual message", async () => {
+    const read = sizedReads(10, () =>
+      Promise.reject(new DOMException("aborted", "AbortError")),
+    );
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, null, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "error",
+      error: i18n.t("viewer.readTimeout"),
+    });
+  });
+});
+
 describe("useViewer pathOf", () => {
   it("returns the absolute path for a repo buffer", () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     let key = "";
     act(() => {
       key = result.current.ensureBuffer("/repo", "src/app.ts");
@@ -457,7 +698,7 @@ describe("useViewer pathOf", () => {
   });
 
   it("returns null for an external buffer (no repo path)", () => {
-    const { result } = renderHook(() => useViewer(filesApi, null));
+    const { result } = renderHook(() => useViewer(filesApi, null, LIMITS));
     let key = "";
     act(() => {
       key = result.current.openExternal("README.md", "content");

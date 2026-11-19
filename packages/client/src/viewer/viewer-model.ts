@@ -9,9 +9,10 @@
 import type { TextEncoding } from "@zashiki/shared";
 
 import { isDelimitedText } from "./delimited.js";
+import type { TooLargeFile } from "./large-file.js";
 import type { MediaKind } from "./media.js";
 
-export type BufferStatus = "loading" | "ready" | "error";
+export type BufferStatus = "loading" | "ready" | "error" | "tooLarge";
 
 export interface MediaSource {
   readonly kind: MediaKind;
@@ -33,6 +34,10 @@ export interface ViewerBuffer {
   readonly media?: MediaSource;
   /** The encoding a repo text file is read with; absent means UTF-8. */
   readonly encoding?: TextEncoding;
+  /** Present while the status is "tooLarge". */
+  readonly tooLarge?: TooLargeFile;
+  /** The user chose to open the file past the confirmation size, so its reads skip that limit. */
+  readonly openAnyway?: boolean;
 }
 
 export type ViewerBuffers = Readonly<Record<string, ViewerBuffer>>;
@@ -129,6 +134,11 @@ export function repoFileOfViewerKey(key: string): RepoFile | null {
  */
 export function shouldPollBuffer(buf: ViewerBuffer): boolean {
   return buf.external !== true && buf.media === undefined;
+}
+
+/** A file that could not be read even when opened anyway is not re-read on the poll interval. */
+export function gaveUpForSize(buf: ViewerBuffer): boolean {
+  return buf.tooLarge?.reason === "failedAfterConfirm";
 }
 
 function patch(
@@ -241,7 +251,13 @@ export function bufferLoaded(
   return patch(bufs, key, (b) =>
     b.status === "ready" && b.content === content
       ? b
-      : { ...b, status: "ready", content, error: undefined },
+      : {
+          ...b,
+          status: "ready",
+          content,
+          error: undefined,
+          tooLarge: undefined,
+        },
   );
 }
 
@@ -250,7 +266,38 @@ export function bufferFailed(
   key: string,
   error: string,
 ): ViewerBuffers {
-  return patch(bufs, key, (b) => ({ ...b, status: "error", error }));
+  return patch(bufs, key, (b) => ({
+    ...b,
+    status: "error",
+    error,
+    tooLarge: undefined,
+  }));
+}
+
+/** The read was held back or broke off because of the file's size. */
+export function bufferTooLarge(
+  bufs: ViewerBuffers,
+  key: string,
+  tooLarge: TooLargeFile,
+): ViewerBuffers {
+  return patch(bufs, key, (b) =>
+    b.status === "tooLarge" &&
+    JSON.stringify(b.tooLarge) === JSON.stringify(tooLarge)
+      ? b
+      : { ...b, status: "tooLarge", error: undefined, tooLarge },
+  );
+}
+
+/** Back to loading for a read without the confirmation limit, which later reads keep skipping. */
+export function bufferOpenAnyway(
+  bufs: ViewerBuffers,
+  key: string,
+): ViewerBuffers {
+  return patch(bufs, key, (b) =>
+    b.tooLarge?.reason === "confirm"
+      ? { ...b, status: "loading", tooLarge: undefined, openAnyway: true }
+      : b,
+  );
 }
 
 /**
@@ -275,7 +322,13 @@ export function bufferTogglePreview(
   return patch(bufs, key, (b) => {
     if (b.media === undefined) return { ...b, preview: !b.preview };
     if (b.preview)
-      return { ...b, preview: false, status: "ready", error: undefined };
+      return {
+        ...b,
+        preview: false,
+        status: "ready",
+        error: undefined,
+        tooLarge: undefined,
+      };
     return {
       ...b,
       preview: true,
@@ -293,7 +346,14 @@ export function bufferSetEncoding(
   return patch(bufs, key, (b) =>
     encodingOf(b) === encoding
       ? b
-      : { ...b, encoding, status: "loading", content: null, error: undefined },
+      : {
+          ...b,
+          encoding,
+          status: "loading",
+          content: null,
+          error: undefined,
+          tooLarge: undefined,
+        },
   );
 }
 

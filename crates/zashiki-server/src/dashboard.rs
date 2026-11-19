@@ -8,6 +8,10 @@ use axum::http::StatusCode;
 
 use crate::file::status_for_fs_error;
 
+/// The largest dashboard file served. It is read whole into memory and sent inside JSON, so it does
+/// not follow the Viewer's configurable maximum.
+pub const DASHBOARD_MAX_BYTES: u64 = 2 * 1024 * 1024;
+
 fn hex_value(c: u8) -> Option<u8> {
     match c {
         b'0'..=b'9' => Some(c - b'0'),
