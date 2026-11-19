@@ -214,6 +214,36 @@ describe("useViewer encoding switches", () => {
     });
   });
 
+  it("a poll that supersedes the switch read still reports its failure", async () => {
+    vi.useFakeTimers();
+    const { read, pending } = deferredReads();
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    act(() => {
+      result.current.ensureBuffer("/repo", "data.csv");
+    });
+    await act(async () => pending[0]?.settle("as utf8"));
+    act(() => {
+      result.current.setEncoding(key, "shift_jis");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(pending.map((p) => p.encoding)).toEqual([
+      "utf8",
+      "shift_jis",
+      "shift_jis",
+    ]);
+    await act(async () => {
+      pending[1]?.settle(new Error("superseded"));
+      pending[2]?.settle(new Error("fs error"));
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "error",
+      error: "fs error",
+    });
+    vi.useRealTimers();
+  });
+
   it("ensureBuffer reads a file opened with an encoding (a renamed tab) in it", () => {
     const { read, pending } = deferredReads();
     const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));

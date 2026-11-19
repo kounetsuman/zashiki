@@ -73,6 +73,8 @@ export function useViewer(
   const buffersRef = useRef(buffers);
   buffersRef.current = buffers;
   const readSeqRef = useRef<Record<string, number>>({});
+  // Keys whose latest non-silent read has not settled yet: a poll superseding it reports its error instead.
+  const awaitingVisibleReadRef = useRef<Set<string>>(new Set());
   const objectUrlsRef = useRef<Record<string, string>>({});
 
   const revokeObjectUrl = useCallback((key: string): void => {
@@ -92,23 +94,25 @@ export function useViewer(
     ) => {
       const seq = (readSeqRef.current[key] ?? 0) + 1;
       readSeqRef.current[key] = seq;
+      if (!silent) awaitingVisibleReadRef.current.add(key);
       const ctrl = new AbortController();
       const timer = window.setTimeout(() => ctrl.abort(), FILE_READ_TIMEOUT_MS);
       return filesApi
         .read(repoPath, relPath, encoding, ctrl.signal)
         .then(
-          (content) =>
-            setBuffers((cur) =>
-              readSeqRef.current[key] === seq
-                ? bufferLoaded(cur, key, content)
-                : cur,
-            ),
-          (e: unknown) =>
+          (content) => {
+            if (readSeqRef.current[key] !== seq) return;
+            awaitingVisibleReadRef.current.delete(key);
+            setBuffers((cur) => bufferLoaded(cur, key, content));
+          },
+          (e: unknown) => {
+            if (readSeqRef.current[key] !== seq) return;
+            const visible = awaitingVisibleReadRef.current.delete(key);
             setBuffers((cur) => {
-              if (readSeqRef.current[key] !== seq) return cur;
-              if (silent || cur[key]?.status === "ready") return cur;
+              if (!visible || cur[key]?.status === "ready") return cur;
               return bufferFailed(cur, key, readErrorMessage(e));
-            }),
+            });
+          },
         )
         .finally(() => window.clearTimeout(timer));
     },
