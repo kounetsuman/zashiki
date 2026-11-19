@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { htmlFrameUrl } from "../lib/html-frame.js";
@@ -408,6 +409,33 @@ describe("Viewer", () => {
       { connected: true, src: "blob:vid-1" },
       { connected: true, src: null },
     ]);
+  });
+
+  it("keeps the video source after StrictMode re-runs the mount", () => {
+    const pause = vi
+      .spyOn(HTMLMediaElement.prototype, "pause")
+      .mockImplementation(noop);
+    const load = vi
+      .spyOn(HTMLMediaElement.prototype, "load")
+      .mockImplementation(noop);
+    const { container } = render(
+      <StrictMode>
+        <Viewer
+          buffer={{
+            ...base,
+            relPath: "clip.webm",
+            content: null,
+            media: { kind: "video", url: "blob:vid-1" },
+          }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />
+      </StrictMode>,
+    );
+    pause.mockRestore();
+    load.mockRestore();
+    const video = container.querySelector("video.viewer-media");
+    expect(video?.getAttribute("src")).toBe("blob:vid-1");
   });
 
   it("renders a pdf buffer in an iframe pointing at the media URL", () => {

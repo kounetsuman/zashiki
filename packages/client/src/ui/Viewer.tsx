@@ -204,13 +204,13 @@ function VideoHost({ url, relPath }: { url: string; relPath: string }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   useLayoutEffect(() => {
     const video = videoRef.current;
-    return () => {
-      if (video !== null) unloadVideo(video);
-    };
-  }, []);
+    if (video === null) return;
+    video.src = url;
+    return () => unloadVideo(video);
+  }, [url]);
   return (
     // biome-ignore lint/a11y/useMediaCaption: local media preview has no caption track
-    <video ref={videoRef} className="viewer-media" src={url} controls>
+    <video ref={videoRef} className="viewer-media" controls>
       {relPath}
     </video>
   );
