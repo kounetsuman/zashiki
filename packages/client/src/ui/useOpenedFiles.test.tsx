@@ -107,6 +107,18 @@ describe("useOpenedFiles", () => {
     ]);
   });
 
+  it("keeps taking after a handler throws", async () => {
+    invoke.mockResolvedValueOnce([{ name: "a.md", content: "A" }]);
+    const onPicked = vi.fn(() => {
+      throw new Error("boom");
+    });
+    render(<Probe onPicked={onPicked} />);
+    await vi.waitFor(() => expect(onPicked).toHaveBeenCalledTimes(1));
+    invoke.mockResolvedValueOnce([{ name: "b.md", content: "B" }]);
+    signal();
+    await vi.waitFor(() => expect(onPicked).toHaveBeenCalledTimes(2));
+  });
+
   it("stays quiet when nothing is waiting", async () => {
     const onPicked = vi.fn();
     render(<Probe onPicked={onPicked} />);

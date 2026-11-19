@@ -23,12 +23,14 @@ export function useOpenedFiles(
     let takes = Promise.resolve();
     const take = (): void => {
       takes = takes.then(() =>
-        takeOpenedFiles().then(
-          (picked) => {
-            if (picked.length > 0) handlers.current.onPicked(picked);
-          },
-          () => handlers.current.onFailed(),
-        ),
+        takeOpenedFiles()
+          .then(
+            (picked) => {
+              if (picked.length > 0) handlers.current.onPicked(picked);
+            },
+            () => handlers.current.onFailed(),
+          )
+          .catch(() => undefined),
       );
     };
     const subscription = listen("zashiki:files-opened", take).catch(() => {
