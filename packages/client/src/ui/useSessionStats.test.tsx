@@ -83,4 +83,17 @@ describe("useSessionStats", () => {
     expect(stats).toHaveBeenCalledTimes(2);
     expect(result.current).toEqual([prompt("kept")]);
   });
+
+  it("keeps the same events when a poll answers with the same events", async () => {
+    const stats = vi.fn(async () => [prompt("same")]);
+    const api = { stats };
+    const { result } = renderHook(() => useSessionStats(api, "t1"));
+    await act(async () => {});
+    const first = result.current;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SESSION_STATS_POLL_MS);
+    });
+    expect(stats).toHaveBeenCalledTimes(2);
+    expect(result.current).toBe(first);
+  });
 });
