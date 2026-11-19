@@ -936,6 +936,8 @@ export const sessionEventSchema = z.object({
   /** The Summary row key: the file path for read/edit, the command group for a command. */
   target: z.string().optional(),
   domains: z.array(z.string()).optional(),
+  /** For a shell command, the programs (`curl`, `wget`) that reached `domains`. */
+  via: z.array(z.string()).optional(),
   outcome: sessionEventOutcomeSchema.optional().catch(undefined),
   deniedBy: sessionEventDeniedBySchema.optional().catch(undefined),
   durationMs: z.number().optional(),

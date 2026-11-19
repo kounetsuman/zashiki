@@ -719,6 +719,9 @@ pub struct SessionEvent {
     pub target: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub domains: Vec<String>,
+    /// For a shell command, the programs (`curl`, `wget`) that reached `domains`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub via: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outcome: Option<SessionEventOutcome>,
     #[serde(skip_serializing_if = "Option::is_none")]

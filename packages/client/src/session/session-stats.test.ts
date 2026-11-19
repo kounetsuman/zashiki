@@ -28,7 +28,8 @@ const command = (
   target: string,
   outcome: SessionEvent["outcome"] = "ok",
   domains?: string[],
-) => ev({ kind: "command", tool: "Bash", text, target, outcome, domains });
+  via?: string[],
+) => ev({ kind: "command", tool: "Bash", text, target, outcome, domains, via });
 const fetchUrl = (url: string, host: string) =>
   ev({ kind: "web", tool: "WebFetch", text: url, domains: [host] });
 
@@ -91,7 +92,7 @@ describe("summarize: external access", () => {
   it("counts visits per domain with the tools that made them", () => {
     const { external } = summarize([
       fetchUrl("https://docs.rs/a", "docs.rs"),
-      command("curl -s https://docs.rs/b", "curl", "ok", ["docs.rs"]),
+      command("curl -s https://docs.rs/b", "curl", "ok", ["docs.rs"], ["curl"]),
       ev({
         kind: "web",
         tool: "mcp__playwright__browser_navigate",
@@ -122,12 +123,33 @@ describe("summarize: external access", () => {
 });
 
 describe("externalTools", () => {
-  it("names curl or wget for a command, the tool otherwise", () => {
+  it("names the programs the server says reached the domains", () => {
     expect(
-      externalTools(command("curl x | wget y", "curl", "ok", ["a"])),
+      externalTools(
+        command("echo start", "echo", "ok", ["late.example"], ["curl"]),
+      ),
+    ).toEqual(["curl"]);
+    expect(
+      externalTools(
+        command(
+          "echo 'no curl' && wget https://b/",
+          "echo",
+          "ok",
+          ["b"],
+          ["wget"],
+        ),
+      ),
+    ).toEqual(["wget"]);
+    expect(
+      externalTools(
+        command("curl x | wget y", "curl", "ok", ["a"], ["curl", "wget"]),
+      ),
     ).toEqual(["curl", "wget"]);
+  });
+
+  it("falls back to the tool name", () => {
     expect(
-      externalTools(command("bash fetch.sh", "bash", "ok", ["a"])),
+      externalTools(command("curl https://a/", "curl", "ok", ["a"])),
     ).toEqual(["Bash"]);
     expect(externalTools(fetchUrl("https://a/", "a"))).toEqual(["WebFetch"]);
   });

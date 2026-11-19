@@ -866,6 +866,7 @@ describe("cockpit terminal REST responses", () => {
           tool: "Bash",
           target: "curl",
           domains: ["a.example"],
+          via: ["curl"],
           outcome: "denied",
           deniedBy: "classifier",
           durationMs: 1500,

@@ -74,15 +74,9 @@ function addOnce<T>(list: T[], value: T): void {
   if (!list.includes(value)) list.push(value);
 }
 
-/** The tool a call reached a domain with: `curl` / `wget` for a shell command. */
+/** The tool a call reached a domain with: the program a shell command ran it through. */
 export function externalTools(event: SessionEvent): string[] {
-  if (event.tool === "Bash") {
-    const programs = [...event.text.matchAll(/\b(curl|wget)\b/g)].map(
-      (m) => m[1] ?? "",
-    );
-    const unique = [...new Set(programs)];
-    return unique.length > 0 ? unique : ["Bash"];
-  }
+  if (event.via !== undefined && event.via.length > 0) return [...event.via];
   return [event.tool?.split("__").pop() ?? event.kind];
 }
 

@@ -79,6 +79,7 @@ fn event(at: u64, kind: SessionEventKind, text: String) -> SessionEvent {
         tool: None,
         target: None,
         domains: Vec::new(),
+        via: Vec::new(),
         outcome: None,
         denied_by: None,
         duration_ms: None,
@@ -230,7 +231,7 @@ fn tool_call(item: &Value, at: u64, cwd: &str) -> SessionEvent {
             let command = first(&["command"]);
             let mut call = event(at, SessionEventKind::Command, one_line(command));
             call.target = Some(command_group(command));
-            call.domains = command_domains(command);
+            (call.domains, call.via) = command_domains(command);
             call
         }
         "WebFetch" => web_call(at, first(&["url"])),
@@ -330,12 +331,22 @@ fn command_group(command: &str) -> String {
     }
 }
 
-fn command_domains(command: &str) -> Vec<String> {
-    domains_of(
-        command_words(command)
-            .filter(|(_, words)| matches!(program(words), "curl" | "wget"))
-            .flat_map(|(segment, _)| urls_in(segment)),
-    )
+/// The hosts a shell line reaches through `curl` / `wget`, and which of the two reached them.
+fn command_domains(command: &str) -> (Vec<String>, Vec<String>) {
+    let mut urls = Vec::new();
+    let mut via: Vec<String> = Vec::new();
+    for (segment, words) in command_words(command) {
+        let program = program(&words);
+        if !matches!(program, "curl" | "wget") {
+            continue;
+        }
+        let found = urls_in(segment);
+        if !found.is_empty() && !via.iter().any(|p| p == program) {
+            via.push(program.to_string());
+        }
+        urls.extend(found);
+    }
+    (domains_of(urls), via)
 }
 
 fn domains_of<'a>(urls: impl IntoIterator<Item = &'a str>) -> Vec<String> {
@@ -718,6 +729,36 @@ mod tests {
             .domains,
             vec!["h.example.com"]
         );
+    }
+
+    #[test]
+    fn a_command_names_the_programs_that_reached_its_domains() {
+        let multi_line = call(
+            "Bash",
+            json!({"command": format!("echo start\n{}\ncurl https://late.example/", "x".repeat(300))}),
+        );
+        assert_eq!(multi_line.domains, vec!["late.example"]);
+        assert_eq!(multi_line.via, vec!["curl"]);
+
+        let after_echo = call(
+            "Bash",
+            json!({"command": "echo 'no curl' && wget https://b.example/f"}),
+        );
+        assert_eq!(after_echo.domains, vec!["b.example"]);
+        assert_eq!(after_echo.via, vec!["wget"]);
+
+        let both = call(
+            "Bash",
+            json!({"command": "curl https://a.example/ && wget https://b.example/ && curl https://c.example/"}),
+        );
+        assert_eq!(both.via, vec!["curl", "wget"]);
+
+        assert!(call("Bash", json!({"command": "curl --version"}))
+            .via
+            .is_empty());
+        assert!(call("WebFetch", json!({"url": "https://a.example/"}))
+            .via
+            .is_empty());
     }
 
     #[test]
