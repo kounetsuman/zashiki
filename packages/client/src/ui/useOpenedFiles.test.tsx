@@ -129,7 +129,8 @@ describe("useOpenedFiles", () => {
     const onPicked = vi.fn();
     render(<Probe onPicked={onPicked} />);
     await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(1));
-    await Promise.resolve();
+    await invoke.mock.results[0]?.value;
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(onPicked).not.toHaveBeenCalled();
   });
 
