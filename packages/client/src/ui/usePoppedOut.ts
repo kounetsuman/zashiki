@@ -24,7 +24,8 @@ function warn(action: string): (e: unknown) => void {
 /**
  * Tracks which Cockpit Terminals are popped out. The desktop shell owns the windows: the set is
  * read from it on load (the windows outlive a reload of the main page) and shrinks when it reports
- * one closed, whichever way that window was closed. `onReturned` hears each terminal that came back.
+ * one closed, whichever way that window was closed, or when its window turns out to be gone already.
+ * `onReturned` hears each terminal that came back.
  */
 export function usePoppedOut(
   api: PopOutApi | undefined,
@@ -34,26 +35,28 @@ export function usePoppedOut(
   const onReturnedRef = useRef(onReturned);
   onReturnedRef.current = onReturned;
 
+  const forget = useCallback((cockpitTerminalId: string) => {
+    setIds((prev) => {
+      if (!prev.has(cockpitTerminalId)) return prev;
+      const next = new Set(prev);
+      next.delete(cockpitTerminalId);
+      return next;
+    });
+    onReturnedRef.current(cockpitTerminalId);
+  }, []);
+
   useEffect(() => {
     if (api === undefined) return;
     let live = true;
     api.list().then((open) => {
       if (live) setIds(new Set(open));
     }, warn("list"));
-    const off = api.onClosed((cockpitTerminalId) => {
-      setIds((prev) => {
-        if (!prev.has(cockpitTerminalId)) return prev;
-        const next = new Set(prev);
-        next.delete(cockpitTerminalId);
-        return next;
-      });
-      onReturnedRef.current(cockpitTerminalId);
-    });
+    const off = api.onClosed(forget);
     return () => {
       live = false;
       off();
     };
-  }, [api]);
+  }, [api, forget]);
 
   const popOut = useCallback(
     (cockpitTerminalId: string, title: string, at: ScreenPoint | null) => {
@@ -70,16 +73,20 @@ export function usePoppedOut(
 
   const show = useCallback(
     (cockpitTerminalId: string) => {
-      api?.focus(cockpitTerminalId).catch(warn("focus"));
+      api?.focus(cockpitTerminalId).then((shown) => {
+        if (!shown) forget(cockpitTerminalId);
+      }, warn("focus"));
     },
-    [api],
+    [api, forget],
   );
 
   const returnToMain = useCallback(
     (cockpitTerminalId: string) => {
-      api?.close(cockpitTerminalId).catch(warn("close"));
+      api?.close(cockpitTerminalId).then((closed) => {
+        if (!closed) forget(cockpitTerminalId);
+      }, warn("close"));
     },
-    [api],
+    [api, forget],
   );
 
   return { ids, popOut, show, returnToMain };

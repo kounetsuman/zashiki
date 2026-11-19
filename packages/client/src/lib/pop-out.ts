@@ -75,9 +75,10 @@ export interface PopOutApi {
     title: string,
     at: ScreenPoint | null,
   ): Promise<void>;
-  focus(cockpitTerminalId: string): Promise<void>;
-  /** Closes the terminal's window; the main window hears about it through `onClosed`. */
-  close(cockpitTerminalId: string): Promise<void>;
+  /** Brings the terminal's window to the front; false when it has none. */
+  focus(cockpitTerminalId: string): Promise<boolean>;
+  /** Closes the terminal's window, which `onClosed` then reports; false when it has none. */
+  close(cockpitTerminalId: string): Promise<boolean>;
   /** The terminals whose window is open now (the main page may have reloaded since they opened). */
   list(): Promise<string[]>;
   onClosed(fn: (cockpitTerminalId: string) => void): () => void;
@@ -101,11 +102,11 @@ export function createTauriPopOutApi(
         y: at?.y ?? null,
       });
     },
-    async focus(cockpitTerminalId) {
-      await invoke("focus_popout", { cockpitTerminalId });
+    focus(cockpitTerminalId) {
+      return invoke<boolean>("focus_popout", { cockpitTerminalId });
     },
-    async close(cockpitTerminalId) {
-      await invoke("close_popout", { cockpitTerminalId });
+    close(cockpitTerminalId) {
+      return invoke<boolean>("close_popout", { cockpitTerminalId });
     },
     list() {
       return invoke<string[]>("list_popouts");

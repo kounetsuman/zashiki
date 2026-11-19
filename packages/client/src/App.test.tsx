@@ -2062,8 +2062,8 @@ describe("App pop-out windows", () => {
     let closed: ((id: string) => void) | null = null;
     const api: PopOutApi = {
       open: vi.fn(async () => {}),
-      focus: vi.fn(async () => {}),
-      close: vi.fn(async () => {}),
+      focus: vi.fn(async () => true),
+      close: vi.fn(async () => true),
       list: vi.fn(async () => open),
       onClosed: (fn) => {
         closed = fn;

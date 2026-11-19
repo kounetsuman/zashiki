@@ -149,12 +149,15 @@ fn focus_popout(app: tauri::AppHandle, cockpit_terminal_id: String) -> bool {
     window.is_some()
 }
 
-/// Closes a cockpit terminal's pop-out window; the main window then hears `zashiki:popout-closed`.
+/// Closes a cockpit terminal's pop-out window, after which the main window hears
+/// `zashiki:popout-closed`; false when it has none.
 #[tauri::command]
-fn close_popout(app: tauri::AppHandle, cockpit_terminal_id: String) {
-    if let Some(window) = popout::find(&app, &cockpit_terminal_id) {
+fn close_popout(app: tauri::AppHandle, cockpit_terminal_id: String) -> bool {
+    let window = popout::find(&app, &cockpit_terminal_id);
+    if let Some(window) = &window {
         let _ = window.close();
     }
+    window.is_some()
 }
 
 /// The cockpit terminals whose pop-out window is open, for a main page that has just (re)loaded.
