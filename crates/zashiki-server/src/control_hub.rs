@@ -606,7 +606,7 @@ impl ControlHub {
         self.inner.read().unwrap().config.memo_enabled
     }
 
-    /// The live Viewer file-size limits. Read per `/api/file` and `/api/dashboard` read.
+    /// The live Viewer file-size limits. Read per `/api/file` read.
     pub fn file_size_limits(&self) -> crate::protocol::FileSizeLimits {
         self.inner.read().unwrap().config.file_size_limits
     }

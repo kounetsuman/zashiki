@@ -37,7 +37,7 @@ pub(crate) struct AppState {
 }
 
 impl AppState {
-    /// The largest file `/api/file` and `/api/dashboard` read: the live config's `maxBytes`.
+    /// The largest file `/api/file` reads: the live config's `maxBytes`.
     pub(crate) fn file_read_max_bytes(&self) -> u64 {
         self.file_max_bytes_override.unwrap_or_else(|| {
             self.control.as_ref().map_or(
