@@ -15,17 +15,18 @@ const IMAGE_EXTENSIONS = new Set([
 
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "m4v", "ogv"]);
 
-const AUDIO_EXTENSIONS = new Set([
-  "mp3",
-  "m4a",
-  "aac",
-  "wav",
-  "aiff",
-  "aif",
-  "flac",
-  "ogg",
-  "oga",
-  "opus",
+/** Audio extensions and the content type `/api/media` serves them with (Opus is in an Ogg container). */
+const AUDIO_CONTENT_TYPES = new Map([
+  ["mp3", "audio/mpeg"],
+  ["m4a", "audio/mp4"],
+  ["aac", "audio/aac"],
+  ["wav", "audio/wav"],
+  ["aiff", "audio/aiff"],
+  ["aif", "audio/aiff"],
+  ["flac", "audio/flac"],
+  ["ogg", "audio/ogg"],
+  ["oga", "audio/ogg"],
+  ["opus", "audio/ogg"],
 ]);
 
 function extensionOf(name: string): string {
@@ -38,7 +39,15 @@ export function mediaKind(name: string): MediaKind | null {
   const ext = extensionOf(name);
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
   if (VIDEO_EXTENSIONS.has(ext)) return "video";
-  if (AUDIO_EXTENSIONS.has(ext)) return "audio";
+  if (AUDIO_CONTENT_TYPES.has(ext)) return "audio";
   if (ext === "pdf") return "pdf";
   return null;
+}
+
+/**
+ * The content type for an audio file name. A dropped File's own type is the browser's guess and can be
+ * empty, which leaves the webview unable to play the extensionless blob URL.
+ */
+export function audioContentType(name: string): string | undefined {
+  return AUDIO_CONTENT_TYPES.get(extensionOf(name));
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mediaKind } from "./media.js";
+import { audioContentType, mediaKind } from "./media.js";
 
 describe("mediaKind", () => {
   it("maps image extensions to image (case-insensitive)", () => {
@@ -48,5 +48,17 @@ describe("mediaKind", () => {
     expect(mediaKind("README.md")).toBeNull();
     expect(mediaKind("Makefile")).toBeNull();
     expect(mediaKind("archive.tar.gz")).toBeNull();
+  });
+});
+
+describe("audioContentType", () => {
+  it("gives the content type /api/media serves for an audio extension", () => {
+    expect(audioContentType("a.mp3")).toBe("audio/mpeg");
+    expect(audioContentType("a.OPUS")).toBe("audio/ogg");
+    expect(audioContentType("a.aif")).toBe("audio/aiff");
+  });
+
+  it("returns undefined for a non-audio name", () => {
+    expect(audioContentType("clip.mp4")).toBeUndefined();
   });
 });
