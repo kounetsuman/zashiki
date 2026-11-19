@@ -51,18 +51,35 @@ describe("FileSizeLimitsField", () => {
     expect(confirmInput().value).toBe("1024");
   });
 
-  it("lowers the confirmation size along with a maximum set below it", () => {
+  it("leaves the confirmation size alone while the maximum is typed digit by digit", () => {
+    const onSave = vi.fn();
+    render(
+      <FileSizeLimitsField value={DEFAULT_FILE_SIZE_LIMITS} onSave={onSave} />,
+    );
+    for (const typed of ["5", "50", "500"]) {
+      fireEvent.change(maxInput(), { target: { value: typed } });
+    }
+    expect(confirmInput().value).toBe("20");
+    fireEvent.click(saveButton());
+    expect(onSave).toHaveBeenCalledWith({
+      confirmBytes: 20 * MIB,
+      maxBytes: 500 * MIB,
+    });
+  });
+
+  it("saves a confirmation size above the maximum as the maximum", () => {
     const onSave = vi.fn();
     render(
       <FileSizeLimitsField value={DEFAULT_FILE_SIZE_LIMITS} onSave={onSave} />,
     );
     fireEvent.change(maxInput(), { target: { value: "10" } });
-    expect(confirmInput().value).toBe("10");
+    expect(confirmInput().value).toBe("20");
     fireEvent.click(saveButton());
     expect(onSave).toHaveBeenCalledWith({
       confirmBytes: 10 * MIB,
       maxBytes: 10 * MIB,
     });
+    expect(confirmInput().value).toBe("10");
   });
 
   it("follows the saved sizes when they change elsewhere", () => {

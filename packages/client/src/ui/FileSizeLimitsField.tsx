@@ -37,7 +37,7 @@ export interface FileSizeLimitsFieldProps {
 
 /**
  * Editor for how large a file the Viewer opens, in whole MB: the size over which it asks before
- * opening, and the maximum it opens at all. The confirmation size never passes the maximum.
+ * opening, and the maximum it opens at all. A confirmation size above the maximum is saved as the maximum.
  */
 export function FileSizeLimitsField({
   value,
@@ -50,8 +50,14 @@ export function FileSizeLimitsField({
   useEffect(() => setDraft(draftOf(value)), [persisted]);
 
   const dirty = JSON.stringify(draft) !== persisted;
-  const save = () =>
-    onSave({ confirmBytes: draft.confirm * MIB, maxBytes: draft.max * MIB });
+  const save = () => {
+    const saved = {
+      confirm: Math.min(draft.confirm, draft.max),
+      max: draft.max,
+    };
+    onSave({ confirmBytes: saved.confirm * MIB, maxBytes: saved.max * MIB });
+    setDraft(saved);
+  };
   useUnsavedField("file-size-limits", dirty, {
     save,
     discard: () => setDraft(draftOf(value)),
@@ -75,7 +81,7 @@ export function FileSizeLimitsField({
           step={1}
           value={draft.confirm}
           onChange={(e) => {
-            const n = parseWholeMib(e.target.value, draft.max);
+            const n = parseWholeMib(e.target.value, MAX_MIB);
             if (n !== null) setDraft((d) => ({ ...d, confirm: n }));
           }}
         />
@@ -94,9 +100,7 @@ export function FileSizeLimitsField({
           value={draft.max}
           onChange={(e) => {
             const n = parseWholeMib(e.target.value, MAX_MIB);
-            if (n !== null) {
-              setDraft((d) => ({ max: n, confirm: Math.min(d.confirm, n) }));
-            }
+            if (n !== null) setDraft((d) => ({ ...d, max: n }));
           }}
         />
         <span className="file-size-limits-unit">MB</span>
