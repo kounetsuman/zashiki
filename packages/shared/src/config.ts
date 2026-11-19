@@ -170,6 +170,49 @@ export const dashboardSettingsSchema = z
   .catch(freshCopy(DEFAULT_DASHBOARD_SETTINGS))
   .default(freshCopy(DEFAULT_DASHBOARD_SETTINGS));
 
+const MIB = 1024 * 1024;
+
+/** How large a file the Viewer opens: over `confirmBytes` it asks first, over `maxBytes` it refuses. */
+export interface FileSizeLimits {
+  confirmBytes: number;
+  maxBytes: number;
+}
+
+export const DEFAULT_FILE_SIZE_LIMITS: FileSizeLimits = {
+  confirmBytes: 20 * MIB,
+  maxBytes: 200 * MIB,
+};
+
+/** The smallest either size may be set to, and the largest `maxBytes` may be. */
+export const FILE_SIZE_LIMIT_FLOOR_BYTES = MIB;
+export const FILE_SIZE_LIMIT_CEILING_BYTES = 1024 * MIB;
+
+const sizeInRange = (ceiling: number) =>
+  z.number().int().min(FILE_SIZE_LIMIT_FLOOR_BYTES).max(ceiling);
+
+/**
+ * Each size out of range falls back on its own, as the server does: `maxBytes` to its default,
+ * `confirmBytes` (which may not pass `maxBytes`) to its default or `maxBytes` when that is smaller.
+ */
+export const fileSizeLimitsSchema = z
+  .object({
+    confirmBytes: z.unknown().optional(),
+    maxBytes: sizeInRange(FILE_SIZE_LIMIT_CEILING_BYTES)
+      .catch(DEFAULT_FILE_SIZE_LIMITS.maxBytes)
+      .default(DEFAULT_FILE_SIZE_LIMITS.maxBytes),
+  })
+  .transform(({ confirmBytes, maxBytes }): FileSizeLimits => {
+    const confirm = sizeInRange(maxBytes).safeParse(confirmBytes);
+    return {
+      confirmBytes: confirm.success
+        ? confirm.data
+        : Math.min(DEFAULT_FILE_SIZE_LIMITS.confirmBytes, maxBytes),
+      maxBytes,
+    };
+  })
+  .catch(freshCopy(DEFAULT_FILE_SIZE_LIMITS))
+  .default(freshCopy(DEFAULT_FILE_SIZE_LIMITS));
+
 /**
  * Live-apply settings (`~/.zashiki/config.json`).
  * The server watches the file and pushes changes to all clients via `config.sync`.

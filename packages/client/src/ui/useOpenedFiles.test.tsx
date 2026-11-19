@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { cleanup, render } from "@testing-library/react";
-import { FILE_MAX_BYTES } from "@zashiki/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PickedFile } from "../lib/open-file-dialog.js";
@@ -29,9 +28,11 @@ function Probe(props: {
   onPicked: (picked: PickedFile[]) => void;
   onFailed?: () => void;
 }) {
-  useOpenedFiles(props.onPicked, props.onFailed ?? vi.fn());
+  useOpenedFiles(props.onPicked, props.onFailed ?? vi.fn(), MAX);
   return null;
 }
+
+const MAX = 5 * 1024 * 1024;
 
 const signal = (): void => {
   const handler = listen.mock.calls[0]?.[1];
@@ -68,7 +69,7 @@ describe("useOpenedFiles", () => {
     );
     expect(order).toEqual([
       "listen zashiki:files-opened",
-      `invoke take_opened_files {"maxBytes":${FILE_MAX_BYTES}}`,
+      `invoke take_opened_files {"maxBytes":${MAX}}`,
     ]);
   });
 

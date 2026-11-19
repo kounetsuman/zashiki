@@ -1,5 +1,6 @@
 import {
   DEFAULT_DASHBOARD_SETTINGS,
+  DEFAULT_FILE_SIZE_LIMITS,
   DEFAULT_FOOTER_THRESHOLDS,
   DEFAULT_NOTIFICATION_SETTINGS,
   type ServerMessage,
@@ -182,6 +183,7 @@ describe("ControlClient", () => {
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
         dashboard: DEFAULT_DASHBOARD_SETTINGS,
+        fileSizeLimits: DEFAULT_FILE_SIZE_LIMITS,
       },
     ]);
   });
@@ -212,6 +214,7 @@ describe("ControlClient", () => {
         footerThresholds: DEFAULT_FOOTER_THRESHOLDS,
         notifications: DEFAULT_NOTIFICATION_SETTINGS,
         dashboard: DEFAULT_DASHBOARD_SETTINGS,
+        fileSizeLimits: DEFAULT_FILE_SIZE_LIMITS,
       },
     ]);
   });

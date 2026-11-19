@@ -3,13 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   bufferFailed,
   bufferLoaded,
+  bufferOpenAnyway,
   bufferSetEncoding,
   bufferShowText,
   bufferTogglePreview,
+  bufferTooLarge,
   closeBuffer,
   encodingOf,
   externalMediaKey,
   externalTextKey,
+  gaveUpForSize,
   isHtml,
   isMarkdown,
   openBuffer,
@@ -140,6 +143,49 @@ describe("loading/failure", () => {
   it("a nonexistent key is a no-op (same reference)", () => {
     const bufs = openBuffer({}, REPO, REL);
     expect(bufferLoaded(bufs, "nope", "x")).toBe(bufs);
+  });
+});
+
+describe("files too large to read", () => {
+  const confirm = { reason: "confirm", size: 30_000_000 } as const;
+
+  it("holds the size reason until a read lands", () => {
+    let b = bufferTooLarge(openBuffer({}, REPO, REL), KEY, confirm);
+    expect(b[KEY]).toMatchObject({ status: "tooLarge", tooLarge: confirm });
+    b = bufferLoaded(b, KEY, "text");
+    expect(b[KEY]?.status).toBe("ready");
+    expect(b[KEY]?.tooLarge).toBeUndefined();
+  });
+
+  it("opening anyway goes back to loading and remembers the choice", () => {
+    const b = bufferOpenAnyway(
+      bufferTooLarge(openBuffer({}, REPO, REL), KEY, confirm),
+      KEY,
+    );
+    expect(b[KEY]).toMatchObject({ status: "loading", openAnyway: true });
+    expect(b[KEY]?.tooLarge).toBeUndefined();
+    const encoded = bufferSetEncoding(b, KEY, "shift_jis");
+    expect(encoded[KEY]?.openAnyway).toBe(true);
+  });
+
+  it("only a file waiting for confirmation can be opened anyway", () => {
+    const overMax = bufferTooLarge(openBuffer({}, REPO, REL), KEY, {
+      reason: "overMax",
+      size: 300,
+      maxBytes: 200,
+    });
+    expect(bufferOpenAnyway(overMax, KEY)).toBe(overMax);
+  });
+
+  it("stops polling only a file that failed after being opened anyway", () => {
+    const opened = openBuffer({}, REPO, REL);
+    const failed = bufferTooLarge(opened, KEY, {
+      reason: "failedAfterConfirm",
+    });
+    expect(gaveUpForSize(failed[KEY] as ViewerBuffer)).toBe(true);
+    expect(
+      gaveUpForSize(bufferTooLarge(opened, KEY, confirm)[KEY] as ViewerBuffer),
+    ).toBe(false);
   });
 });
 

@@ -209,7 +209,11 @@
     "mermaidDiagram": "Mermaid 図",
     "openFailed": "開けませんでした: {{error}}",
     "readTimeout": "読み込みがタイムアウトしました",
-    "dropTooLarge": "{{name}} はプレビューするには大きすぎます（最大 2 MB）",
+    "largeFileConfirm": "このファイルは {{size}} あります。大きなファイルは開くのに時間がかかり、動作が重くなることがあります。",
+    "openAnyway": "それでも開く",
+    "largeFileOverMax": "このファイルは {{size}} あり、ビューアで開ける上限（{{max}}）を超えています。上限は設定で変更できます。",
+    "largeFileFailed": "このファイルは大きすぎて開けません。",
+    "dropTooLarge": "{{name}} はプレビューするには大きすぎます（最大 {{max}}）",
     "dropReadFailed": "{{name}} を読み込めませんでした",
     "table": "テーブル",
     "audioUnsupported": "この形式の音声は再生できません",
@@ -446,6 +450,12 @@
         "tokens": "トークン",
         "hours": "時間"
       }
+    },
+    "fileSizeLimits": {
+      "section": "ビューアで開くファイルのサイズ",
+      "hint": "リポジトリのファイルが 1 つ目のサイズより大きいと、「それでも開く」を押してから開きます。上限より大きいファイルは、ドロップやファイルを開くで選んだものも含めて開きません。1〜1024 の整数（MB）で指定します。",
+      "confirm": "確認するサイズ",
+      "max": "上限"
     },
     "dashboard": {
       "section": "起動時・スリープ復帰時のダッシュボード",

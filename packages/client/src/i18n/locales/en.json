@@ -209,7 +209,11 @@
     "mermaidDiagram": "Mermaid diagram",
     "openFailed": "Could not open: {{error}}",
     "readTimeout": "Reading timed out",
-    "dropTooLarge": "{{name}} is too large to preview (max 2 MB)",
+    "largeFileConfirm": "This file is {{size}}. A large file can take a while to open and slow the app down.",
+    "openAnyway": "Open anyway",
+    "largeFileOverMax": "This file is {{size}}, over the {{max}} the Viewer opens at most. You can raise the maximum in Settings.",
+    "largeFileFailed": "This file is too large to open.",
+    "dropTooLarge": "{{name}} is too large to preview (max {{max}})",
     "dropReadFailed": "Could not read {{name}}",
     "table": "Table",
     "audioUnsupported": "This audio format cannot be played",
@@ -446,6 +450,12 @@
         "tokens": "tokens",
         "hours": "hours"
       }
+    },
+    "fileSizeLimits": {
+      "section": "File sizes in the Viewer",
+      "hint": "A repo file larger than the first size opens only after you press Open anyway. No file larger than the maximum opens, including files you drop or pick with Open File. Whole MB, 1 to 1024.",
+      "confirm": "Ask before opening files over",
+      "max": "Maximum"
     },
     "dashboard": {
       "section": "Dashboard on launch / wake",

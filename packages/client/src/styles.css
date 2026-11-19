@@ -1845,6 +1845,13 @@ textarea {
   color: #e06c75;
 }
 
+.viewer-large-file {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
 /* Diff view reuses the viewer's shell (absolute overlay + toolbar + body). */
 .diff-view {
   position: absolute;

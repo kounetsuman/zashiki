@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   dashboardSettingsSchema,
+  fileSizeLimitsSchema,
   footerThresholdsSchema,
   notificationSettingsSchema,
 } from "./config.js";
@@ -384,6 +385,15 @@ export const configSetDashboardSchema = z.object({
 });
 
 /**
+ * Viewer file-size limits change from SETTINGS. Both sizes are sent together; the server persists them
+ * to config.json and distributes config.sync.
+ */
+export const configSetFileSizeLimitsSchema = z.object({
+  t: z.literal("config.setFileSizeLimits"),
+  fileSizeLimits: fileSizeLimitsSchema,
+});
+
+/**
  * Install zashiki's Claude Code hooks + statusLine into ~/.claude/settings.json (first-run wizard
  * or SETTINGS). Idempotent; the server broadcasts the resulting `hooks.status`.
  */
@@ -476,6 +486,7 @@ export const clientMessageSchema = z.discriminatedUnion("t", [
   configSetFooterThresholdsSchema,
   configSetNotificationsSchema,
   configSetDashboardSchema,
+  configSetFileSizeLimitsSchema,
   hooksRegisterSchema,
   hooksUnregisterSchema,
   updateCheckSchema,
@@ -590,6 +601,8 @@ export const configSyncSchema = z.object({
   notifications: notificationSettingsSchema,
   /** The dashboard page shown at launch / on wake (defaults to off; omitted by old servers). */
   dashboard: dashboardSettingsSchema,
+  /** How large a file the Viewer opens (defaults to 20 MiB / 200 MiB; omitted by old servers). */
+  fileSizeLimits: fileSizeLimitsSchema,
 });
 
 /**
