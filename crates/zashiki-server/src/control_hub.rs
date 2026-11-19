@@ -173,7 +173,6 @@ pub struct ActivitySummary {
     pub background_shells: u32,
 }
 
-/// A session counts as active when Claude is working (`running`/`running_bg_agent`) or blocked
 /// A Cockpit Terminal's Claude Session as last seen, for reading its transcript.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClaudeSessionSource {
@@ -219,6 +218,7 @@ fn remember_claude_sessions(
     seen
 }
 
+/// A session counts as active when Claude is working (`running`/`running_bg_agent`) or blocked
 /// awaiting the user (`waiting_input`). `idle`/`watching`/`no_claude`/`starting` are safely
 /// restorable (a watching session's turn has ended; its open tasks persist on disk) and do not,
 /// on their own, warrant a quit confirmation.
