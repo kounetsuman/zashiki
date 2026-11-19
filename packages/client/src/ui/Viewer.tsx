@@ -35,15 +35,21 @@ import { viewerEditorExtensions } from "./viewer-editor.js";
 
 /**
  * The second rendering a file offers, toggled from the toolbar. For a binary file it is the raw
- * text, shown in place of the "cannot be previewed" message.
+ * text, shown in place of the "cannot be previewed" message; for media, in place of the media.
  */
-type AlternateView = "markdownPreview" | "htmlPreview" | "table" | "binaryText";
+type AlternateView =
+  | "markdownPreview"
+  | "htmlPreview"
+  | "table"
+  | "binaryText"
+  | "mediaText";
 
 const TOGGLE_LABEL: Record<AlternateView, { show: string; hide: string }> = {
   markdownPreview: { show: "viewer.preview", hide: "viewer.code" },
   htmlPreview: { show: "viewer.preview", hide: "viewer.code" },
   table: { show: "viewer.table", hide: "viewer.text" },
   binaryText: { show: "viewer.text", hide: "viewer.text" },
+  mediaText: { show: "viewer.text", hide: "viewer.text" },
 };
 
 const ENCODING_LABEL: Record<TextEncoding, string> = {
@@ -89,7 +95,9 @@ function isBinary(content: string | null): boolean {
 function alternateView(
   relPath: string,
   content: string | null,
+  media: MediaSource | undefined,
 ): AlternateView | null {
+  if (media !== undefined) return "mediaText";
   if (isMarkdown(relPath)) return "markdownPreview";
   if (isHtml(relPath)) return "htmlPreview";
   if (isDelimitedText(relPath)) return "table";
@@ -297,15 +305,17 @@ export function Viewer({
   const sectionRef = useRef<HTMLElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const alternate = useMemo(
-    () => alternateView(buffer.relPath, buffer.content),
-    [buffer.relPath, buffer.content],
+    () => alternateView(buffer.relPath, buffer.content, buffer.media),
+    [buffer.relPath, buffer.content, buffer.media],
   );
   const showAlternate = alternate !== null && buffer.preview;
   const showsBinaryMessage = alternate === "binaryText" && !showAlternate;
+  const showsMedia = alternate === "mediaText" && !showAlternate;
+  const alternateIsText =
+    alternate === "binaryText" || alternate === "mediaText";
   const showsCode =
     buffer.status === "ready" &&
-    buffer.media === undefined &&
-    (alternate === "binaryText" ? showAlternate : !showAlternate);
+    (alternateIsText ? showAlternate : !showAlternate);
   const [lineWrap, setLineWrap] = useState(() =>
     loadViewerLineWrap(browserStorage()),
   );
@@ -405,7 +415,7 @@ export function Viewer({
   });
 
   function readyContent() {
-    if (buffer.media !== undefined)
+    if (showsMedia && buffer.media !== undefined)
       return <MediaHost media={buffer.media} relPath={buffer.relPath} />;
     if (showAlternate && alternate === "markdownPreview")
       return (
