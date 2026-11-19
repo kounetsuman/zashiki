@@ -18,6 +18,15 @@
   "bundle": {
     "active": true,
     "targets": ["app"],
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "contentTypes": ["net.daringfireball.markdown"],
+        "name": "Markdown",
+        "role": "Viewer",
+        "rank": "Alternate"
+      }
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -12,6 +12,7 @@
     "allow-report-memo-status",
     "allow-report-memo-saved",
     "allow-set-dashboard-origin",
-    "allow-share-text"
+    "allow-share-text",
+    "allow-take-opened-files"
   ]
 }

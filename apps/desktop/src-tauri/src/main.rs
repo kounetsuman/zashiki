@@ -6,6 +6,8 @@ mod ipc_capability;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod menu;
 mod navigation;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+mod opened_files;
 mod pages;
 mod quit_log;
 #[cfg(target_os = "macos")]
@@ -154,6 +156,24 @@ async fn pick_and_read_files(
     .map_err(|_| "readFailed".to_string())
 }
 
+/// Reads the files macOS handed to the app since the last call (see `opened_files`), with the same
+/// size cap and failure codes as Cmd+O.
+#[tauri::command]
+async fn take_opened_files(
+    app: tauri::AppHandle,
+    max_bytes: u64,
+) -> Result<Vec<PickedFile>, String> {
+    let paths = app.state::<opened_files::OpenedFiles>().take();
+    tauri::async_runtime::spawn_blocking(move || {
+        paths
+            .iter()
+            .map(|path| read_picked_file(path, max_bytes))
+            .collect()
+    })
+    .await
+    .map_err(|_| "readFailed".to_string())
+}
+
 /// Reply channels the quit thread hands to the WebView. The quit gesture runs off the main thread
 /// and asks the WebView two things (Is the Memo dirty? Did the save finish?), each tagged with a
 /// request number the WebView echoes back.
@@ -241,6 +261,7 @@ fn main() {
     let build_result = builder
         .manage(QuitBridge::default())
         .manage(DashboardOrigin::default())
+        .manage(opened_files::OpenedFiles::default())
         .invoke_handler(tauri::generate_handler![
             open_devtools,
             open_in_browser,
@@ -248,7 +269,8 @@ fn main() {
             report_memo_status,
             report_memo_saved,
             set_dashboard_origin,
-            share_text
+            share_text,
+            take_opened_files
         ])
         .on_window_event(move |window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -407,8 +429,26 @@ fn main() {
             );
         }
         tauri::RunEvent::Exit => shutdown_owned(&owned_on_exit),
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Opened { urls } => receive_opened_files(app_handle, &urls),
         _ => {}
     });
+}
+
+/// Queues the files and brings the window forward. The page takes them on the event, or on load when
+/// they arrive before it is listening.
+#[cfg(target_os = "macos")]
+fn receive_opened_files(app: &tauri::AppHandle, urls: &[tauri::Url]) {
+    if !app.state::<opened_files::OpenedFiles>().push(urls) {
+        return;
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+    if let Err(e) = app.emit(opened_files::OPENED_EVENT, ()) {
+        eprintln!("zashiki: failed to forward the opened files: {e}");
+    }
 }
 
 /// Grants the app commands to the origin the window is about to be served from, and to nothing else.

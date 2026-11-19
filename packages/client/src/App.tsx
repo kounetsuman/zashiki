@@ -127,6 +127,7 @@ import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
 import { type FileDropError, useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
+import { useOpenedFiles } from "./ui/useOpenedFiles.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
@@ -665,6 +666,10 @@ export function App({
       () => flashCopyToast(t("openFile.failed")),
     );
   }, [t, openExternalFile, toastUnreadableFile, flashCopyToast]);
+  useOpenedFiles(
+    (picked) => openPickedFiles(picked, openExternalFile, toastUnreadableFile),
+    () => flashCopyToast(t("openFile.failed")),
+  );
 
   const copyWithToast = useCallback(
     (text: string, toastKey: "toast.pathCopied" | "toast.linkCopied"): void => {
