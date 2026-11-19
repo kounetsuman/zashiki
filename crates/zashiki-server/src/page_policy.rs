@@ -9,14 +9,15 @@ use axum::{
 
 /// Lets the cockpit run only its own bundled scripts. Styles may be inline because React, xterm,
 /// and CodeMirror set them at run time. Images and frames may come from the web because the user
-/// can load remote Markdown images and frame a web dashboard. `ipc:` and `http://ipc.localhost`
+/// can load remote Markdown images and frame a web dashboard. Fonts may be `blob:` so a font dropped
+/// from Finder can be previewed. `ipc:` and `http://ipc.localhost`
 /// carry the desktop shell's commands. Frames the cockpit creates from `srcdoc` inherit this policy
 /// on top of their own.
 pub const PAGE_CSP: &str = "default-src 'self'; \
 script-src 'self'; \
 style-src 'self' 'unsafe-inline'; \
 img-src 'self' data: blob: https: http:; \
-font-src 'self' data:; \
+font-src 'self' data: blob:; \
 media-src 'self' blob:; \
 connect-src 'self' ipc: http://ipc.localhost; \
 frame-src 'self' blob: https: http:; \

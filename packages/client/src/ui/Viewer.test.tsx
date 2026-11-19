@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -40,6 +46,9 @@ vi.mock("../viewer/mermaid-probe.js", () => probe);
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+  Reflect.deleteProperty(document, "fonts");
 });
 
 describe("Viewer", () => {
@@ -501,6 +510,116 @@ describe("Viewer", () => {
     fireEvent.error(audio);
     expect(container.querySelector("audio")).toBeNull();
     expect(screen.getByText("この形式の音声は再生できません")).toBeTruthy();
+  });
+
+  function stubFontLoading(load: () => Promise<void>) {
+    const faces: { family: string; source: string }[] = [];
+    const fonts = { add: vi.fn(), delete: vi.fn() };
+    vi.stubGlobal(
+      "FontFace",
+      class {
+        constructor(
+          readonly family: string,
+          readonly source: string,
+        ) {
+          faces.push({ family, source });
+        }
+        load = load;
+      },
+    );
+    Object.defineProperty(document, "fonts", {
+      value: fonts,
+      configurable: true,
+    });
+    return { faces, fonts };
+  }
+
+  const fontBuffer: ViewerBuffer = {
+    ...base,
+    relPath: "fonts/Inter.woff2",
+    content: null,
+    media: { kind: "font", url: "blob:font-1" },
+  };
+
+  it("draws the sample text in the font loaded from the media URL", async () => {
+    const { faces, fonts } = stubFontLoading(async () => undefined);
+    const { container } = render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    expect(
+      await screen.findAllByText(
+        "The quick brown fox jumps over the lazy dog. いろはにほへと 色は匂へど",
+      ),
+    ).toHaveLength(6);
+    expect(faces).toHaveLength(1);
+    expect(faces[0]?.source).toBe('url("blob:font-1")');
+    expect(fonts.add).toHaveBeenCalledTimes(1);
+    const families = [
+      ...container.querySelectorAll<HTMLElement>(".viewer-font [style]"),
+    ].map((el) => el.style.fontFamily);
+    expect(families.length).toBeGreaterThan(1);
+    expect(new Set(families)).toEqual(new Set([`"${faces[0]?.family}"`]));
+  });
+
+  it("says the font cannot be loaded when the webview rejects it", async () => {
+    stubFontLoading(() => Promise.reject(new Error("bad font")));
+    render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    expect(
+      await screen.findByText("このフォントは読み込めません"),
+    ).toBeTruthy();
+  });
+
+  it("says the font cannot be loaded when loading never finishes", async () => {
+    vi.useFakeTimers();
+    stubFontLoading(() => new Promise<void>(noop));
+    render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    expect(screen.getByText("このフォントは読み込めません")).toBeTruthy();
+  });
+
+  it("shows a slow font once it finishes loading after the timeout", async () => {
+    vi.useFakeTimers();
+    let finish: () => void = noop;
+    stubFontLoading(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    expect(screen.getByText("このフォントは読み込めません")).toBeTruthy();
+    await act(async () => {
+      finish();
+    });
+    expect(screen.queryByText("このフォントは読み込めません")).toBeNull();
+    expect(
+      screen.getAllByText(
+        "The quick brown fox jumps over the lazy dog. いろはにほへと 色は匂へど",
+      ),
+    ).toHaveLength(6);
+  });
+
+  it("removes the loaded font from the document when the tab closes", async () => {
+    const { fonts } = stubFontLoading(async () => undefined);
+    const { unmount } = render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    await screen.findAllByText(
+      "The quick brown fox jumps over the lazy dog. いろはにほへと 色は匂へど",
+    );
+    unmount();
+    expect(fonts.delete).toHaveBeenCalledWith(fonts.add.mock.calls[0]?.[0]);
   });
 
   it("shows a placeholder instead of the raw bytes of a binary file", () => {

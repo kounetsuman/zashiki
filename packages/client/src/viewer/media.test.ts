@@ -33,6 +33,12 @@ describe("mediaKind", () => {
     }
   });
 
+  it("maps font extensions to font", () => {
+    for (const name of ["a.ttf", "a.otf", "a.woff", "a.WOFF2"]) {
+      expect(mediaKind(name), name).toBe("font");
+    }
+  });
+
   it("leaves containers the webview cannot play as non-media", () => {
     expect(mediaKind("clip.avi")).toBeNull();
     expect(mediaKind("clip.mkv")).toBeNull();

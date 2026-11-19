@@ -264,6 +264,82 @@ function AudioHost({ url, relPath }: { url: string; relPath: string }) {
   );
 }
 
+const FONT_SAMPLE_LATIN_GLYPHS = [
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  "abcdefghijklmnopqrstuvwxyz",
+  "0123456789 !?&@#%*()[]{}<>",
+];
+
+const FONT_SAMPLE_SIZES = [12, 16, 24, 36, 48, 72];
+
+/** After this long a still-loading font is reported as unloadable; it is still shown if it finishes later. */
+const FONT_LOAD_TIMEOUT_MS = 8000;
+
+let fontPreviewCount = 0;
+
+/** A family name unique to one preview, so two open fonts (or a reloaded one) never share a face. */
+function nextFontPreviewFamily(): string {
+  fontPreviewCount += 1;
+  return `zashiki-font-preview-${fontPreviewCount}`;
+}
+
+function FontHost({ url }: { url: string }) {
+  const { t } = useTranslation();
+  const [loaded, setLoaded] = useState<{ url: string; family: string } | null>(
+    null,
+  );
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const face = new FontFace(nextFontPreviewFamily(), `url("${url}")`);
+    let active = true;
+    const timer = setTimeout(() => setFailedUrl(url), FONT_LOAD_TIMEOUT_MS);
+    face.load().then(
+      () => {
+        if (!active) return;
+        clearTimeout(timer);
+        document.fonts.add(face);
+        setLoaded({ url, family: face.family });
+      },
+      () => {
+        if (!active) return;
+        clearTimeout(timer);
+        setFailedUrl(url);
+      },
+    );
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      document.fonts.delete(face);
+    };
+  }, [url]);
+  if (loaded?.url !== url) {
+    return failedUrl === url ? (
+      <div className="viewer-message">{t("viewer.fontUnsupported")}</div>
+    ) : (
+      <Loading />
+    );
+  }
+  const fontFamily = `"${loaded.family}"`;
+  const glyphs = [...FONT_SAMPLE_LATIN_GLYPHS, t("viewer.fontSampleCjk")];
+  return (
+    <div className="viewer-font">
+      <div className="viewer-font-glyphs" style={{ fontFamily }}>
+        {glyphs.map((line) => (
+          <p key={line}>{line}</p>
+        ))}
+      </div>
+      {FONT_SAMPLE_SIZES.map((size) => (
+        <div key={size} className="viewer-font-sample">
+          <span className="viewer-font-size">{size}px</span>
+          <p style={{ fontFamily, fontSize: size }}>
+            {t("viewer.fontSampleSentence")}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function MediaHost({
   media,
   relPath,
@@ -276,6 +352,7 @@ function MediaHost({
   }
   if (media.kind === "audio")
     return <AudioHost url={media.url} relPath={relPath} />;
+  if (media.kind === "font") return <FontHost url={media.url} />;
   if (media.kind === "pdf") {
     return (
       <iframe className="viewer-pdf-frame" title={relPath} src={media.url} />

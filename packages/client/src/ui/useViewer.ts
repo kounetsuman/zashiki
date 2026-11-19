@@ -45,11 +45,11 @@ export interface Viewer {
     relPath: string,
     encoding?: TextEncoding,
   ): string;
-  /** Ensures a repo image/video/audio/PDF buffer streamed from the media URL (no text read) and returns its key. */
+  /** Ensures a repo image/video/audio/font/PDF buffer streamed from the media URL (no text read) and returns its key. */
   ensureMediaBuffer(repoPath: string, relPath: string, kind: MediaKind): string;
   /** Opens a dropped file from content already in hand (no repo read) and returns its key. */
   openExternal(name: string, content: string): string;
-  /** Opens a dropped image/video/audio/PDF from an object URL created for the file, and returns its key. */
+  /** Opens a dropped image/video/audio/font/PDF from an object URL created for the file, and returns its key. */
   openExternalMedia(name: string, file: File, kind: MediaKind): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
