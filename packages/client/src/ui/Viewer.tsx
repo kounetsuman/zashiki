@@ -264,6 +264,9 @@ const FONT_SAMPLE_LATIN_GLYPHS = [
 
 const FONT_SAMPLE_SIZES = [12, 16, 24, 36, 48, 72];
 
+/** Gives up on a font that never finishes loading, so the pane says so instead of loading forever. */
+const FONT_LOAD_TIMEOUT_MS = 8000;
+
 let fontPreviewCount = 0;
 
 /** A family name unique to one preview, so two open fonts (or a reloaded one) never share a face. */
@@ -281,18 +284,28 @@ function FontHost({ url }: { url: string }) {
   useEffect(() => {
     const face = new FontFace(nextFontPreviewFamily(), `url("${url}")`);
     let active = true;
-    face.load().then(
-      () => {
-        if (!active) return;
-        document.fonts.add(face);
-        setLoaded({ url, family: face.family });
-      },
-      () => {
-        if (active) setFailedUrl(url);
-      },
-    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("font load timed out")),
+        FONT_LOAD_TIMEOUT_MS,
+      );
+    });
+    Promise.race([face.load(), timedOut])
+      .then(
+        () => {
+          if (!active) return;
+          document.fonts.add(face);
+          setLoaded({ url, family: face.family });
+        },
+        () => {
+          if (active) setFailedUrl(url);
+        },
+      )
+      .finally(() => clearTimeout(timer));
     return () => {
       active = false;
+      clearTimeout(timer);
       document.fonts.delete(face);
     };
   }, [url]);

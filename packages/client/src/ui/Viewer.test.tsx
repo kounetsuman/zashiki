@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -41,6 +47,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("Viewer", () => {
@@ -561,6 +568,18 @@ describe("Viewer", () => {
     expect(
       await screen.findByText("このフォントは読み込めません"),
     ).toBeTruthy();
+  });
+
+  it("says the font cannot be loaded when loading never finishes", async () => {
+    vi.useFakeTimers();
+    stubFontLoading(() => new Promise<void>(noop));
+    render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    expect(screen.getByText("このフォントは読み込めません")).toBeTruthy();
   });
 
   it("removes the loaded font from the document when the tab closes", async () => {
