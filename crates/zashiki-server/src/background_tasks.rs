@@ -160,7 +160,13 @@ impl BackgroundTaskScan {
         let Some(notice) = task_notification_text(event) else {
             return;
         };
-        let Some(caps) = NOTICE_RE.captures(notice) else {
+        for block in notice.split("<task-notification>") {
+            self.record_notice_block(block, timestamp_ms(event));
+        }
+    }
+
+    fn record_notice_block(&mut self, block: &str, ended_at_ms: Option<u64>) {
+        let Some(caps) = NOTICE_RE.captures(block) else {
             return;
         };
         let status = &caps[2];
@@ -168,14 +174,14 @@ impl BackgroundTaskScan {
             return;
         }
         let exit_code = EXIT_CODE_RE
-            .captures(notice)
+            .captures(block)
             .and_then(|c| c[1].parse().ok());
         self.ends.insert(
             caps[1].to_string(),
             TaskEnd {
                 status: status.to_string(),
                 exit_code,
-                ended_at_ms: timestamp_ms(event),
+                ended_at_ms,
             },
         );
     }
@@ -448,6 +454,31 @@ mod tests {
         let records = scan(&lines);
         assert_eq!(records[0].launch.command, "");
         assert_eq!(records[1].launch.command, format!("c{PENDING_INPUTS_KEPT}"));
+    }
+
+    #[test]
+    fn notices_batched_in_one_payload_each_keep_their_own_exit_code() {
+        let block = |id: &str, status: &str, summary: &str| {
+            format!("<task-notification>\n<task-id>{id}</task-id>\n<status>{status}</status>\n<summary>{summary}</summary>\n</task-notification>")
+        };
+        let batched = json!({"type": "attachment", "attachment": {
+            "commandMode": "task-notification",
+            "prompt": format!("{}\n{}", block("b1", "completed", "done"), block("b2", "failed", "failed with exit code 3"))
+        }})
+        .to_string();
+        let mut lines = Vec::new();
+        for (tu, id) in [("tu1", "b1"), ("tu2", "b2")] {
+            lines.extend(launch_lines(tu, id, "", ""));
+        }
+        lines.push(batched);
+        let ends: Vec<_> = scan(&lines)
+            .into_iter()
+            .map(|r| r.end.map(|e| (e.status, e.exit_code)))
+            .collect();
+        assert_eq!(
+            ends,
+            [Some(("completed".to_string(), None)), Some(("failed".to_string(), Some(3)))]
+        );
     }
 
     #[test]
