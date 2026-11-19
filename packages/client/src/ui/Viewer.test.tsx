@@ -677,6 +677,50 @@ describe("Viewer", () => {
     ).toBe("true");
   });
 
+  it("toggles an image, video, audio or pdf to its raw text from the toolbar", () => {
+    for (const kind of ["image", "video", "audio", "pdf"] as const) {
+      const media = { kind, url: `blob:${kind}` };
+      const onTogglePreview = vi.fn();
+      const { container, rerender, unmount } = render(
+        <Viewer
+          buffer={{ ...base, relPath: "a.bin", content: null, media }}
+          onTogglePreview={onTogglePreview}
+          onCopyPath={noop}
+        />,
+      );
+      const toggle = screen.getByRole("button", { name: "テキスト" });
+      expect(toggle.getAttribute("aria-pressed")).toBe("false");
+      fireEvent.click(toggle);
+      expect(onTogglePreview).toHaveBeenCalled();
+      rerender(
+        <Viewer
+          buffer={{
+            ...base,
+            relPath: "a.bin",
+            content: "\u0000raw",
+            preview: true,
+            media,
+          }}
+          onTogglePreview={onTogglePreview}
+          onCopyPath={noop}
+        />,
+      );
+      expect(container.querySelector(".viewer-cm")).not.toBeNull();
+      expect(
+        container.querySelector(".viewer-media, .viewer-pdf-frame"),
+      ).toBeNull();
+      expect(
+        screen
+          .getByRole("button", { name: "テキスト" })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      expect(
+        screen.getByRole("button", { name: "折り返して全体を表示" }),
+      ).toBeTruthy();
+      unmount();
+    }
+  });
+
   it("shows a text file without NUL characters as code with no toggle", () => {
     render(<Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />);
     expect(screen.queryByText("このファイルはプレビューできません")).toBeNull();
