@@ -772,6 +772,23 @@ mod git_file_rest_tests {
         assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
     }
 
+    #[tokio::test]
+    async fn file_read_decodes_with_the_encoding_param() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("sjis.tsv"), b"\x96\xbc\x91\x4f\n").unwrap();
+        let query = |encoding: &str| {
+            format!(
+                "/api/file?token=t&repoPath={}&file=sjis.tsv&encoding={encoding}",
+                urlencoding(&fx.repo_a)
+            )
+        };
+        let (s, b) = request(app(&fx), &query("shift_jis"), Some(OK_HOST), &[]).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b, r#"{"content":"名前\n"}"#);
+        let (s, _) = request(app(&fx), &query("latin9"), Some(OK_HOST), &[]).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn file_read_symlink_escape_is_400() {

@@ -6,6 +6,8 @@
  * holds only state transitions. Realtime reflection is driven by polling re-firing bufferLoaded.
  */
 
+import type { TextEncoding } from "@zashiki/shared";
+
 import { isDelimitedText } from "./delimited.js";
 import type { MediaKind } from "./media.js";
 
@@ -29,6 +31,8 @@ export interface ViewerBuffer {
   readonly external?: boolean;
   /** Present when the buffer is an image/video/PDF; the Viewer renders it from the URL. */
   readonly media?: MediaSource;
+  /** The encoding a repo text file is read with; absent means UTF-8. */
+  readonly encoding?: TextEncoding;
 }
 
 export type ViewerBuffers = Readonly<Record<string, ViewerBuffer>>;
@@ -263,6 +267,21 @@ export function bufferTogglePreview(
   key: string,
 ): ViewerBuffers {
   return patch(bufs, key, (b) => ({ ...b, preview: !b.preview }));
+}
+
+/** Keeps the content on screen until the re-read with the new encoding lands. */
+export function bufferSetEncoding(
+  bufs: ViewerBuffers,
+  key: string,
+  encoding: TextEncoding,
+): ViewerBuffers {
+  return patch(bufs, key, (b) =>
+    encodingOf(b) === encoding ? b : { ...b, encoding },
+  );
+}
+
+export function encodingOf(buf: ViewerBuffer): TextEncoding {
+  return buf.encoding ?? "utf8";
 }
 
 export function closeBuffer(bufs: ViewerBuffers, key: string): ViewerBuffers {

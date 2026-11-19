@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   bufferFailed,
   bufferLoaded,
+  bufferSetEncoding,
   bufferShowText,
   bufferTogglePreview,
   closeBuffer,
+  encodingOf,
   externalMediaKey,
   externalTextKey,
   isHtml,
@@ -16,6 +18,7 @@ import {
   openMediaBuffer,
   repoFileOfViewerKey,
   shouldPollBuffer,
+  type ViewerBuffer,
   type ViewerBuffers,
   viewerKey,
   viewerKeysUnderPath,
@@ -253,6 +256,17 @@ describe("media buffers", () => {
       IMG_KEY
     ];
     expect(media && shouldPollBuffer(media)).toBe(false);
+  });
+});
+
+describe("encoding", () => {
+  it("a buffer reads as UTF-8 until another encoding is set, keeping its content meanwhile", () => {
+    const loaded = bufferLoaded(openBuffer({}, REPO, REL), KEY, "abc");
+    expect(encodingOf(loaded[KEY] as ViewerBuffer)).toBe("utf8");
+    const sjis = bufferSetEncoding(loaded, KEY, "shift_jis");
+    expect(sjis[KEY]).toMatchObject({ encoding: "shift_jis", content: "abc" });
+    expect(bufferSetEncoding(sjis, KEY, "shift_jis")).toBe(sjis);
+    expect(bufferSetEncoding(loaded, KEY, "utf8")).toBe(loaded);
   });
 });
 

@@ -447,6 +447,7 @@ export function App({
     openExternalMedia,
     closeBuffer: closeViewerBuffer,
     togglePreview: toggleViewerPreview,
+    setEncoding: setViewerEncoding,
     showText: showViewerText,
     pathOf: viewerPathOf,
   } = useViewer(filesApi, activeViewerKey);
@@ -1299,6 +1300,9 @@ export function App({
                 key={activeViewerKey}
                 buffer={activeBuffer}
                 onTogglePreview={() => toggleViewerPreview(activeViewerKey)}
+                onEncodingChange={(encoding) =>
+                  setViewerEncoding(activeViewerKey, encoding)
+                }
                 onCopyPath={() => copyViewerPath(activeViewerKey)}
                 focusNonce={viewerFocusNonce}
                 revealLine={

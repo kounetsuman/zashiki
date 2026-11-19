@@ -343,6 +343,42 @@ describe("Viewer", () => {
     expect(onTogglePreview).toHaveBeenCalled();
   });
 
+  it("re-reads a CSV with the encoding picked next to the Text / Table toggle", () => {
+    const onEncodingChange = vi.fn();
+    render(
+      <Viewer
+        buffer={{ ...base, relPath: "data.csv", encoding: "shift_jis" }}
+        onTogglePreview={noop}
+        onEncodingChange={onEncodingChange}
+        onCopyPath={noop}
+      />,
+    );
+    const picker = screen.getByRole<HTMLSelectElement>("combobox", {
+      name: "文字コード",
+    });
+    expect(picker.value).toBe("shift_jis");
+    expect(picker.nextElementSibling?.classList).toContain("viewer-toggle");
+    fireEvent.change(picker, { target: { value: "euc_jp" } });
+    expect(onEncodingChange).toHaveBeenCalledWith("euc_jp");
+  });
+
+  it("offers no encoding picker for a buffer that cannot be re-read from the repo", () => {
+    const external = { ...base, repoPath: "", external: true };
+    const media = { ...base, media: { kind: "image", url: "blob:x" } } as const;
+    for (const buffer of [external, media]) {
+      render(
+        <Viewer
+          buffer={buffer}
+          onTogglePreview={noop}
+          onEncodingChange={noop}
+          onCopyPath={noop}
+        />,
+      );
+      expect(screen.queryByRole("combobox", { name: "文字コード" })).toBeNull();
+      cleanup();
+    }
+  });
+
   it("renders an image buffer as <img> pointing at the media URL", () => {
     const { container } = render(
       <Viewer

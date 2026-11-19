@@ -131,6 +131,36 @@ describe("useViewer media", () => {
   });
 });
 
+describe("useViewer encoding", () => {
+  it("setEncoding re-reads the file with the encoding, and the polls keep using it", async () => {
+    vi.useFakeTimers();
+    const read = vi.fn<FilesApi["read"]>((_repo, _file, encoding) =>
+      Promise.resolve(`as ${encoding}`),
+    );
+    const key = viewerKey("/repo", "data.csv");
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "data.csv");
+    });
+    await act(async () => {
+      result.current.setEncoding(key, "shift_jis");
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      encoding: "shift_jis",
+      content: "as shift_jis",
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(read.mock.calls.map((c) => c[2])).toEqual([
+      "utf8",
+      "shift_jis",
+      "shift_jis",
+    ]);
+    vi.useRealTimers();
+  });
+});
+
 describe("useViewer pathOf", () => {
   it("returns the absolute path for a repo buffer", () => {
     const { result } = renderHook(() => useViewer(filesApi, null));

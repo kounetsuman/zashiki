@@ -1,3 +1,4 @@
+import type { TextEncoding } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
@@ -5,9 +6,11 @@ import type { MediaKind } from "../viewer/media.js";
 import {
   bufferFailed,
   bufferLoaded,
+  bufferSetEncoding,
   bufferShowText,
   bufferTogglePreview,
   closeBuffer as dropBuffer,
+  encodingOf,
   externalMediaKey,
   externalTextKey,
   openBuffer,
@@ -44,6 +47,8 @@ export interface Viewer {
   openExternalMedia(name: string, file: File, kind: MediaKind): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
+  /** Re-reads a repo text file decoded with `encoding`, which later polls keep using. */
+  setEncoding(key: string, encoding: TextEncoding): void;
   /** Leaves the alternate rendering, so a line can be revealed in the text view. */
   showText(key: string): void;
   /** Absolute path of the buffer at key, or null when it is gone or external (no repo path). */
@@ -74,13 +79,19 @@ export function useViewer(
   }, []);
 
   const loadFile = useCallback(
-    (key: string, repoPath: string, relPath: string, silent: boolean) => {
+    (
+      key: string,
+      repoPath: string,
+      relPath: string,
+      encoding: TextEncoding,
+      silent: boolean,
+    ) => {
       const seq = (readSeqRef.current[key] ?? 0) + 1;
       readSeqRef.current[key] = seq;
       const ctrl = new AbortController();
       const timer = window.setTimeout(() => ctrl.abort(), FILE_READ_TIMEOUT_MS);
       return filesApi
-        .read(repoPath, relPath, ctrl.signal)
+        .read(repoPath, relPath, encoding, ctrl.signal)
         .then(
           (content) =>
             setBuffers((cur) =>
@@ -109,7 +120,7 @@ export function useViewer(
         shouldLoad = true;
         return openBuffer(prev, repoPath, relPath);
       });
-      if (shouldLoad) void loadFile(key, repoPath, relPath, false);
+      if (shouldLoad) void loadFile(key, repoPath, relPath, "utf8", false);
       return key;
     },
     [loadFile],
@@ -160,6 +171,18 @@ export function useViewer(
     setBuffers((prev) => bufferTogglePreview(prev, key));
   }, []);
 
+  const setEncoding = useCallback(
+    (key: string, encoding: TextEncoding): void => {
+      const buf = buffersRef.current[key];
+      if (buf === undefined || !shouldPollBuffer(buf)) return;
+      // Updated ahead of the render so a poll firing in between already reads with the new encoding.
+      buffersRef.current = bufferSetEncoding(buffersRef.current, key, encoding);
+      setBuffers((prev) => bufferSetEncoding(prev, key, encoding));
+      void loadFile(key, buf.repoPath, buf.relPath, encoding, false);
+    },
+    [loadFile],
+  );
+
   const showText = useCallback((key: string): void => {
     setBuffers((prev) => bufferShowText(prev, key));
   }, []);
@@ -179,9 +202,12 @@ export function useViewer(
       const buf = buffersRef.current[key];
       if (buf === undefined || !shouldPollBuffer(buf)) return;
       inflight = true;
-      void loadFile(key, buf.repoPath, buf.relPath, true).finally(() => {
-        inflight = false;
-      });
+      const encoding = encodingOf(buf);
+      void loadFile(key, buf.repoPath, buf.relPath, encoding, true).finally(
+        () => {
+          inflight = false;
+        },
+      );
     };
     const id = window.setInterval(tick, FILE_POLL_INTERVAL_MS);
     return () => window.clearInterval(id);
@@ -202,6 +228,7 @@ export function useViewer(
     openExternalMedia,
     closeBuffer,
     togglePreview,
+    setEncoding,
     showText,
     pathOf,
   };

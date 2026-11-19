@@ -11,6 +11,11 @@ import { z } from "zod";
 /** Maximum byte size of a single file handled by read/write (for the editor; huge files are rejected). */
 export const FILE_MAX_BYTES = 2 * 1024 * 1024;
 
+/** The encodings a file read can decode with (`encoding` on GET /api/file; UTF-8 when omitted). */
+export const TEXT_ENCODINGS = ["utf8", "shift_jis", "euc_jp"] as const;
+
+export type TextEncoding = (typeof TEXT_ENCODINGS)[number];
+
 export const fileWriteRequestSchema = z.object({
   repoPath: z.string().min(1),
   file: z.string().min(1),

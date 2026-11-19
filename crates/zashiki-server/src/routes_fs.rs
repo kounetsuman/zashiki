@@ -18,6 +18,8 @@ pub(crate) struct FileReadParams {
     #[serde(rename = "repoPath")]
     repo_path: Option<String>,
     file: Option<String>,
+    #[serde(default)]
+    encoding: file::TextEncoding,
 }
 
 pub(crate) async fn file_read(
@@ -30,7 +32,9 @@ pub(crate) async fn file_read(
         return json_error(status, &msg);
     }
     let max = state.file_max_bytes;
-    let result = tokio::task::spawn_blocking(move || file::read_within_repo(&repo_path, &file, max))
+    let encoding = params.encoding;
+    let result =
+        tokio::task::spawn_blocking(move || file::read_within_repo(&repo_path, &file, max, encoding))
         .await
         .unwrap_or_else(|_| {
             Err((StatusCode::INTERNAL_SERVER_ERROR, "read task failed".to_string()))
