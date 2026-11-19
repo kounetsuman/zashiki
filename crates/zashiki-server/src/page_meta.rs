@@ -6,14 +6,30 @@ use crate::public_destination::is_fetchable_url;
 
 const TITLE_MAX_CHARS: usize = 200;
 
+/// A page's HTML with a lower-cased copy for case-insensitive tag search; lower-casing ASCII keeps
+/// every byte offset, so positions found in `lower` index `text` too.
+pub(crate) struct Html<'a> {
+    text: &'a str,
+    lower: String,
+}
+
+impl<'a> Html<'a> {
+    pub(crate) fn new(text: &'a str) -> Self {
+        Self {
+            text,
+            lower: text.to_ascii_lowercase(),
+        }
+    }
+}
+
 /// `<title>`, else `og:title`, decoded and on one line. A title the page's bytes could not be read
 /// as UTF-8 for is dropped rather than shown garbled.
-pub(crate) fn page_title(html: &str) -> Option<String> {
-    let lower = html.to_ascii_lowercase();
+pub(crate) fn page_title(html: &Html) -> Option<String> {
+    let (lower, html) = (html.lower.as_str(), html.text);
     let from_element =
-        title_element(html, &lower).and_then(|raw| clean_title(&decode_entities(raw)));
+        title_element(html, lower).and_then(|raw| clean_title(&decode_entities(raw)));
     from_element.or_else(|| {
-        start_tags(html, &lower, "meta")
+        start_tags(html, lower, "meta")
             .find(|attrs| {
                 ["property", "name"].iter().any(|name| {
                     attr(attrs, name).is_some_and(|v| v.eq_ignore_ascii_case("og:title"))
@@ -59,10 +75,9 @@ fn names_an_icon(rel: &str) -> bool {
 
 /// The first `<link>` whose `rel` names an icon, resolved against the page, else the origin's
 /// `/favicon.ico`. Only a fetchable URL is returned.
-pub(crate) fn favicon_url(page: &Url, html: Option<&str>) -> Option<Url> {
+pub(crate) fn favicon_url(page: &Url, html: Option<&Html>) -> Option<Url> {
     let linked = html.and_then(|html| {
-        let lower = html.to_ascii_lowercase();
-        let attrs = start_tags(html, &lower, "link")
+        let attrs = start_tags(html.text, &html.lower, "link")
             .find(|attrs| attr(attrs, "rel").is_some_and(names_an_icon))?;
         let href = attr(&attrs, "href").filter(|href| !href.trim().is_empty())?;
         page.join(href.trim()).ok()
@@ -99,8 +114,7 @@ pub(crate) fn image_type(content_type: &str) -> Option<String> {
     plain.then_some(essence)
 }
 
-/// Byte offsets of each `<name` that starts a tag of that name. `lower` is `html` lower-cased, which
-/// keeps every byte offset.
+/// Byte offsets of each `<name` that starts a tag of that name in a lower-cased page.
 fn tag_starts<'a>(lower: &'a str, name: &'a str) -> impl Iterator<Item = usize> + 'a {
     let open = format!("<{name}");
     lower.match_indices('<').map(|(i, _)| i).filter(move |&i| {
@@ -268,56 +282,60 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    fn title_of(html: &str) -> Option<String> {
+        page_title(&Html::new(html))
+    }
+
     #[test]
     fn the_title_element_gives_the_title() {
         let html = "<html><head><TITLE lang=en>Example Domain</TITLE></head></html>";
-        assert_eq!(page_title(html).as_deref(), Some("Example Domain"));
+        assert_eq!(title_of(html).as_deref(), Some("Example Domain"));
     }
 
     #[test]
     fn og_title_stands_in_when_there_is_no_usable_title_element() {
         let og = r#"<meta content="From OG" property="og:title"><meta name="x" content="y">"#;
-        assert_eq!(page_title(og).as_deref(), Some("From OG"));
+        assert_eq!(title_of(og).as_deref(), Some("From OG"));
         let empty_title = format!("<title>  </title>{og}");
-        assert_eq!(page_title(&empty_title).as_deref(), Some("From OG"));
+        assert_eq!(title_of(&empty_title).as_deref(), Some("From OG"));
         let single_quoted = "<meta property='og:title' content='Single'>";
-        assert_eq!(page_title(single_quoted).as_deref(), Some("Single"));
+        assert_eq!(title_of(single_quoted).as_deref(), Some("Single"));
     }
 
     #[test]
-    fn a_title_inside_the_body_is_not_the_page_title() {
+    fn a_title_inside_the_body_is_not_the_title_of() {
         let og = r#"<meta property="og:title" content="OG">"#;
         let in_body = format!("<head>{og}</head><body><svg><title>Close</title></svg></body>");
-        assert_eq!(page_title(&in_body).as_deref(), Some("OG"));
+        assert_eq!(title_of(&in_body).as_deref(), Some("OG"));
         let no_head_end = format!("{og}<BODY class=x><svg><title>Close</title></svg>");
-        assert_eq!(page_title(&no_head_end).as_deref(), Some("OG"));
+        assert_eq!(title_of(&no_head_end).as_deref(), Some("OG"));
         let headless = "<title>Plain</title><p>text</p>";
-        assert_eq!(page_title(headless).as_deref(), Some("Plain"));
+        assert_eq!(title_of(headless).as_deref(), Some("Plain"));
     }
 
     #[test]
     fn the_title_element_wins_over_og_title() {
         let html = r#"<meta property="og:title" content="OG"><title>Element</title>"#;
-        assert_eq!(page_title(html).as_deref(), Some("Element"));
+        assert_eq!(title_of(html).as_deref(), Some("Element"));
     }
 
     #[test]
     fn entities_in_a_title_are_decoded() {
         let html = "<title>Tom &amp; Jerry &lt;3 &quot;x&quot; &#39;y&#x27; &#x1F600; &nbsp;&mdash; &copy;</title>";
         assert_eq!(
-            page_title(html).as_deref(),
+            title_of(html).as_deref(),
             Some("Tom & Jerry <3 \"x\" 'y' \u{1F600} \u{2014} \u{a9}")
         );
         let og = r#"<meta property="og:title" content="A &amp; B">"#;
-        assert_eq!(page_title(og).as_deref(), Some("A & B"));
+        assert_eq!(title_of(og).as_deref(), Some("A & B"));
     }
 
     #[test]
     fn an_escaped_entity_is_decoded_only_once() {
         let og = r#"<meta property="og:title" content="&amp;lt;b&amp;gt;">"#;
-        assert_eq!(page_title(og).as_deref(), Some("&lt;b&gt;"));
+        assert_eq!(title_of(og).as_deref(), Some("&lt;b&gt;"));
         assert_eq!(
-            page_title("<title>&amp;lt;b&amp;gt;</title>").as_deref(),
+            title_of("<title>&amp;lt;b&amp;gt;</title>").as_deref(),
             Some("&lt;b&gt;")
         );
     }
@@ -326,7 +344,7 @@ mod tests {
     fn unknown_or_broken_entities_are_left_as_written() {
         let html = "<title>a &bogus; b &#xZZ; c &#0; d &amp e</title>";
         assert_eq!(
-            page_title(html).as_deref(),
+            title_of(html).as_deref(),
             Some("a &bogus; b &#xZZ; c &#0; d &amp e")
         );
     }
@@ -334,25 +352,25 @@ mod tests {
     #[test]
     fn whitespace_in_a_title_is_collapsed() {
         let html = "<title>\n   Line one\n\t\tline   two  </title>";
-        assert_eq!(page_title(html).as_deref(), Some("Line one line two"));
+        assert_eq!(title_of(html).as_deref(), Some("Line one line two"));
     }
 
     #[test]
     fn a_long_title_is_cut_at_two_hundred_characters() {
         let html = format!("<title>{}</title>", "あ".repeat(300));
-        assert_eq!(page_title(&html).map(|t| t.chars().count()), Some(200));
+        assert_eq!(title_of(&html).map(|t| t.chars().count()), Some(200));
     }
 
     #[test]
     fn a_page_without_a_title_has_none() {
-        assert_eq!(page_title("<html><body>hi</body></html>"), None);
-        assert_eq!(page_title("<title>unterminated"), None);
-        assert_eq!(page_title(""), None);
+        assert_eq!(title_of("<html><body>hi</body></html>"), None);
+        assert_eq!(title_of("<title>unterminated"), None);
+        assert_eq!(title_of(""), None);
     }
 
     #[test]
     fn a_title_with_undecodable_bytes_is_dropped() {
-        assert_eq!(page_title("<title>\u{FFFD}\u{FFFD}</title>"), None);
+        assert_eq!(title_of("<title>\u{FFFD}\u{FFFD}</title>"), None);
     }
 
     fn page() -> Url {
@@ -360,7 +378,7 @@ mod tests {
     }
 
     fn icon(html: &str) -> Option<String> {
-        favicon_url(&page(), Some(html)).map(String::from)
+        favicon_url(&page(), Some(&Html::new(html))).map(String::from)
     }
 
     #[test]
@@ -436,8 +454,8 @@ mod tests {
         ];
         let started = std::time::Instant::now();
         for html in &bodies {
-            assert_eq!(page_title(html), None);
-            favicon_url(&page(), Some(html));
+            assert_eq!(title_of(html), None);
+            favicon_url(&page(), Some(&Html::new(html)));
         }
         assert!(
             started.elapsed() < Duration::from_secs(2),

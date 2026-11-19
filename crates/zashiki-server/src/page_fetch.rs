@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use url::Url;
 
-use crate::page_meta::{favicon_url, image_type, is_html, page_title};
+use crate::page_meta::{favicon_url, image_type, is_html, page_title, Html};
 use crate::public_destination::{is_fetchable_url, public_addrs};
 
 const MAX_REDIRECTS: usize = 3;
@@ -65,11 +65,12 @@ pub(crate) fn follow(
 }
 
 pub(crate) fn page_details(final_url: &Url, response: &Response) -> PageDetails {
-    let html = is_html(&response.content_type).then(|| String::from_utf8_lossy(&response.body));
+    let text = is_html(&response.content_type).then(|| String::from_utf8_lossy(&response.body));
+    let html = text.as_deref().map(Html::new);
     PageDetails {
-        title: html.as_deref().and_then(page_title),
+        title: html.as_ref().and_then(page_title),
         favicon_origin: final_url.origin().ascii_serialization(),
-        favicon_url: favicon_url(final_url, html.as_deref()),
+        favicon_url: favicon_url(final_url, html.as_ref()),
     }
 }
 
