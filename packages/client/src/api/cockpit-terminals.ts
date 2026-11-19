@@ -4,15 +4,17 @@ import {
   type CockpitTerminalLastActivityResponse,
   cockpitTerminalLastActivityResponseSchema,
   cockpitTerminalTailResponseSchema,
+  type SessionEvent,
   type SessionLink,
   sessionLinksResponseSchema,
+  sessionStatsResponseSchema,
 } from "@zashiki/shared";
 
 import { authHeaders } from "../lib/token.js";
 import { sessionLinkFaviconUrl } from "../lib/url.js";
 
 /** The read REST for how long each Cockpit Terminal has been left alone, what it last showed, and
- * the links its Claude Session has seen. */
+ * the links and activity of its Claude Session. */
 export interface CockpitTerminalsApi {
   lastActivity(
     signal?: AbortSignal,
@@ -26,6 +28,11 @@ export interface CockpitTerminalsApi {
     signal?: AbortSignal,
     options?: { details?: boolean },
   ): Promise<SessionLink[]>;
+  /** What the Claude Session did, oldest first, for the Session Stats View. */
+  stats(
+    cockpitTerminalId: string,
+    signal?: AbortSignal,
+  ): Promise<SessionEvent[]>;
   /** The image URL for a link's `faviconOrigin`. */
   faviconUrl(origin: string): string;
   /** Every Cockpit Terminal's background tasks, running or not. */
@@ -65,6 +72,13 @@ export function createCockpitTerminalsApi(
         await getJson(`/api/cockpit-terminals/links?${query}`, signal),
       );
       return body.links;
+    },
+    async stats(cockpitTerminalId, signal) {
+      const query = new URLSearchParams({ id: cockpitTerminalId });
+      const body = sessionStatsResponseSchema.parse(
+        await getJson(`/api/cockpit-terminals/stats?${query}`, signal),
+      );
+      return body.events;
     },
     faviconUrl(origin) {
       return sessionLinkFaviconUrl(base, origin, token);

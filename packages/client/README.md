@@ -30,7 +30,8 @@ Sub Area
 
 Navigation Area — switches Sub Area Views
 Cockpit Footer — per-terminal status
-└ Session Links — a modeless popover listing the URLs the Claude Session has seen (`src/session/session-links.test.ts`)
+├ Session Links — a modeless popover listing the URLs the Claude Session has seen (`src/session/session-links.test.ts`)
+└ Session Stats View — a modal opened here: what the Claude Session did, as Summary (files, commands, external access, denials) and Timeline (`src/session/session-stats.test.ts`)
 Overlays — Notification Toast, Modal, Dashboard
 ```
 

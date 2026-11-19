@@ -70,3 +70,10 @@ export async function pickAndReadFiles(title: string): Promise<PickedFile[]> {
   }
   return pickViaInput();
 }
+
+/** Reads the files macOS has handed to the app since the last call (Tauri only). */
+export function takeOpenedFiles(): Promise<PickedFile[]> {
+  return invoke<PickedFile[]>("take_opened_files", {
+    maxBytes: FILE_MAX_BYTES,
+  });
+}

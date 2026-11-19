@@ -935,6 +935,70 @@ export type BackgroundTasksResponse = z.infer<
   typeof backgroundTasksResponseSchema
 >;
 
+export const sessionEventKindSchema = z.enum([
+  "prompt",
+  "read",
+  "edit",
+  "command",
+  "web",
+  "search",
+  "subagent",
+  "skill",
+  "tool",
+  "interrupt",
+  "compaction",
+]);
+
+export type SessionEventKind = z.infer<typeof sessionEventKindSchema>;
+
+export const sessionEventOutcomeSchema = z.enum([
+  "ok",
+  "failed",
+  "denied",
+  "interrupted",
+]);
+
+export type SessionEventOutcome = z.infer<typeof sessionEventOutcomeSchema>;
+
+export const sessionEventDeniedBySchema = z.enum([
+  "user",
+  "hook",
+  "classifier",
+  "rule",
+]);
+
+export type SessionEventDeniedBy = z.infer<typeof sessionEventDeniedBySchema>;
+
+/**
+ * One thing a Claude Session did. A kind this client does not know is shown as a plain tool call,
+ * and an unknown outcome as still running, rather than failing the whole list.
+ */
+export const sessionEventSchema = z.object({
+  at: z.number(),
+  kind: sessionEventKindSchema.catch("tool"),
+  text: z.string(),
+  tool: z.string().optional(),
+  /** The Summary row key: the file path for read/edit, the command group for a command. */
+  target: z.string().optional(),
+  domains: z.array(z.string()).optional(),
+  /** For a shell command, the programs (`curl`, `wget`) that reached `domains`. */
+  via: z.array(z.string()).optional(),
+  outcome: sessionEventOutcomeSchema.optional().catch(undefined),
+  deniedBy: sessionEventDeniedBySchema.optional().catch(undefined),
+  durationMs: z.number().optional(),
+  preTokens: z.number().optional(),
+  postTokens: z.number().optional(),
+});
+
+export type SessionEvent = z.infer<typeof sessionEventSchema>;
+
+/** `GET /api/cockpit-terminals/stats?id=`: oldest first. */
+export const sessionStatsResponseSchema = z.object({
+  events: z.array(sessionEventSchema),
+});
+
+export type SessionStatsResponse = z.infer<typeof sessionStatsResponseSchema>;
+
 // ---- REST（save / restore）----
 
 export const sessionsSaveResponseSchema = z.object({

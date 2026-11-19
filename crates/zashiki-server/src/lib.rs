@@ -56,6 +56,7 @@ pub mod search;
 pub mod self_update;
 pub mod session_launch;
 pub mod session_links;
+pub mod session_stats;
 pub mod session_model_store;
 pub mod session_persist;
 pub mod session_registry;
@@ -110,7 +111,7 @@ use crate::routes_files::files_route;
 use crate::routes_hooks::{focus_session, hooks_event, hooks_statusline};
 use crate::routes_search::search_route;
 use crate::routes_sessions::{
-    background_tasks, cockpit_terminal_links, cockpit_terminal_tail, cockpit_terminals_last_activity, session_link_favicon,
+    background_tasks, cockpit_terminal_links, cockpit_terminal_stats, cockpit_terminal_tail, cockpit_terminals_last_activity, session_link_favicon,
     sessions_restore, sessions_save,
 };
 use crate::routes_ws::{activity, ws_control, ws_term};
@@ -215,6 +216,7 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/cockpit-terminals/tail", get(cockpit_terminal_tail))
         .route("/api/cockpit-terminals/links", get(cockpit_terminal_links))
         .route("/api/background-tasks", get(background_tasks))
+        .route("/api/cockpit-terminals/stats", get(cockpit_terminal_stats))
         .route("/api/session-links/favicon", get(session_link_favicon))
         .route("/api/hooks/event", post(hooks_event))
         .route("/api/hooks/statusline", post(hooks_statusline))

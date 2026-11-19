@@ -16,6 +16,7 @@
     "allow-open-popout",
     "allow-focus-popout",
     "allow-close-popout",
-    "allow-list-popouts"
+    "allow-list-popouts",
+    "allow-take-opened-files"
   ]
 }

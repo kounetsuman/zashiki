@@ -142,6 +142,24 @@ export function openTab(state: TabsState, tab: Tab): TabsState {
   return { ...state, tabs: [...state.tabs, tab], activeKey: key };
 }
 
+/**
+ * Adds a tab right after the pinned ones without taking focus from the active tab (it becomes active
+ * only when nothing else is open). An already-open tab returns the same reference.
+ */
+export function openTabBehind(state: TabsState, tab: Tab): TabsState {
+  const key = tabKey(tab);
+  if (indexOfKey(state.tabs, key) !== -1) return state;
+  const firstUnpinned = state.tabs.findIndex(
+    (t) => !isPinned(state, tabKey(t)),
+  );
+  const at = firstUnpinned === -1 ? state.tabs.length : firstUnpinned;
+  return {
+    ...state,
+    tabs: [...state.tabs.slice(0, at), tab, ...state.tabs.slice(at)],
+    activeKey: state.activeKey ?? key,
+  };
+}
+
 /** Makes the given tab active. A nonexistent key is a no-op (state unchanged). */
 export function activateTab(state: TabsState, key: string): TabsState {
   if (indexOfKey(state.tabs, key) === -1) return state;

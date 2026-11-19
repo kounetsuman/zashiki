@@ -13,6 +13,7 @@ import {
   MEMO_TAB_KEY,
   moveTab,
   openTab,
+  openTabBehind,
   pinTab,
   pruneSessions,
   setMemoVisible,
@@ -74,6 +75,26 @@ describe("openTab", () => {
     r = openTab(r, e("@1"));
     expect(r.tabs).toEqual([s("@1"), e("@1")]);
     expect(r.activeKey).toBe("viewer:@1");
+  });
+});
+
+describe("openTabBehind", () => {
+  it("adds the tab after the pinned ones and leaves the active tab in front", () => {
+    const base = state([e("a"), e("b")], "viewer:b", ["viewer:a"]);
+    const r = openTabBehind(base, s("@1"));
+    expect(r.tabs).toEqual([e("a"), s("@1"), e("b")]);
+    expect(r.activeKey).toBe("viewer:b");
+  });
+
+  it("makes the tab active when nothing else is open", () => {
+    const r = openTabBehind(EMPTY_TABS, s("@1"));
+    expect(r.tabs).toEqual([s("@1")]);
+    expect(r.activeKey).toBe("session:@1");
+  });
+
+  it("returns the same reference when the tab is already open", () => {
+    const base = state([s("@1"), e("b")], "viewer:b");
+    expect(openTabBehind(base, s("@1"))).toBe(base);
   });
 });
 

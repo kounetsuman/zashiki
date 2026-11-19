@@ -67,7 +67,11 @@ import {
 import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
-import { openPickedFiles, pickAndReadFiles } from "./lib/open-file-dialog.js";
+import {
+  openPickedFiles,
+  type PickedFile,
+  pickAndReadFiles,
+} from "./lib/open-file-dialog.js";
 import type { PopOutApi, ScreenPoint } from "./lib/pop-out.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
@@ -113,6 +117,7 @@ import { PoppedOutNotice } from "./ui/PoppedOutNotice.js";
 import { QuickOpen } from "./ui/QuickOpen.js";
 import { QuitSaveOverlay } from "./ui/QuitSaveOverlay.js";
 import { SearchView } from "./ui/SearchView.js";
+import { SessionStatsModal } from "./ui/SessionStatsModal.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
 import { SessionToaster } from "./ui/SessionToaster.js";
 import { SettingsModal } from "./ui/SettingsModal.js";
@@ -137,11 +142,14 @@ import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
 import { type FileDropError, useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
+import { useOpenedFiles } from "./ui/useOpenedFiles.js";
 import { usePoppedOut } from "./ui/usePoppedOut.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useSessionLinks } from "./ui/useSessionLinks.js";
+import { useSessionStats } from "./ui/useSessionStats.js";
+import { useSessionStatsOpen } from "./ui/useSessionStatsOpen.js";
 import { useStallRules } from "./ui/useStallRules.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useUsageLimitWarning } from "./ui/useUsageLimitWarning.js";
@@ -511,6 +519,23 @@ export function App({
     activeSess,
     sessionLinksOpen,
   );
+  const [openLinksNonce, setOpenLinksNonce] = useState(0);
+  const sessionStats = useSessionStatsOpen(
+    activeSession?.cockpitTerminalId ?? null,
+  );
+  const activeSessionStats = useSessionStats(
+    cockpitTerminalsApi,
+    sessionStats.open ? activeSess : null,
+  );
+  const { hide: hideSessionStats } = sessionStats;
+  const closeSessionStats = useCallback(() => {
+    hideSessionStats();
+    store.focusTerminal();
+  }, [hideSessionStats, store]);
+  const openLinksFromStats = useCallback(() => {
+    hideSessionStats();
+    setOpenLinksNonce((n) => n + 1);
+  }, [hideSessionStats]);
   const activeSessionAccent =
     activeSession !== undefined
       ? resolveOrgColor(activeSession.org, orgColors)
@@ -730,14 +755,23 @@ export function App({
     toastUnreadableFile,
   );
 
-  // Cmd+O: pick files via the native dialog and open each read-only in the viewer (external buffer).
+  // Files from Cmd+O and from macOS (open -a, Open With) open read-only in the viewer (external buffer).
+  const openPicked = useCallback(
+    (picked: readonly PickedFile[]): void =>
+      openPickedFiles(picked, openExternalFile, toastUnreadableFile),
+    [openExternalFile, toastUnreadableFile],
+  );
+  const toastOpenFailed = useCallback(
+    (): void => flashCopyToast(t("openFile.failed")),
+    [flashCopyToast, t],
+  );
   const openFileFromDialog = useCallback((): void => {
     void pickAndReadFiles(t("openFile.dialogTitle")).then(
-      (picked) =>
-        openPickedFiles(picked, openExternalFile, toastUnreadableFile),
-      () => flashCopyToast(t("openFile.failed")),
+      openPicked,
+      toastOpenFailed,
     );
-  }, [t, openExternalFile, toastUnreadableFile, flashCopyToast]);
+  }, [t, openPicked, toastOpenFailed]);
+  useOpenedFiles(openPicked, toastOpenFailed);
 
   const copyWithToast = useCallback(
     (text: string, toastKey: "toast.pathCopied" | "toast.linkCopied"): void => {
@@ -1467,6 +1501,12 @@ export function App({
               faviconUrl={cockpitTerminalsApi?.faviconUrl}
               onLinksClosed={store.focusTerminal}
               onLinksOpenChange={setSessionLinksOpen}
+              openLinksNonce={openLinksNonce}
+              onOpenStats={
+                cockpitTerminalsApi !== undefined
+                  ? sessionStats.show
+                  : undefined
+              }
             />
           )}
         </div>
@@ -1622,6 +1662,18 @@ export function App({
             control.send({ t: "cockpitTerminal.close", cockpitTerminalId: id })
           }
           onClose={idleWarning.dismiss}
+        />
+      )}
+      {sessionStats.open && activeSession !== undefined && (
+        <SessionStatsModal
+          cockpitTerminalId={activeSession.cockpitTerminalId}
+          sessionTitle={resolveTitle(
+            effectiveCustomTitle(conversationTitles, activeSession),
+            activeSession,
+          )}
+          events={activeSessionStats}
+          onOpenLinks={openLinksFromStats}
+          onClose={closeSessionStats}
         />
       )}
       {dashboardFrame !== null && (

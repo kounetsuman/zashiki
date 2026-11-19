@@ -30,7 +30,8 @@ Sub Area
 
 Navigation Area — Sub Area View の切替
 Cockpit Footer — Cockpit Terminal ごとの状態
-└ Session Links — Claude Session に出た URL を一覧するモードレスのポップオーバー（`src/session/session-links.test.ts`）
+├ Session Links — Claude Session に出た URL を一覧するモードレスのポップオーバー（`src/session/session-links.test.ts`）
+└ Session Stats View — ここから開くモーダル。Claude Session がしたことを Summary（ファイル・コマンド・外部アクセス・拒否）と Timeline で見せる（`src/session/session-stats.test.ts`）
 Overlay — Notification Toast, Modal, Dashboard
 ```
 

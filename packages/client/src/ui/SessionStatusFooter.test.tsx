@@ -117,4 +117,25 @@ describe("SessionStatusFooter", () => {
     const footer = container.querySelector(".session-status") as HTMLElement;
     expect(footer.style.borderTopColor).toBe("");
   });
+
+  it("offers the Session Stats View only when it can be opened", () => {
+    const onOpenStats = vi.fn();
+    render(<SessionStatusFooter usage={null} onOpenStats={onOpenStats} />);
+    fireEvent.click(screen.getByRole("button", { name: "セッションの統計" }));
+    expect(onOpenStats).toHaveBeenCalledTimes(1);
+    cleanup();
+    render(<SessionStatusFooter usage={null} />);
+    expect(
+      screen.queryByRole("button", { name: "セッションの統計" }),
+    ).toBeNull();
+  });
+
+  it("opens the links popover each time the nonce changes, not on mount", () => {
+    const { container, rerender } = render(
+      <SessionStatusFooter usage={null} openLinksNonce={3} />,
+    );
+    expect(container.querySelector(".session-links")).toBeNull();
+    rerender(<SessionStatusFooter usage={null} openLinksNonce={4} />);
+    expect(container.querySelector(".session-links")).not.toBeNull();
+  });
 });

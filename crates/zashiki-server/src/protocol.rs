@@ -718,6 +718,79 @@ pub struct SessionLinksResponse {
     pub links: Vec<SessionLink>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionEventKind {
+    Prompt,
+    Read,
+    Edit,
+    Command,
+    Web,
+    Search,
+    Subagent,
+    Skill,
+    Tool,
+    Interrupt,
+    Compaction,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionEventOutcome {
+    Ok,
+    Failed,
+    Denied,
+    Interrupted,
+}
+
+/// Who stopped a denied tool call: the user, a PreToolUse hook, the auto-mode classifier, or a
+/// permission rule in settings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionEventDeniedBy {
+    User,
+    Hook,
+    Classifier,
+    Rule,
+}
+
+/// One thing a Claude Session did, in transcript order. A tool call carries its outcome once its
+/// result has been written.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionEvent {
+    pub at: u64,
+    pub kind: SessionEventKind,
+    /// One line: the prompt, path, command, URL, query, description, skill or tool name.
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
+    /// The key a Summary row groups by: the file path for read/edit, the command group for a command.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
+    /// For a shell command, the programs (`curl`, `wget`) that reached `domains`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub via: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<SessionEventOutcome>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub denied_by: Option<SessionEventDeniedBy>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pre_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_tokens: Option<u64>,
+}
+
+/// Response for `GET /api/cockpit-terminals/stats?id=`: oldest first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SessionStatsResponse {
+    pub events: Vec<SessionEvent>,
+}
+
 /// In-app notification level.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

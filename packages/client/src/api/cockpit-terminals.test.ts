@@ -48,6 +48,42 @@ describe("createCockpitTerminalsApi.links", () => {
   });
 });
 
+describe("createCockpitTerminalsApi.stats", () => {
+  it("GETs the terminal's session events with the token header", async () => {
+    const event = { at: 1, kind: "prompt", text: "go" };
+    const fetchFn = vi.fn(
+      async () => new Response(JSON.stringify({ events: [event] })),
+    );
+    const api = createCockpitTerminalsApi(
+      "http://host",
+      "tok",
+      fetchFn as unknown as typeof fetch,
+    );
+    expect(await api.stats("@1")).toEqual([event]);
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("http://host/api/cockpit-terminals/stats?id=%401");
+    expect(init.headers).toEqual({ "x-zashiki-token": "tok" });
+  });
+
+  it("rejects on a non-ok response", async () => {
+    const fetchFn = vi.fn(async () => new Response("{}", { status: 503 }));
+    const api = createCockpitTerminalsApi("http://host", "t", fetchFn as never);
+    await expect(api.stats("@1")).rejects.toThrow("HTTP 503");
+  });
+});
+
+describe("createCockpitTerminalsApi.faviconUrl", () => {
+  it("points an image at a cached favicon, with the token in the query", () => {
+    const api = createCockpitTerminalsApi("http://host", "tok", vi.fn());
+    expect(api.faviconUrl("https://example.com")).toBe(
+      "http://host/api/session-links/favicon?origin=https%3A%2F%2Fexample.com&token=tok",
+    );
+  });
+});
+
 describe("createCockpitTerminalsApi.backgroundTasks", () => {
   it("GETs every terminal's background tasks with the token header", async () => {
     const task = {
@@ -77,14 +113,5 @@ describe("createCockpitTerminalsApi.backgroundTasks", () => {
     ];
     expect(url).toBe("http://host/api/background-tasks");
     expect(init.headers).toEqual({ "x-zashiki-token": "tok" });
-  });
-});
-
-describe("createCockpitTerminalsApi.faviconUrl", () => {
-  it("points an image at a cached favicon, with the token in the query", () => {
-    const api = createCockpitTerminalsApi("http://host", "tok", vi.fn());
-    expect(api.faviconUrl("https://example.com")).toBe(
-      "http://host/api/session-links/favicon?origin=https%3A%2F%2Fexample.com&token=tok",
-    );
   });
 });

@@ -150,7 +150,7 @@ fn strings_in<'a>(value: &'a Value, out: &mut Vec<&'a str>) {
 
 /// Removes the blocks Claude Code injects into a user message (reminders, command output, background
 /// task notices), keeping what the user typed (slash-command arguments and `!` shell input included).
-fn strip_injected_blocks(text: &str) -> std::borrow::Cow<'_, str> {
+pub(crate) fn strip_injected_blocks(text: &str) -> std::borrow::Cow<'_, str> {
     static INJECTED: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(
             r"(?s)<system-reminder>.*?</system-reminder>|<command-(?:name|message)>.*?</command-(?:name|message)>|<local-command-[a-z]+>.*?</local-command-[a-z]+>|<bash-(?:stdout|stderr)>.*?</bash-(?:stdout|stderr)>|<task-notification>.*?</task-notification>",
@@ -162,7 +162,7 @@ fn strip_injected_blocks(text: &str) -> std::borrow::Cow<'_, str> {
 
 /// URLs as written in prose: a URL ends at whitespace, a quote, `<>`, a backtick, or the first non-ASCII
 /// character, since Japanese text often follows one with no space between.
-fn urls_in(text: &str) -> Vec<&str> {
+pub(crate) fn urls_in(text: &str) -> Vec<&str> {
     static URL: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r#"https?://[\x21-\x7E--["'<>`]]+"#).unwrap());
     URL.find_iter(text)
