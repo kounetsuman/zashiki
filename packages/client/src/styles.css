@@ -1102,6 +1102,12 @@ textarea {
   padding: 1px 4px;
 }
 
+@media (any-pointer: coarse) {
+  .viewer-encoding {
+    font-size: 16px;
+  }
+}
+
 .viewer-copy:hover,
 .viewer-wrap:hover,
 .viewer-toggle:hover {

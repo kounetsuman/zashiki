@@ -785,8 +785,14 @@ mod git_file_rest_tests {
         let (s, b) = request(app(&fx), &query("shift_jis"), Some(OK_HOST), &[]).await;
         assert_eq!(s, StatusCode::OK);
         assert_eq!(b, r#"{"content":"名前\n"}"#);
-        let (s, _) = request(app(&fx), &query("latin9"), Some(OK_HOST), &[]).await;
+        // Every value of TEXT_ENCODINGS (packages/shared/src/files.ts) is accepted.
+        for encoding in ["utf8", "shift_jis", "euc_jp"] {
+            let (s, _) = request(app(&fx), &query(encoding), Some(OK_HOST), &[]).await;
+            assert_eq!(s, StatusCode::OK, "{encoding}");
+        }
+        let (s, b) = request(app(&fx), &query("latin9"), Some(OK_HOST), &[]).await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(b, r#"{"error":"unknown encoding"}"#);
     }
 
     #[cfg(unix)]

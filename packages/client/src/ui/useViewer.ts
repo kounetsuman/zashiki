@@ -38,7 +38,11 @@ function readErrorMessage(e: unknown): string {
 export interface Viewer {
   buffers: ViewerBuffers;
   /** Ensures a buffer for the file (firing a read only when new) and returns its key. */
-  ensureBuffer(repoPath: string, relPath: string): string;
+  ensureBuffer(
+    repoPath: string,
+    relPath: string,
+    encoding?: TextEncoding,
+  ): string;
   /** Ensures a repo image/video/PDF buffer streamed from the media URL (no text read) and returns its key. */
   ensureMediaBuffer(repoPath: string, relPath: string, kind: MediaKind): string;
   /** Opens a dropped file from content already in hand (no repo read) and returns its key. */
@@ -112,15 +116,19 @@ export function useViewer(
   );
 
   const ensureBuffer = useCallback(
-    (repoPath: string, relPath: string): string => {
+    (
+      repoPath: string,
+      relPath: string,
+      encoding: TextEncoding = "utf8",
+    ): string => {
       const key = viewerKey(repoPath, relPath);
       let shouldLoad = false;
       setBuffers((prev) => {
         if (prev[key] !== undefined) return prev;
         shouldLoad = true;
-        return openBuffer(prev, repoPath, relPath);
+        return openBuffer(prev, repoPath, relPath, encoding);
       });
-      if (shouldLoad) void loadFile(key, repoPath, relPath, "utf8", false);
+      if (shouldLoad) void loadFile(key, repoPath, relPath, encoding, false);
       return key;
     },
     [loadFile],

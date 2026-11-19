@@ -148,6 +148,7 @@ export function openBuffer(
   bufs: ViewerBuffers,
   repoPath: string,
   relPath: string,
+  encoding: TextEncoding = "utf8",
 ): ViewerBuffers {
   const key = viewerKey(repoPath, relPath);
   if (bufs[key] !== undefined) return bufs;
@@ -159,6 +160,7 @@ export function openBuffer(
       status: "loading",
       content: null,
       preview: opensInAlternateView(relPath),
+      ...(encoding === "utf8" ? {} : { encoding }),
     },
   };
 }
@@ -269,14 +271,16 @@ export function bufferTogglePreview(
   return patch(bufs, key, (b) => ({ ...b, preview: !b.preview }));
 }
 
-/** Keeps the content on screen until the re-read with the new encoding lands. */
+/** Back to loading, so a failed re-read with the new encoding shows its error instead of the old text. */
 export function bufferSetEncoding(
   bufs: ViewerBuffers,
   key: string,
   encoding: TextEncoding,
 ): ViewerBuffers {
   return patch(bufs, key, (b) =>
-    encodingOf(b) === encoding ? b : { ...b, encoding },
+    encodingOf(b) === encoding
+      ? b
+      : { ...b, encoding, status: "loading", content: null, error: undefined },
   );
 }
 

@@ -8,7 +8,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use axum::http::StatusCode;
-use serde::Deserialize;
 
 /// Maximum byte size of a single file that read/write handles (2MiB).
 pub const FILE_MAX_BYTES: u64 = 2 * 1024 * 1024;
@@ -67,16 +66,24 @@ fn resolved_file_within_repo(
 }
 
 /// The text encodings a file read can decode with (`encoding` on `GET /api/file`).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextEncoding {
-    #[default]
     Utf8,
     ShiftJis,
     EucJp,
 }
 
 impl TextEncoding {
+    /// The wire value, matching `TEXT_ENCODINGS` in packages/shared/src/files.ts.
+    pub fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "utf8" => Some(TextEncoding::Utf8),
+            "shift_jis" => Some(TextEncoding::ShiftJis),
+            "euc_jp" => Some(TextEncoding::EucJp),
+            _ => None,
+        }
+    }
+
     /// Bytes that are invalid in the encoding are replaced lossily (reads never fail).
     fn decode(self, bytes: &[u8]) -> String {
         let encoding = match self {

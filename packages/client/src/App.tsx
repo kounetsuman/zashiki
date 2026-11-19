@@ -15,6 +15,7 @@ import {
   type RuntimeUpdateStatusMessage,
   resolveOrgColor,
   type ServerMessage,
+  type TextEncoding,
   type UpdateCheckResultMessage,
   unreadCount,
   updateAvailableVersion,
@@ -138,6 +139,8 @@ import { Viewer } from "./ui/Viewer.js";
 import { WelcomeOnboardingModal } from "./ui/WelcomeOnboardingModal.js";
 import { type MediaKind, mediaKind } from "./viewer/media.js";
 import {
+  encodingOf,
+  type RenamedViewer,
   viewerKeysUnderPath,
   viewersAffectedByRename,
 } from "./viewer/viewer-model.js";
@@ -475,12 +478,17 @@ export function App({
   } | null>(null);
   const clearViewerReveal = useCallback(() => setViewerReveal(null), []);
   const openViewer = useCallback(
-    (repoPath: string, relPath: string, line?: number | null): void => {
+    (
+      repoPath: string,
+      relPath: string,
+      line?: number | null,
+      encoding?: TextEncoding,
+    ): void => {
       const kind = mediaKind(relPath);
       const key =
         kind !== null
           ? ensureMediaBuffer(repoPath, relPath, kind)
-          : ensureBuffer(repoPath, relPath);
+          : ensureBuffer(repoPath, relPath, encoding);
       openViewerTab(key);
       setViewerFocusNonce((n) => n + 1);
       if (kind === null && typeof line === "number" && line > 0) {
@@ -703,12 +711,17 @@ export function App({
       if (affected.length === 0) return;
       const previousActiveKey = tabsState.activeKey;
       const activeAffected = affected.find((a) => a.key === activeViewerKey);
+      const reopen = (a: RenamedViewer): void => {
+        const old = viewerBuffers[a.key];
+        const encoding = old === undefined ? undefined : encodingOf(old);
+        openViewer(repoPath, a.newRelPath, null, encoding);
+      };
       for (const a of affected) closeViewerTabByBufferKey(a.key);
       for (const a of affected) {
-        if (a !== activeAffected) openViewer(repoPath, a.newRelPath);
+        if (a !== activeAffected) reopen(a);
       }
       if (activeAffected !== undefined) {
-        openViewer(repoPath, activeAffected.newRelPath);
+        reopen(activeAffected);
       } else if (previousActiveKey !== null) {
         activateTabByKey(previousActiveKey);
       }

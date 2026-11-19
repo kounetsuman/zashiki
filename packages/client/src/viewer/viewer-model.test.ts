@@ -260,13 +260,22 @@ describe("media buffers", () => {
 });
 
 describe("encoding", () => {
-  it("a buffer reads as UTF-8 until another encoding is set, keeping its content meanwhile", () => {
+  it("a buffer reads as UTF-8 until another encoding is set, which reloads it", () => {
     const loaded = bufferLoaded(openBuffer({}, REPO, REL), KEY, "abc");
     expect(encodingOf(loaded[KEY] as ViewerBuffer)).toBe("utf8");
     const sjis = bufferSetEncoding(loaded, KEY, "shift_jis");
-    expect(sjis[KEY]).toMatchObject({ encoding: "shift_jis", content: "abc" });
+    expect(sjis[KEY]).toMatchObject({
+      encoding: "shift_jis",
+      status: "loading",
+      content: null,
+    });
     expect(bufferSetEncoding(sjis, KEY, "shift_jis")).toBe(sjis);
     expect(bufferSetEncoding(loaded, KEY, "utf8")).toBe(loaded);
+  });
+
+  it("openBuffer can open a file with the encoding it had before (a rename)", () => {
+    const opened = openBuffer({}, REPO, REL, "euc_jp")[KEY] as ViewerBuffer;
+    expect(encodingOf(opened)).toBe("euc_jp");
   });
 });
 
