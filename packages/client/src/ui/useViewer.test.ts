@@ -100,6 +100,26 @@ describe("useViewer media", () => {
     expect(createdFrom[0]?.type).toBe("application/pdf");
   });
 
+  it("openExternalMedia types dropped audio by its extension whatever File.type says", () => {
+    const { result } = renderHook(() => useViewer(filesApi, null));
+    act(() => {
+      result.current.openExternalMedia(
+        "voice.opus",
+        new File(["OggS"], "voice.opus", { type: "" }),
+        "audio",
+      );
+      result.current.openExternalMedia(
+        "song.FLAC",
+        new File(["fLaC"], "song.FLAC", { type: "" }),
+        "audio",
+      );
+    });
+    expect(createdFrom.map((blob) => blob.type)).toEqual([
+      "audio/ogg",
+      "audio/flac",
+    ]);
+  });
+
   it("closeBuffer revokes the object URL of a dropped media buffer", () => {
     const { result } = renderHook(() => useViewer(filesApi, null));
     let key = "";

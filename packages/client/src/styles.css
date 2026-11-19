@@ -1146,6 +1146,11 @@ textarea {
   object-fit: contain;
 }
 
+.viewer-audio {
+  width: min(480px, 90%);
+  height: 54px;
+}
+
 /* HTML / PDF preview: fill the body. */
 .viewer-html-frame,
 .viewer-pdf-frame {

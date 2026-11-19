@@ -17,7 +17,7 @@ export function termWsUrl(
   return wsUrl(httpBase, `/ws/term/${termId}`, token);
 }
 
-/** Raw-bytes URL for `<img>` / `<video>`; token rides as a query since media requests carry no Authorization header. */
+/** Raw-bytes URL for `<img>` / `<video>` / `<audio>`; token rides as a query since media requests carry no Authorization header. */
 export function mediaUrl(
   httpBase: string,
   repoPath: string,

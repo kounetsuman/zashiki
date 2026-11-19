@@ -2,7 +2,7 @@ import type { TextEncoding } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
-import type { MediaKind } from "../viewer/media.js";
+import { audioContentType, type MediaKind } from "../viewer/media.js";
 import {
   bufferFailed,
   bufferLoaded,
@@ -43,11 +43,11 @@ export interface Viewer {
     relPath: string,
     encoding?: TextEncoding,
   ): string;
-  /** Ensures a repo image/video/PDF buffer streamed from the media URL (no text read) and returns its key. */
+  /** Ensures a repo image/video/audio/PDF buffer streamed from the media URL (no text read) and returns its key. */
   ensureMediaBuffer(repoPath: string, relPath: string, kind: MediaKind): string;
   /** Opens a dropped file from content already in hand (no repo read) and returns its key. */
   openExternal(name: string, content: string): string;
-  /** Opens a dropped image/video/PDF from an object URL created for the file, and returns its key. */
+  /** Opens a dropped image/video/audio/PDF from an object URL created for the file, and returns its key. */
   openExternalMedia(name: string, file: File, kind: MediaKind): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
@@ -57,6 +57,13 @@ export interface Viewer {
   showText(key: string): void;
   /** Absolute path of the buffer at key, or null when it is gone or external (no repo path). */
   pathOf(key: string): string | null;
+}
+
+/** The dropped file retyped where the webview needs the content type to play or render a blob URL. */
+function typedMedia(name: string, file: File, kind: MediaKind): Blob {
+  if (kind === "pdf") return new Blob([file], { type: "application/pdf" });
+  const audioType = kind === "audio" ? audioContentType(name) : undefined;
+  return audioType === undefined ? file : new Blob([file], { type: audioType });
 }
 
 /**
@@ -159,9 +166,7 @@ export function useViewer(
     (name: string, file: File, kind: MediaKind): string => {
       const key = externalMediaKey(name, file);
       revokeObjectUrl(key);
-      const url = URL.createObjectURL(
-        kind === "pdf" ? new Blob([file], { type: "application/pdf" }) : file,
-      );
+      const url = URL.createObjectURL(typedMedia(name, file, kind));
       objectUrlsRef.current[key] = url;
       setBuffers((prev) =>
         openExternalMediaBuffer(prev, key, name, { kind, url }),

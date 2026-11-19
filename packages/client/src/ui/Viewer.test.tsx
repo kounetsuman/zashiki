@@ -465,6 +465,105 @@ describe("Viewer", () => {
     expect(video?.getAttribute("src")).toBe("blob:vid-1");
   });
 
+  it("renders an audio buffer as <audio controls>", () => {
+    const { container } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "voice.mp3",
+          content: null,
+          media: { kind: "audio", url: "blob:aud-1" },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    const audio = container.querySelector("audio");
+    expect(audio?.getAttribute("src")).toBe("blob:aud-1");
+    expect(audio?.hasAttribute("controls")).toBe(true);
+  });
+
+  it("says the audio cannot be played when the webview fails to decode it", () => {
+    const { container } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "voice.opus",
+          content: null,
+          media: { kind: "audio", url: "blob:aud-2" },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    const audio = container.querySelector("audio");
+    if (audio === null) throw new Error("no <audio>");
+    fireEvent.error(audio);
+    expect(container.querySelector("audio")).toBeNull();
+    expect(screen.getByText("この形式の音声は再生できません")).toBeTruthy();
+  });
+
+  it("shows a placeholder instead of the raw bytes of a binary file", () => {
+    const { container } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "clip.mkv",
+          content: "\u001aE\u0000\u0000x",
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    expect(screen.getByText("このファイルはプレビューできません")).toBeTruthy();
+    expect(container.querySelector(".viewer-cm")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "折り返して全体を表示" }),
+    ).toBeNull();
+  });
+
+  it("toggles a binary file to its raw text from the toolbar", () => {
+    const onTogglePreview = vi.fn();
+    const { container, rerender } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "clip.mkv",
+          content: "\u001aE\u0000\u0000x",
+        }}
+        onTogglePreview={onTogglePreview}
+        onCopyPath={noop}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "テキスト" }));
+    expect(onTogglePreview).toHaveBeenCalled();
+    rerender(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "clip.mkv",
+          content: "\u001aE\u0000\u0000x",
+          preview: true,
+        }}
+        onTogglePreview={onTogglePreview}
+        onCopyPath={noop}
+      />,
+    );
+    expect(container.querySelector(".viewer-cm")).not.toBeNull();
+    expect(screen.queryByText("このファイルはプレビューできません")).toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "テキスト" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("shows a text file without NUL characters as code with no toggle", () => {
+    render(<Viewer buffer={base} onTogglePreview={noop} onCopyPath={noop} />);
+    expect(screen.queryByText("このファイルはプレビューできません")).toBeNull();
+    expect(screen.queryByRole("button", { name: "テキスト" })).toBeNull();
+  });
+
   it("renders a pdf buffer in an iframe pointing at the media URL", () => {
     const { container } = render(
       <Viewer

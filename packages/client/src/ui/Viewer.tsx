@@ -33,13 +33,17 @@ import { HtmlFrame } from "./HtmlFrame.js";
 import { Loading } from "./Loading.js";
 import { viewerEditorExtensions } from "./viewer-editor.js";
 
-/** The second rendering a file offers beside its text, toggled from the toolbar. */
-type AlternateView = "markdownPreview" | "htmlPreview" | "table";
+/**
+ * The second rendering a file offers, toggled from the toolbar. For a binary file it is the raw
+ * text, shown in place of the "cannot be previewed" message.
+ */
+type AlternateView = "markdownPreview" | "htmlPreview" | "table" | "binaryText";
 
 const TOGGLE_LABEL: Record<AlternateView, { show: string; hide: string }> = {
   markdownPreview: { show: "viewer.preview", hide: "viewer.code" },
   htmlPreview: { show: "viewer.preview", hide: "viewer.code" },
   table: { show: "viewer.table", hide: "viewer.text" },
+  binaryText: { show: "viewer.text", hide: "viewer.text" },
 };
 
 const ENCODING_LABEL: Record<TextEncoding, string> = {
@@ -78,10 +82,18 @@ function lineWrapExtension(lineWrap: boolean) {
   return lineWrap ? EditorView.lineWrapping : [];
 }
 
-function alternateView(relPath: string): AlternateView | null {
+function isBinary(content: string | null): boolean {
+  return content?.includes("\0") ?? false;
+}
+
+function alternateView(
+  relPath: string,
+  content: string | null,
+): AlternateView | null {
   if (isMarkdown(relPath)) return "markdownPreview";
   if (isHtml(relPath)) return "htmlPreview";
   if (isDelimitedText(relPath)) return "table";
+  if (isBinary(content)) return "binaryText";
   return null;
 }
 
@@ -226,6 +238,24 @@ function VideoHost({ url, relPath }: { url: string; relPath: string }) {
   );
 }
 
+function AudioHost({ url, relPath }: { url: string; relPath: string }) {
+  const { t } = useTranslation();
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (failedUrl === url)
+    return <div className="viewer-message">{t("viewer.audioUnsupported")}</div>;
+  return (
+    // biome-ignore lint/a11y/useMediaCaption: local media preview has no caption track
+    <audio
+      className="viewer-media viewer-audio"
+      src={url}
+      controls
+      onError={() => setFailedUrl(url)}
+    >
+      {relPath}
+    </audio>
+  );
+}
+
 function MediaHost({
   media,
   relPath,
@@ -236,6 +266,8 @@ function MediaHost({
   if (media.kind === "video") {
     return <VideoHost url={media.url} relPath={relPath} />;
   }
+  if (media.kind === "audio")
+    return <AudioHost url={media.url} relPath={relPath} />;
   if (media.kind === "pdf") {
     return (
       <iframe className="viewer-pdf-frame" title={relPath} src={media.url} />
@@ -264,10 +296,16 @@ export function Viewer({
   const { t } = useTranslation();
   const sectionRef = useRef<HTMLElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
-  const alternate = alternateView(buffer.relPath);
+  const alternate = useMemo(
+    () => alternateView(buffer.relPath, buffer.content),
+    [buffer.relPath, buffer.content],
+  );
   const showAlternate = alternate !== null && buffer.preview;
+  const showsBinaryMessage = alternate === "binaryText" && !showAlternate;
   const showsCode =
-    buffer.status === "ready" && buffer.media === undefined && !showAlternate;
+    buffer.status === "ready" &&
+    buffer.media === undefined &&
+    (alternate === "binaryText" ? showAlternate : !showAlternate);
   const [lineWrap, setLineWrap] = useState(() =>
     loadViewerLineWrap(browserStorage()),
   );
@@ -390,6 +428,10 @@ export function Viewer({
           title={buffer.relPath}
           html={buffer.content ?? ""}
         />
+      );
+    if (showsBinaryMessage)
+      return (
+        <div className="viewer-message">{t("viewer.binaryNoPreview")}</div>
       );
     if (showAlternate && alternate === "table")
       return (

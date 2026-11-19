@@ -12,7 +12,7 @@ export interface FilesApi {
     encoding: TextEncoding,
     signal?: AbortSignal,
   ): Promise<string>;
-  /** URL streaming the file's raw bytes for `<img>` / `<video>` / the PDF `<iframe>` (token in the query). */
+  /** URL streaming the file's raw bytes for `<img>` / `<video>` / `<audio>` / the PDF `<iframe>` (token in the query). */
   mediaUrl(repoPath: string, file: string): string;
 }
 
