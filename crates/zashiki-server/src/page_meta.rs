@@ -10,7 +10,8 @@ const TITLE_MAX_CHARS: usize = 200;
 /// as UTF-8 for is dropped rather than shown garbled.
 pub(crate) fn page_title(html: &str) -> Option<String> {
     let lower = html.to_ascii_lowercase();
-    let from_element = title_element(html, &lower).and_then(clean_title);
+    let from_element =
+        title_element(html, &lower).and_then(|raw| clean_title(&decode_entities(raw)));
     from_element.or_else(|| {
         start_tags(html, &lower, "meta")
             .find(|attrs| {
@@ -29,8 +30,7 @@ fn title_element<'a>(html: &'a str, lower: &str) -> Option<&'a str> {
     Some(&html[content_start..content_end])
 }
 
-fn clean_title(raw: &str) -> Option<String> {
-    let decoded = decode_entities(raw);
+fn clean_title(decoded: &str) -> Option<String> {
     let title: String = decoded
         .split_whitespace()
         .collect::<Vec<_>>()
@@ -284,6 +284,16 @@ mod tests {
         );
         let og = r#"<meta property="og:title" content="A &amp; B">"#;
         assert_eq!(page_title(og).as_deref(), Some("A & B"));
+    }
+
+    #[test]
+    fn an_escaped_entity_is_decoded_only_once() {
+        let og = r#"<meta property="og:title" content="&amp;lt;b&amp;gt;">"#;
+        assert_eq!(page_title(og).as_deref(), Some("&lt;b&gt;"));
+        assert_eq!(
+            page_title("<title>&amp;lt;b&amp;gt;</title>").as_deref(),
+            Some("&lt;b&gt;")
+        );
     }
 
     #[test]
