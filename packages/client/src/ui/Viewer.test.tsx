@@ -585,7 +585,7 @@ describe("Viewer", () => {
 
   it("shows a slow font once it finishes loading after the timeout", async () => {
     vi.useFakeTimers();
-    let finish = noop;
+    let finish: () => void = noop;
     stubFontLoading(
       () =>
         new Promise<void>((resolve) => {
