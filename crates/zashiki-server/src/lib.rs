@@ -278,7 +278,9 @@ fn cors_layer() -> CorsLayer {
             header::AUTHORIZATION,
             header::CONTENT_TYPE,
             header::HeaderName::from_static("x-zashiki-token"),
+            header::IF_NONE_MATCH,
         ])
+        .expose_headers([header::ETAG])
 }
 
 #[cfg(test)]
@@ -410,6 +412,20 @@ mod tests {
         assert!(allow_headers.contains("content-type"), "headers = {allow_headers:?}");
         // Unless the client's x-zashiki-token is allowed, the dev preflight is blocked by the browser.
         assert!(allow_headers.contains("x-zashiki-token"), "headers = {allow_headers:?}");
+        assert!(allow_headers.contains("if-none-match"), "headers = {allow_headers:?}");
+    }
+
+    #[tokio::test]
+    async fn cors_exposes_the_file_version_to_an_allowed_origin() {
+        let (_, hs) = request_full(
+            router(None),
+            "GET",
+            "/healthz",
+            &[("host", OK_HOST), ("origin", "http://localhost:5173")],
+            &["access-control-expose-headers"],
+        )
+        .await;
+        assert_eq!(hs[0].as_deref().map(str::to_ascii_lowercase).as_deref(), Some("etag"));
     }
 
     #[tokio::test]

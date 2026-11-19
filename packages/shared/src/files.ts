@@ -4,7 +4,8 @@ import { z } from "zod";
  * Types for the editor's file read/write REST API. Actual fs access happens on the
  * server/infra side, and path validation uses the same three-layer defense as the explorer (fs-routes)
  * (scanRepos allowlist -> isSafeRepoRelativePath -> realpath escape detection).
- * GET  /api/file?repoPath=<abs>&file=<rel>[&encoding=<TextEncoding>] → FileReadResponse (unknown encoding → 400)
+ * GET  /api/file?repoPath=<abs>&file=<rel>[&encoding=<TextEncoding>] → the text, streamed as UTF-8, with its
+ *      version as the ETag; `If-None-Match: <version>` → 304 while unchanged (unknown encoding → 400)
  * POST /api/file（body = FileWriteRequest）  → FileWriteResponse
  */
 
@@ -24,7 +25,8 @@ export const fileWriteRequestSchema = z.object({
 
 export type FileWriteRequest = z.infer<typeof fileWriteRequestSchema>;
 
-export interface FileReadResponse {
+/** `GET /api/dashboard` → the dashboard file's content. */
+export interface DashboardReadResponse {
   content: string;
 }
 

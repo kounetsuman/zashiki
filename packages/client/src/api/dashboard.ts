@@ -1,4 +1,4 @@
-import type { FileReadResponse } from "@zashiki/shared";
+import type { DashboardReadResponse } from "@zashiki/shared";
 
 import { authHeaders } from "../lib/token.js";
 
@@ -40,7 +40,7 @@ export function createDashboardApi(
         signal,
       });
       if (!res.ok) throw new DashboardReadError(res.status, await errorOf(res));
-      const body = (await res.json()) as FileReadResponse;
+      const body = (await res.json()) as DashboardReadResponse;
       return body.content;
     },
   };

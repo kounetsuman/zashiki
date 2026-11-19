@@ -1,10 +1,12 @@
 use axum::{
+    body::Body,
     extract::{Query, Request, State},
-    http::{header, HeaderValue, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde::Deserialize;
+use tokio::io::AsyncReadExt;
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
 
@@ -28,9 +30,12 @@ pub(crate) struct FileTextReadParams {
     encoding: Option<String>,
 }
 
+/// `GET /api/file`: streams the file as UTF-8 text with its version as the ETag. A client that sends
+/// that version back in `If-None-Match` gets 304 with no body while the file is unchanged. Errors stay JSON.
 pub(crate) async fn file_read(
     State(state): State<AppState>,
     Query(params): Query<FileTextReadParams>,
+    headers: HeaderMap,
 ) -> Response {
     let encoding = match params.encoding.as_deref() {
         None => file::TextEncoding::Utf8,
@@ -45,16 +50,60 @@ pub(crate) async fn file_read(
         return json_error(status, &msg);
     }
     let max = state.file_max_bytes;
-    let result =
-        tokio::task::spawn_blocking(move || file::read_within_repo(&repo_path, &file, max, encoding))
-        .await
-        .unwrap_or_else(|_| {
-            Err((StatusCode::INTERNAL_SERVER_ERROR, "read task failed".to_string()))
-        });
-    match result {
-        Ok(content) => Json(serde_json::json!({ "content": content })).into_response(),
-        Err((status, msg)) => json_error(status, &msg),
+    let resolved =
+        tokio::task::spawn_blocking(move || file::text_file_within_repo(&repo_path, &file, max))
+            .await
+            .unwrap_or_else(|_| {
+                Err((StatusCode::INTERNAL_SERVER_ERROR, "read task failed".to_string()))
+            });
+    let (abs, meta) = match resolved {
+        Ok(v) => v,
+        Err((status, msg)) => return json_error(status, &msg),
+    };
+    let tag = file::version_tag(&meta, encoding);
+    if client_has_version(&headers, &tag) {
+        return text_response(StatusCode::NOT_MODIFIED, &tag, Body::empty());
     }
+    let opened = match tokio::fs::File::open(&abs).await {
+        Ok(f) => f,
+        Err(e) => {
+            let (status, msg) = file::status_for_fs_error(&e);
+            return json_error(status, &msg);
+        }
+    };
+    // A file that grows after its version was taken is sent only up to the size that version names.
+    let body = Body::from_stream(file::decoded_chunks(
+        opened.take(meta.len()),
+        encoding,
+        READ_CHUNK_BYTES,
+    ));
+    text_response(StatusCode::OK, &tag, body)
+}
+
+const READ_CHUNK_BYTES: usize = 64 * 1024;
+
+fn client_has_version(headers: &HeaderMap, tag: &str) -> bool {
+    headers
+        .get_all(header::IF_NONE_MATCH)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(','))
+        .any(|candidate| candidate.trim() == tag)
+}
+
+fn text_response(status: StatusCode, tag: &str, body: Body) -> Response {
+    let mut res = Response::new(body);
+    *res.status_mut() = status;
+    let h = res.headers_mut();
+    h.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    if let Ok(v) = HeaderValue::from_str(tag) {
+        h.insert(header::ETAG, v);
+    }
+    res
 }
 
 /// `GET /api/media`: streams a repo image/video/audio/font/PDF for `<img>` / `<video>` / `<audio>` / `FontFace` / `<iframe>`; any other file
