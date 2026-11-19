@@ -193,6 +193,29 @@ function CodeMirrorHost({
   return <div className="viewer-cm" ref={hostRef} />;
 }
 
+function unloadVideo(video: HTMLVideoElement): void {
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+}
+
+/** WebKit leaves a paused video's Live Text overlay on screen unless the video is unloaded while still attached. */
+function VideoHost({ url, relPath }: { url: string; relPath: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  useLayoutEffect(() => {
+    const video = videoRef.current;
+    return () => {
+      if (video !== null) unloadVideo(video);
+    };
+  }, []);
+  return (
+    // biome-ignore lint/a11y/useMediaCaption: local media preview has no caption track
+    <video ref={videoRef} className="viewer-media" src={url} controls>
+      {relPath}
+    </video>
+  );
+}
+
 function MediaHost({
   media,
   relPath,
@@ -201,12 +224,7 @@ function MediaHost({
   relPath: string;
 }) {
   if (media.kind === "video") {
-    return (
-      // biome-ignore lint/a11y/useMediaCaption: local media preview has no caption track
-      <video className="viewer-media" src={media.url} controls>
-        {relPath}
-      </video>
-    );
+    return <VideoHost url={media.url} relPath={relPath} />;
   }
   if (media.kind === "pdf") {
     return (

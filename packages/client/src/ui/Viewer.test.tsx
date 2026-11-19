@@ -378,6 +378,38 @@ describe("Viewer", () => {
     expect(video?.hasAttribute("controls")).toBe(true);
   });
 
+  it("pauses and unloads the video while it is still in the document when the Viewer closes", () => {
+    const seen: { connected: boolean; src: string | null }[] = [];
+    function record(this: HTMLMediaElement) {
+      seen.push({ connected: this.isConnected, src: this.getAttribute("src") });
+    }
+    const pause = vi
+      .spyOn(HTMLMediaElement.prototype, "pause")
+      .mockImplementation(record);
+    const load = vi
+      .spyOn(HTMLMediaElement.prototype, "load")
+      .mockImplementation(record);
+    const { unmount } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "clip.webm",
+          content: null,
+          media: { kind: "video", url: "blob:vid-1" },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    unmount();
+    pause.mockRestore();
+    load.mockRestore();
+    expect(seen).toEqual([
+      { connected: true, src: "blob:vid-1" },
+      { connected: true, src: null },
+    ]);
+  });
+
   it("renders a pdf buffer in an iframe pointing at the media URL", () => {
     const { container } = render(
       <Viewer
