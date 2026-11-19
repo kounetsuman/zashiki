@@ -1,8 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "popout",
-  "description": "App commands for a pop-out window: open links in the browser and send its terminal back. Grants nothing by itself, like the default capability (src/ipc_capability.rs).",
+  "description": "App commands for a pop-out window: open links in the browser, send its terminal back, and hear the Edit menu's Undo / Redo. Grants nothing by itself, like the default capability (src/ipc_capability.rs).",
   "windows": ["popout-*"],
   "local": false,
-  "permissions": ["allow-open-in-browser", "allow-close-popout"]
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "allow-open-in-browser",
+    "allow-close-popout"
+  ]
 }

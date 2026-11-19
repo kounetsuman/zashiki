@@ -203,7 +203,12 @@ mod tests {
                 .resolve_access(command, &window, &window, &Origin::Local)
                 .is_some()
         };
-        for command in ["close_popout", "open_in_browser"] {
+        for command in [
+            "close_popout",
+            "open_in_browser",
+            "plugin:event|listen",
+            "plugin:event|unlisten",
+        ] {
             assert!(reaches(command), "{command}");
         }
         for command in [
@@ -211,6 +216,7 @@ mod tests {
             "open_popout",
             "pick_and_read_files",
             "list_popouts",
+            "plugin:event|emit",
         ] {
             assert!(!reaches(command), "{command}");
         }

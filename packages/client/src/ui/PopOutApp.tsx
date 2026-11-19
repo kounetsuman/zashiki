@@ -17,6 +17,7 @@ import { TerminalView } from "./TerminalView.js";
 import { TAB_ICON } from "./tab-bar-model.js";
 import { useBrowserLinks } from "./useBrowserLinks.js";
 import { useClipboardEditEnabled } from "./useClipboardEditEnabled.js";
+import { useEditMenuHistory } from "./useEditMenuHistory.js";
 import { useTerminalFontSize } from "./useTerminalFontSize.js";
 import { useXtermRenderer } from "./useXtermRenderer.js";
 
@@ -52,6 +53,7 @@ export function PopOutApp({
   const terminalRenderer = useXtermRenderer();
   const clipboardEdit = useClipboardEditEnabled();
   useBrowserLinks();
+  useEditMenuHistory();
   const [roster, setRoster] = useState<Roster | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
 
