@@ -1,5 +1,5 @@
-/** How the Viewer renders a file: as an image, a video, audio, a PDF, or (null) as text via CodeMirror. */
-export type MediaKind = "image" | "video" | "audio" | "pdf";
+/** How the Viewer renders a file: as an image, a video, audio, a font sample, a PDF, or (null) as text via CodeMirror. */
+export type MediaKind = "image" | "video" | "audio" | "font" | "pdf";
 
 const IMAGE_EXTENSIONS = new Set([
   "png",
@@ -29,6 +29,8 @@ const AUDIO_CONTENT_TYPES = new Map([
   ["opus", "audio/ogg"],
 ]);
 
+const FONT_EXTENSIONS = new Set(["ttf", "otf", "woff", "woff2"]);
+
 function extensionOf(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();
@@ -40,6 +42,7 @@ export function mediaKind(name: string): MediaKind | null {
   if (IMAGE_EXTENSIONS.has(ext)) return "image";
   if (VIDEO_EXTENSIONS.has(ext)) return "video";
   if (AUDIO_CONTENT_TYPES.has(ext)) return "audio";
+  if (FONT_EXTENSIONS.has(ext)) return "font";
   if (ext === "pdf") return "pdf";
   return null;
 }

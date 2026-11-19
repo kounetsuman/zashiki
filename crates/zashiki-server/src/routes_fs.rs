@@ -57,7 +57,7 @@ pub(crate) async fn file_read(
     }
 }
 
-/// `GET /api/media`: streams a repo image/video/audio/PDF for `<img>` / `<video>` / `<audio>` / `<iframe>`; any other file
+/// `GET /api/media`: streams a repo image/video/audio/font/PDF for `<img>` / `<video>` / `<audio>` / `FontFace` / `<iframe>`; any other file
 /// type is 415. Delegates to ServeFile with the content type from our own table, so Range requests get
 /// 206 partial responses (video seeking), and adds (except for PDF) a sandbox CSP so a repo file opened
 /// as a page cannot run script on the app's origin. Every response, errors included, carries nosniff.
@@ -84,7 +84,7 @@ async fn serve_media(state: &AppState, params: FileReadParams, req: Request) -> 
     let Some(media_type) = media_type_for(&file) else {
         return json_error(
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
-            "only image, video, audio and PDF files can be served as media",
+            "only image, video, audio, font and PDF files can be served as media",
         );
     };
     let resolved = tokio::task::spawn_blocking({

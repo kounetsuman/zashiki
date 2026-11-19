@@ -40,6 +40,7 @@ vi.mock("../viewer/mermaid-probe.js", () => probe);
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("Viewer", () => {
@@ -501,6 +502,77 @@ describe("Viewer", () => {
     fireEvent.error(audio);
     expect(container.querySelector("audio")).toBeNull();
     expect(screen.getByText("この形式の音声は再生できません")).toBeTruthy();
+  });
+
+  function stubFontLoading(load: () => Promise<void>) {
+    const faces: { family: string; source: string }[] = [];
+    const fonts = { add: vi.fn(), delete: vi.fn() };
+    vi.stubGlobal(
+      "FontFace",
+      class {
+        constructor(
+          readonly family: string,
+          readonly source: string,
+        ) {
+          faces.push({ family, source });
+        }
+        load = load;
+      },
+    );
+    Object.defineProperty(document, "fonts", {
+      value: fonts,
+      configurable: true,
+    });
+    return { faces, fonts };
+  }
+
+  const fontBuffer: ViewerBuffer = {
+    ...base,
+    relPath: "fonts/Inter.woff2",
+    content: null,
+    media: { kind: "font", url: "blob:font-1" },
+  };
+
+  it("draws the sample text in the font loaded from the media URL", async () => {
+    const { faces, fonts } = stubFontLoading(async () => undefined);
+    const { container } = render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    expect(
+      await screen.findAllByText(
+        "いろはにほへと ちりぬるを 色は匂へど散りぬるを",
+      ),
+    ).toHaveLength(6);
+    expect(faces).toHaveLength(1);
+    expect(faces[0]?.source).toBe('url("blob:font-1")');
+    expect(fonts.add).toHaveBeenCalledTimes(1);
+    const families = [
+      ...container.querySelectorAll<HTMLElement>(".viewer-font [style]"),
+    ].map((el) => el.style.fontFamily);
+    expect(families.length).toBeGreaterThan(1);
+    expect(new Set(families)).toEqual(new Set([`"${faces[0]?.family}"`]));
+  });
+
+  it("says the font cannot be loaded when the webview rejects it", async () => {
+    stubFontLoading(() => Promise.reject(new Error("bad font")));
+    render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    expect(
+      await screen.findByText("このフォントは読み込めません"),
+    ).toBeTruthy();
+  });
+
+  it("removes the loaded font from the document when the tab closes", async () => {
+    const { fonts } = stubFontLoading(async () => undefined);
+    const { unmount } = render(
+      <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
+    );
+    await screen.findAllByText(
+      "いろはにほへと ちりぬるを 色は匂へど散りぬるを",
+    );
+    unmount();
+    expect(fonts.delete).toHaveBeenCalledWith(fonts.add.mock.calls[0]?.[0]);
   });
 
   it("shows a placeholder instead of the raw bytes of a binary file", () => {

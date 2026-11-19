@@ -53,6 +53,10 @@ const MEDIA_TYPES: &[(&str, MediaType)] = &[
     ("ogg", media("audio/ogg")),
     ("oga", media("audio/ogg")),
     ("opus", media("audio/ogg")),
+    ("ttf", media("font/ttf")),
+    ("otf", media("font/otf")),
+    ("woff", media("font/woff")),
+    ("woff2", media("font/woff2")),
     ("pdf", PDF),
 ];
 
@@ -67,7 +71,7 @@ pub fn media_type_for(file: &str) -> Option<MediaType> {
         .map(|(_, media_type)| *media_type)
 }
 
-/// CSP for non-PDF media: inert for `<img>` / `<video>` / `<audio>`, and stops an SVG opened as a page from
+/// CSP for non-PDF media: inert for `<img>` / `<video>` / `<audio>` / fonts, and stops an SVG opened as a page from
 /// running script or loading anything. It is left off PDFs because the sandbox could stop the
 /// WebView's built-in PDF viewer.
 pub const MEDIA_CSP: &str = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
@@ -77,7 +81,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn maps_image_video_audio_and_pdf_extensions() {
+    fn maps_image_video_audio_font_and_pdf_extensions() {
         assert_eq!(
             media_type_for("logo.png").unwrap().content_type,
             "image/png"
@@ -101,6 +105,14 @@ mod tests {
         assert_eq!(
             media_type_for("voice.opus").unwrap().content_type,
             "audio/ogg"
+        );
+        assert_eq!(
+            media_type_for("Inter.WOFF2").unwrap().content_type,
+            "font/woff2"
+        );
+        assert_eq!(
+            media_type_for("NotoSans.otf").unwrap().content_type,
+            "font/otf"
         );
         assert_eq!(media_type_for("doc.pdf"), Some(PDF));
         assert!(!media_type_for("clip.mp4").unwrap().is_pdf);
@@ -155,7 +167,7 @@ mod tests {
             .skip(1)
             .step_by(2)
             .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric()))
-            .filter(|s| !matches!(*s, "image" | "video" | "audio"))
+            .filter(|s| !matches!(*s, "image" | "video" | "audio" | "font"))
             .collect::<Vec<_>>();
         for ext in client_exts {
             assert!(
