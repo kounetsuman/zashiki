@@ -151,6 +151,79 @@ describe("useViewer media", () => {
   });
 });
 
+describe("useViewer media text", () => {
+  it("reads a repo media file as text only when first switched to it", async () => {
+    const read = vi.fn<FilesApi["read"]>(() => Promise.resolve("\u0000raw"));
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    let key = "";
+    act(() => {
+      key = result.current.ensureMediaBuffer("/repo", "a.png", "image");
+    });
+    expect(read).not.toHaveBeenCalled();
+    await act(async () => {
+      result.current.togglePreview(key);
+    });
+    expect(read).toHaveBeenCalledWith(
+      "/repo",
+      "a.png",
+      "utf8",
+      expect.anything(),
+    );
+    expect(result.current.buffers[key]).toMatchObject({
+      preview: true,
+      status: "ready",
+      content: "\u0000raw",
+    });
+    await act(async () => {
+      result.current.togglePreview(key);
+      result.current.togglePreview(key);
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads a dropped media file as text from the file itself", async () => {
+    const read = vi.fn<FilesApi["read"]>();
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    let key = "";
+    act(() => {
+      key = result.current.openExternalMedia(
+        "a.png",
+        new File(["\u0000png"], "a.png"),
+        "image",
+      );
+    });
+    await act(async () => {
+      result.current.togglePreview(key);
+    });
+    await vi.waitFor(() =>
+      expect(result.current.buffers[key]?.content).toBe("\u0000png"),
+    );
+    expect(result.current.buffers[key]?.status).toBe("ready");
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("a dropped media file over the read limit shows an error, and toggling back shows the media", async () => {
+    const { result } = renderHook(() => useViewer(filesApi, null));
+    const big = new File(["x"], "big.mp4");
+    Object.defineProperty(big, "size", { value: 3 * 1024 * 1024 });
+    let key = "";
+    act(() => {
+      key = result.current.openExternalMedia("big.mp4", big, "video");
+    });
+    await act(async () => {
+      result.current.togglePreview(key);
+    });
+    expect(result.current.buffers[key]?.status).toBe("error");
+    act(() => {
+      result.current.togglePreview(key);
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "ready",
+      preview: false,
+    });
+  });
+});
+
 describe("useViewer encoding", () => {
   it("setEncoding re-reads the file with the encoding, and the polls keep using it", async () => {
     vi.useFakeTimers();

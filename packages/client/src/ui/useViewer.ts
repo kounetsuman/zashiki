@@ -1,4 +1,4 @@
-import type { TextEncoding } from "@zashiki/shared";
+import { FILE_MAX_BYTES, type TextEncoding } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
@@ -18,6 +18,7 @@ import {
   openExternalMediaBuffer,
   openMediaBuffer,
   shouldPollBuffer,
+  type ViewerBuffer,
   type ViewerBuffers,
   viewerKey,
 } from "../viewer/viewer-model.js";
@@ -83,6 +84,7 @@ export function useViewer(
   // Keys whose latest non-silent read has not settled yet: a poll superseding it reports its error instead.
   const awaitingVisibleReadRef = useRef<Set<string>>(new Set());
   const objectUrlsRef = useRef<Record<string, string>>({});
+  const droppedFilesRef = useRef<Record<string, File>>({});
 
   const revokeObjectUrl = useCallback((key: string): void => {
     const url = objectUrlsRef.current[key];
@@ -168,6 +170,7 @@ export function useViewer(
       revokeObjectUrl(key);
       const url = URL.createObjectURL(typedMedia(name, file, kind));
       objectUrlsRef.current[key] = url;
+      droppedFilesRef.current[key] = file;
       setBuffers((prev) =>
         openExternalMediaBuffer(prev, key, name, { kind, url }),
       );
@@ -179,14 +182,49 @@ export function useViewer(
   const closeBuffer = useCallback(
     (key: string): void => {
       revokeObjectUrl(key);
+      delete droppedFilesRef.current[key];
       setBuffers((prev) => dropBuffer(prev, key));
     },
     [revokeObjectUrl],
   );
 
-  const togglePreview = useCallback((key: string): void => {
-    setBuffers((prev) => bufferTogglePreview(prev, key));
-  }, []);
+  const loadDroppedMediaText = useCallback(
+    (key: string, buf: ViewerBuffer): void => {
+      const file = droppedFilesRef.current[key];
+      if (file === undefined) return;
+      const settle = (next: (cur: ViewerBuffers) => ViewerBuffers): void =>
+        setBuffers((cur) => {
+          const b = cur[key];
+          return b?.status === "loading" && b.media?.url === buf.media?.url
+            ? next(cur)
+            : cur;
+        });
+      if (file.size > FILE_MAX_BYTES) {
+        const error = i18n.t("viewer.dropTooLarge", { name: buf.relPath });
+        settle((cur) => bufferFailed(cur, key, error));
+        return;
+      }
+      file.text().then(
+        (content) => settle((cur) => bufferLoaded(cur, key, content)),
+        (e: unknown) =>
+          settle((cur) => bufferFailed(cur, key, readErrorMessage(e))),
+      );
+    },
+    [],
+  );
+
+  const togglePreview = useCallback(
+    (key: string): void => {
+      // Updated ahead of the render so a second toggle before it sees this one.
+      buffersRef.current = bufferTogglePreview(buffersRef.current, key);
+      setBuffers((prev) => bufferTogglePreview(prev, key));
+      const buf = buffersRef.current[key];
+      if (buf?.media === undefined || buf.status !== "loading") return;
+      if (buf.external === true) loadDroppedMediaText(key, buf);
+      else void loadFile(key, buf.repoPath, buf.relPath, "utf8", false);
+    },
+    [loadFile, loadDroppedMediaText],
+  );
 
   const setEncoding = useCallback(
     (key: string, encoding: TextEncoding): void => {

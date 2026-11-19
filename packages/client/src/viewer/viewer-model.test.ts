@@ -251,6 +251,36 @@ describe("media buffers", () => {
     });
   });
 
+  it("bufferTogglePreview switches media to its text, loading it the first time", () => {
+    const media = openMediaBuffer({}, REPO, IMG, { kind: "image", url: "u" });
+    const text = bufferTogglePreview(media, IMG_KEY);
+    expect(text[IMG_KEY]).toMatchObject({ preview: true, status: "loading" });
+    const loaded = bufferLoaded(text, IMG_KEY, "\u0089PNG");
+    const back = bufferTogglePreview(loaded, IMG_KEY);
+    expect(back[IMG_KEY]).toMatchObject({ preview: false, status: "ready" });
+    expect(bufferTogglePreview(back, IMG_KEY)[IMG_KEY]).toMatchObject({
+      preview: true,
+      status: "ready",
+      content: "\u0089PNG",
+    });
+  });
+
+  it("bufferTogglePreview back to the media clears a failed text read", () => {
+    const failed = bufferFailed(
+      bufferTogglePreview(
+        openMediaBuffer({}, REPO, IMG, { kind: "image", url: "u" }),
+        IMG_KEY,
+      ),
+      IMG_KEY,
+      "too large",
+    );
+    expect(bufferTogglePreview(failed, IMG_KEY)[IMG_KEY]).toMatchObject({
+      preview: false,
+      status: "ready",
+      error: undefined,
+    });
+  });
+
   it("shouldPollBuffer excludes media buffers", () => {
     const media = openMediaBuffer({}, REPO, IMG, { kind: "image", url: "u" })[
       IMG_KEY

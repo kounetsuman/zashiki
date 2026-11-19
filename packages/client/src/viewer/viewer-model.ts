@@ -22,10 +22,10 @@ export interface ViewerBuffer {
   readonly repoPath: string;
   readonly relPath: string;
   readonly status: BufferStatus;
-  /** The content last read. null if not yet loaded, or when the buffer is media (rendered from `media.url`). */
+  /** The content last read. null if not yet loaded; a media buffer reads it only once switched to its text. */
   readonly content: string | null;
   readonly error?: string;
-  /** Whether the file's alternate rendering is showing (Markdown/HTML preview, or the CSV/TSV table). */
+  /** Whether the file's alternate rendering is showing (Markdown/HTML preview, the CSV/TSV table, or a media file's text). */
   readonly preview: boolean;
   /** Content was supplied directly (e.g. a file dropped from Finder), not read from a repo. */
   readonly external?: boolean;
@@ -264,11 +264,24 @@ export function bufferShowText(
   return patch(bufs, key, (b) => (b.preview ? { ...b, preview: false } : b));
 }
 
+/**
+ * A media buffer's text is read on its first switch to it (loading). Switching back always shows the
+ * media, even when that read failed or has not settled.
+ */
 export function bufferTogglePreview(
   bufs: ViewerBuffers,
   key: string,
 ): ViewerBuffers {
-  return patch(bufs, key, (b) => ({ ...b, preview: !b.preview }));
+  return patch(bufs, key, (b) => {
+    if (b.media === undefined) return { ...b, preview: !b.preview };
+    if (b.preview)
+      return { ...b, preview: false, status: "ready", error: undefined };
+    return {
+      ...b,
+      preview: true,
+      status: b.content === null ? "loading" : "ready",
+    };
+  });
 }
 
 /** Back to loading, so a failed re-read with the new encoding shows its error instead of the old text. */
