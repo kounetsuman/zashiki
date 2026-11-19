@@ -20,17 +20,33 @@ pub(crate) struct FileReadParams {
     file: Option<String>,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct FileTextReadParams {
+    #[serde(rename = "repoPath")]
+    repo_path: Option<String>,
+    file: Option<String>,
+    encoding: Option<String>,
+}
+
 pub(crate) async fn file_read(
     State(state): State<AppState>,
-    Query(params): Query<FileReadParams>,
+    Query(params): Query<FileTextReadParams>,
 ) -> Response {
+    let encoding = match params.encoding.as_deref() {
+        None => file::TextEncoding::Utf8,
+        Some(value) => match file::TextEncoding::from_wire(value) {
+            Some(encoding) => encoding,
+            None => return json_error(StatusCode::BAD_REQUEST, "unknown encoding"),
+        },
+    };
     let repo_path = params.repo_path.unwrap_or_default();
     let file = params.file.unwrap_or_default();
     if let Err((status, msg)) = guard_file_path(&state, &repo_path, &file).await {
         return json_error(status, &msg);
     }
     let max = state.file_max_bytes;
-    let result = tokio::task::spawn_blocking(move || file::read_within_repo(&repo_path, &file, max))
+    let result =
+        tokio::task::spawn_blocking(move || file::read_within_repo(&repo_path, &file, max, encoding))
         .await
         .unwrap_or_else(|_| {
             Err((StatusCode::INTERNAL_SERVER_ERROR, "read task failed".to_string()))

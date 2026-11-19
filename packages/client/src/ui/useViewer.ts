@@ -1,3 +1,4 @@
+import type { TextEncoding } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
@@ -5,9 +6,11 @@ import type { MediaKind } from "../viewer/media.js";
 import {
   bufferFailed,
   bufferLoaded,
+  bufferSetEncoding,
   bufferShowText,
   bufferTogglePreview,
   closeBuffer as dropBuffer,
+  encodingOf,
   externalMediaKey,
   externalTextKey,
   openBuffer,
@@ -35,7 +38,11 @@ function readErrorMessage(e: unknown): string {
 export interface Viewer {
   buffers: ViewerBuffers;
   /** Ensures a buffer for the file (firing a read only when new) and returns its key. */
-  ensureBuffer(repoPath: string, relPath: string): string;
+  ensureBuffer(
+    repoPath: string,
+    relPath: string,
+    encoding?: TextEncoding,
+  ): string;
   /** Ensures a repo image/video/PDF buffer streamed from the media URL (no text read) and returns its key. */
   ensureMediaBuffer(repoPath: string, relPath: string, kind: MediaKind): string;
   /** Opens a dropped file from content already in hand (no repo read) and returns its key. */
@@ -44,6 +51,8 @@ export interface Viewer {
   openExternalMedia(name: string, file: File, kind: MediaKind): string;
   closeBuffer(key: string): void;
   togglePreview(key: string): void;
+  /** Re-reads a repo text file decoded with `encoding`, which later polls keep using. */
+  setEncoding(key: string, encoding: TextEncoding): void;
   /** Leaves the alternate rendering, so a line can be revealed in the text view. */
   showText(key: string): void;
   /** Absolute path of the buffer at key, or null when it is gone or external (no repo path). */
@@ -64,6 +73,8 @@ export function useViewer(
   const buffersRef = useRef(buffers);
   buffersRef.current = buffers;
   const readSeqRef = useRef<Record<string, number>>({});
+  // Keys whose latest non-silent read has not settled yet: a poll superseding it reports its error instead.
+  const awaitingVisibleReadRef = useRef<Set<string>>(new Set());
   const objectUrlsRef = useRef<Record<string, string>>({});
 
   const revokeObjectUrl = useCallback((key: string): void => {
@@ -74,26 +85,34 @@ export function useViewer(
   }, []);
 
   const loadFile = useCallback(
-    (key: string, repoPath: string, relPath: string, silent: boolean) => {
+    (
+      key: string,
+      repoPath: string,
+      relPath: string,
+      encoding: TextEncoding,
+      silent: boolean,
+    ) => {
       const seq = (readSeqRef.current[key] ?? 0) + 1;
       readSeqRef.current[key] = seq;
+      if (!silent) awaitingVisibleReadRef.current.add(key);
       const ctrl = new AbortController();
       const timer = window.setTimeout(() => ctrl.abort(), FILE_READ_TIMEOUT_MS);
       return filesApi
-        .read(repoPath, relPath, ctrl.signal)
+        .read(repoPath, relPath, encoding, ctrl.signal)
         .then(
-          (content) =>
-            setBuffers((cur) =>
-              readSeqRef.current[key] === seq
-                ? bufferLoaded(cur, key, content)
-                : cur,
-            ),
-          (e: unknown) =>
+          (content) => {
+            if (readSeqRef.current[key] !== seq) return;
+            awaitingVisibleReadRef.current.delete(key);
+            setBuffers((cur) => bufferLoaded(cur, key, content));
+          },
+          (e: unknown) => {
+            if (readSeqRef.current[key] !== seq) return;
+            const visible = awaitingVisibleReadRef.current.delete(key);
             setBuffers((cur) => {
-              if (readSeqRef.current[key] !== seq) return cur;
-              if (silent || cur[key]?.status === "ready") return cur;
+              if (!visible || cur[key]?.status === "ready") return cur;
               return bufferFailed(cur, key, readErrorMessage(e));
-            }),
+            });
+          },
         )
         .finally(() => window.clearTimeout(timer));
     },
@@ -101,15 +120,19 @@ export function useViewer(
   );
 
   const ensureBuffer = useCallback(
-    (repoPath: string, relPath: string): string => {
+    (
+      repoPath: string,
+      relPath: string,
+      encoding: TextEncoding = "utf8",
+    ): string => {
       const key = viewerKey(repoPath, relPath);
       let shouldLoad = false;
       setBuffers((prev) => {
         if (prev[key] !== undefined) return prev;
         shouldLoad = true;
-        return openBuffer(prev, repoPath, relPath);
+        return openBuffer(prev, repoPath, relPath, encoding);
       });
-      if (shouldLoad) void loadFile(key, repoPath, relPath, false);
+      if (shouldLoad) void loadFile(key, repoPath, relPath, encoding, false);
       return key;
     },
     [loadFile],
@@ -160,6 +183,18 @@ export function useViewer(
     setBuffers((prev) => bufferTogglePreview(prev, key));
   }, []);
 
+  const setEncoding = useCallback(
+    (key: string, encoding: TextEncoding): void => {
+      const buf = buffersRef.current[key];
+      if (buf === undefined || !shouldPollBuffer(buf)) return;
+      // Updated ahead of the render so a poll firing in between already reads with the new encoding.
+      buffersRef.current = bufferSetEncoding(buffersRef.current, key, encoding);
+      setBuffers((prev) => bufferSetEncoding(prev, key, encoding));
+      void loadFile(key, buf.repoPath, buf.relPath, encoding, false);
+    },
+    [loadFile],
+  );
+
   const showText = useCallback((key: string): void => {
     setBuffers((prev) => bufferShowText(prev, key));
   }, []);
@@ -179,9 +214,12 @@ export function useViewer(
       const buf = buffersRef.current[key];
       if (buf === undefined || !shouldPollBuffer(buf)) return;
       inflight = true;
-      void loadFile(key, buf.repoPath, buf.relPath, true).finally(() => {
-        inflight = false;
-      });
+      const encoding = encodingOf(buf);
+      void loadFile(key, buf.repoPath, buf.relPath, encoding, true).finally(
+        () => {
+          inflight = false;
+        },
+      );
     };
     const id = window.setInterval(tick, FILE_POLL_INTERVAL_MS);
     return () => window.clearInterval(id);
@@ -202,6 +240,7 @@ export function useViewer(
     openExternalMedia,
     closeBuffer,
     togglePreview,
+    setEncoding,
     showText,
     pathOf,
   };

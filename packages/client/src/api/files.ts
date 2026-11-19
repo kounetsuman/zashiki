@@ -1,12 +1,17 @@
-import type { FileReadResponse } from "@zashiki/shared";
+import type { FileReadResponse, TextEncoding } from "@zashiki/shared";
 
 import { authHeaders } from "../lib/token.js";
 import { mediaUrl } from "../lib/url.js";
 
 /** The file read REST the viewer calls (read-only). */
 export interface FilesApi {
-  /** Reads the content of a repo-relative file (signal allows timeout/abort). */
-  read(repoPath: string, file: string, signal?: AbortSignal): Promise<string>;
+  /** Reads the content of a repo-relative file decoded with `encoding` (signal allows timeout/abort). */
+  read(
+    repoPath: string,
+    file: string,
+    encoding: TextEncoding,
+    signal?: AbortSignal,
+  ): Promise<string>;
   /** URL streaming the file's raw bytes for `<img>` / `<video>` / the PDF `<iframe>` (token in the query). */
   mediaUrl(repoPath: string, file: string): string;
 }
@@ -27,8 +32,8 @@ export function createFilesApi(
   fetchFn: typeof fetch = fetch,
 ): FilesApi {
   return {
-    async read(repoPath, file, signal) {
-      const q = new URLSearchParams({ repoPath, file });
+    async read(repoPath, file, encoding, signal) {
+      const q = new URLSearchParams({ repoPath, file, encoding });
       const res = await fetchFn(`${base}/api/file?${q.toString()}`, {
         headers: authHeaders(token),
         signal,

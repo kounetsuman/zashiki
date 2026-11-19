@@ -51,6 +51,8 @@ file-rotate = "0.7"
 secrecy = "0.8"
 # エクスプローラの Delete をゴミ箱移動で実装する（OS ごとの trash API を吸収。実削除でなく復元可能に）。
 trash = "5"
+# Decodes Shift_JIS / EUC-JP text files for the viewer (the WHATWG decoders browsers use).
+encoding_rs = "0.8"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

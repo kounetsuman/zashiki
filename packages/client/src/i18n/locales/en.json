@@ -212,6 +212,7 @@
     "dropReadFailed": "Could not read {{name}}",
     "table": "Table",
     "text": "Text",
+    "encoding": "Text encoding",
     "tableLabel": "{{path}} as a table",
     "rowNumber": "Row",
     "sortByColumn": "Sort by {{column}}",

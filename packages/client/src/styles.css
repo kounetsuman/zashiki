@@ -1090,6 +1090,24 @@ textarea {
   padding: 2px 8px;
 }
 
+.viewer-encoding {
+  flex: none;
+  background: #181818;
+  border: 1px solid #444;
+  border-radius: 3px;
+  color: #ccc;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 1px 4px;
+}
+
+@media (any-pointer: coarse) {
+  .viewer-encoding {
+    font-size: 16px;
+  }
+}
+
 .viewer-copy:hover,
 .viewer-wrap:hover,
 .viewer-toggle:hover {
