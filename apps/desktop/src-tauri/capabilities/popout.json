@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "popout",
+  "description": "App commands for a pop-out window: open links in the browser and send its terminal back. Grants nothing by itself, like the default capability (src/ipc_capability.rs).",
+  "windows": ["popout-*"],
+  "local": false,
+  "permissions": ["allow-open-in-browser", "allow-close-popout"]
+}
