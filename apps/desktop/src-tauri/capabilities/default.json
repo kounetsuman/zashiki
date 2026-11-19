@@ -12,6 +12,10 @@
     "allow-report-memo-status",
     "allow-report-memo-saved",
     "allow-set-dashboard-origin",
-    "allow-share-text"
+    "allow-share-text",
+    "allow-open-popout",
+    "allow-focus-popout",
+    "allow-close-popout",
+    "allow-list-popouts"
   ]
 }

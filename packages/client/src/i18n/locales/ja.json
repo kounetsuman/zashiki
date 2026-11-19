@@ -659,5 +659,14 @@
     "noEventsYet": "まだ受信なし",
     "protocolTail": "control プロトコル tail",
     "noProtocolYet": "まだ送受信なし"
+  },
+  "popOut": {
+    "open": "別ウィンドウで開く",
+    "inOwnWindow": "別ウィンドウで表示中",
+    "notice": "このターミナルは別ウィンドウで表示中です",
+    "show": "ウィンドウを表示",
+    "returnToMain": "メインに戻す",
+    "returnToMainWindow": "メインウィンドウに戻す",
+    "gone": "このターミナルは閉じられました"
   }
 }

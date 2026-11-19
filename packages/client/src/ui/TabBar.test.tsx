@@ -1083,4 +1083,84 @@ describe("TabBar pinning", () => {
       screen.queryByRole("menuitem", { name: "ピン留めを解除" }),
     ).toBeNull();
   });
+  describe("pop-out", () => {
+    function renderBar(onPopOut = vi.fn(), poppedOutIds?: ReadonlySet<string>) {
+      render(
+        <TabBar
+          tabs={[s(SID), s(SID2)]}
+          activeKey={KEY}
+          cockpitTerminals={[
+            session,
+            { ...session, cockpitTerminalId: SID2, sid: SID2 },
+          ]}
+          conversationTitles={{}}
+          onActivate={() => undefined}
+          onClose={() => undefined}
+          onReorder={() => undefined}
+          onPopOut={onPopOut}
+          poppedOutIds={poppedOutIds}
+        />,
+      );
+      return onPopOut;
+    }
+
+    function tabRoot(index: number): HTMLElement {
+      return screen.getAllByRole("tab")[index]?.closest(".tab") as HTMLElement;
+    }
+
+    // jsdom has no DragEvent, so the coordinates ride on a MouseEvent of the same type.
+    function dragEndAt(el: HTMLElement, clientX: number, dropEffect: string) {
+      const end = new MouseEvent("dragend", {
+        bubbles: true,
+        clientX,
+        clientY: 10,
+        screenX: clientX + 200,
+        screenY: 110,
+      });
+      Object.defineProperty(end, "dataTransfer", { value: { dropEffect } });
+      fireEvent(el, end);
+    }
+
+    it("carries no text, so other apps refuse a tab let go over them", () => {
+      renderBar();
+      const types: string[] = [];
+      fireEvent.dragStart(screen.getAllByRole("tab")[1] as HTMLElement, {
+        dataTransfer: { setData: (type: string) => types.push(type) },
+      });
+      expect(types).toEqual(["application/x-zashiki-tab"]);
+    });
+
+    it("pops a session tab out from its menu", () => {
+      const onPopOut = renderBar();
+      fireEvent.contextMenu(screen.getAllByRole("tab")[1] as HTMLElement);
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "別ウィンドウで開く" }),
+      );
+      expect(onPopOut).toHaveBeenCalledWith(SID2, null);
+    });
+
+    it("pops a session tab out where it was let go outside the window", () => {
+      const onPopOut = renderBar();
+      dragEndAt(tabRoot(1), window.innerWidth + 40, "none");
+      expect(onPopOut).toHaveBeenCalledWith(SID2, {
+        x: window.innerWidth + 240,
+        y: 110,
+      });
+    });
+
+    it("keeps a tab let go inside the window", () => {
+      const onPopOut = renderBar();
+      dragEndAt(tabRoot(1), 40, "none");
+      expect(onPopOut).not.toHaveBeenCalled();
+    });
+
+    it("dims and marks a popped-out tab", () => {
+      renderBar(vi.fn(), new Set([SID2]));
+      expect(tabRoot(1).classList.contains("tab-popped-out")).toBe(true);
+      expect(tabRoot(0).classList.contains("tab-popped-out")).toBe(false);
+      expect(
+        screen.getAllByRole("img", { name: "別ウィンドウで表示中" }),
+      ).toHaveLength(1);
+    });
+  });
 });
