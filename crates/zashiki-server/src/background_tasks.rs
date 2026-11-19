@@ -124,6 +124,9 @@ impl BackgroundTaskScan {
         else {
             return;
         };
+        if self.launches.iter().any(|l| l.task_id == task_id) {
+            return;
+        }
         let result = event
             .pointer("/message/content")
             .and_then(Value::as_array)
@@ -415,6 +418,12 @@ mod tests {
         }]}})
         .to_string()];
         assert!(scan(&lines).is_empty());
+    }
+
+    #[test]
+    fn a_task_id_seen_twice_is_one_launch() {
+        let [use_line, result_line] = launch_lines("tu1", "b1", "d", "c");
+        assert_eq!(scan(&[use_line, result_line.clone(), result_line]).len(), 1);
     }
 
     #[test]
