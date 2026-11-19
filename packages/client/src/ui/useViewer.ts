@@ -109,7 +109,9 @@ export function useViewer(
       if (!silent) awaitingVisibleReadRef.current.add(key);
       const ctrl = new AbortController();
       const timer = window.setTimeout(() => ctrl.abort(), FILE_READ_TIMEOUT_MS);
-      const knownVersion = silent ? versionsRef.current[key] : undefined;
+      const showsContent = buffersRef.current[key]?.status === "ready";
+      const knownVersion =
+        silent && showsContent ? versionsRef.current[key] : undefined;
       return filesApi
         .read(repoPath, relPath, encoding, ctrl.signal, knownVersion)
         .then(

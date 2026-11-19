@@ -391,6 +391,33 @@ describe("useViewer polling", () => {
     vi.useRealTimers();
   });
 
+  it("a poll while a switched encoding is still loading asks for the content, not for a version check", async () => {
+    vi.useFakeTimers();
+    const read = vi
+      .fn<FilesApi["read"]>()
+      .mockResolvedValueOnce(text("v1", "tag-u"))
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockReturnValueOnce(new Promise(() => {}))
+      .mockResolvedValue(text("v1", "tag-u"));
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.html");
+    });
+    act(() => {
+      result.current.setEncoding(key, "shift_jis");
+      result.current.setEncoding(key, "utf8");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(read.mock.calls[3]?.[4]).toBeUndefined();
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "ready",
+      content: "v1",
+    });
+    vi.useRealTimers();
+  });
+
   it("after a failed read the next poll asks for the content again", async () => {
     vi.useFakeTimers();
     const read = vi
