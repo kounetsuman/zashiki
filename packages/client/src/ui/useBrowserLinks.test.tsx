@@ -61,12 +61,33 @@ describe("useBrowserLinks", () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it("ignores a click another handler has already taken", () => {
+  it("opens a link inside a dialog that stops its clicks from propagating", () => {
     render(<Probe>{link("https://example.com/", "_blank")}</Probe>);
     document
       .querySelector("a")
-      ?.addEventListener("click", (e) => e.preventDefault());
+      ?.parentElement?.addEventListener("click", (e) => e.stopPropagation());
     click();
+
+    expect(invoke).toHaveBeenCalledWith("open_in_browser", {
+      url: "https://example.com/",
+    });
+  });
+
+  it("leaves a button inside a link to the button", () => {
+    render(
+      <Probe>
+        <a href="https://example.com/" target="_blank" rel="noreferrer">
+          <button type="button">
+            <span>load image</span>
+          </button>
+        </a>
+      </Probe>,
+    );
+    document
+      .querySelector("button span")
+      ?.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
 
     expect(invoke).not.toHaveBeenCalled();
   });

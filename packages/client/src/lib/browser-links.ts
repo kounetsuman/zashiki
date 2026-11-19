@@ -1,13 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /**
- * The address a click should hand to the default browser: a plain click on a web link that opens a
- * new window. Null for anything else, and for a click a handler has already taken.
+ * The address a click should hand to the default browser: a main-button click on a web link that
+ * opens a new window. Null for anything else, including a button inside the link, whose click is
+ * the button's own.
  */
 export function browserLinkOf(event: MouseEvent): string | null {
-  if (event.defaultPrevented || event.button !== 0) return null;
-  if (!(event.target instanceof Element)) return null;
-  const link = event.target.closest("a[href]");
+  if (event.button !== 0 || !(event.target instanceof Element)) return null;
+  const link = event.target.closest("a[href], button");
   if (!(link instanceof HTMLAnchorElement) || link.target !== "_blank") {
     return null;
   }
