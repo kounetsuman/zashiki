@@ -178,8 +178,12 @@ pub(crate) async fn background_tasks(State(state): State<AppState>) -> Response 
             "session services not available",
         );
     };
+    let sources = control.hub.claude_session_sources();
+    control
+        .projects
+        .keep_background_task_scans(sources.iter().map(|s| (s.cwd.as_str(), s.sid.as_str())));
     let mut found: Vec<(ClaudeSessionSource, TaskRecord)> = Vec::new();
-    for source in control.hub.claude_session_sources() {
+    for source in sources {
         for record in control.projects.background_tasks(&source.cwd, &source.sid).await {
             found.push((source.clone(), record));
         }

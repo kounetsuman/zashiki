@@ -238,14 +238,28 @@ impl ClaudeProjectsAdapter {
     /// Every background task launched in the transcript, with its end once noticed. Reads only what was
     /// appended since the previous call for the same transcript.
     pub async fn background_tasks(&self, cwd: &str, sid: &str) -> Vec<TaskRecord> {
-        let path = self
-            .root_dir
-            .join(claude_project_dir_name(cwd))
-            .join(format!("{sid}.jsonl"));
+        let path = self.transcript_path(cwd, sid);
         let scans = Arc::clone(&self.task_scans);
         tokio::task::spawn_blocking(move || background_tasks_sync(&path, &scans))
             .await
             .unwrap_or_default()
+    }
+
+    /// Drops the saved read progress of every transcript but these `(cwd, sid)` pairs.
+    pub fn keep_background_task_scans<'a>(&self, sessions: impl IntoIterator<Item = (&'a str, &'a str)>) {
+        let keep: HashSet<PathBuf> = sessions
+            .into_iter()
+            .map(|(cwd, sid)| self.transcript_path(cwd, sid))
+            .collect();
+        if let Ok(mut scans) = self.task_scans.lock() {
+            scans.retain(|path, _| keep.contains(path));
+        }
+    }
+
+    fn transcript_path(&self, cwd: &str, sid: &str) -> PathBuf {
+        self.root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"))
     }
 
     /// The set of `toolUseResult.backgroundTaskId` in the transcript (empty when the file is missing
@@ -610,6 +624,19 @@ mod tests {
         let second = adapter.background_tasks(CWD, SID).await;
         assert_eq!(second.len(), 1);
         assert_eq!(second[0].end.as_ref().map(|e| e.exit_code), Some(Some(0)));
+    }
+
+    #[tokio::test]
+    async fn background_task_scans_of_sessions_no_longer_listed_are_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_jsonl(tmp.path(), SID, "", BASE_SEC);
+        write_jsonl(tmp.path(), "other-sid", "", BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        adapter.background_tasks(CWD, SID).await;
+        adapter.background_tasks(CWD, "other-sid").await;
+        adapter.keep_background_task_scans([(CWD, SID)]);
+        let kept: Vec<PathBuf> = adapter.task_scans.lock().unwrap().keys().cloned().collect();
+        assert_eq!(kept, vec![adapter.transcript_path(CWD, SID)]);
     }
 
     fn link_line(url: &str) -> String {
