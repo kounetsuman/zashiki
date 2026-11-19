@@ -254,6 +254,8 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
   }
 
   function handleMessage(m: ServerMessage): void {
+    // A desync the user cannot fix, so it is never shown in a dialog.
+    if (recoverTerm(m, deps.session)) return;
     if (m.t === "state.sync") {
       const added = pendingNew
         ? newestAddedCockpitTerminalId(
@@ -308,8 +310,6 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
         account: { loggedIn: m.loggedIn, email: m.email },
         accountRefreshing: false,
       });
-    } else if (recoverTerm(m, deps.session)) {
-      // A desync the user cannot fix, so it is never shown in a dialog.
     } else if (m.t === "error") {
       const restartAnswer = Object.hasOwn(RESTART_ANSWERS, m.code)
         ? RESTART_ANSWERS[m.code]
