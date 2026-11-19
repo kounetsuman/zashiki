@@ -1,9 +1,8 @@
-import { invoke, isTauri } from "@tauri-apps/api/core";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { FILE_MAX_BYTES } from "@zashiki/shared";
 import { useEffect, useRef } from "react";
 
-import type { PickedFile } from "../lib/open-file-dialog.js";
+import { type PickedFile, takeOpenedFiles } from "../lib/open-file-dialog.js";
 
 /**
  * Calls `onPicked` with the files macOS hands to the app (`open -a`, Finder's "Open With", the
@@ -23,9 +22,7 @@ export function useOpenedFiles(
   useEffect(() => {
     if (!ready || !isTauri()) return;
     const take = (): void => {
-      invoke<PickedFile[]>("take_opened_files", {
-        maxBytes: FILE_MAX_BYTES,
-      }).then(
+      takeOpenedFiles().then(
         (picked) => {
           if (picked.length > 0) handlers.current.onPicked(picked);
         },
