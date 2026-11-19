@@ -122,6 +122,9 @@ async fn open_popout(
     .inner_size(900.0, 600.0)
     .devtools(true)
     .disable_drag_drop_handler()
+    .on_document_title_changed(|window, title| {
+        let _ = window.set_title(&title);
+    })
     .on_navigation(move |url| navigation::may_navigate(url, &app_origins, false))
     .on_new_window(move |url, _features| {
         if navigation::opens_in_browser(&url, &browser_origins) {
