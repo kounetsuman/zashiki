@@ -11,6 +11,9 @@ use tauri::utils::config::FrontendDist;
 /// The static capability whose permissions are granted at runtime.
 pub const TEMPLATE: &str = include_str!("../capabilities/default.json");
 
+/// The narrower one for pop-out windows, granted the same way.
+pub const POPOUT_TEMPLATE: &str = include_str!("../capabilities/popout.json");
+
 /// The origin Tauri counts as local, given whether this is a `tauri dev` run.
 pub fn configured_app_origin(config: &tauri::Config, dev: bool) -> Option<String> {
     let url = if dev {
@@ -181,6 +184,45 @@ mod tests {
                 "{served} {frame}"
             );
         }
+    }
+
+    /// A pop-out window shows one terminal and nothing else of the cockpit, so it reaches only the
+    /// commands that window uses, and the main window's grant does not extend to it.
+    #[test]
+    fn a_pop_out_window_reaches_only_its_own_commands() {
+        let mut context = context();
+        let authority = context.runtime_authority_mut();
+        for template in [TEMPLATE, POPOUT_TEMPLATE] {
+            authority
+                .add_capability(for_origin(template, RELEASE_ORIGIN, Some(RELEASE_ORIGIN)))
+                .expect("the capability resolves against the app's permissions");
+        }
+        let window = crate::popout::label_for("@2");
+        let reaches = |command: &str| {
+            authority
+                .resolve_access(command, &window, &window, &Origin::Local)
+                .is_some()
+        };
+        for command in [
+            "close_popout",
+            "open_in_browser",
+            "plugin:event|listen",
+            "plugin:event|unlisten",
+        ] {
+            assert!(reaches(command), "{command}");
+        }
+        for command in [
+            "open_devtools",
+            "open_popout",
+            "pick_and_read_files",
+            "list_popouts",
+            "plugin:event|emit",
+        ] {
+            assert!(!reaches(command), "{command}");
+        }
+        assert!(authority
+            .resolve_access("open_popout", "main", "main", &Origin::Local)
+            .is_some());
     }
 
     #[test]

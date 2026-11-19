@@ -593,5 +593,14 @@
     "noEventsYet": "No events yet",
     "protocolTail": "control protocol tail",
     "noProtocolYet": "No messages yet"
+  },
+  "popOut": {
+    "open": "Open in New Window",
+    "inOwnWindow": "Shown in its own window",
+    "notice": "This terminal is shown in its own window.",
+    "show": "Show Window",
+    "returnToMain": "Return to Main",
+    "returnToMainWindow": "Return to Main Window",
+    "gone": "This terminal has been closed."
   }
 }

@@ -7,6 +7,7 @@ mod ipc_capability;
 mod menu;
 mod navigation;
 mod pages;
+mod popout;
 mod quit_log;
 #[cfg(target_os = "macos")]
 mod share;
@@ -85,6 +86,84 @@ fn share_text(webview: tauri::Webview, text: String, anchor: share::Anchor) -> R
 fn share_text(text: String) -> Result<(), String> {
     let _ = text;
     Err("unsupported".to_string())
+}
+
+/// Opens the pop-out window of a cockpit terminal at `url` (a page on the app's own origin), or brings
+/// it to the front when it is already open. `x`/`y` place a new window where a dragged tab was let go.
+/// Async because creating a window from a synchronous command can deadlock the event loop.
+#[tauri::command]
+async fn open_popout(
+    app: tauri::AppHandle,
+    guard: tauri::State<'_, Arc<navigation::Guard>>,
+    cockpit_terminal_id: String,
+    url: String,
+    title: String,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<(), String> {
+    if let Some(window) = popout::find(&app, &cockpit_terminal_id) {
+        popout::bring_to_front(&window);
+        return Ok(());
+    }
+    let url: tauri::Url = url.parse().map_err(|_| "not a URL".to_string())?;
+    let app_origins = guard.app_origins().to_vec();
+    if !matches!(url.scheme(), "http" | "https")
+        || !navigation::may_navigate(&url, &app_origins, false)
+    {
+        return Err("not a page of the app".to_string());
+    }
+    let browser_origins = app_origins.clone();
+    let mut builder = tauri::WebviewWindowBuilder::new(
+        &app,
+        popout::label_for(&cockpit_terminal_id),
+        tauri::WebviewUrl::External(url),
+    )
+    .title(title)
+    .inner_size(900.0, 600.0)
+    .devtools(true)
+    .disable_drag_drop_handler()
+    .on_document_title_changed(|window, title| {
+        let _ = window.set_title(&title);
+    })
+    .on_navigation(move |url| navigation::may_navigate(url, &app_origins, false))
+    .on_new_window(move |url, _features| {
+        if navigation::opens_in_browser(&url, &browser_origins) {
+            navigation::open_in_browser(&url);
+        }
+        tauri::webview::NewWindowResponse::Deny
+    });
+    if let (Some(x), Some(y)) = (x, y) {
+        builder = builder.position(x, y);
+    }
+    builder.build().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Brings a cockpit terminal's pop-out window to the front; false when it has none.
+#[tauri::command]
+fn focus_popout(app: tauri::AppHandle, cockpit_terminal_id: String) -> bool {
+    let window = popout::find(&app, &cockpit_terminal_id);
+    if let Some(window) = &window {
+        popout::bring_to_front(window);
+    }
+    window.is_some()
+}
+
+/// Closes a cockpit terminal's pop-out window, after which the main window hears
+/// `zashiki:popout-closed`; false when it has none.
+#[tauri::command]
+fn close_popout(app: tauri::AppHandle, cockpit_terminal_id: String) -> bool {
+    let window = popout::find(&app, &cockpit_terminal_id);
+    if let Some(window) = &window {
+        let _ = window.close();
+    }
+    window.is_some()
+}
+
+/// The cockpit terminals whose pop-out window is open, for a main page that has just (re)loaded.
+#[tauri::command]
+fn list_popouts(app: tauri::AppHandle) -> Vec<String> {
+    popout::open_ids(&app)
 }
 
 /// One file chosen via the native open dialog: its text, or the stable code ("tooLarge" /
@@ -248,9 +327,24 @@ fn main() {
             report_memo_status,
             report_memo_saved,
             set_dashboard_origin,
-            share_text
+            share_text,
+            open_popout,
+            focus_popout,
+            close_popout,
+            list_popouts
         ])
         .on_window_event(move |window, event| {
+            // Closing a pop-out only puts its terminal back; the quit guard is the main window's.
+            if popout::is_popout(window.label()) {
+                if let tauri::WindowEvent::Destroyed = event {
+                    popout::on_destroyed(
+                        window.app_handle(),
+                        window.label(),
+                        win_quitting.load(Ordering::SeqCst),
+                    );
+                }
+                return;
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if win_quitting.load(Ordering::SeqCst) {
                     return;
@@ -418,10 +512,11 @@ fn grant_app_commands(app: &tauri::App, base: &str) {
         return;
     };
     let configured = ipc_capability::configured_app_origin(app.config(), tauri::is_dev());
-    let capability =
-        ipc_capability::for_origin(ipc_capability::TEMPLATE, &origin, configured.as_deref());
-    if let Err(e) = app.add_capability(capability) {
-        eprintln!("zashiki: could not grant the app commands to {origin}: {e}");
+    for template in [ipc_capability::TEMPLATE, ipc_capability::POPOUT_TEMPLATE] {
+        let capability = ipc_capability::for_origin(template, &origin, configured.as_deref());
+        if let Err(e) = app.add_capability(capability) {
+            eprintln!("zashiki: could not grant the app commands to {origin}: {e}");
+        }
     }
 }
 

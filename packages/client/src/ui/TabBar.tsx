@@ -7,6 +7,7 @@ import {
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { TitleMap } from "../lib/conversation-title.js";
+import type { ScreenPoint } from "../lib/pop-out.js";
 import { MEMO_TAB_KEY, type Tab, tabKey } from "../tabs/tab-model.js";
 import { TabContextMenu } from "./TabContextMenu.js";
 import { TabItem } from "./TabItem.js";
@@ -60,6 +61,13 @@ export interface TabBarProps {
   onCopyFilePath?(repoPath: string, relPath: string): void;
   /** Commits an inline rename of a viewer tab's file. Rename is disabled when unspecified. */
   onRenameFile?(repoPath: string, relPath: string, newName: string): void;
+  /** Cockpit Terminals shown in their own window; their tabs stay, dimmed and marked. */
+  poppedOutIds?: ReadonlySet<string>;
+  /**
+   * Shows a session tab's terminal in its own window, from the tab menu or by letting the tab go
+   * outside the window (`at` is where). Both are hidden when unspecified.
+   */
+  onPopOut?(cockpitTerminalId: string, at: ScreenPoint | null): void;
 }
 
 /**
@@ -91,10 +99,24 @@ export function TabBar({
   onRevealFile,
   onCopyFilePath,
   onRenameFile,
+  poppedOutIds,
+  onPopOut,
 }: TabBarProps) {
   const { t } = useTranslation();
   const rename = useTabRename(tabs, cockpitTerminals, onRename, onRenameFile);
-  const drag = useTabDrag(onReorder);
+  const sessionIdOfKey = (key: string): string | null => {
+    const tab = tabs.find((x) => tabKey(x) === key);
+    return tab?.kind === "session" ? tab.id : null;
+  };
+  const drag = useTabDrag(
+    onReorder,
+    onPopOut === undefined
+      ? undefined
+      : (key, at) => {
+          const id = sessionIdOfKey(key);
+          if (id !== null) onPopOut(id, at);
+        },
+  );
   // Restart only renders for a terminal with no claude in it, so it is counted per tab — the same rule
   // the SESSION LIST applies to its rows, so the two surfaces place their menus alike.
   const sessionMenuItems = (tab: Tab): number => {
@@ -109,7 +131,8 @@ export function TabBar({
       canRestartCockpitTerminal(target)
         ? 1
         : 0) +
-      (onCopySessionId !== undefined ? 1 : 0)
+      (onCopySessionId !== undefined ? 1 : 0) +
+      (onPopOut !== undefined ? 1 : 0)
     );
   };
   const viewerMenuItems =
@@ -182,6 +205,7 @@ export function TabBar({
         pinned={!isMemo && isPinnedKey(key)}
         onUnpin={onUnpin}
         dirty={isMemo && memoDirty}
+        poppedOut={tab.kind === "session" && poppedOutIds?.has(tab.id) === true}
         rename={rename}
         drag={drag}
         onActivate={onActivate}
@@ -229,6 +253,9 @@ export function TabBar({
           onDuplicate={onDuplicate}
           onRestart={onRestart}
           onCopySessionId={onCopySessionId}
+          onPopOut={
+            onPopOut === undefined ? undefined : (id) => onPopOut(id, null)
+          }
           onReveal={
             onRevealFile === undefined
               ? undefined

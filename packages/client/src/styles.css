@@ -1025,6 +1025,97 @@ textarea {
   visibility: hidden;
 }
 
+/* A tab whose terminal is shown in its own window stays in the bar, dimmed and marked. */
+.tab.tab-popped-out .tab-main {
+  opacity: 0.55;
+}
+
+.tab-popped-out-mark,
+.session-popped-out-mark {
+  flex: none;
+  font-size: 14px;
+  line-height: 1;
+  color: #61afef;
+}
+
+.tab-popped-out-mark {
+  margin-right: 4px;
+}
+
+.session-popped-out-mark {
+  margin-left: 4px;
+}
+
+.popped-out-notice-icon {
+  display: block;
+  margin: 0 auto 12px;
+  font-size: 40px;
+  color: #6b7078;
+}
+
+.popped-out-notice-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.pop-out-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 3px 8px;
+  border: 1px solid #3c3c3c;
+  border-radius: 4px;
+  background: transparent;
+  color: #ddd;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pop-out-button:hover {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.pop-out-button .material-symbols-outlined {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* The pop-out window: a header to send the terminal back, then the terminal. */
+.pop-out-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.pop-out-header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px 0 2px;
+  background: #171717;
+  border-bottom: 1px solid #333;
+  color: #ddd;
+}
+
+.pop-out-header > .material-symbols-outlined {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.pop-out-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* ---- ファイルビューア（issue #62 / #320。閲覧専用） ---- */
 
 /* viewer タブ active の間、main area 本体にオーバーレイ表示（TerminalView を隠さずに

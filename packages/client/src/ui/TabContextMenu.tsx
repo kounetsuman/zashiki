@@ -30,6 +30,8 @@ export interface TabContextMenuProps {
   /** Relaunches a terminal whose process has ended. Rendered only for that state. */
   onRestart?(cockpitTerminalId: string): void;
   onCopySessionId?(cockpitTerminalId: string): void;
+  /** Shows the terminal in its own window. Rendered only for session tabs. */
+  onPopOut?(cockpitTerminalId: string): void;
   onReveal?(file: RepoFile): void;
   onCopyPath?(file: RepoFile): void;
   onRename?(key: string, file: RepoFile): void;
@@ -52,6 +54,7 @@ export function TabContextMenu({
   onDuplicate,
   onRestart,
   onCopySessionId,
+  onPopOut,
   onReveal,
   onCopyPath,
   onRename,
@@ -218,6 +221,19 @@ export function TabContextMenu({
                 }}
               >
                 {t("common.copySessionId")}
+              </button>
+            )}
+            {cockpitTerminalId !== null && onPopOut !== undefined && (
+              <button
+                type="button"
+                role="menuitem"
+                className="session-context-item"
+                onClick={() => {
+                  onPopOut(cockpitTerminalId);
+                  closeMenu();
+                }}
+              >
+                {t("popOut.open")}
               </button>
             )}
             {onReveal !== undefined &&

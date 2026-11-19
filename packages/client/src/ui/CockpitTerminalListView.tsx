@@ -80,6 +80,8 @@ export interface CockpitTerminalListViewProps {
    * ids is sent). Omit to disable row reordering (rows are then not draggable).
    */
   onReorderRows?(order: string[]): void;
+  /** Cockpit Terminals shown in their own window; their rows carry a mark. */
+  poppedOutIds?: ReadonlySet<string>;
 }
 
 /**
@@ -109,6 +111,7 @@ export function CockpitTerminalListView({
   onRename,
   onReorderOrgs,
   onReorderRows,
+  poppedOutIds,
 }: CockpitTerminalListViewProps) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -377,6 +380,7 @@ export function CockpitTerminalListView({
                     orgColors={orgColors}
                     conversationTitles={conversationTitles}
                     selectedCockpitTerminalId={selectedCockpitTerminalId}
+                    poppedOut={poppedOutIds?.has(s.cockpitTerminalId) === true}
                     isFocused={
                       focused?.kind === "row" &&
                       focused.cockpitTerminalId === s.cockpitTerminalId

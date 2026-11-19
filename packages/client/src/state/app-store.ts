@@ -14,6 +14,7 @@ import {
   type MemoBuffer,
   syncMemo,
 } from "../memo/memo-model.js";
+import { recoverTerm } from "../session/term-recovery.js";
 import {
   pruneClosedSessionToasts,
   removeSessionToast,
@@ -253,6 +254,8 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
   }
 
   function handleMessage(m: ServerMessage): void {
+    // A desync the user cannot fix, so it is never shown in a dialog.
+    if (recoverTerm(m, deps.session)) return;
     if (m.t === "state.sync") {
       const added = pendingNew
         ? newestAddedCockpitTerminalId(
@@ -307,13 +310,6 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
         account: { loggedIn: m.loggedIn, email: m.email },
         accountRefreshing: false,
       });
-    } else if (m.t === "term.reconnect") {
-      // Only the named terms are pointing at a PTY that was replaced. Reattaching any other term
-      // would discard its scrollback and replay it for nothing.
-      const termId = deps.session.getTermId();
-      if (termId !== null && m.termIds.includes(termId)) {
-        deps.session.reconnect();
-      }
     } else if (m.t === "error") {
       const restartAnswer = Object.hasOwn(RESTART_ANSWERS, m.code)
         ? RESTART_ANSWERS[m.code]
@@ -322,18 +318,6 @@ export function createAppStore(deps: AppStoreDeps): AppStore {
         // The answer to one restart request. Said in the user's language rather than echoing the
         // server's sentence, and without touching a pending session.new, which this says nothing about.
         setState({ lastError: i18n.t(restartAnswer) });
-        return;
-      }
-      if (m.code === "unknown_term") {
-        // A desync where the term registry was lost (e.g. server restart) and term.*
-        // targeting an existing termId is rejected. It cannot be fixed by user action,
-        // so it is not shown in a dialog; if it targets the current term, retry with
-        // a new termId to re-attach to the restored PTY. A late error targeting the old
-        // term after reattaching is ignored to prevent a double reattach.
-        const termId = deps.session.getTermId();
-        if (termId !== null && m.message.includes(termId)) {
-          deps.session.retryLostTerm();
-        }
         return;
       }
       // Clear the pending flag so a failed session.new request does not linger and mis-select another window.

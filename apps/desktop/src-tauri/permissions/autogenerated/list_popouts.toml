@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-popouts"
+description = "Enables the list_popouts command without any pre-configured scope."
+commands.allow = ["list_popouts"]
+
+[[permission]]
+identifier = "deny-list-popouts"
+description = "Denies the list_popouts command without any pre-configured scope."
+commands.deny = ["list_popouts"]
