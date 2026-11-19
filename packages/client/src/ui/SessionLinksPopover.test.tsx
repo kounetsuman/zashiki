@@ -294,4 +294,54 @@ describe("SessionLinksPopover", () => {
     const icon = dialog.querySelector("svg.sl-row-icon") as SVGElement;
     expect(icon.getAttribute("style")).toBeNull();
   });
+
+  const FAVICON_LINK: SessionLink = {
+    url: "https://docs.example.com/guide",
+    tab: "conversation",
+    kind: "other",
+    source: "assistant",
+    pageTitle: "The Guide",
+    faviconOrigin: "https://docs.example.com",
+  };
+
+  function openWithFavicons(links: SessionLink[]) {
+    render(
+      <SessionStatusFooter
+        usage={null}
+        links={links}
+        faviconUrl={(origin) => `/favicon?origin=${origin}`}
+      />,
+    );
+    fireEvent.click(linkButton());
+    return popover() as HTMLElement;
+  }
+
+  it("shows another site's page title and its favicon", () => {
+    const dialog = openWithFavicons([FAVICON_LINK]);
+    const row = within(dialog)
+      .getByText("The Guide")
+      .closest("li") as HTMLElement;
+    const img = row.querySelector("img.sl-row-icon") as HTMLImageElement;
+    expect(img.getAttribute("src")).toBe(
+      "/favicon?origin=https://docs.example.com",
+    );
+    expect(img.width).toBe(16);
+    expect(img.alt).toBe("");
+    expect(within(row).queryByText("public")).toBeNull();
+  });
+
+  it("falls back to the generic icon when the favicon fails to load", () => {
+    const dialog = openWithFavicons([FAVICON_LINK]);
+    fireEvent.error(dialog.querySelector("img.sl-row-icon") as HTMLElement);
+    expect(dialog.querySelector("img")).toBeNull();
+    expect(within(dialog).getByText("public")).toBeTruthy();
+  });
+
+  it("shows the generic icon while no favicon is offered", () => {
+    const dialog = openWithFavicons([
+      { ...FAVICON_LINK, faviconOrigin: undefined },
+    ]);
+    expect(dialog.querySelector("img")).toBeNull();
+    expect(within(dialog).getByText("public")).toBeTruthy();
+  });
 });

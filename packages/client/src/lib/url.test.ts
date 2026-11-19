@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { controlWsUrl, mediaUrl, termWsUrl, wsUrl } from "./url.js";
+import {
+  controlWsUrl,
+  mediaUrl,
+  sessionLinkFaviconUrl,
+  termWsUrl,
+  wsUrl,
+} from "./url.js";
 
 describe("wsUrl", () => {
   it("converts an http origin to ws and appends the token as a query", () => {
@@ -37,6 +43,20 @@ describe("mediaUrl", () => {
       mediaUrl("http://127.0.0.1:8790", "/repo/a", "img/logo.png", "tok"),
     ).toBe(
       "http://127.0.0.1:8790/api/media?repoPath=%2Frepo%2Fa&file=img%2Flogo.png&token=tok",
+    );
+  });
+});
+
+describe("sessionLinkFaviconUrl", () => {
+  it("builds a favicon URL with the origin and token query", () => {
+    expect(
+      sessionLinkFaviconUrl(
+        "http://127.0.0.1:8790",
+        "https://www.example.com",
+        "tok",
+      ),
+    ).toBe(
+      "http://127.0.0.1:8790/api/session-links/favicon?origin=https%3A%2F%2Fwww.example.com&token=tok",
     );
   });
 });

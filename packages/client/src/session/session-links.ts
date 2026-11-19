@@ -102,7 +102,7 @@ export function linkText(link: SessionLink): { title: string; detail: string } {
     return { title: link.title ?? link.url, detail: link.url };
   }
   return {
-    title: link.title ?? url.host,
+    title: link.title ?? link.pageTitle ?? url.host,
     detail: `${url.host}${readableRest(url)}`,
   };
 }

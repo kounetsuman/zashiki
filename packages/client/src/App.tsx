@@ -1353,6 +1353,7 @@ export function App({
               onToggleBeforeCompaction={toggleBeforeCompaction}
               links={activeSessionLinks}
               onCopyLink={copySessionLink}
+              faviconUrl={cockpitTerminalsApi?.faviconUrl}
               onLinksClosed={store.focusTerminal}
               onLinksOpenChange={setSessionLinksOpen}
             />
