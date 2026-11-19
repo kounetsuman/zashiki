@@ -103,6 +103,28 @@ describe("useOpenedFiles", () => {
     );
   });
 
+  it("opens the takes in arrival order even when an earlier read finishes later", async () => {
+    let finishFirst: (picked: PickedFile[]) => void = () => undefined;
+    invoke.mockImplementationOnce(
+      () =>
+        new Promise<PickedFile[]>((resolve) => {
+          finishFirst = resolve;
+        }),
+    );
+    const onPicked = vi.fn();
+    render(<Probe onPicked={onPicked} />);
+    await vi.waitFor(() => expect(listen).toHaveBeenCalled());
+    invoke.mockResolvedValueOnce([{ name: "b.md", content: "B" }]);
+    signal();
+    await Promise.resolve();
+    finishFirst([{ name: "a.md", content: "A" }]);
+    await vi.waitFor(() => expect(onPicked).toHaveBeenCalledTimes(2));
+    expect(onPicked.mock.calls.map(([picked]) => picked[0].name)).toEqual([
+      "a.md",
+      "b.md",
+    ]);
+  });
+
   it("stays quiet when nothing is waiting", async () => {
     const onPicked = vi.fn();
     render(<Probe onPicked={onPicked} />);

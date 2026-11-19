@@ -21,12 +21,17 @@ export function useOpenedFiles(
 
   useEffect(() => {
     if (!ready || !isTauri()) return;
+    // One take at a time: each reads its files on its own thread, so overlapping takes could
+    // finish out of arrival order.
+    let takes = Promise.resolve();
     const take = (): void => {
-      takeOpenedFiles().then(
-        (picked) => {
-          if (picked.length > 0) handlers.current.onPicked(picked);
-        },
-        () => handlers.current.onFailed(),
+      takes = takes.then(() =>
+        takeOpenedFiles().then(
+          (picked) => {
+            if (picked.length > 0) handlers.current.onPicked(picked);
+          },
+          () => handlers.current.onFailed(),
+        ),
       );
     };
     const subscription = listen("zashiki:files-opened", take).catch(() => {
