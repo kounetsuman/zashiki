@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { htmlFrameUrl } from "../lib/html-frame.js";
@@ -36,7 +37,10 @@ const probe = vi.hoisted(() => ({
 }));
 vi.mock("../viewer/mermaid-probe.js", () => probe);
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("Viewer", () => {
   it("shows the shared loading UI while loading", () => {
@@ -376,6 +380,53 @@ describe("Viewer", () => {
     const video = container.querySelector("video.viewer-media");
     expect(video?.getAttribute("src")).toBe("blob:vid-1");
     expect(video?.hasAttribute("controls")).toBe(true);
+  });
+
+  it("pauses and unloads the video while it is still in the document when the Viewer closes", () => {
+    const seen: { connected: boolean; src: string | null }[] = [];
+    function record(this: HTMLMediaElement) {
+      seen.push({ connected: this.isConnected, src: this.getAttribute("src") });
+    }
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(record);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(record);
+    const { unmount } = render(
+      <Viewer
+        buffer={{
+          ...base,
+          relPath: "clip.webm",
+          content: null,
+          media: { kind: "video", url: "blob:vid-1" },
+        }}
+        onTogglePreview={noop}
+        onCopyPath={noop}
+      />,
+    );
+    unmount();
+    expect(seen).toEqual([
+      { connected: true, src: "blob:vid-1" },
+      { connected: true, src: null },
+    ]);
+  });
+
+  it("keeps the video source after StrictMode re-runs the mount", () => {
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(noop);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(noop);
+    const { container } = render(
+      <StrictMode>
+        <Viewer
+          buffer={{
+            ...base,
+            relPath: "clip.webm",
+            content: null,
+            media: { kind: "video", url: "blob:vid-1" },
+          }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />
+      </StrictMode>,
+    );
+    const video = container.querySelector("video.viewer-media");
+    expect(video?.getAttribute("src")).toBe("blob:vid-1");
   });
 
   it("renders a pdf buffer in an iframe pointing at the media URL", () => {
