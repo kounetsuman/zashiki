@@ -41,14 +41,20 @@ fn clean_title(decoded: &str) -> Option<String> {
     (!title.is_empty() && !title.contains('\u{FFFD}')).then_some(title)
 }
 
-/// The first `<link>` whose `rel` names an icon (`icon`, `shortcut icon`, `apple-touch-icon`, …),
-/// resolved against the page, else the origin's `/favicon.ico`. Only a fetchable URL is returned.
+/// `icon` (also as in `shortcut icon`) or `apple-touch-icon`; a monochrome `mask-icon` is no favicon.
+fn names_an_icon(rel: &str) -> bool {
+    rel.split_ascii_whitespace().any(|token| {
+        token.eq_ignore_ascii_case("icon") || token.eq_ignore_ascii_case("apple-touch-icon")
+    })
+}
+
+/// The first `<link>` whose `rel` names an icon, resolved against the page, else the origin's
+/// `/favicon.ico`. Only a fetchable URL is returned.
 pub(crate) fn favicon_url(page: &Url, html: Option<&str>) -> Option<Url> {
     let linked = html.and_then(|html| {
         let lower = html.to_ascii_lowercase();
-        let attrs = start_tags(html, &lower, "link").find(|attrs| {
-            attr(attrs, "rel").is_some_and(|rel| rel.to_ascii_lowercase().contains("icon"))
-        })?;
+        let attrs = start_tags(html, &lower, "link")
+            .find(|attrs| attr(attrs, "rel").is_some_and(names_an_icon))?;
         let href = attr(&attrs, "href").filter(|href| !href.trim().is_empty())?;
         page.join(href.trim()).ok()
     });
@@ -345,6 +351,17 @@ mod tests {
         assert_eq!(
             icon(touch).as_deref(),
             Some("https://example.com/docs/touch.png")
+        );
+    }
+
+    #[test]
+    fn rel_is_matched_by_its_tokens_and_a_mask_icon_is_passed_over() {
+        let html = r#"<link rel="mask-icon" href="/m.svg"><link rel="iconic" href="/x"><link rel="alternate icon" href="/a.ico">"#;
+        assert_eq!(icon(html).as_deref(), Some("https://example.com/a.ico"));
+        let only_mask = r#"<link rel="mask-icon" href="/m.svg">"#;
+        assert_eq!(
+            icon(only_mask).as_deref(),
+            Some("https://example.com/favicon.ico")
         );
     }
 
