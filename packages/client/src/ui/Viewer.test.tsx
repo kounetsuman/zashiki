@@ -540,7 +540,7 @@ describe("Viewer", () => {
     );
     expect(
       await screen.findAllByText(
-        "いろはにほへと ちりぬるを 色は匂へど散りぬるを",
+        "The quick brown fox jumps over the lazy dog. いろはにほへと 色は匂へど",
       ),
     ).toHaveLength(6);
     expect(faces).toHaveLength(1);
@@ -569,7 +569,7 @@ describe("Viewer", () => {
       <Viewer buffer={fontBuffer} onTogglePreview={noop} onCopyPath={noop} />,
     );
     await screen.findAllByText(
-      "いろはにほへと ちりぬるを 色は匂へど散りぬるを",
+      "The quick brown fox jumps over the lazy dog. いろはにほへと 色は匂へど",
     );
     unmount();
     expect(fonts.delete).toHaveBeenCalledWith(fonts.add.mock.calls[0]?.[0]);

@@ -214,7 +214,7 @@
     "audioUnsupported": "この形式の音声は再生できません",
     "fontUnsupported": "このフォントは読み込めません",
     "fontSampleCjk": "あいうえお アイウエオ 永東国 日本語の文章",
-    "fontSampleSentence": "いろはにほへと ちりぬるを 色は匂へど散りぬるを",
+    "fontSampleSentence": "The quick brown fox jumps over the lazy dog. いろはにほへと 色は匂へど",
     "binaryNoPreview": "このファイルはプレビューできません",
     "text": "テキスト",
     "encoding": "文字コード",
