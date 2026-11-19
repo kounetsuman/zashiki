@@ -214,7 +214,7 @@
     "audioUnsupported": "This audio format cannot be played",
     "fontUnsupported": "This font cannot be loaded",
     "fontSampleCjk": "あいうえお アイウエオ 永東国 日本語の文章",
-    "fontSampleSentence": "The quick brown fox jumps over the lazy dog.",
+    "fontSampleSentence": "The quick brown fox jumps over the lazy dog. いろはにほへと 色は匂へど",
     "binaryNoPreview": "This file cannot be previewed",
     "text": "Text",
     "encoding": "Text encoding",
