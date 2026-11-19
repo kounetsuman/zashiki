@@ -2,7 +2,7 @@
 //! A file read/write REST endpoint for the editor. Path defense uses the same 3 layers as the
 //! explorer (fs.rs): scanRepos allowlist → is_safe_repo_relative_path → realpath escape detection.
 //! The allowlist check is done by the caller (lib.rs); this module handles file safety + realpath
-//! containment + the size limit + the actual I/O (reads are streamed by the route, chunk by chunk).
+//! containment + the size limit + the actual I/O (reads are decoded chunk by chunk for streaming).
 
 use std::io;
 use std::path::{Path, PathBuf};

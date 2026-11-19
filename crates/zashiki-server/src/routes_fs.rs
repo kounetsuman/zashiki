@@ -71,7 +71,7 @@ pub(crate) async fn file_read(
             return json_error(status, &msg);
         }
     };
-    // Sends the file as it was when its size and version were taken, even if it grows meanwhile.
+    // A file that grows after its version was taken is sent only up to the size that version names.
     let body = Body::from_stream(file::decoded_chunks(
         opened.take(meta.len()),
         encoding,
