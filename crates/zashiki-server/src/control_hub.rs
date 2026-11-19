@@ -20,6 +20,9 @@ struct HubState {
     mac_notify: MacNotify,
     notifications: Vec<Notification>,
     snapshot: StateSnapshot,
+    /// Each Cockpit Terminal's most recent Claude Session, kept after it exits so the tasks it left
+    /// behind can still be listed.
+    claude_sessions_seen: HashMap<String, ClaudeSessionSource>,
     /// Terminals relaunched recently, with when their mark was set. See [`ControlHub::mark_restarted`].
     relaunching: HashMap<String, Instant>,
     /// Per-org notes (org → Markdown), delivered on connect and re-broadcast on any note change.
@@ -171,6 +174,51 @@ pub struct ActivitySummary {
 }
 
 /// A session counts as active when Claude is working (`running`/`running_bg_agent`) or blocked
+/// A Cockpit Terminal's Claude Session as last seen, for reading its transcript.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ClaudeSessionSource {
+    pub cockpit_terminal_id: String,
+    pub org: String,
+    pub repo: String,
+    pub cwd: String,
+    pub sid: String,
+    pub title: Option<String>,
+    pub claude_alive: bool,
+}
+
+/// Updates the last-seen Claude Session of each terminal in `snapshot` and forgets closed terminals.
+fn remember_claude_sessions(
+    mut seen: HashMap<String, ClaudeSessionSource>,
+    snapshot: &StateSnapshot,
+) -> HashMap<String, ClaudeSessionSource> {
+    seen.retain(|id, _| snapshot.sessions.iter().any(|s| &s.cockpit_terminal_id == id));
+    for terminal in &snapshot.sessions {
+        let id = &terminal.cockpit_terminal_id;
+        match (&terminal.cwd, &terminal.sid) {
+            (Some(cwd), Some(sid)) if terminal.state != "no_claude" => {
+                seen.insert(
+                    id.clone(),
+                    ClaudeSessionSource {
+                        cockpit_terminal_id: id.clone(),
+                        org: terminal.org.clone(),
+                        repo: terminal.repo.clone(),
+                        cwd: cwd.clone(),
+                        sid: sid.clone(),
+                        title: terminal.title.clone(),
+                        claude_alive: true,
+                    },
+                );
+            }
+            _ => {
+                if let Some(source) = seen.get_mut(id) {
+                    source.claude_alive = false;
+                }
+            }
+        }
+    }
+    seen
+}
+
 /// awaiting the user (`waiting_input`). `idle`/`watching`/`no_claude`/`starting` are safely
 /// restorable (a watching session's turn has ended; its open tasks persist on disk) and do not,
 /// on their own, warrant a quit confirmation.
@@ -204,6 +252,7 @@ impl ControlHub {
                 notify_mode: NotifyMode::default(),
                 mac_notify: Arc::new(|_| {}),
                 notifications,
+                claude_sessions_seen: remember_claude_sessions(HashMap::new(), &snapshot),
                 snapshot,
                 notes: BTreeMap::new(),
                 memo: String::new(),
@@ -351,6 +400,14 @@ impl ControlHub {
         Some((terminal.cwd.clone()?, terminal.sid.clone()?))
     }
 
+    /// Every Cockpit Terminal's most recent Claude Session, whether or not it is still running.
+    pub(crate) fn claude_session_sources(&self) -> Vec<ClaudeSessionSource> {
+        let state = self.inner.read().unwrap();
+        let mut sources: Vec<_> = state.claude_sessions_seen.values().cloned().collect();
+        sources.sort_by(|a, b| a.cockpit_terminal_id.cmp(&b.cockpit_terminal_id));
+        sources
+    }
+
     /// A count of in-flight work (active sessions / running subagents / resident background shells)
     /// from the currently held snapshot, for the guarded-quit confirmation (`GET /api/activity`).
     pub fn activity_summary(&self) -> ActivitySummary {
@@ -378,6 +435,8 @@ impl ControlHub {
     pub fn publish_snapshot(&self, snapshot: StateSnapshot) {
         let sync = {
             let mut state = self.inner.write().unwrap();
+            state.claude_sessions_seen =
+                remember_claude_sessions(std::mem::take(&mut state.claude_sessions_seen), &snapshot);
             state.snapshot = snapshot;
             state_sync_of(&state.snapshot, state.account_limits)
         };
@@ -1068,6 +1127,30 @@ mod tests {
             }
             other => panic!("expected notes.sync broadcast, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn claude_session_sources_outlive_the_claude_session_but_not_the_terminal() {
+        let with_claude = |state: &str, sid: Option<&str>| {
+            let mut snapshot = snapshot_with("@1");
+            snapshot.sessions[0].cwd = Some("/w/repo".into());
+            snapshot.sessions[0].state = state.into();
+            snapshot.sessions[0].sid = sid.map(str::to_string);
+            snapshot
+        };
+        let hub = ControlHub::new(ConfigView::default(), vec![], with_claude("running", Some("s1")));
+        assert_eq!(hub.claude_session_sources()[0].sid, "s1");
+        assert!(hub.claude_session_sources()[0].claude_alive);
+
+        hub.publish_snapshot(with_claude("no_claude", None));
+        let sources = hub.claude_session_sources();
+        assert_eq!((sources[0].sid.as_str(), sources[0].claude_alive), ("s1", false));
+
+        hub.publish_snapshot(with_claude("running", Some("s2")));
+        assert_eq!(hub.claude_session_sources()[0].sid, "s2");
+
+        hub.publish_snapshot(StateSnapshot { sessions: vec![], ..with_claude("running", None) });
+        assert!(hub.claude_session_sources().is_empty());
     }
 
     #[tokio::test]

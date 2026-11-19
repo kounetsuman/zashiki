@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::background_tasks::{BackgroundTaskScan, TaskRecord};
 use crate::jsonl::{
     background_task_ids, claude_project_dir_name, session_usage, subagent_tokens, SessionUsageData,
     SubagentTokens,
@@ -47,6 +48,15 @@ struct TitleProgress {
 }
 
 type TitleScans = Arc<Mutex<HashMap<PathBuf, TitleProgress>>>;
+
+/// How far a transcript has been scanned for background tasks; the next pass resumes at `offset`.
+#[derive(Default)]
+struct TaskScanProgress {
+    offset: u64,
+    scan: BackgroundTaskScan,
+}
+
+type TaskScans = Arc<Mutex<HashMap<PathBuf, TaskScanProgress>>>;
 
 /// How many transcripts' links are held at once; the least recently read is dropped first.
 const LINK_CACHE_CAPACITY: usize = 32;
@@ -104,6 +114,7 @@ pub struct ClaudeProjectsAdapter {
     now_ms: NowMs,
     subagent_totals: SubagentTotals,
     title_scans: TitleScans,
+    task_scans: TaskScans,
     link_cache: LinkCache,
 }
 
@@ -133,6 +144,7 @@ impl ClaudeProjectsAdapter {
             root_dir,
             subagent_totals: SubagentTotals::default(),
             title_scans: TitleScans::default(),
+            task_scans: TaskScans::default(),
             link_cache: LinkCache::default(),
             max_slice_bytes: DEFAULT_MAX_SLICE_BYTES,
             now_ms: Box::new(real_now_ms),
@@ -223,6 +235,19 @@ impl ClaudeProjectsAdapter {
             .unwrap_or_default()
     }
 
+    /// Every background task launched in the transcript, with its end once noticed. Reads only what was
+    /// appended since the previous call for the same transcript.
+    pub async fn background_tasks(&self, cwd: &str, sid: &str) -> Vec<TaskRecord> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        let scans = Arc::clone(&self.task_scans);
+        tokio::task::spawn_blocking(move || background_tasks_sync(&path, &scans))
+            .await
+            .unwrap_or_default()
+    }
+
     /// The set of `toolUseResult.backgroundTaskId` in the transcript (empty when the file is missing
     /// or has none). Unlike `read_slices`, this reads the whole file: a still-live background shell
     /// may have been launched far from the tail, so its launch line must not be sliced away.
@@ -238,6 +263,41 @@ impl ClaudeProjectsAdapter {
         .await
         .unwrap_or_default()
     }
+}
+
+fn background_tasks_sync(path: &Path, scans: &Mutex<HashMap<PathBuf, TaskScanProgress>>) -> Vec<TaskRecord> {
+    let Ok(file) = fs::File::open(path) else {
+        return Vec::new();
+    };
+    let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let mut progress = scans
+        .lock()
+        .ok()
+        .and_then(|mut scans| scans.remove(path))
+        .filter(|p| p.offset <= len)
+        .unwrap_or_default();
+    let mut reader = BufReader::new(file);
+    let mut buf = Vec::new();
+    if reader.seek(SeekFrom::Start(progress.offset)).is_ok() {
+        loop {
+            buf.clear();
+            let Ok(read) = reader.read_until(b'\n', &mut buf) else {
+                break;
+            };
+            if buf.last() != Some(&b'\n') {
+                break;
+            }
+            progress.offset += read as u64;
+            progress
+                .scan
+                .feed(String::from_utf8_lossy(&buf).trim_end_matches(['\r', '\n']));
+        }
+    }
+    let records = progress.scan.records();
+    if let Ok(mut scans) = scans.lock() {
+        scans.insert(path.to_path_buf(), progress);
+    }
+    records
 }
 
 fn session_links_sync(path: &Path, cache: &Mutex<LinkCacheEntries>) -> Vec<SessionLink> {
@@ -533,6 +593,23 @@ mod tests {
             ids,
             HashSet::from(["bush20ok3".to_string(), "b48tqxha9".to_string()])
         );
+    }
+
+    #[tokio::test]
+    async fn background_tasks_resume_after_appended_lines_and_hold_a_partial_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let launch = "{\"type\":\"user\",\"toolUseResult\":{\"backgroundTaskId\":\"b1\"}}\n";
+        let notice = "{\"type\":\"user\",\"message\":{\"content\":\"<task-notification><task-id>b1</task-id><status>completed</status><summary>completed (exit code 0)</summary></task-notification>\"}}\n";
+        let path = write_jsonl(tmp.path(), SID, &format!("{launch}{}", &notice[..20]), BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let first = adapter.background_tasks(CWD, SID).await;
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].end, None);
+
+        std::fs::write(&path, format!("{launch}{notice}")).unwrap();
+        let second = adapter.background_tasks(CWD, SID).await;
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].end.as_ref().map(|e| e.exit_code), Some(Some(0)));
     }
 
     fn link_line(url: &str) -> String {
@@ -1044,6 +1121,7 @@ mod tests {
             root_dir: tmp.path().to_path_buf(),
             subagent_totals: SubagentTotals::default(),
             title_scans: TitleScans::default(),
+            task_scans: TaskScans::default(),
             link_cache: LinkCache::default(),
             max_slice_bytes: 64 * 1024,
             now_ms: Box::new(|| (BASE_SEC + 3) * 1000),

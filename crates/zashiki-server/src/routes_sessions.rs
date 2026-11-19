@@ -4,8 +4,11 @@ use serde::Deserialize;
 
 use crate::app_state::AppState;
 use crate::media_type::MEDIA_CSP;
+use crate::background_tasks::{read_output_facts, task_phase, TaskRecord};
+use crate::control_hub::ClaudeSessionSource;
+use crate::lsof::LsofAdapter;
 use crate::protocol::{
-    CockpitTerminalLastActivity, CockpitTerminalLastActivityResponse, CockpitTerminalTailResponse,
+    BackgroundTask, BackgroundTaskPhase, BackgroundTasksResponse, CockpitTerminalLastActivity, CockpitTerminalLastActivityResponse, CockpitTerminalTailResponse,
     SessionLinksResponse,
 };
 use crate::session_persist;
@@ -164,6 +167,74 @@ pub(crate) async fn cockpit_terminal_links(
         control.page_details.annotate(&mut links);
     }
     Json(SessionLinksResponse { links }).into_response()
+}
+
+/// `GET /api/background-tasks`. The background Bash tasks of every Cockpit Terminal's most recent
+/// Claude Session, running or not.
+pub(crate) async fn background_tasks(State(state): State<AppState>) -> Response {
+    let Some(control) = state.control.as_ref() else {
+        return json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "session services not available",
+        );
+    };
+    let mut found: Vec<(ClaudeSessionSource, TaskRecord)> = Vec::new();
+    for source in control.hub.claude_session_sources() {
+        for record in control.projects.background_tasks(&source.cwd, &source.sid).await {
+            found.push((source.clone(), record));
+        }
+    }
+    let alive: std::collections::HashSet<(String, String)> = if found.iter().any(|(_, r)| r.end.is_none()) {
+        crate::shells::parse_lsof_fd_outputs(&LsofAdapter.fd1_outputs().await)
+            .into_iter()
+            .map(|o| (o.sid, o.task_id))
+            .collect()
+    } else {
+        Default::default()
+    };
+    let tasks = tokio::task::spawn_blocking(move || {
+        found
+            .into_iter()
+            .map(|(source, record)| {
+                let process_alive = alive.contains(&(source.sid.clone(), record.launch.task_id.clone()));
+                background_task_of(source, record, process_alive)
+            })
+            .collect()
+    })
+    .await
+    .unwrap_or_default();
+    Json(BackgroundTasksResponse { tasks }).into_response()
+}
+
+fn background_task_of(source: ClaudeSessionSource, record: TaskRecord, process_alive: bool) -> BackgroundTask {
+    let phase = task_phase(record.end.is_some(), process_alive, source.claude_alive);
+    let facts = record
+        .launch
+        .output_path
+        .as_deref()
+        .map(|p| read_output_facts(std::path::Path::new(p), phase == BackgroundTaskPhase::Running))
+        .unwrap_or_default();
+    let (last_line, last_line_repeats) = facts.last_line.map_or((None, 0), |(l, n)| (Some(l), n));
+    let end = record.end;
+    BackgroundTask {
+        cockpit_terminal_id: source.cockpit_terminal_id,
+        org: source.org,
+        repo: source.repo,
+        cwd: source.cwd,
+        sid: source.sid,
+        title: source.title,
+        task_id: record.launch.task_id,
+        description: record.launch.description,
+        command: record.launch.command,
+        started_at: record.launch.started_at_ms,
+        phase,
+        end_status: end.as_ref().map(|e| e.status.clone()),
+        exit_code: end.as_ref().and_then(|e| e.exit_code),
+        ended_at: end.and_then(|e| e.ended_at_ms),
+        output_modified_at: facts.modified_at_ms,
+        last_line,
+        last_line_repeats,
+    }
 }
 
 #[derive(Deserialize)]
@@ -654,6 +725,47 @@ mod sessions_persist_rest_tests {
             serde_json::json!({"owner": "o", "repo": "r", "number": 7, "title": "Add links", "state": "merged"})
         );
         assert_eq!(lookups.load(std::sync::atomic::Ordering::SeqCst), 1);
+        sessions.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn background_tasks_lists_launches_and_ends_in_wire_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        let launch = |tu: &str, task: &str| {
+            [
+                serde_json::json!({"type": "assistant", "message": {"content": [{"type": "tool_use", "id": tu, "name": "Bash",
+                    "input": {"command": "make ci", "description": "Run CI", "run_in_background": true}}]}}).to_string(),
+                serde_json::json!({"type": "user", "timestamp": "2026-11-19T07:51:33.778Z",
+                    "message": {"content": [{"type": "tool_result", "tool_use_id": tu, "content": "started"}]},
+                    "toolUseResult": {"backgroundTaskId": task}}).to_string(),
+            ]
+            .join("\n")
+        };
+        let notice = serde_json::json!({"type": "attachment", "timestamp": "2026-11-19T07:52:00.000Z", "attachment": {
+            "type": "queued_command", "commandMode": "task-notification",
+            "prompt": "<task-notification>\n<task-id>b2</task-id>\n<status>failed</status>\n<summary>failed with exit code 3</summary>\n</task-notification>"}}).to_string();
+        write_links_transcript(
+            projects.path(),
+            &format!("{}\n{}\n{notice}\n", launch("tu1", "b1"), launch("tu2", "b2")),
+        );
+        let sessions = sessions_running("sleep 5").await;
+        let app = links_app(dir.path(), sessions.clone(), snapshot_with_claude("t1", Some(LINKS_SID)), projects.path());
+        let (s, b) = send(app, "GET", "/api/background-tasks", "").await;
+        assert_eq!(s, StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&b).unwrap();
+        let task = |i: usize, key: &str| body["tasks"][i][key].clone();
+        assert_eq!(task(0, "taskId"), "b1");
+        assert_eq!(task(0, "cockpitTerminalId"), "t1");
+        assert_eq!(task(0, "description"), "Run CI");
+        assert_eq!(task(0, "command"), "make ci");
+        assert_eq!(task(0, "startedAt"), 1_795_074_693_778u64);
+        assert_eq!(task(0, "lastLineRepeats"), 0);
+        assert_ne!(task(0, "phase"), "running");
+        assert_eq!(task(1, "phase"), "ended");
+        assert_eq!(task(1, "endStatus"), "failed");
+        assert_eq!(task(1, "exitCode"), 3);
+        assert_eq!(task(1, "endedAt"), 1_795_074_720_000u64);
         sessions.shutdown_all().await;
     }
 
