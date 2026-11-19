@@ -23,9 +23,14 @@ function isNetworkFailure(e: unknown): boolean {
   return e instanceof TypeError;
 }
 
+/** Decoding a response longer than a string can hold throws a RangeError. */
+function isTooLongToDecode(e: unknown): boolean {
+  return e instanceof RangeError;
+}
+
 /**
- * Reads past the confirmation size that time out, lose the connection or are refused all mean the file
- * is too large to open. Before that, a refusal carrying the file's size asks for confirmation, unless
+ * Reads past the confirmation size that time out, lose the connection, cannot be decoded into a string
+ * or are refused all mean the file is too large to open. Before that, a refusal carrying the file's size asks for confirmation, unless
  * the file is over the maximum too: the server's when the refusal names it, else `maxBytes`.
  */
 export function classifyReadFailure(
@@ -34,7 +39,12 @@ export function classifyReadFailure(
   maxBytes: number,
 ): ReadFailure {
   if (openedAnyway) {
-    return e instanceof FileTooLargeError || isAbort(e) || isNetworkFailure(e)
+    const gaveOut =
+      e instanceof FileTooLargeError ||
+      isAbort(e) ||
+      isNetworkFailure(e) ||
+      isTooLongToDecode(e);
+    return gaveOut
       ? { tooLarge: { reason: "failedAfterConfirm" } }
       : { tooLarge: null, error: e };
   }

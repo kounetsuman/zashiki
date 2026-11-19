@@ -8,6 +8,7 @@ const MAX = 200 * MIB;
 const tooLarge = (size: number | null) => new FileTooLargeError("big", size);
 const timeout = new DOMException("aborted", "AbortError");
 const offline = new TypeError("Failed to fetch");
+const tooLongToDecode = new RangeError("Invalid string length");
 
 describe("classifyReadFailure before the user opens anyway", () => {
   it("asks for confirmation when the refused file is within the maximum", () => {
@@ -47,8 +48,14 @@ describe("classifyReadFailure before the user opens anyway", () => {
 });
 
 describe("classifyReadFailure after the user opens anyway", () => {
-  it("reports a timeout, a lost connection or a refusal as too large to open", () => {
-    for (const e of [timeout, offline, tooLarge(MAX + 1), tooLarge(null)]) {
+  it("reports a timeout, a lost connection, an undecodable length or a refusal as too large to open", () => {
+    for (const e of [
+      timeout,
+      offline,
+      tooLongToDecode,
+      tooLarge(MAX + 1),
+      tooLarge(null),
+    ]) {
       expect(classifyReadFailure(e, true, MAX)).toEqual({
         tooLarge: { reason: "failedAfterConfirm" },
       });
