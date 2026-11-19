@@ -168,6 +168,11 @@ describe("files too large to read", () => {
     expect(encoded[KEY]?.openAnyway).toBe(true);
   });
 
+  it("keeps the buffer as it is when a poll reports the same size problem again", () => {
+    const b = bufferTooLarge(openBuffer({}, REPO, REL), KEY, confirm);
+    expect(bufferTooLarge(b, KEY, { ...confirm })).toBe(b);
+  });
+
   it("only a file waiting for confirmation can be opened anyway", () => {
     const overMax = bufferTooLarge(openBuffer({}, REPO, REL), KEY, {
       reason: "overMax",

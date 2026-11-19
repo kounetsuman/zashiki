@@ -143,13 +143,20 @@ export function useViewer(
             if (readSeqRef.current[key] !== seq) return;
             const visible = awaitingVisibleReadRef.current.delete(key);
             if (visible) delete versionsRef.current[key];
+            // A poll reads past the confirmation size only to keep an opened file current, so its
+            // refusal says the file now needs confirming (or is over the maximum), not that it failed.
             const failure = classifyReadFailure(
               e,
-              openedAnyway,
+              visible && openedAnyway,
               limitsRef.current.maxBytes,
             );
             setBuffers((cur) => {
-              if (!visible || cur[key]?.status === "ready") return cur;
+              if (!visible) {
+                return failure.tooLarge === null
+                  ? cur
+                  : bufferTooLarge(cur, key, failure.tooLarge);
+              }
+              if (cur[key]?.status === "ready") return cur;
               return failure.tooLarge === null
                 ? bufferFailed(cur, key, readErrorMessage(failure.error))
                 : bufferTooLarge(cur, key, failure.tooLarge);

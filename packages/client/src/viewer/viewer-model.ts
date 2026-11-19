@@ -280,12 +280,12 @@ export function bufferTooLarge(
   key: string,
   tooLarge: TooLargeFile,
 ): ViewerBuffers {
-  return patch(bufs, key, (b) => ({
-    ...b,
-    status: "tooLarge",
-    error: undefined,
-    tooLarge,
-  }));
+  return patch(bufs, key, (b) =>
+    b.status === "tooLarge" &&
+    JSON.stringify(b.tooLarge) === JSON.stringify(tooLarge)
+      ? b
+      : { ...b, status: "tooLarge", error: undefined, tooLarge },
+  );
 }
 
 /** Back to loading for a read without the confirmation limit, which later reads keep skipping. */

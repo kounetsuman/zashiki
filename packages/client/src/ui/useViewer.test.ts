@@ -558,6 +558,74 @@ describe("useViewer large files", () => {
     vi.useRealTimers();
   });
 
+  it("raising the maximum turns a tab over the old maximum into the confirmation on the next poll", async () => {
+    vi.useFakeTimers();
+    const read = sizedReads(3 * MIB, () => Promise.resolve(text("all")));
+    const { result, rerender } = renderHook(
+      ({ limits }) => useViewer({ ...filesApi, read }, key, limits),
+      { initialProps: { limits: LIMITS } },
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    expect(result.current.buffers[key]?.tooLarge?.reason).toBe("overMax");
+    rerender({ limits: { confirmBytes: MIB, maxBytes: 4 * MIB } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "tooLarge",
+      tooLarge: { reason: "confirm", size: 3 * MIB },
+    });
+    vi.useRealTimers();
+  });
+
+  it("a shown file that grows past the confirmation size asks again instead of going stale", async () => {
+    vi.useFakeTimers();
+    let size = MIB / 2;
+    const read = vi.fn<FilesApi["read"]>((_repo, _file, _encoding, options) =>
+      options?.limit !== undefined && size > options.limit
+        ? Promise.reject(new FileTooLargeError("too large", size))
+        : Promise.resolve(text(`${size}`)),
+    );
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    expect(result.current.buffers[key]?.status).toBe("ready");
+    size = 1.5 * MIB;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "tooLarge",
+      tooLarge: { reason: "confirm", size: 1.5 * MIB },
+    });
+    vi.useRealTimers();
+  });
+
+  it("a poll that fails for another reason leaves the shown file as it is", async () => {
+    vi.useFakeTimers();
+    const read = vi
+      .fn<FilesApi["read"]>()
+      .mockResolvedValueOnce(text("v1"))
+      .mockRejectedValue(new DOMException("aborted", "AbortError"));
+    const { result } = renderHook(() =>
+      useViewer({ ...filesApi, read }, key, LIMITS),
+    );
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "big.log");
+    });
+    const shown = result.current.buffers[key];
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(result.current.buffers[key]).toBe(shown);
+    vi.useRealTimers();
+  });
+
   it("a file over the maximum says so, with the maximum, and cannot be opened anyway", async () => {
     const read = sizedReads(3 * MIB, () => Promise.resolve(text("all")));
     const { result } = renderHook(() =>
