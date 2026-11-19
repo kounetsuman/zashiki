@@ -33,6 +33,7 @@ import type {
   NotifyPermission,
 } from "./lib/notify.js";
 import { ONBOARDING_SEEN_KEY } from "./lib/onboarding.js";
+import type { PopOutApi } from "./lib/pop-out.js";
 import type { ControlStatus } from "./ws/control.js";
 
 // To guard the focusNonce wiring (store -> App -> TerminalView.props) at the App level,
@@ -2053,5 +2054,117 @@ describe("App dashboard on launch", () => {
     const { control } = renderApp(memoryStorage());
     act(() => control.emit(configSync(DEFAULT_DASHBOARD_SETTINGS)));
     expect(screen.queryByRole("dialog", { name: "ダッシュボード" })).toBeNull();
+  });
+});
+
+describe("App pop-out windows", () => {
+  function fakePopOut(open: string[] = []) {
+    let closed: ((id: string) => void) | null = null;
+    const api: PopOutApi = {
+      open: vi.fn(async () => {}),
+      focus: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+      list: vi.fn(async () => open),
+      onClosed: (fn) => {
+        closed = fn;
+        return () => {
+          closed = null;
+        };
+      },
+    };
+    return { api, closeWindow: (id: string) => act(() => closed?.(id)) };
+  }
+
+  async function renderWithPopOut(api: PopOutApi | undefined) {
+    const control = createFakeAppControl();
+    const fake = fakeAppSession();
+    const setPoppedOut = vi.fn();
+    render(
+      <App
+        control={control}
+        session={{ ...fake.session, setPoppedOut }}
+        gitApi={fakeGitApi}
+        fsApi={fakeFsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
+        reposApi={fakeReposApi}
+        popOut={api}
+      />,
+    );
+    act(() =>
+      control.emit({
+        t: "state.sync",
+        cockpitTerminals,
+        orgs: ["kilo"],
+        orgColors: {},
+        orgAliases: {},
+      }),
+    );
+    await act(async () => {});
+    return { ...fake, setPoppedOut };
+  }
+
+  it("offers no pop-out outside the desktop app", async () => {
+    await renderWithPopOut(undefined);
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0] as HTMLElement);
+    expect(
+      screen.queryByRole("menuitem", { name: "別ウィンドウで開く" }),
+    ).toBeNull();
+  });
+
+  it("pops a terminal out from its tab menu with its title", async () => {
+    const { api } = fakePopOut();
+    await renderWithPopOut(api);
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0] as HTMLElement);
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "別ウィンドウで開く" }),
+      );
+    });
+    expect(api.open).toHaveBeenCalledWith("@1", "zashiki", null);
+  });
+
+  it("shows the notice instead of the terminal while the selected terminal is popped out", async () => {
+    const { api } = fakePopOut(["@1"]);
+    const { setPoppedOut } = await renderWithPopOut(api);
+    expect(
+      screen.getByText("このターミナルは別ウィンドウで表示中です"),
+    ).toBeTruthy();
+    expect(setPoppedOut).toHaveBeenLastCalledWith(new Set(["@1"]));
+    expect(
+      screen.getAllByRole("img", { name: "別ウィンドウで表示中" }).length,
+    ).toBe(2);
+
+    fireEvent.click(screen.getByRole("button", { name: /ウィンドウを表示/ }));
+    expect(api.focus).toHaveBeenCalledWith("@1");
+    fireEvent.click(screen.getByRole("button", { name: /メインに戻す/ }));
+    expect(api.close).toHaveBeenCalledWith("@1");
+  });
+
+  it("opening a popped-out terminal from the list brings its window to the front", async () => {
+    const { api } = fakePopOut(["@2"]);
+    await renderWithPopOut(api);
+    fireEvent.doubleClick(inList().getByRole("button", { name: ROW_TANGO }));
+    expect(api.focus).toHaveBeenCalledWith("@2");
+  });
+
+  it("selects a terminal again once its window has closed", async () => {
+    const { api, closeWindow } = fakePopOut(["@2"]);
+    const { selected, setPoppedOut } = await renderWithPopOut(api);
+    closeWindow("@2");
+    expect(selected.at(-1)).toBe("@2");
+    expect(setPoppedOut).toHaveBeenLastCalledWith(new Set());
+    expect(
+      screen.queryByText("このターミナルは別ウィンドウで表示中です"),
+    ).toBeNull();
+  });
+
+  it("selects nothing for a window whose terminal has ended", async () => {
+    const { api, closeWindow } = fakePopOut(["@7"]);
+    const { selected } = await renderWithPopOut(api);
+    const before = [...selected];
+    closeWindow("@7");
+    expect(selected).toEqual(before);
   });
 });

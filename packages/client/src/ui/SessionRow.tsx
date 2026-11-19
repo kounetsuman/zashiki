@@ -14,6 +14,8 @@ export interface SessionRowProps {
   orgColors: Record<string, string>;
   conversationTitles: TitleMap;
   selectedCockpitTerminalId: string | null;
+  /** Whether the terminal is shown in its own window (marks the row). */
+  poppedOut?: boolean;
   isFocused: boolean;
   focusedRef: React.RefObject<HTMLButtonElement | null>;
   isRenaming: boolean;
@@ -45,6 +47,7 @@ export function SessionRow({
   orgColors,
   conversationTitles,
   selectedCockpitTerminalId,
+  poppedOut = false,
   isFocused,
   focusedRef,
   isRenaming,
@@ -143,6 +146,16 @@ export function SessionRow({
             <StateIcon session={s} fresh={fresh} />
             <ActivityChips session={s} />
             <span className="session-title"> {displayTitle}</span>
+            {poppedOut && (
+              <span
+                className="material-symbols-outlined session-popped-out-mark"
+                role="img"
+                aria-label={t("popOut.inOwnWindow")}
+                title={t("popOut.inOwnWindow")}
+              >
+                open_in_new
+              </span>
+            )}
           </button>
           <button
             type="button"

@@ -67,6 +67,7 @@ import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
 import { openPickedFiles, pickAndReadFiles } from "./lib/open-file-dialog.js";
+import type { PopOutApi, ScreenPoint } from "./lib/pop-out.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
 import { createMemoSaver } from "./memo/memo-saver.js";
@@ -101,6 +102,7 @@ import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
 import { MemoEditor } from "./ui/MemoEditor.js";
 import { NavigationBar } from "./ui/NavigationBar.js";
 import { NotificationView } from "./ui/NotificationView.js";
+import { PoppedOutNotice } from "./ui/PoppedOutNotice.js";
 import { QuickOpen } from "./ui/QuickOpen.js";
 import { QuitSaveOverlay } from "./ui/QuitSaveOverlay.js";
 import { SearchView } from "./ui/SearchView.js";
@@ -127,6 +129,7 @@ import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
 import { type FileDropError, useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
+import { usePoppedOut } from "./ui/usePoppedOut.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
@@ -186,6 +189,8 @@ export interface AppSession extends TerminalViewSession {
   suspend(): void;
   /** Re-attaches the terminal when cockpit terminals revive. */
   resume(): void;
+  /** The Cockpit Terminals shown in their own window, which the main terminal must not attach to. */
+  setPoppedOut?(ids: ReadonlySet<string>): void;
 }
 
 export interface AppProps {
@@ -210,6 +215,8 @@ export interface AppProps {
   notifier?: Notifier;
   /** Persistence target for view selection state (defaults to localStorage). */
   viewStorage?: ViewStorage | null;
+  /** The desktop shell's pop-out windows (omitted outside the desktop app, which hides the feature). */
+  popOut?: PopOutApi;
 }
 
 export function App({
@@ -226,6 +233,7 @@ export function App({
   cockpitTerminalsApi,
   notifier: notifierProp,
   viewStorage: viewStorageProp,
+  popOut,
 }: AppProps) {
   const { t } = useTranslation();
   const terminalFont = useTerminalFontSize();
@@ -424,6 +432,46 @@ export function App({
     selectedCockpitTerminalId,
     memoEnabled,
   );
+
+  const cockpitTerminalsRef = useRef(cockpitTerminals);
+  cockpitTerminalsRef.current = cockpitTerminals;
+  const poppedOut = usePoppedOut(popOut, (cockpitTerminalId) => {
+    // A window closed because its terminal ended has nothing to come back to.
+    if (
+      !cockpitTerminalsRef.current.some(
+        (s) => s.cockpitTerminalId === cockpitTerminalId,
+      )
+    )
+      return;
+    store.selectCockpitTerminal(cockpitTerminalId);
+    store.focusTerminal();
+  });
+  useEffect(() => {
+    session.setPoppedOut?.(poppedOut.ids);
+  }, [session, poppedOut.ids]);
+  const popOutTerminal = useCallback(
+    (cockpitTerminalId: string, at: ScreenPoint | null): void => {
+      const terminal = cockpitTerminals.find(
+        (s) => s.cockpitTerminalId === cockpitTerminalId,
+      );
+      if (terminal === undefined) return;
+      const title = resolveTitle(
+        effectiveCustomTitle(conversationTitles, terminal),
+        terminal,
+      );
+      poppedOut.popOut(cockpitTerminalId, title, at);
+    },
+    [cockpitTerminals, conversationTitles, poppedOut.popOut],
+  );
+  // The list's open gesture on a popped-out terminal goes to its window, not to the main terminal.
+  const focusSelectedTerminal = useCallback((): void => {
+    const selected = store.getSnapshot().selectedCockpitTerminalId;
+    if (selected !== null && poppedOut.ids.has(selected)) {
+      poppedOut.show(selected);
+    } else {
+      store.focusTerminal();
+    }
+  }, [store, poppedOut.ids, poppedOut.show]);
 
   // Footer inputs for the active session tab (undefined for viewer/empty; usage null before a transcript).
   const activeSession =
@@ -1263,6 +1311,8 @@ export function App({
               copyExplorerText(`${repoPath}/${relPath}`)
             }
             onRenameFile={renameFileFromTab}
+            poppedOutIds={poppedOut.ids}
+            onPopOut={popOut === undefined ? undefined : popOutTerminal}
           />
           <div className="tab-view">
             <ErrorBoundary
@@ -1310,6 +1360,12 @@ export function App({
               activeViewerKey === null &&
               activeDiffKey === null &&
               activeMemoKey === null && <NoTabOpen />}
+            {activeSess !== null && poppedOut.ids.has(activeSess) && (
+              <PoppedOutNotice
+                onShow={() => poppedOut.show(activeSess)}
+                onReturn={() => poppedOut.returnToMain(activeSess)}
+              />
+            )}
             {activeBuffer !== null && activeViewerKey !== null && (
               <Viewer
                 key={activeViewerKey}
@@ -1388,7 +1444,7 @@ export function App({
             connected={controlStatus === "open"}
             selectedCockpitTerminalId={activeSess}
             onSelect={store.selectCockpitTerminal}
-            onFocusTerminal={store.focusTerminal}
+            onFocusTerminal={focusSelectedTerminal}
             onNew={newSession}
             onClose={(cockpitTerminalId) =>
               control.send({ t: "cockpitTerminal.close", cockpitTerminalId })
@@ -1402,6 +1458,7 @@ export function App({
             onReorderRows={(order) =>
               control.send({ t: "cockpitTerminal.reorder", order })
             }
+            poppedOutIds={poppedOut.ids}
           />
         </aside>
       </div>

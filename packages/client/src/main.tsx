@@ -16,11 +16,19 @@ import { createGitApi } from "./api/git.js";
 import { createReposApi } from "./api/repos.js";
 import { createSearchApi } from "./api/search.js";
 import i18n from "./i18n/index.js";
+import {
+  createTauriPopOutApi,
+  popOutCockpitTerminalId,
+  popOutSupported,
+  popOutUrl,
+} from "./lib/pop-out.js";
 import { serverBase } from "./lib/server-base.js";
 import { resolveToken, stripTokenFromSearch } from "./lib/token.js";
 import { controlWsUrl, termWsUrl } from "./lib/url.js";
+import { PopOutAwareSession } from "./session/pop-out-aware-session.js";
 import { TerminalSession } from "./session/terminal-session.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
+import { PopOutApp } from "./ui/PopOutApp.js";
 import { ControlClient } from "./ws/control.js";
 import { openTermSocket } from "./ws/term.js";
 
@@ -31,6 +39,7 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 
 const token = resolveToken(window.location.search, window.sessionStorage);
+const popOutOf = popOutCockpitTerminalId(window.location.search);
 // Do not leave the token in the URL (history / bookmarks)
 window.history.replaceState(
   null,
@@ -61,11 +70,14 @@ if (token === null) {
   const base = serverBase();
   const control = new ControlClient({ url: controlWsUrl(base, token) });
   control.connect();
-  const session = new TerminalSession({
+  const terminalSession = new TerminalSession({
     control,
     openTermSocket: (termId, handlers) =>
       openTermSocket(termWsUrl(base, termId, token), handlers),
   });
+  const popOut = popOutSupported()
+    ? createTauriPopOutApi((id) => popOutUrl(window.location, id, token))
+    : undefined;
   const gitApi = createGitApi(base, token);
   const fsApi = createFsApi(base, token);
   const searchApi = createSearchApi(base, token);
@@ -75,6 +87,12 @@ if (token === null) {
   const crashApi = createCrashApi(base, token);
   const dashboardApi = createDashboardApi(base, token);
   const cockpitTerminalsApi = createCockpitTerminalsApi(base, token);
+  if (popOutOf !== null) terminalSession.select(popOutOf);
+  const returnToMain = (): void => {
+    if (popOutOf === null) return;
+    if (popOut === undefined) window.close();
+    else void popOut.close(popOutOf).catch(() => window.close());
+  };
   root.render(
     <StrictMode>
       <I18nextProvider i18n={i18n}>
@@ -94,19 +112,29 @@ if (token === null) {
             </main>
           )}
         >
-          <App
-            control={control}
-            session={session}
-            gitApi={gitApi}
-            fsApi={fsApi}
-            searchApi={searchApi}
-            filesApi={filesApi}
-            filesListApi={filesListApi}
-            reposApi={reposApi}
-            crashApi={crashApi}
-            dashboardApi={dashboardApi}
-            cockpitTerminalsApi={cockpitTerminalsApi}
-          />
+          {popOutOf !== null ? (
+            <PopOutApp
+              control={control}
+              session={terminalSession}
+              cockpitTerminalId={popOutOf}
+              onReturn={returnToMain}
+            />
+          ) : (
+            <App
+              control={control}
+              session={new PopOutAwareSession(terminalSession)}
+              gitApi={gitApi}
+              fsApi={fsApi}
+              searchApi={searchApi}
+              filesApi={filesApi}
+              filesListApi={filesListApi}
+              reposApi={reposApi}
+              crashApi={crashApi}
+              dashboardApi={dashboardApi}
+              cockpitTerminalsApi={cockpitTerminalsApi}
+              popOut={popOut}
+            />
+          )}
         </ErrorBoundary>
       </I18nextProvider>
     </StrictMode>,

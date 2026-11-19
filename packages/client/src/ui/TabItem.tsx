@@ -32,6 +32,8 @@ export interface TabItemProps {
    * follows this flag.
    */
   dirty?: boolean;
+  /** Whether the tab's terminal is shown in its own window (dims the tab and marks it). */
+  poppedOut?: boolean;
   rename: TabRename;
   drag: TabDrag;
   onActivate(key: string): void;
@@ -56,6 +58,7 @@ export function TabItem({
   pinned = false,
   onUnpin,
   dirty = false,
+  poppedOut = false,
   rename,
   drag,
   onActivate,
@@ -83,7 +86,9 @@ export function TabItem({
       ref={rootRef}
       className={`tab${active ? " tab-active" : ""}${
         dragging ? " tab-dragging" : ""
-      }${dropTarget ? " tab-drag-over" : ""}${isEditing ? " tab-editing" : ""}`}
+      }${dropTarget ? " tab-drag-over" : ""}${isEditing ? " tab-editing" : ""}${
+        poppedOut ? " tab-popped-out" : ""
+      }`}
       style={
         active && orgColor !== undefined
           ? { borderTopColor: orgColor }
@@ -95,7 +100,7 @@ export function TabItem({
       onDragOver={draggable ? (e) => drag.markDropTarget(key, e) : undefined}
       onDragLeave={draggable ? () => drag.onDragLeave(key) : undefined}
       onDrop={draggable ? (e) => drag.onDrop(key, e) : undefined}
-      onDragEnd={draggable ? drag.endDrag : undefined}
+      onDragEnd={draggable ? (e) => drag.onDragEnd(key, e) : undefined}
       onContextMenu={onContextMenu}
     >
       {pinned && (
@@ -157,6 +162,16 @@ export function TabItem({
           </span>
           <span className="tab-label">{label}</span>
         </button>
+      )}
+      {poppedOut && (
+        <span
+          className="material-symbols-outlined tab-popped-out-mark"
+          role="img"
+          aria-label={t("popOut.inOwnWindow")}
+          title={t("popOut.inOwnWindow")}
+        >
+          open_in_new
+        </span>
       )}
       {closeable && !pinned ? (
         <button
