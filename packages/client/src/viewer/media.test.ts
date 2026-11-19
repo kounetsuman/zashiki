@@ -16,6 +16,28 @@ describe("mediaKind", () => {
     expect(mediaKind("recording.MOV")).toBe("video");
   });
 
+  it("maps audio extensions to audio", () => {
+    for (const name of [
+      "a.mp3",
+      "a.m4a",
+      "a.aac",
+      "a.wav",
+      "a.aiff",
+      "a.aif",
+      "a.flac",
+      "a.ogg",
+      "a.oga",
+      "a.OPUS",
+    ]) {
+      expect(mediaKind(name), name).toBe("audio");
+    }
+  });
+
+  it("leaves containers the webview cannot play as non-media", () => {
+    expect(mediaKind("clip.avi")).toBeNull();
+    expect(mediaKind("clip.mkv")).toBeNull();
+  });
+
   it("maps .pdf to pdf", () => {
     expect(mediaKind("spec.pdf")).toBe("pdf");
     expect(mediaKind("Report.PDF")).toBe("pdf");

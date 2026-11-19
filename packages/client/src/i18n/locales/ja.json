@@ -211,6 +211,8 @@
     "dropTooLarge": "{{name}} はプレビューするには大きすぎます（最大 2 MB）",
     "dropReadFailed": "{{name}} を読み込めませんでした",
     "table": "テーブル",
+    "audioUnsupported": "この形式の音声は再生できません",
+    "binaryNoPreview": "このファイルはプレビューできません",
     "text": "テキスト",
     "tableLabel": "{{path}} のテーブル表示",
     "rowNumber": "行番号",

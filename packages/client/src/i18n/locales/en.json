@@ -211,6 +211,8 @@
     "dropTooLarge": "{{name}} is too large to preview (max 2 MB)",
     "dropReadFailed": "Could not read {{name}}",
     "table": "Table",
+    "audioUnsupported": "This audio format cannot be played",
+    "binaryNoPreview": "This file cannot be previewed",
     "text": "Text",
     "tableLabel": "{{path}} as a table",
     "rowNumber": "Row",

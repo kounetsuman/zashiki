@@ -1,7 +1,7 @@
 //! The file types `/api/media` is willing to serve, mirroring the client's `viewer/media.ts`.
 
 /// A servable media type: the `Content-Type` we send, and whether it is a PDF (rendered by the
-/// WebView's PDF viewer rather than as an `<img>` / `<video>` subresource).
+/// WebView's PDF viewer rather than as an `<img>` / `<video>` / `<audio>` subresource).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MediaType {
     pub content_type: &'static str,
@@ -43,6 +43,16 @@ const MEDIA_TYPES: &[(&str, MediaType)] = &[
     ("mov", media("video/quicktime")),
     ("m4v", media("video/x-m4v")),
     ("ogv", media("video/ogg")),
+    ("mp3", media("audio/mpeg")),
+    ("m4a", media("audio/mp4")),
+    ("aac", media("audio/aac")),
+    ("wav", media("audio/wav")),
+    ("aiff", media("audio/aiff")),
+    ("aif", media("audio/aiff")),
+    ("flac", media("audio/flac")),
+    ("ogg", media("audio/ogg")),
+    ("oga", media("audio/ogg")),
+    ("opus", media("audio/ogg")),
     ("pdf", PDF),
 ];
 
@@ -67,7 +77,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn maps_image_video_and_pdf_extensions() {
+    fn maps_image_video_audio_and_pdf_extensions() {
         assert_eq!(
             media_type_for("logo.png").unwrap().content_type,
             "image/png"
@@ -83,6 +93,14 @@ mod tests {
         assert_eq!(
             media_type_for("clip.mov").unwrap().content_type,
             "video/quicktime"
+        );
+        assert_eq!(
+            media_type_for("voice.MP3").unwrap().content_type,
+            "audio/mpeg"
+        );
+        assert_eq!(
+            media_type_for("voice.opus").unwrap().content_type,
+            "audio/ogg"
         );
         assert_eq!(media_type_for("doc.pdf"), Some(PDF));
         assert!(!media_type_for("clip.mp4").unwrap().is_pdf);
@@ -113,6 +131,8 @@ mod tests {
             "data.json",
             "README.md",
             "Makefile",
+            "clip.avi",
+            "clip.mkv",
             "dir/",
             "v1.2/LICENSE",
             "",
@@ -135,7 +155,7 @@ mod tests {
             .skip(1)
             .step_by(2)
             .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric()))
-            .filter(|s| !matches!(*s, "image" | "video"))
+            .filter(|s| !matches!(*s, "image" | "video" | "audio"))
             .collect::<Vec<_>>();
         for ext in client_exts {
             assert!(
