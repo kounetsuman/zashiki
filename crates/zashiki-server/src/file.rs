@@ -124,6 +124,27 @@ impl ChunkDecoder {
     }
 }
 
+/// Reads `reader` `chunk_bytes` at a time as UTF-8 text, flushing a dangling partial character at the end.
+pub fn decoded_chunks<R: tokio::io::AsyncRead + Unpin>(
+    reader: R,
+    encoding: TextEncoding,
+    chunk_bytes: usize,
+) -> impl futures_util::Stream<Item = io::Result<String>> {
+    let state = Some((reader, ChunkDecoder::new(encoding), vec![0u8; chunk_bytes]));
+    futures_util::stream::unfold(state, |state| async move {
+        use tokio::io::AsyncReadExt;
+        let (mut reader, mut decoder, mut buf) = state?;
+        match reader.read(&mut buf).await {
+            Ok(0) => Some((Ok(decoder.decode(&[], true)), None)),
+            Ok(n) => {
+                let text = decoder.decode(&buf[..n], false);
+                Some((Ok(text), Some((reader, decoder, buf))))
+            }
+            Err(e) => Some((Err(e), None)),
+        }
+    })
+}
+
 /// Resolves a text file for a read, refusing it (413) before any of it is read when it is over `max_bytes`.
 pub fn text_file_within_repo(
     repo_path: &str,
@@ -186,7 +207,7 @@ mod tests {
         (dir, repo_str)
     }
 
-    /// Reads the way the route does: resolve, then decode `chunk`-byte pieces.
+    /// Reads the way the route does: resolve, then stream it in `chunk`-byte pieces.
     fn read(
         repo: &str,
         file: &str,
@@ -194,15 +215,20 @@ mod tests {
         encoding: TextEncoding,
         chunk: usize,
     ) -> Result<String, (StatusCode, String)> {
+        use futures_util::TryStreamExt;
         let (abs, _) = text_file_within_repo(repo, file, max_bytes)?;
-        let bytes = std::fs::read(abs).unwrap();
-        let mut decoder = ChunkDecoder::new(encoding);
-        let mut out = String::new();
-        for piece in bytes.chunks(chunk) {
-            out.push_str(&decoder.decode(piece, false));
-        }
-        out.push_str(&decoder.decode(&[], true));
-        Ok(out)
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        Ok(runtime.block_on(async {
+            let opened = tokio::fs::File::open(abs).await.unwrap();
+            let pieces: Vec<String> = decoded_chunks(opened, encoding, chunk)
+                .try_collect()
+                .await
+                .unwrap();
+            pieces.concat()
+        }))
     }
 
     #[test]
