@@ -1121,6 +1121,15 @@ describe("TabBar pinning", () => {
       fireEvent(el, end);
     }
 
+    it("carries no text, so other apps refuse a tab let go over them", () => {
+      renderBar();
+      const types: string[] = [];
+      fireEvent.dragStart(screen.getAllByRole("tab")[1] as HTMLElement, {
+        dataTransfer: { setData: (type: string) => types.push(type) },
+      });
+      expect(types).toEqual(["application/x-zashiki-tab"]);
+    });
+
     it("pops a session tab out from its menu", () => {
       const onPopOut = renderBar();
       fireEvent.contextMenu(screen.getAllByRole("tab")[1] as HTMLElement);

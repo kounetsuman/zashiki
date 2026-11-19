@@ -1,6 +1,9 @@
 import { type DragEvent, useState } from "react";
 import { dropOutsideWindow, type ScreenPoint } from "../lib/pop-out.js";
 
+/** Not text, so a tab let go over another app is refused there rather than dropped in as its key. */
+export const TAB_DRAG_TYPE = "application/x-zashiki-tab";
+
 export interface TabDrag {
   dragKey: string | null;
   dragOverKey: string | null;
@@ -33,7 +36,7 @@ export function useTabDrag(
     setDragKey(key);
     if (e.dataTransfer) {
       e.dataTransfer.effectAllowed = "move";
-      e.dataTransfer.setData("text/plain", key);
+      e.dataTransfer.setData(TAB_DRAG_TYPE, key);
     }
   };
 
