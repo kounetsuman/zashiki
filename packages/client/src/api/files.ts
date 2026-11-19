@@ -18,11 +18,12 @@ export interface FileReadOptions {
   limit?: number;
 }
 
-/** The server refused the read for the file's size (`size` is null when it did not say). */
+/** The server refused the read for the file's size; `size` and its `maxBytes` are null when it did not say. */
 export class FileTooLargeError extends Error {
   constructor(
     message: string,
     readonly size: number | null,
+    readonly maxBytes: number | null = null,
   ) {
     super(message);
     this.name = "FileTooLargeError";
@@ -43,7 +44,7 @@ export interface FilesApi {
 }
 
 async function errorOf(res: Response): Promise<Error> {
-  let body: { error?: unknown; size?: unknown } = {};
+  let body: { error?: unknown; size?: unknown; maxBytes?: unknown } = {};
   try {
     body = (await res.json()) as typeof body;
   } catch {
@@ -52,9 +53,11 @@ async function errorOf(res: Response): Promise<Error> {
   const message =
     typeof body.error === "string" ? body.error : `HTTP ${res.status}`;
   if (res.status !== 413) return new Error(message);
+  const numberOrNull = (v: unknown) => (typeof v === "number" ? v : null);
   return new FileTooLargeError(
     message,
-    typeof body.size === "number" ? body.size : null,
+    numberOrNull(body.size),
+    numberOrNull(body.maxBytes),
   );
 }
 

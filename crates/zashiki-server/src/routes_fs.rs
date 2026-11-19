@@ -52,9 +52,8 @@ pub(crate) async fn file_read(
     if let Err((status, msg)) = guard_file_path(&state, &repo_path, &file).await {
         return json_error(status, &msg);
     }
-    let max = params
-        .limit
-        .map_or(state.file_read_max_bytes(), |limit| limit.min(state.file_read_max_bytes()));
+    let max_bytes = state.file_read_max_bytes();
+    let max = params.limit.map_or(max_bytes, |limit| limit.min(max_bytes));
     let resolved =
         tokio::task::spawn_blocking(move || file::text_file_within_repo(&repo_path, &file, max))
             .await
@@ -66,7 +65,7 @@ pub(crate) async fn file_read(
             });
     let (abs, meta) = match resolved {
         Ok(v) => v,
-        Err(file::TextReadRefusal::TooLarge { size }) => return too_large_response(size),
+        Err(file::TextReadRefusal::TooLarge { size }) => return too_large_response(size, max_bytes),
         Err(file::TextReadRefusal::Failed(status, msg)) => return json_error(status, &msg),
     };
     let tag = file::version_tag(&meta, encoding);
@@ -89,10 +88,16 @@ pub(crate) async fn file_read(
     text_response(StatusCode::OK, &tag, body)
 }
 
-fn too_large_response(size: u64) -> Response {
+/// `maxBytes` is the server's maximum (not the request's `limit`), so the client can tell whether the
+/// file could still be opened anyway.
+fn too_large_response(size: u64, max_bytes: u64) -> Response {
     (
         StatusCode::PAYLOAD_TOO_LARGE,
-        Json(serde_json::json!({ "error": "file too large to open in the viewer", "size": size })),
+        Json(serde_json::json!({
+            "error": "file too large to open in the viewer",
+            "size": size,
+            "maxBytes": max_bytes,
+        })),
     )
         .into_response()
 }

@@ -25,6 +25,17 @@ describe("classifyReadFailure before the user opens anyway", () => {
     });
   });
 
+  it("decides by the server's maximum when the refusal names it", () => {
+    const fromServer = (size: number) =>
+      new FileTooLargeError("big", size, 400 * MIB);
+    expect(classifyReadFailure(fromServer(300 * MIB), false, MAX)).toEqual({
+      tooLarge: { reason: "confirm", size: 300 * MIB },
+    });
+    expect(classifyReadFailure(fromServer(500 * MIB), false, MAX)).toEqual({
+      tooLarge: { reason: "overMax", size: 500 * MIB, maxBytes: 400 * MIB },
+    });
+  });
+
   it("keeps the read's own error otherwise", () => {
     for (const e of [tooLarge(null), timeout, offline, new Error("gone")]) {
       expect(classifyReadFailure(e, false, MAX)).toEqual({

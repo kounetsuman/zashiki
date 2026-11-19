@@ -26,7 +26,7 @@ function isNetworkFailure(e: unknown): boolean {
 /**
  * Reads past the confirmation size that time out, lose the connection or are refused all mean the file
  * is too large to open. Before that, a refusal carrying the file's size asks for confirmation, unless
- * the file is over the maximum too.
+ * the file is over the maximum too: the server's when the refusal names it, else `maxBytes`.
  */
 export function classifyReadFailure(
   e: unknown,
@@ -41,8 +41,9 @@ export function classifyReadFailure(
   if (!(e instanceof FileTooLargeError) || e.size === null) {
     return { tooLarge: null, error: e };
   }
-  return e.size > maxBytes
-    ? { tooLarge: { reason: "overMax", size: e.size, maxBytes } }
+  const max = e.maxBytes ?? maxBytes;
+  return e.size > max
+    ? { tooLarge: { reason: "overMax", size: e.size, maxBytes: max } }
     : { tooLarge: { reason: "confirm", size: e.size } };
 }
 

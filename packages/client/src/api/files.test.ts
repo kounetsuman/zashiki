@@ -97,9 +97,10 @@ describe("createFilesApi.read", () => {
   it("rejects a 413 with the file size the server reports", async () => {
     const fetchFn = vi.fn(
       async () =>
-        new Response(JSON.stringify({ error: "too large", size: 5000 }), {
-          status: 413,
-        }),
+        new Response(
+          JSON.stringify({ error: "too large", size: 5000, maxBytes: 4096 }),
+          { status: 413 },
+        ),
     );
     const api = createFilesApi(
       "http://host",
@@ -112,6 +113,10 @@ describe("createFilesApi.read", () => {
       .catch((e: unknown) => e);
 
     expect(failure).toBeInstanceOf(FileTooLargeError);
-    expect(failure).toMatchObject({ message: "too large", size: 5000 });
+    expect(failure).toMatchObject({
+      message: "too large",
+      size: 5000,
+      maxBytes: 4096,
+    });
   });
 });

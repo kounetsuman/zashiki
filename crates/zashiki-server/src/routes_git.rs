@@ -778,7 +778,10 @@ mod git_file_rest_tests {
         std::fs::write(Path::new(&fx.repo_a).join("big.txt"), "x".repeat(100)).unwrap();
         let (s, b) = read(app(&fx), &fx.repo_a, "big.txt").await;
         assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
-        assert_eq!(b, r#"{"error":"file too large to open in the viewer","size":100}"#);
+        assert_eq!(
+            b,
+            r#"{"error":"file too large to open in the viewer","size":100,"maxBytes":32}"#
+        );
     }
 
     #[tokio::test]
@@ -795,6 +798,7 @@ mod git_file_rest_tests {
         let (s, b) = request(app(&fx), &with_limit("README.md", "4"), Some(OK_HOST), &[]).await;
         assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
         assert!(b.contains(r#""size":8"#), "{b}");
+        assert!(b.contains(r#""maxBytes":32"#), "{b}"); // the maximum, not the limit
         let (s, b) = request(app(&fx), &with_limit("README.md", "8"), Some(OK_HOST), &[]).await;
         assert_eq!(s, StatusCode::OK);
         assert_eq!(b, "# hello\n");
