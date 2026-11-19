@@ -92,11 +92,11 @@ function isBinary(content: string | null): boolean {
   return content?.includes("\0") ?? false;
 }
 
-function alternateView({
-  relPath,
-  content,
-  media,
-}: ViewerBuffer): AlternateView | null {
+function alternateView(
+  relPath: string,
+  content: string | null,
+  media: MediaSource | undefined,
+): AlternateView | null {
   if (media !== undefined) return "mediaText";
   if (isMarkdown(relPath)) return "markdownPreview";
   if (isHtml(relPath)) return "htmlPreview";
@@ -304,7 +304,10 @@ export function Viewer({
   const { t } = useTranslation();
   const sectionRef = useRef<HTMLElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
-  const alternate = useMemo(() => alternateView(buffer), [buffer]);
+  const alternate = useMemo(
+    () => alternateView(buffer.relPath, buffer.content, buffer.media),
+    [buffer.relPath, buffer.content, buffer.media],
+  );
   const showAlternate = alternate !== null && buffer.preview;
   const showsBinaryMessage = alternate === "binaryText" && !showAlternate;
   const showsMedia = alternate === "mediaText" && !showAlternate;
