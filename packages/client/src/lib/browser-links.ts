@@ -1,5 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import { isHttpUrl } from "./web-url.js";
+
 /**
  * The address a click should hand to the default browser: a main-button click on a web link that
  * opens a new window. Null for anything else, including a button inside the link, whose click is
@@ -11,9 +13,7 @@ export function browserLinkOf(event: MouseEvent): string | null {
   if (!(link instanceof HTMLAnchorElement) || link.target !== "_blank") {
     return null;
   }
-  return link.protocol === "http:" || link.protocol === "https:"
-    ? link.href
-    : null;
+  return isHttpUrl(link.href) ? link.href : null;
 }
 
 /** Asks the desktop shell to open `url` in the default browser; a refusal is reported and dropped. */
