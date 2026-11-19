@@ -1,4 +1,14 @@
 export {
+  type BackgroundTaskFacts,
+  type BackgroundTaskStatus,
+  backgroundTaskStatus,
+  DEFAULT_STALL_RULES,
+  type LaunchLimitOverride,
+  launchLimitMinFor,
+  type StallReason,
+  type StallRules,
+} from "./background-tasks.js";
+export {
   DASHBOARD_FREQUENCIES,
   DASHBOARD_SHOW_ON,
   type DashboardFrequency,
@@ -172,6 +182,11 @@ export {
 } from "./org-style.js";
 export { stripTrailingSlashes } from "./path-slash.js";
 export {
+  type BackgroundTask,
+  type BackgroundTasksResponse,
+  backgroundTaskPhaseSchema,
+  backgroundTaskSchema,
+  backgroundTasksResponseSchema,
   type ClaudeInstall,
   type ClientMessage,
   type CockpitTerminalId,

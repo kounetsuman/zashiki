@@ -25,6 +25,7 @@ Main Area
 Sub Area
 ├ Cockpit Terminal List View — grouped by Organization; a row is a Cockpit Terminal (select → shown in the Cockpit View)
 ├ Explorer View / Search View / Source Control View
+├ Background Task View — every Cockpit Terminal's background Bash tasks; stalled ones first, with the rule that flagged them (`src/session/background-task-rows.test.ts`)
 └ Notification View (unread/read) / Help View / Settings View
 
 Navigation Area — switches Sub Area Views

@@ -108,6 +108,7 @@
     "openHint": "ダブルクリックで開く（Enter でも可）",
     "subagentCountTitle": "実行中サブエージェント総数（入れ子含む）",
     "shellCountTitle": "常駐バックグラウンドシェル数",
+    "shellStalledTitle": "常駐バックグラウンドシェル数（止まっていそうなものがある）",
     "monitorCountTitle": "実行中のモニター数",
     "vitestCountTitle": "このセッションで実行中の vitest プロセス数",
     "closeRow": "{{name}} を閉じる",
@@ -352,7 +353,8 @@
     "activity": "アクティビティ",
     "notification": "通知",
     "help": "ヘルプ",
-    "settings": "設定"
+    "settings": "設定",
+    "backgroundTasks": "バックグラウンドタスク"
   },
   "settings": {
     "language": "表示言語",
@@ -470,7 +472,22 @@
     "rendererWebgl": "WebGL",
     "rendererDom": "DOM",
     "openDevtools": "DevTools を開く",
-    "openDebugPanel": "デバッグパネルを開く"
+    "openDebugPanel": "デバッグパネルを開く",
+    "stallRules": {
+      "section": "止まっていそうなバックグラウンドタスク",
+      "hint": "実行中のバックグラウンドタスクは、どれか1つの上限を超えると「止まっていそう」になります。コマンドごとの起動上限は、コマンドに文字列が含まれる時に使います。",
+      "launchLimitMin": "起動から",
+      "quietLimitMin": "出力の無更新",
+      "repeatLimit": "末尾の同じ行",
+      "overrides": "コマンドごとの起動上限",
+      "match": "コマンドに含む文字列",
+      "add": "コマンドを追加",
+      "remove": "削除",
+      "unit": {
+        "minutes": "分",
+        "times": "回"
+      }
+    }
   },
   "runtime": {
     "section": "Claude Code CLI",
@@ -668,5 +685,35 @@
     "returnToMain": "メインに戻す",
     "returnToMainWindow": "メインウィンドウに戻す",
     "gone": "このターミナルは閉じられました"
+  },
+  "backgroundTasks": {
+    "empty": "開いている Claude Session にバックグラウンドタスクはありません。",
+    "rulesSummary": "判定: 起動 {{launch}} 分 / 無出力 {{quiet}} 分 / 同じ行 {{repeat}} 回",
+    "filter": {
+      "stalled": "止まっていそう",
+      "running": "実行中",
+      "ended": "終了",
+      "disconnected": "切断",
+      "all": "すべて"
+    },
+    "status": {
+      "stalled": "止まっていそう",
+      "running": "実行中",
+      "exit": "終了 {{code}}",
+      "killed": "中断",
+      "stopped": "停止",
+      "ended": "終了",
+      "disconnected": "切断"
+    },
+    "outputAgo": "出力 {{ago}} 前",
+    "noOutput": "出力はまだありません",
+    "endedAgo": "{{ago}} 前に終了",
+    "noNotice": "終了（完了通知なし）",
+    "disconnectedNote": "セッション終了で切れた（完了通知なし）",
+    "reason": {
+      "launchAge": "起動から {{min}} 分超",
+      "quiet": "出力が {{min}} 分以上更新なし",
+      "repeat": "末尾の同じ行が {{count}} 回続く: {{line}}"
+    }
   }
 }

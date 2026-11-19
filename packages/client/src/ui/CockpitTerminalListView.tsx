@@ -82,6 +82,8 @@ export interface CockpitTerminalListViewProps {
   onReorderRows?(order: string[]): void;
   /** Cockpit Terminals shown in their own window; their rows carry a mark. */
   poppedOutIds?: ReadonlySet<string>;
+  /** Cockpit Terminals with a background task that looks stalled; their shell chip warns. */
+  stalledShellIds?: ReadonlySet<string>;
 }
 
 /**
@@ -112,6 +114,7 @@ export function CockpitTerminalListView({
   onReorderOrgs,
   onReorderRows,
   poppedOutIds,
+  stalledShellIds,
 }: CockpitTerminalListViewProps) {
   const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
@@ -381,6 +384,9 @@ export function CockpitTerminalListView({
                     conversationTitles={conversationTitles}
                     selectedCockpitTerminalId={selectedCockpitTerminalId}
                     poppedOut={poppedOutIds?.has(s.cockpitTerminalId) === true}
+                    shellStalled={
+                      stalledShellIds?.has(s.cockpitTerminalId) === true
+                    }
                     isFocused={
                       focused?.kind === "row" &&
                       focused.cockpitTerminalId === s.cockpitTerminalId

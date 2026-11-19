@@ -895,6 +895,46 @@ export const sessionLinksResponseSchema = z.object({
 
 export type SessionLinksResponse = z.infer<typeof sessionLinksResponseSchema>;
 
+/** Where a background task stands: running, ended (with its notice once written), or cut off with its
+ * Claude Session. */
+export const backgroundTaskPhaseSchema = z.enum([
+  "running",
+  "ended",
+  "disconnected",
+]);
+
+/** One background Bash task of a Cockpit Terminal's most recent Claude Session. Times are epoch ms. */
+export const backgroundTaskSchema = z.object({
+  cockpitTerminalId: z.string(),
+  org: z.string(),
+  repo: z.string(),
+  cwd: z.string(),
+  sid: z.string(),
+  title: z.string().optional(),
+  taskId: z.string(),
+  description: z.string(),
+  command: z.string(),
+  startedAt: z.number().int().optional(),
+  phase: backgroundTaskPhaseSchema,
+  endStatus: z.string().optional(),
+  exitCode: z.number().int().optional(),
+  endedAt: z.number().int().optional(),
+  outputModifiedAt: z.number().int().optional(),
+  lastLine: z.string().optional(),
+  lastLineRepeats: z.number().int().min(0),
+});
+
+export type BackgroundTask = z.infer<typeof backgroundTaskSchema>;
+
+/** `GET /api/background-tasks`: launch order per Cockpit Terminal. */
+export const backgroundTasksResponseSchema = z.object({
+  tasks: z.array(backgroundTaskSchema),
+});
+
+export type BackgroundTasksResponse = z.infer<
+  typeof backgroundTasksResponseSchema
+>;
+
 export const sessionEventKindSchema = z.enum([
   "prompt",
   "read",

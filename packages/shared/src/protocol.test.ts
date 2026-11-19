@@ -9,6 +9,8 @@ import {
   DEFAULT_NOTIFICATION_SETTINGS,
 } from "./config.js";
 import {
+  backgroundTaskPhaseSchema,
+  backgroundTasksResponseSchema,
   canRestartCockpitTerminal,
   claudeSessionId,
   clientMessageSchema,
@@ -908,5 +910,49 @@ describe("cockpit terminal REST responses", () => {
     expect(parsed.events[0]?.kind).toBe("tool");
     expect(parsed.events[0]?.outcome).toBeUndefined();
     expect(parsed.events[0]?.deniedBy).toBeUndefined();
+  });
+});
+
+describe("backgroundTasksResponseSchema", () => {
+  it("parses the server's wire shape, with optional facts left out", () => {
+    const body = {
+      tasks: [
+        {
+          cockpitTerminalId: "t1",
+          org: "org",
+          repo: "repo",
+          cwd: "/w/repo",
+          sid: "s1",
+          taskId: "b1",
+          description: "Run CI",
+          command: "make ci",
+          startedAt: 1_795_074_693_778,
+          phase: "running",
+          outputModifiedAt: 1_795_074_700_000,
+          lastLine: "waiting",
+          lastLineRepeats: 3,
+        },
+        {
+          cockpitTerminalId: "t1",
+          org: "org",
+          repo: "repo",
+          cwd: "/w/repo",
+          sid: "s1",
+          taskId: "b2",
+          description: "",
+          command: "exit 3",
+          phase: "ended",
+          endStatus: "failed",
+          exitCode: 3,
+          endedAt: 1_795_074_720_000,
+          lastLineRepeats: 0,
+        },
+      ],
+    };
+    expect(backgroundTasksResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it("rejects an unknown phase", () => {
+    expect(() => backgroundTaskPhaseSchema.parse("paused")).toThrow();
   });
 });

@@ -83,3 +83,35 @@ describe("createCockpitTerminalsApi.faviconUrl", () => {
     );
   });
 });
+
+describe("createCockpitTerminalsApi.backgroundTasks", () => {
+  it("GETs every terminal's background tasks with the token header", async () => {
+    const task = {
+      cockpitTerminalId: "@1",
+      org: "o",
+      repo: "r",
+      cwd: "/w/r",
+      sid: "s1",
+      taskId: "b1",
+      description: "Run CI",
+      command: "make ci",
+      phase: "running",
+      lastLineRepeats: 0,
+    };
+    const fetchFn = vi.fn(
+      async () => new Response(JSON.stringify({ tasks: [task] })),
+    );
+    const api = createCockpitTerminalsApi(
+      "http://host",
+      "tok",
+      fetchFn as never,
+    );
+    expect(await api.backgroundTasks()).toEqual([task]);
+    const [url, init] = fetchFn.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toBe("http://host/api/background-tasks");
+    expect(init.headers).toEqual({ "x-zashiki-token": "tok" });
+  });
+});

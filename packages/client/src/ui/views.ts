@@ -7,6 +7,7 @@ export type ViewId =
   | "search"
   | "sourceControl"
   | "activity"
+  | "backgroundTasks"
   | "notification";
 
 /**
@@ -50,6 +51,12 @@ export const VIEW_DEFS: readonly ViewDef[] = [
     labelKey: "view.activity",
     icon: "bolt",
     shortcutKey: "a",
+  },
+  {
+    id: "backgroundTasks",
+    labelKey: "view.backgroundTasks",
+    icon: "timer",
+    shortcutKey: "b",
   },
   {
     id: "notification",

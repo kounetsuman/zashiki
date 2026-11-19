@@ -662,6 +662,56 @@ pub struct SessionLink {
     pub favicon_origin: Option<String>,
 }
 
+/// Where a background task stands, from what can be observed: its completion notice and its process.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackgroundTaskPhase {
+    Running,
+    Ended,
+    /// No notice and no process: the Claude Session ended under it.
+    Disconnected,
+}
+
+/// One background Bash task of a Claude Session in a Cockpit Terminal. Times are epoch ms; ages are
+/// left to the client so the response does not change every second.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundTask {
+    pub cockpit_terminal_id: String,
+    pub org: String,
+    pub repo: String,
+    pub cwd: String,
+    pub sid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    pub task_id: String,
+    pub description: String,
+    pub command: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<u64>,
+    pub phase: BackgroundTaskPhase,
+    /// The notice's status (`completed` / `failed` / `killed` / `stopped`); absent before it arrives.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_modified_at: Option<u64>,
+    /// The output's last non-blank line, read while running.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_line: Option<String>,
+    /// How many lines in a row at the end of the output repeat `last_line`.
+    pub last_line_repeats: u32,
+}
+
+/// Response for `GET /api/background-tasks`: every Cockpit Terminal's tasks, launch order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BackgroundTasksResponse {
+    pub tasks: Vec<BackgroundTask>,
+}
+
 /// Response for `GET /api/cockpit-terminals/links?id=`: newest appearance first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SessionLinksResponse {

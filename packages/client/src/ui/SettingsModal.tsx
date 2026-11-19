@@ -5,6 +5,7 @@ import type {
   HooksStatusMessage,
   NotificationSettings,
   RuntimeUpdateStatusMessage,
+  StallRules,
   UpdateCheckResultMessage,
 } from "@zashiki/shared";
 import { useEffect, useState } from "react";
@@ -18,6 +19,7 @@ import { NotificationSettingsField } from "./NotificationSettingsField.js";
 import { OrgAppearanceEditor } from "./OrgAppearanceEditor.js";
 import { OrgNotesEditor } from "./OrgNotesEditor.js";
 import { RuntimeInfoView } from "./RuntimeInfoView.js";
+import { StallRulesField } from "./StallRulesField.js";
 import "./SettingsModal.css";
 import {
   UnsavedChangesBar,
@@ -107,6 +109,10 @@ export interface SettingsModalProps {
   footerThresholds?: FooterThresholds;
   /** Persist the status-footer severity thresholds (Save). */
   onSaveFooterThresholds?(thresholds: FooterThresholds): void;
+  /** When a background task counts as stalled. Omit (with the handler) to hide the section. */
+  stallRules?: StallRules;
+  /** Persist the stall rules (Save). */
+  onSaveStallRules?(rules: StallRules): void;
   /** Current per-category notification switches. Omit (with the handler) to hide the section. */
   notificationSettings?: NotificationSettings;
   /** Persist the per-category notification switches (applied live). */
@@ -179,6 +185,8 @@ export function SettingsModal({
   onSaveDashboard,
   footerThresholds,
   onSaveFooterThresholds,
+  stallRules,
+  onSaveStallRules,
   notificationSettings,
   onSetNotifications,
   hooksStatus,
@@ -481,6 +489,9 @@ export function SettingsModal({
                   onSave={onSaveFooterThresholds}
                 />
               )}
+            {onSaveStallRules !== undefined && stallRules !== undefined && (
+              <StallRulesField value={stallRules} onSave={onSaveStallRules} />
+            )}
             {onSetHooksRegistered !== undefined &&
               hooksStatus !== undefined && (
                 <div className="settings-field">

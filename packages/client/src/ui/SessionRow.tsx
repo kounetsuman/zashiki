@@ -16,6 +16,8 @@ export interface SessionRowProps {
   selectedCockpitTerminalId: string | null;
   /** Whether the terminal is shown in its own window (marks the row). */
   poppedOut?: boolean;
+  /** One of its background tasks looks stalled (the shell chip warns). */
+  shellStalled?: boolean;
   isFocused: boolean;
   focusedRef: React.RefObject<HTMLButtonElement | null>;
   isRenaming: boolean;
@@ -48,6 +50,7 @@ export function SessionRow({
   conversationTitles,
   selectedCockpitTerminalId,
   poppedOut = false,
+  shellStalled = false,
   isFocused,
   focusedRef,
   isRenaming,
@@ -144,7 +147,7 @@ export function SessionRow({
             onDoubleClick={() => onSelect(s.cockpitTerminalId)}
           >
             <StateIcon session={s} fresh={fresh} />
-            <ActivityChips session={s} />
+            <ActivityChips session={s} shellStalled={shellStalled} />
             <span className="session-title"> {displayTitle}</span>
             {poppedOut && (
               <span
