@@ -131,7 +131,8 @@ fn parse_attrs(rest: &str) -> Attrs {
         let name = rest[start..end].to_ascii_lowercase();
         while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
         let mut value = String::new();
-        if chars.next_if(|(_, c)| *c == '=').is_some() {
+        let has_value = chars.next_if(|(_, c)| *c == '=').is_some();
+        if has_value {
             while chars.next_if(|(_, c)| c.is_whitespace()).is_some() {}
             match chars.peek().map(|&(_, c)| c) {
                 Some(quote @ ('"' | '\'')) => {
@@ -152,7 +153,9 @@ fn parse_attrs(rest: &str) -> Attrs {
             }
         }
         if name.is_empty() {
-            chars.next();
+            if !has_value {
+                chars.next();
+            }
             continue;
         }
         attrs.push((name, decode_entities(&value)));
@@ -353,6 +356,15 @@ mod tests {
             fallback
         );
         assert_eq!(favicon_url(&page(), None).map(String::from), fallback);
+    }
+
+    #[test]
+    fn an_attribute_without_a_name_does_not_run_into_the_next_tag() {
+        assert_eq!(parse_attrs(r#" ="x"> rel="icon" href="/a.png">"#), vec![]);
+        assert_eq!(
+            parse_attrs(r#" ="x" rel="icon">"#),
+            vec![("rel".to_string(), "icon".to_string())]
+        );
     }
 
     #[test]
