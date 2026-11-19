@@ -316,7 +316,6 @@ export function App({
   );
   const {
     cockpitTerminals,
-    cockpitTerminalsSynced,
     orgs,
     orgColors,
     orgAliases,
@@ -679,7 +678,7 @@ export function App({
       toastOpenFailed,
     );
   }, [t, openPicked, toastOpenFailed]);
-  useOpenedFiles(openPicked, toastOpenFailed, cockpitTerminalsSynced);
+  useOpenedFiles(openPicked, toastOpenFailed);
 
   const copyWithToast = useCallback(
     (text: string, toastKey: "toast.pathCopied" | "toast.linkCopied"): void => {

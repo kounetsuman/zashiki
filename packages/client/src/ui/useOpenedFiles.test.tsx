@@ -28,13 +28,8 @@ vi.mock("@tauri-apps/api/event", () => ({ listen }));
 function Probe(props: {
   onPicked: (picked: PickedFile[]) => void;
   onFailed?: () => void;
-  ready?: boolean;
 }) {
-  useOpenedFiles(
-    props.onPicked,
-    props.onFailed ?? vi.fn(),
-    props.ready ?? true,
-  );
+  useOpenedFiles(props.onPicked, props.onFailed ?? vi.fn());
   return null;
 }
 
@@ -75,19 +70,6 @@ describe("useOpenedFiles", () => {
       "listen zashiki:files-opened",
       `invoke take_opened_files {"maxBytes":${FILE_MAX_BYTES}}`,
     ]);
-  });
-
-  it("holds the files until the terminal list is known, so startup still opens a terminal", async () => {
-    invoke.mockResolvedValueOnce([{ name: "a.md", content: "A" }]);
-    const onPicked = vi.fn();
-    const { rerender } = render(<Probe onPicked={onPicked} ready={false} />);
-    await Promise.resolve();
-    expect(listen).not.toHaveBeenCalled();
-    expect(invoke).not.toHaveBeenCalled();
-    rerender(<Probe onPicked={onPicked} ready={true} />);
-    await vi.waitFor(() =>
-      expect(onPicked).toHaveBeenCalledWith([{ name: "a.md", content: "A" }]),
-    );
   });
 
   it("takes the files again each time the shell signals new ones", async () => {

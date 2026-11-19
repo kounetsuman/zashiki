@@ -10,6 +10,7 @@ import {
   MEMO_TAB_KEY,
   moveTab,
   openTab,
+  openTabBehind,
   pinTab,
   pruneSessions,
   setMemoVisible,
@@ -90,16 +91,23 @@ export function useAppTabs(
   const bootstrappedRef = useRef(false);
   useEffect(() => {
     if (bootstrappedRef.current) return;
-    if (tabsState.tabs.length > 0) {
+    // A file handed over at launch can open before the terminal list arrives; it keeps the front.
+    const onlyViewers = tabsState.tabs.every((t) => t.kind === "viewer");
+    if (!onlyViewers) {
       bootstrappedRef.current = true;
       return;
     }
     const w = cockpitTerminals.find((s) => s.active) ?? cockpitTerminals[0];
-    if (w !== undefined) {
-      bootstrappedRef.current = true;
+    if (w === undefined) return;
+    bootstrappedRef.current = true;
+    if (tabsState.tabs.length === 0) {
       store.selectCockpitTerminal(w.cockpitTerminalId);
+    } else {
+      setTabsState((prev) =>
+        openTabBehind(prev, { kind: "session", id: w.cockpitTerminalId }),
+      );
     }
-  }, [cockpitTerminals, tabsState.tabs.length, store]);
+  }, [cockpitTerminals, tabsState.tabs, store]);
 
   const activateTabByKey = useCallback(
     (key: string): void => {
