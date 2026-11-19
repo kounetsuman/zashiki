@@ -478,6 +478,11 @@ textarea {
   color: #d9a441;
 }
 
+/* 止まっていそうなバックグラウンドタスクを持つシェルのチップ。 */
+.session-activity-stalled {
+  color: #f0b429;
+}
+
 .session-activity-glyph {
   font-size: 13px;
   margin-right: 1px;
@@ -3212,6 +3217,141 @@ textarea {
 }
 
 /* ---- NOTIFICATION ビュー（issue #177） ---- */
+
+/* BACKGROUND TASKS ビュー: 1タスク1行。止まっていそうな行は理由の行を添える。 */
+.background-task-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.background-task-rules {
+  padding: 4px 12px;
+  border-bottom: 1px solid #262626;
+  font-size: 10px;
+  color: #7d828a;
+}
+
+.background-task-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px 2px;
+}
+
+.background-task-filter {
+  padding: 2px 8px;
+  border: 1px solid #2f2f2f;
+  border-radius: 10px;
+  background: transparent;
+  color: #8a8a8a;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.background-task-filter:hover {
+  color: #ddd;
+}
+
+.background-task-filter.is-active {
+  border-color: #0e639c;
+  color: #eaeaea;
+}
+
+.background-task-filter-stalled.is-active {
+  border-color: #f0b429;
+  color: #f0b429;
+}
+
+.background-task-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.background-task-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #262626;
+  --task-tone: #777;
+}
+
+.background-task-stalled {
+  --task-tone: #f0b429;
+  background: #24200f;
+}
+
+.background-task-running {
+  --task-tone: #5aa9e6;
+}
+
+.background-task-ok {
+  --task-tone: #4caf7d;
+}
+
+.background-task-failed {
+  --task-tone: #ff6b6b;
+}
+
+.background-task-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.background-task-badge {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--task-tone) 18%, transparent);
+  color: var(--task-tone);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.background-task-description {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ddd;
+}
+
+.background-task-elapsed {
+  flex: none;
+  color: #8a8a8a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.background-task-command {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #8a8a8a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.background-task-meta {
+  color: #8a8a8a;
+  font-size: 10px;
+}
+
+.background-task-reason {
+  color: #f0b429;
+  font-size: 10px;
+}
 
 .notification-view {
   position: relative;

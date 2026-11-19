@@ -25,6 +25,7 @@ Main Area
 Sub Area
 ├ Cockpit Terminal List View — Organization で束ねる。行 = Cockpit Terminal（選択で Cockpit View に表示）
 ├ Explorer View / Search View / Source Control View
+├ Background Task View — 各 Cockpit Terminal のバックグラウンド Bash タスク。止まっていそうなものを先頭に、判定した理由つきで出す（`src/session/background-task-rows.test.ts`）
 └ Notification View（未読/既読）/ Help View / Settings View
 
 Navigation Area — Sub Area View の切替

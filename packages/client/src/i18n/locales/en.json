@@ -108,6 +108,7 @@
     "openHint": "Double-click to open (or press Enter)",
     "subagentCountTitle": "Total running subagents (including nested)",
     "shellCountTitle": "Resident background shells",
+    "shellStalledTitle": "Resident background shells — one looks stalled",
     "monitorCountTitle": "Running monitors",
     "vitestCountTitle": "Running vitest processes in this session",
     "closeRow": "Close {{name}}",
@@ -352,7 +353,8 @@
     "activity": "Activity",
     "notification": "Notifications",
     "help": "Help",
-    "settings": "Settings"
+    "settings": "Settings",
+    "backgroundTasks": "Background Tasks"
   },
   "settings": {
     "language": "Display language",
@@ -470,7 +472,22 @@
     "rendererWebgl": "WebGL",
     "rendererDom": "DOM",
     "openDevtools": "Open DevTools",
-    "openDebugPanel": "Open debug panel"
+    "openDebugPanel": "Open debug panel",
+    "stallRules": {
+      "section": "Stalled background tasks",
+      "hint": "A running background task counts as stalled once any limit is passed. Per-command launch limits apply when the command contains the text.",
+      "launchLimitMin": "Since launch",
+      "quietLimitMin": "Output unchanged",
+      "repeatLimit": "Same last line",
+      "overrides": "Launch limit per command",
+      "match": "Command contains",
+      "add": "Add command",
+      "remove": "Remove",
+      "unit": {
+        "minutes": "min",
+        "times": "times"
+      }
+    }
   },
   "runtime": {
     "section": "Claude Code CLI",
@@ -602,5 +619,35 @@
     "returnToMain": "Return to Main",
     "returnToMainWindow": "Return to Main Window",
     "gone": "This terminal has been closed."
+  },
+  "backgroundTasks": {
+    "empty": "No background tasks in the open Claude Sessions.",
+    "rulesSummary": "Stalled after {{launch}}m · quiet {{quiet}}m · {{repeat}} repeats",
+    "filter": {
+      "stalled": "Stalled",
+      "running": "Running",
+      "ended": "Ended",
+      "disconnected": "Disconnected",
+      "all": "All"
+    },
+    "status": {
+      "stalled": "Stalled",
+      "running": "Running",
+      "exit": "Exit {{code}}",
+      "killed": "Killed",
+      "stopped": "Stopped",
+      "ended": "Ended",
+      "disconnected": "Disconnected"
+    },
+    "outputAgo": "output {{ago}} ago",
+    "noOutput": "no output yet",
+    "endedAgo": "ended {{ago}} ago",
+    "noNotice": "ended, no completion notice",
+    "disconnectedNote": "the Claude Session ended under it (no completion notice)",
+    "reason": {
+      "launchAge": "launched over {{min}} min ago",
+      "quiet": "no output for {{min}} min",
+      "repeat": "last line repeated {{count}}×: {{line}}"
+    }
   }
 }

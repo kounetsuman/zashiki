@@ -61,6 +61,7 @@ function apiReturning(
     tail: vi.fn(async () => []),
     links: vi.fn(async () => []),
     faviconUrl: (origin) => origin,
+    backgroundTasks: vi.fn(async () => []),
   };
 }
 

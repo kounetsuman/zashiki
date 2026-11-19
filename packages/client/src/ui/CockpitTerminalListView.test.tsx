@@ -285,6 +285,31 @@ describe("CockpitTerminalListView: session rows", () => {
     expect(chip?.textContent).toContain("3");
   });
 
+  it("warns on the shell chip of a terminal with a stalled background task", () => {
+    renderView({
+      cockpitTerminals: [
+        { ...cockpitTerminals[0], shellsRunning: 1 } as CockpitTerminalInfo,
+      ],
+      stalledShellIds: new Set([cockpitTerminals[0]?.cockpitTerminalId ?? ""]),
+    });
+    const chip = screen.getByText("terminal").parentElement;
+    expect(chip?.className).toContain("session-activity-stalled");
+    expect(chip?.getAttribute("title")).toBe(
+      "常駐バックグラウンドシェル数（止まっていそうなものがある）",
+    );
+  });
+
+  it("leaves the shell chip plain without a stalled task", () => {
+    renderView({
+      cockpitTerminals: [
+        { ...cockpitTerminals[0], shellsRunning: 1 } as CockpitTerminalInfo,
+      ],
+    });
+    expect(screen.getByText("terminal").parentElement?.className).not.toContain(
+      "session-activity-stalled",
+    );
+  });
+
   it("keeps an idle row's own glyph while a bg shell runs (no running-glyph swap)", () => {
     renderView({
       cockpitTerminals: [

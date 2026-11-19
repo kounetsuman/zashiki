@@ -23,6 +23,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -73,6 +74,11 @@ import { memoDirty } from "./memo/memo-model.js";
 import { createMemoSaver } from "./memo/memo-saver.js";
 import type { MemoViewState } from "./memo/memo-view-state.js";
 import {
+  backgroundTaskRows,
+  countByFilter,
+  stalledCockpitTerminalIds,
+} from "./session/background-task-rows.js";
+import {
   clampFiveHourWhenLimited,
   fmtResetClock,
   usageRemainingPercent,
@@ -87,6 +93,7 @@ import { AccountIndicator } from "./ui/AccountIndicator.js";
 import { AccountUsageFooter } from "./ui/AccountUsageFooter.js";
 import { AccountUsageModal } from "./ui/AccountUsageModal.js";
 import { AddOrgModal } from "./ui/AddOrgModal.js";
+import { BackgroundTaskView } from "./ui/BackgroundTaskView.js";
 import { CockpitTerminalListView } from "./ui/CockpitTerminalListView.js";
 import { CrashReportModal } from "./ui/CrashReportModal.js";
 import { DashboardOverlay } from "./ui/DashboardOverlay.js";
@@ -117,6 +124,7 @@ import { UpdateBanner } from "./ui/UpdateBanner.js";
 import { UsageLimitWarningDialog } from "./ui/UsageLimitWarningDialog.js";
 import { useAppKeyboardShortcuts } from "./ui/useAppKeyboardShortcuts.js";
 import { useAppTabs } from "./ui/useAppTabs.js";
+import { useBackgroundTasks } from "./ui/useBackgroundTasks.js";
 import { useBeforeUnloadGuard } from "./ui/useBeforeUnloadGuard.js";
 import { useBrowserLinks } from "./ui/useBrowserLinks.js";
 import { useClipboardCopy } from "./ui/useClipboardCopy.js";
@@ -134,6 +142,7 @@ import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useSessionLinks } from "./ui/useSessionLinks.js";
+import { useStallRules } from "./ui/useStallRules.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useUsageLimitWarning } from "./ui/useUsageLimitWarning.js";
 import { useViewer } from "./ui/useViewer.js";
@@ -334,6 +343,22 @@ export function App({
     focusNonce,
     resizeNonce,
   } = useSyncExternalStore(store.subscribe, store.getSnapshot);
+
+  const backgroundTasks = useBackgroundTasks(cockpitTerminalsApi);
+  const [stallRules, saveStallRules] = useStallRules();
+  const backgroundRows = useMemo(
+    () =>
+      backgroundTaskRows(
+        backgroundTasks.tasks,
+        backgroundTasks.fetchedAt,
+        stallRules,
+      ),
+    [backgroundTasks, stallRules],
+  );
+  const stalledShellIds = useMemo(
+    () => stalledCockpitTerminalIds(backgroundRows),
+    [backgroundRows],
+  );
 
   const idleWarning = useIdleTerminalWarning(
     cockpitTerminalsApi,
@@ -1227,7 +1252,11 @@ export function App({
             setHelpModalOpen(false);
             setSettingsModalOpen(true);
           }}
-          badges={{ activity: activityUnread, notification: systemUnread }}
+          badges={{
+            activity: activityUnread,
+            backgroundTasks: countByFilter(backgroundRows).stalled,
+            notification: systemUnread,
+          }}
         />
         {selectedView !== null && (
           <aside className="left-area">
@@ -1270,6 +1299,13 @@ export function App({
                 seenIds={seenIds}
                 onMarkRead={markRead}
                 onDelete={deleteNotifications}
+              />
+            )}
+            {selectedView === "backgroundTasks" && (
+              <BackgroundTaskView
+                rows={backgroundRows}
+                nowMs={backgroundTasks.fetchedAt}
+                rules={stallRules}
               />
             )}
             {selectedView === "notification" && (
@@ -1459,6 +1495,7 @@ export function App({
               control.send({ t: "cockpitTerminal.reorder", order })
             }
             poppedOutIds={poppedOut.ids}
+            stalledShellIds={stalledShellIds}
           />
         </aside>
       </div>
@@ -1508,6 +1545,8 @@ export function App({
           dashboard={dashboardSettings ?? undefined}
           onSaveDashboard={saveDashboard}
           onSaveFooterThresholds={saveFooterThresholds}
+          stallRules={stallRules}
+          onSaveStallRules={saveStallRules}
           notificationSettings={notificationSettings}
           onSetNotifications={saveNotifications}
           hooksStatus={hooksStatus ?? undefined}

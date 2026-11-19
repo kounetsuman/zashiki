@@ -1,4 +1,6 @@
 import {
+  type BackgroundTask,
+  backgroundTasksResponseSchema,
   type CockpitTerminalLastActivityResponse,
   cockpitTerminalLastActivityResponseSchema,
   cockpitTerminalTailResponseSchema,
@@ -26,6 +28,8 @@ export interface CockpitTerminalsApi {
   ): Promise<SessionLink[]>;
   /** The image URL for a link's `faviconOrigin`. */
   faviconUrl(origin: string): string;
+  /** Every Cockpit Terminal's background tasks, running or not. */
+  backgroundTasks(signal?: AbortSignal): Promise<BackgroundTask[]>;
 }
 
 export function createCockpitTerminalsApi(
@@ -64,6 +68,12 @@ export function createCockpitTerminalsApi(
     },
     faviconUrl(origin) {
       return sessionLinkFaviconUrl(base, origin, token);
+    },
+    async backgroundTasks(signal) {
+      const body = backgroundTasksResponseSchema.parse(
+        await getJson("/api/background-tasks", signal),
+      );
+      return body.tasks;
     },
   };
 }

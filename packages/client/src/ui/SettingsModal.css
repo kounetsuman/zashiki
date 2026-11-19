@@ -359,3 +359,79 @@
   display: flex;
   gap: 8px;
 }
+
+.stall-rules-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stall-rules-name {
+  min-width: 140px;
+}
+
+.stall-rules-input {
+  width: 96px;
+  background: var(--modal-control-bg);
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  color: var(--modal-text);
+  font: inherit;
+  padding: 5px 8px;
+}
+
+.stall-rules-input.stall-rules-match {
+  width: 220px;
+}
+
+.stall-rules-input:focus {
+  outline: none;
+  border-color: var(--modal-accent);
+}
+
+@media (any-pointer: coarse) {
+  .stall-rules-input {
+    font-size: 16px;
+  }
+}
+
+.stall-rules-unit {
+  font-size: 12px;
+  color: var(--modal-text-muted);
+}
+
+.stall-rules-overrides {
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  padding: 8px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stall-rules-overrides legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--modal-text-dim);
+  padding: 0 4px;
+}
+
+.stall-rules-remove,
+.stall-rules-add {
+  background: none;
+  border: 1px solid var(--modal-border);
+  border-radius: var(--modal-radius);
+  color: var(--modal-text-dim);
+  cursor: pointer;
+  font: inherit;
+}
+
+.stall-rules-remove {
+  display: inline-flex;
+  padding: 2px;
+}
+
+.stall-rules-add {
+  align-self: flex-start;
+  padding: 4px 10px;
+}
