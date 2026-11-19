@@ -23,8 +23,17 @@ pub(crate) fn page_title(html: &str) -> Option<String> {
     })
 }
 
+/// The `<title>` in the head: one after `</head>` or `<body>` belongs to something in the body, such
+/// as an inline SVG.
 fn title_element<'a>(html: &'a str, lower: &str) -> Option<&'a str> {
-    let open = tag_starts(lower, "title").next()?;
+    let head_end = [lower.find("</head"), tag_starts(lower, "body").next()]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(lower.len());
+    let open = tag_starts(lower, "title")
+        .next()
+        .filter(|&open| open < head_end)?;
     let content_start = open + lower[open..].find('>')? + 1;
     let content_end = content_start + lower[content_start..].find("</title")?;
     Some(&html[content_start..content_end])
@@ -273,6 +282,17 @@ mod tests {
         assert_eq!(page_title(&empty_title).as_deref(), Some("From OG"));
         let single_quoted = "<meta property='og:title' content='Single'>";
         assert_eq!(page_title(single_quoted).as_deref(), Some("Single"));
+    }
+
+    #[test]
+    fn a_title_inside_the_body_is_not_the_page_title() {
+        let og = r#"<meta property="og:title" content="OG">"#;
+        let in_body = format!("<head>{og}</head><body><svg><title>Close</title></svg></body>");
+        assert_eq!(page_title(&in_body).as_deref(), Some("OG"));
+        let no_head_end = format!("{og}<BODY class=x><svg><title>Close</title></svg>");
+        assert_eq!(page_title(&no_head_end).as_deref(), Some("OG"));
+        let headless = "<title>Plain</title><p>text</p>";
+        assert_eq!(page_title(headless).as_deref(), Some("Plain"));
     }
 
     #[test]
