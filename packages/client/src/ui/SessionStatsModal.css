@@ -1,0 +1,358 @@
+.modal-box.session-stats-modal {
+  --sst-mono: ui-monospace, Menlo, monospace;
+  --sst-bad: #e06c75;
+  --sst-bad-bg: rgba(224, 108, 117, 0.1);
+  --sst-accent: #7aa2f7;
+
+  width: min(94vw, 960px);
+  height: min(88vh, 720px);
+}
+
+.sst-header {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  margin: 0 12px;
+}
+
+.sst-session-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--modal-text-dim);
+}
+
+.sst-modes {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border: 1px solid var(--modal-border);
+  border-radius: 6px;
+  background: var(--modal-surface);
+}
+
+.sst-mode {
+  padding: 2px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--modal-text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sst-mode[aria-checked="true"] {
+  background: var(--modal-control-bg-hover);
+  color: #eee;
+}
+
+.sst-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px;
+  font-size: 12px;
+}
+
+.sst-empty {
+  margin: 24px 0;
+  text-align: center;
+  color: var(--modal-text-muted);
+}
+
+.sst-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .sst-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.sst-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-height: 300px;
+  border: 1px solid var(--modal-border);
+  border-radius: 8px;
+  background: var(--modal-control-bg);
+}
+
+.sst-card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 12px 6px;
+}
+
+.sst-card-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #eee;
+}
+
+.sst-card-totals {
+  color: var(--modal-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sst-card-empty {
+  margin: 0;
+  padding: 4px 12px 12px;
+  color: var(--modal-text-muted);
+}
+
+.sst-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0 4px 6px;
+  list-style: none;
+}
+
+.sst-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--modal-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sst-row:hover,
+.sst-row:focus-visible {
+  background: var(--modal-control-bg-hover);
+}
+
+.sst-row-key {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sst-mono);
+  font-size: 11px;
+}
+
+.sst-row-counters {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+}
+
+.sst-counter {
+  color: var(--modal-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sst-counter-bad {
+  color: var(--sst-bad);
+}
+
+.sst-card-link {
+  align-self: flex-end;
+  margin: 0 8px 8px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--sst-accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.sst-card-link:hover,
+.sst-card-link:focus-visible {
+  background: var(--modal-control-bg-hover);
+}
+
+.sst-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.sst-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 10px;
+  border: 1px solid var(--modal-border);
+  border-radius: 12px;
+  background: none;
+  color: var(--modal-text-dim);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.sst-chip[aria-pressed="true"] {
+  border-color: #4a6da7;
+  color: var(--modal-text);
+}
+
+.sst-chip-count {
+  color: var(--modal-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sst-chip-row-key {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sst-mono);
+}
+
+.sst-chip-row .material-symbols-outlined {
+  font-size: 14px;
+}
+
+.sst-events {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sst-event {
+  display: grid;
+  grid-template-columns: auto 84px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 3px 8px;
+  border-left: 2px solid transparent;
+  border-radius: 2px;
+}
+
+.sst-event:hover {
+  background: var(--modal-control-bg);
+}
+
+.sst-event-flagged {
+  border-left-color: var(--sst-bad);
+  background: var(--sst-bad-bg);
+}
+
+.sst-event-flagged:hover {
+  background: var(--sst-bad-bg);
+}
+
+.sst-time {
+  color: var(--modal-text-muted);
+  font-family: var(--sst-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sst-kind {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sst-kind-color, var(--modal-text-dim));
+}
+
+.sst-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sst-mono);
+  font-size: 11px;
+  color: var(--modal-text);
+}
+
+.sst-kind-prompt .sst-text {
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.sst-meta {
+  color: var(--modal-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sst-event-flagged .sst-meta {
+  color: var(--sst-bad);
+}
+
+.sst-kind-prompt {
+  --sst-kind-color: #eee;
+}
+
+.sst-kind-read {
+  --sst-kind-color: #7aa2f7;
+}
+
+.sst-kind-edit {
+  --sst-kind-color: #e0af68;
+}
+
+.sst-kind-command {
+  --sst-kind-color: #9ece6a;
+}
+
+.sst-kind-web {
+  --sst-kind-color: #7dcfff;
+}
+
+.sst-kind-search {
+  --sst-kind-color: #bb9af7;
+}
+
+.sst-kind-subagent {
+  --sst-kind-color: #ff9e64;
+}
+
+.sst-kind-skill {
+  --sst-kind-color: #73daca;
+}
+
+.sst-kind-tool {
+  --sst-kind-color: #a9b1d6;
+}
+
+.sst-kind-interrupt {
+  --sst-kind-color: var(--sst-bad);
+}
+
+.sst-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+  color: var(--modal-text-muted);
+  font-size: 11px;
+}
+
+.sst-divider::before,
+.sst-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--modal-border-strong);
+}
