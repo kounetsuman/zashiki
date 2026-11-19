@@ -2,6 +2,7 @@ import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import { TEXT_ENCODINGS, type TextEncoding } from "@zashiki/shared";
 import {
   type MouseEvent,
   useCallback,
@@ -21,6 +22,7 @@ import { isDelimitedText } from "../viewer/delimited.js";
 import { renderMarkdown } from "../viewer/markdown.js";
 import { renderMermaidBlocks } from "../viewer/mermaid.js";
 import {
+  encodingOf,
   isHtml,
   isMarkdown,
   type MediaSource,
@@ -42,6 +44,12 @@ const TOGGLE_LABEL: Record<AlternateView, { show: string; hide: string }> = {
   htmlPreview: { show: "viewer.preview", hide: "viewer.code" },
   table: { show: "viewer.table", hide: "viewer.text" },
   binaryText: { show: "viewer.text", hide: "viewer.text" },
+};
+
+const ENCODING_LABEL: Record<TextEncoding, string> = {
+  utf8: "UTF-8",
+  shift_jis: "Shift_JIS",
+  euc_jp: "EUC-JP",
 };
 
 const NO_REMOTE_IMAGES: ReadonlySet<string> = new Set();
@@ -92,6 +100,8 @@ function alternateView(
 export interface ViewerProps {
   buffer: ViewerBuffer;
   onTogglePreview(): void;
+  /** Shows the encoding picker for a repo text file (an external or media buffer has no re-read). */
+  onEncodingChange?(encoding: TextEncoding): void;
   /** The copy button at the header's left edge copies the file's absolute path. */
   onCopyPath(): void;
   /**
@@ -276,6 +286,7 @@ function MediaHost({
 export function Viewer({
   buffer,
   onTogglePreview,
+  onEncodingChange,
   onCopyPath,
   focusNonce = 0,
   revealLine,
@@ -478,6 +489,23 @@ export function Viewer({
             </span>
           </button>
         )}
+        {onEncodingChange !== undefined &&
+          buffer.external !== true &&
+          buffer.media === undefined && (
+            <select
+              className="viewer-encoding"
+              aria-label={t("viewer.encoding")}
+              title={t("viewer.encoding")}
+              value={encodingOf(buffer)}
+              onChange={(e) => onEncodingChange(e.target.value as TextEncoding)}
+            >
+              {TEXT_ENCODINGS.map((encoding) => (
+                <option key={encoding} value={encoding}>
+                  {ENCODING_LABEL[encoding]}
+                </option>
+              ))}
+            </select>
+          )}
         {alternate !== null && (
           <button
             type="button"

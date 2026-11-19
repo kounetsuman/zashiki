@@ -52,6 +52,8 @@ export {
   type FileWriteRequest,
   type FileWriteResponse,
   fileWriteRequestSchema,
+  TEXT_ENCODINGS,
+  type TextEncoding,
 } from "./files.js";
 export {
   type FlowState,

@@ -214,6 +214,7 @@
     "audioUnsupported": "この形式の音声は再生できません",
     "binaryNoPreview": "このファイルはプレビューできません",
     "text": "テキスト",
+    "encoding": "文字コード",
     "tableLabel": "{{path}} のテーブル表示",
     "rowNumber": "行番号",
     "sortByColumn": "{{column}} で並べ替え",

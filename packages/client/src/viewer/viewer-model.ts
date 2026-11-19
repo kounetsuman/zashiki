@@ -6,6 +6,8 @@
  * holds only state transitions. Realtime reflection is driven by polling re-firing bufferLoaded.
  */
 
+import type { TextEncoding } from "@zashiki/shared";
+
 import { isDelimitedText } from "./delimited.js";
 import type { MediaKind } from "./media.js";
 
@@ -29,6 +31,8 @@ export interface ViewerBuffer {
   readonly external?: boolean;
   /** Present when the buffer is an image/video/audio/PDF; the Viewer renders it from the URL. */
   readonly media?: MediaSource;
+  /** The encoding a repo text file is read with; absent means UTF-8. */
+  readonly encoding?: TextEncoding;
 }
 
 export type ViewerBuffers = Readonly<Record<string, ViewerBuffer>>;
@@ -144,6 +148,7 @@ export function openBuffer(
   bufs: ViewerBuffers,
   repoPath: string,
   relPath: string,
+  encoding: TextEncoding = "utf8",
 ): ViewerBuffers {
   const key = viewerKey(repoPath, relPath);
   if (bufs[key] !== undefined) return bufs;
@@ -155,6 +160,7 @@ export function openBuffer(
       status: "loading",
       content: null,
       preview: opensInAlternateView(relPath),
+      ...(encoding === "utf8" ? {} : { encoding }),
     },
   };
 }
@@ -263,6 +269,23 @@ export function bufferTogglePreview(
   key: string,
 ): ViewerBuffers {
   return patch(bufs, key, (b) => ({ ...b, preview: !b.preview }));
+}
+
+/** Back to loading, so a failed re-read with the new encoding shows its error instead of the old text. */
+export function bufferSetEncoding(
+  bufs: ViewerBuffers,
+  key: string,
+  encoding: TextEncoding,
+): ViewerBuffers {
+  return patch(bufs, key, (b) =>
+    encodingOf(b) === encoding
+      ? b
+      : { ...b, encoding, status: "loading", content: null, error: undefined },
+  );
+}
+
+export function encodingOf(buf: ViewerBuffer): TextEncoding {
+  return buf.encoding ?? "utf8";
 }
 
 export function closeBuffer(bufs: ViewerBuffers, key: string): ViewerBuffers {

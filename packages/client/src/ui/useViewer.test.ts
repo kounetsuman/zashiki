@@ -151,6 +151,130 @@ describe("useViewer media", () => {
   });
 });
 
+describe("useViewer encoding", () => {
+  it("setEncoding re-reads the file with the encoding, and the polls keep using it", async () => {
+    vi.useFakeTimers();
+    const read = vi.fn<FilesApi["read"]>((_repo, _file, encoding) =>
+      Promise.resolve(`as ${encoding}`),
+    );
+    const key = viewerKey("/repo", "data.csv");
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    await act(async () => {
+      result.current.ensureBuffer("/repo", "data.csv");
+    });
+    await act(async () => {
+      result.current.setEncoding(key, "shift_jis");
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      encoding: "shift_jis",
+      content: "as shift_jis",
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(read.mock.calls.map((c) => c[2])).toEqual([
+      "utf8",
+      "shift_jis",
+      "shift_jis",
+    ]);
+    vi.useRealTimers();
+  });
+});
+
+describe("useViewer encoding switches", () => {
+  const key = viewerKey("/repo", "data.csv");
+
+  function deferredReads() {
+    const pending: Array<{
+      encoding: string;
+      settle: (content: string | Error) => void;
+    }> = [];
+    const read = vi.fn<FilesApi["read"]>(
+      (_repo, _file, encoding) =>
+        new Promise((resolve, reject) => {
+          pending.push({
+            encoding,
+            settle: (c) => (c instanceof Error ? reject(c) : resolve(c)),
+          });
+        }),
+    );
+    return { read, pending };
+  }
+
+  it("a read started before the switch never overwrites the newer encoding's content", async () => {
+    const { read, pending } = deferredReads();
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    act(() => {
+      result.current.ensureBuffer("/repo", "data.csv");
+    });
+    act(() => {
+      result.current.setEncoding(key, "shift_jis");
+    });
+    await act(async () => {
+      pending[1]?.settle("as shift_jis");
+      pending[0]?.settle("as utf8");
+    });
+    expect(result.current.buffers[key]?.content).toBe("as shift_jis");
+  });
+
+  it("a failed re-read with the new encoding shows its error instead of the old text", async () => {
+    const { read, pending } = deferredReads();
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    act(() => {
+      result.current.ensureBuffer("/repo", "data.csv");
+    });
+    await act(async () => pending[0]?.settle("as utf8"));
+    act(() => {
+      result.current.setEncoding(key, "shift_jis");
+    });
+    await act(async () => pending[1]?.settle(new Error("fs error")));
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "error",
+      error: "fs error",
+    });
+  });
+
+  it("a poll that supersedes the switch read still reports its failure", async () => {
+    vi.useFakeTimers();
+    const { read, pending } = deferredReads();
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, key));
+    act(() => {
+      result.current.ensureBuffer("/repo", "data.csv");
+    });
+    await act(async () => pending[0]?.settle("as utf8"));
+    act(() => {
+      result.current.setEncoding(key, "shift_jis");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(pending.map((p) => p.encoding)).toEqual([
+      "utf8",
+      "shift_jis",
+      "shift_jis",
+    ]);
+    await act(async () => {
+      pending[1]?.settle(new Error("superseded"));
+      pending[2]?.settle(new Error("fs error"));
+    });
+    expect(result.current.buffers[key]).toMatchObject({
+      status: "error",
+      error: "fs error",
+    });
+    vi.useRealTimers();
+  });
+
+  it("ensureBuffer reads a file opened with an encoding (a renamed tab) in it", () => {
+    const { read, pending } = deferredReads();
+    const { result } = renderHook(() => useViewer({ ...filesApi, read }, null));
+    act(() => {
+      result.current.ensureBuffer("/repo", "data.csv", "euc_jp");
+    });
+    expect(pending.map((p) => p.encoding)).toEqual(["euc_jp"]);
+    expect(result.current.buffers[key]?.encoding).toBe("euc_jp");
+  });
+});
+
 describe("useViewer pathOf", () => {
   it("returns the absolute path for a repo buffer", () => {
     const { result } = renderHook(() => useViewer(filesApi, null));

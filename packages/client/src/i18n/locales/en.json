@@ -214,6 +214,7 @@
     "audioUnsupported": "This audio format cannot be played",
     "binaryNoPreview": "This file cannot be previewed",
     "text": "Text",
+    "encoding": "Text encoding",
     "tableLabel": "{{path}} as a table",
     "rowNumber": "Row",
     "sortByColumn": "Sort by {{column}}",
