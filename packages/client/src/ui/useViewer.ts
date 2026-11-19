@@ -143,8 +143,7 @@ export function useViewer(
             if (readSeqRef.current[key] !== seq) return;
             const visible = awaitingVisibleReadRef.current.delete(key);
             if (visible) delete versionsRef.current[key];
-            // A poll reads past the confirmation size only to keep an opened file current, so its
-            // refusal says the file now needs confirming (or is over the maximum), not that it failed.
+            // A poll's size refusal means the file's size changed, so the tab shows the new size state.
             const failure = classifyReadFailure(
               e,
               visible && openedAnyway,
