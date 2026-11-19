@@ -71,8 +71,8 @@ pub(crate) async fn file_read(
             return json_error(status, &msg);
         }
     };
-    // The cap also bounds a file that grows while it is being sent.
-    let body = Body::from_stream(decoded_chunks(opened.take(max), encoding));
+    // Sends the file as it was when its size and version were taken, even if it grows meanwhile.
+    let body = Body::from_stream(decoded_chunks(opened.take(meta.len()), encoding));
     text_response(StatusCode::OK, &tag, body)
 }
 
