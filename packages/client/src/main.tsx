@@ -122,7 +122,11 @@ if (token === null) {
           ) : (
             <App
               control={control}
-              session={new PopOutAwareSession(terminalSession)}
+              session={
+                new PopOutAwareSession(terminalSession, {
+                  waitForPoppedOut: popOut !== undefined,
+                })
+              }
               gitApi={gitApi}
               fsApi={fsApi}
               searchApi={searchApi}

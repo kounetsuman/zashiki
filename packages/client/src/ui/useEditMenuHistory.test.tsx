@@ -16,7 +16,11 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: (event: string, handler: () => void, options?: { target?: unknown }) => {
+  listen: (
+    event: string,
+    handler: () => void,
+    options?: { target?: unknown },
+  ) => {
     listeners.set(event, handler);
     listenTargets.set(event, options?.target);
     return Promise.resolve(() => {

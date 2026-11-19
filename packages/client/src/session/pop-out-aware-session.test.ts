@@ -102,4 +102,20 @@ describe("PopOutAwareSession", () => {
     main.setPoppedOut(new Set());
     expect(calls).toEqual(["select a"]);
   });
+
+  it("waits for the popped-out terminals before attaching at all", () => {
+    for (const poppedOut of [["a"], []]) {
+      const { session, calls } = fakeSession();
+      const main = new PopOutAwareSession(session, { waitForPoppedOut: true });
+      main.start(80, 24);
+      main.select("a");
+      expect(calls, `${poppedOut}`).toEqual(["suspend", "start"]);
+      main.setPoppedOut(new Set(poppedOut));
+      expect(calls, `${poppedOut}`).toEqual(
+        poppedOut.length > 0
+          ? ["suspend", "start"]
+          : ["suspend", "start", "select a", "resume"],
+      );
+    }
+  });
 });

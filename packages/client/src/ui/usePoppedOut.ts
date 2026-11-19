@@ -4,6 +4,8 @@ import type { PopOutApi, ScreenPoint } from "../lib/pop-out.js";
 export interface PoppedOut {
   /** The Cockpit Terminals shown in their own window. */
   ids: ReadonlySet<string>;
+  /** Whether `ids` has been read from the shell yet. */
+  listed: boolean;
   popOut(
     cockpitTerminalId: string,
     title: string,
@@ -32,6 +34,7 @@ export function usePoppedOut(
   onReturned: (cockpitTerminalId: string) => void,
 ): PoppedOut {
   const [ids, setIds] = useState<ReadonlySet<string>>(NONE);
+  const [listed, setListed] = useState(api === undefined);
   const onReturnedRef = useRef(onReturned);
   onReturnedRef.current = onReturned;
 
@@ -48,9 +51,14 @@ export function usePoppedOut(
   useEffect(() => {
     if (api === undefined) return;
     let live = true;
-    api.list().then((open) => {
-      if (live) setIds(new Set(open));
-    }, warn("list"));
+    api
+      .list()
+      .then((open) => {
+        if (live) setIds(new Set(open));
+      }, warn("list"))
+      .finally(() => {
+        if (live) setListed(true);
+      });
     const off = api.onClosed(forget);
     return () => {
       live = false;
@@ -89,5 +97,5 @@ export function usePoppedOut(
     [api, forget],
   );
 
-  return { ids, popOut, show, returnToMain };
+  return { ids, listed, popOut, show, returnToMain };
 }

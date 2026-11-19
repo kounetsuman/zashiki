@@ -4,7 +4,9 @@ import type { AppSession } from "../App.js";
  * The main window's terminal, kept off every Cockpit Terminal that is popped out into its own window.
  * Attaching to one would let the main window's size resize a PTY the pop-out window is drawing, so
  * while the selected terminal is popped out the inner session is parked (suspended), and it
- * re-attaches to the selection once that terminal returns or another one is selected.
+ * re-attaches to the selection once that terminal returns or another one is selected. With
+ * `waitForPoppedOut` it stays parked until the first `setPoppedOut`, for a main page that has just
+ * reloaded while pop-out windows are open.
  */
 export class PopOutAwareSession implements AppSession {
   private poppedOut: ReadonlySet<string> = new Set();
@@ -12,11 +14,21 @@ export class PopOutAwareSession implements AppSession {
   private parked = false;
   /** Whether the app wants a terminal attached at all (false while there are no cockpit terminals). */
   private wanted = true;
+  private poppedOutKnown = true;
 
-  constructor(private readonly inner: AppSession) {}
+  constructor(
+    private readonly inner: AppSession,
+    { waitForPoppedOut = false }: { waitForPoppedOut?: boolean } = {},
+  ) {
+    if (waitForPoppedOut) {
+      this.poppedOutKnown = false;
+      this.park();
+    }
+  }
 
   setPoppedOut(ids: ReadonlySet<string>): void {
     this.poppedOut = ids;
+    this.poppedOutKnown = true;
     if (this.selected === null) return;
     if (ids.has(this.selected)) this.park();
     else if (this.parked) this.attach(this.selected);
@@ -24,6 +36,7 @@ export class PopOutAwareSession implements AppSession {
 
   select(cockpitTerminalId: string): void {
     this.selected = cockpitTerminalId;
+    if (!this.poppedOutKnown) return;
     if (this.poppedOut.has(cockpitTerminalId)) this.park();
     else this.attach(cockpitTerminalId);
   }

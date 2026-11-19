@@ -27,7 +27,9 @@ describe("usePoppedOut", () => {
   it("starts from the windows the shell already has open", async () => {
     const { api } = fakeApi(["a"]);
     const { result } = renderHook(() => usePoppedOut(api, () => {}));
+    expect(result.current.listed).toBe(false);
     await act(async () => {});
+    expect(result.current.listed).toBe(true);
     expect([...result.current.ids]).toEqual(["a"]);
   });
 
@@ -81,5 +83,6 @@ describe("usePoppedOut", () => {
       result.current.popOut("a", "zashiki", null);
     });
     expect(result.current.ids.size).toBe(0);
+    expect(result.current.listed).toBe(true);
   });
 });

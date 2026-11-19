@@ -447,8 +447,8 @@ export function App({
     store.focusTerminal();
   });
   useEffect(() => {
-    session.setPoppedOut?.(poppedOut.ids);
-  }, [session, poppedOut.ids]);
+    if (poppedOut.listed) session.setPoppedOut?.(poppedOut.ids);
+  }, [session, poppedOut.listed, poppedOut.ids]);
   const popOutTerminal = useCallback(
     (cockpitTerminalId: string, at: ScreenPoint | null): void => {
       const terminal = cockpitTerminals.find(
