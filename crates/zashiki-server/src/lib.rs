@@ -145,7 +145,8 @@ pub struct ServerConfig {
     pub editor: Option<String>,
     /// Replacement for the `POST /api/git/open` editor launch (for test injection; spawns the editor if None).
     pub open_file: Option<OpenFile>,
-    /// Maximum bytes per file for `/api/file` (for test injection; FILE_MAX_BYTES if None).
+    /// Caps both reads and writes of `/api/file` (for test injection). When None, reads follow the
+    /// live `fileSizeLimits.maxBytes` and writes FILE_WRITE_MAX_BYTES.
     pub file_max_bytes: Option<u64>,
     /// Destination for session save/restore (ZK_SAVES_DIR; `~/.zashiki/saves` if None).
     pub saves_dir: Option<PathBuf>,
@@ -162,7 +163,8 @@ pub fn build_router(config: ServerConfig) -> Router {
         control: config.control,
         editor: Arc::new(config.editor.unwrap_or_else(|| "cursor -g".to_string())),
         open_file: config.open_file,
-        file_max_bytes: config.file_max_bytes.unwrap_or(file::FILE_MAX_BYTES),
+        file_max_bytes_override: config.file_max_bytes,
+        file_write_max_bytes: config.file_max_bytes.unwrap_or(file::FILE_WRITE_MAX_BYTES),
         saves_dir: Arc::new(config.saves_dir.unwrap_or_else(default_saves_dir)),
         persist_lock: Arc::new(tokio::sync::Mutex::new(())),
         scan_cache: Arc::new(tokio::sync::Mutex::new(None)),
@@ -195,12 +197,12 @@ pub fn build_router(config: ServerConfig) -> Router {
         .route("/api/git/unstage-all", post(git_unstage_all))
         .route("/api/git/remove-worktree", post(git_remove_worktree))
         .route("/api/git/commit", post(git_commit))
-        // /api/file writes allow a larger body: maxBytes + 64KiB (content max + slack for the JSON
+        // /api/file writes allow a larger body: the write cap + 64KiB (content max + slack for the JSON
         // envelope), overriding axum's default 2MiB so the 413 is content-based rather than transport-level.
         .route(
             "/api/file",
             get(file_read).post(file_write).layer(DefaultBodyLimit::max(
-                (state.file_max_bytes + 64 * 1024) as usize,
+                (state.file_write_max_bytes + 64 * 1024) as usize,
             )),
         )
         .route("/api/media", get(media_read))

@@ -773,6 +773,77 @@ mod git_file_rest_tests {
     }
 
     #[tokio::test]
+    async fn file_read_over_the_cap_is_413_with_the_file_size() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("big.txt"), "x".repeat(100)).unwrap();
+        let (s, b) = read(app(&fx), &fx.repo_a, "big.txt").await;
+        assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(b, r#"{"error":"file too large to open in the viewer","size":100}"#);
+    }
+
+    #[tokio::test]
+    async fn file_read_limit_lowers_the_cap_but_never_raises_it() {
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("big.txt"), "x".repeat(100)).unwrap();
+        let with_limit = |file: &str, limit: &str| {
+            format!(
+                "/api/file?token=t&repoPath={}&file={file}&limit={limit}",
+                urlencoding(&fx.repo_a)
+            )
+        };
+        // README.md is 8 bytes: refused under limit=4, read under limit=8.
+        let (s, b) = request(app(&fx), &with_limit("README.md", "4"), Some(OK_HOST), &[]).await;
+        assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(b.contains(r#""size":8"#), "{b}");
+        let (s, b) = request(app(&fx), &with_limit("README.md", "8"), Some(OK_HOST), &[]).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b, "# hello\n");
+        // A limit above the cap (32 here) does not let a larger file through.
+        let (s, _) = request(app(&fx), &with_limit("big.txt", "1000"), Some(OK_HOST), &[]).await;
+        assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
+        let (s, _) = request(app(&fx), &with_limit("README.md", "lots"), Some(OK_HOST), &[]).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn file_read_follows_the_live_maximum_from_config() {
+        use crate::control::{ConfigView, ControlHub, ControlServices};
+        use crate::protocol::FileSizeLimits;
+        let fx = fixture();
+        std::fs::write(Path::new(&fx.repo_a).join("big.txt"), "x".repeat(100)).unwrap();
+        let config = |max_bytes| ConfigView {
+            file_size_limits: FileSizeLimits { confirm_bytes: 16, max_bytes },
+            ..Default::default()
+        };
+        let hub = ControlHub::new(
+            config(32),
+            vec![],
+            crate::status_poller::StateSnapshot {
+                sessions: vec![],
+                orgs: vec![],
+                org_colors: Default::default(),
+                org_aliases: Default::default(),
+            },
+        );
+        let live = build_router(ServerConfig {
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
+            repos_conf: Some(fx.conf.clone()),
+            control: Some(ControlServices::around_hub(hub.clone())),
+            ..Default::default()
+        });
+        let (s, b) = read(live.clone(), &fx.repo_a, "big.txt").await;
+        assert_eq!(s, StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(b.contains(r#""size":100"#), "{b}");
+        let (s, _) = read(live.clone(), &fx.repo_a, "README.md").await;
+        assert_eq!(s, StatusCode::OK);
+
+        hub.publish_config(config(100));
+        let (s, b) = read(live, &fx.repo_a, "big.txt").await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b.len(), 100);
+    }
+
+    #[tokio::test]
     async fn file_read_decodes_with_the_encoding_param() {
         let fx = fixture();
         std::fs::write(Path::new(&fx.repo_a).join("sjis.tsv"), b"\x96\xbc\x91\x4f\n").unwrap();
@@ -1108,12 +1179,12 @@ mod git_file_rest_tests {
         assert_eq!(s, StatusCode::FORBIDDEN);
     }
 
-    /// content = exactly FILE_MAX_BYTES (+ the JSON envelope) still returns 200. With axum's default 2MiB
-    /// body limit it would be 413 at the transport layer, but /api/file raises the limit to maxBytes+64KiB.
+    /// content = exactly FILE_WRITE_MAX_BYTES (+ the JSON envelope) still returns 200. With axum's default
+    /// 2MiB body limit it would be 413 at the transport layer, but /api/file raises the limit to the cap+64KiB.
     #[tokio::test]
     async fn file_write_at_max_bytes_succeeds() {
         let fx = fixture();
-        let max = crate::file::FILE_MAX_BYTES;
+        let max = crate::file::FILE_WRITE_MAX_BYTES;
         let app = build_router(ServerConfig {
             expected_token: Some(secrecy::SecretString::new("t".to_string())),
             repos_conf: Some(fx.conf.clone()),

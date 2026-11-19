@@ -357,6 +357,7 @@ impl ControlHub {
                 footer_thresholds: state.config.footer_thresholds,
                 notifications: state.config.notifications,
                 dashboard: state.config.dashboard.clone(),
+                file_size_limits: state.config.file_size_limits,
             },
             ServerMessage::NotificationsSync {
                 items: state.notifications.clone(),
@@ -492,6 +493,7 @@ impl ControlHub {
             footer_thresholds: config.footer_thresholds,
             notifications: config.notifications,
             dashboard: config.dashboard.clone(),
+            file_size_limits: config.file_size_limits,
         };
         self.inner.write().unwrap().config = config;
         let _ = self.tx.send(msg);
@@ -602,6 +604,11 @@ impl ControlHub {
     /// Whether the global memo is opted in (the live `memoEnabled` config flag).
     pub fn memo_enabled(&self) -> bool {
         self.inner.read().unwrap().config.memo_enabled
+    }
+
+    /// The live Viewer file-size limits. Read per `/api/file` and `/api/dashboard` read.
+    pub fn file_size_limits(&self) -> crate::protocol::FileSizeLimits {
+        self.inner.read().unwrap().config.file_size_limits
     }
 
     /// The live `editor` config value (None when unset). Read per `POST /api/git/open`.
@@ -1092,6 +1099,7 @@ mod tests {
                 footer_thresholds: Default::default(),
                 notifications: Default::default(),
                 dashboard: Default::default(),
+                file_size_limits: Default::default(),
             },
             vec![],
             snapshot_with("@1"),
@@ -1405,6 +1413,7 @@ mod tests {
             footer_thresholds: Default::default(),
             notifications: Default::default(),
             dashboard: Default::default(),
+            file_size_limits: Default::default(),
         });
         assert!(matches!(
             rx.recv().await.unwrap(),

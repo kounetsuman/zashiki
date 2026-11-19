@@ -169,6 +169,25 @@ pub(crate) async fn handle_client_message(
             }
             true
         }
+        // Persist the Viewer file-size limits and broadcast config.sync (like the dashboard change).
+        // The written value is re-read, so read_config's range check is the authoritative sanitizer.
+        ClientMessage::ConfigSetFileSizeLimits { file_size_limits } => {
+            if let Some(path) = &services.config_path {
+                if let Err(e) =
+                    crate::config::write_config_file_size_limits(path, &file_size_limits)
+                {
+                    return report_error(
+                        socket,
+                        &services.hub,
+                        "config_write_failed",
+                        &format!("config の書き込みに失敗しました: {e}"),
+                    )
+                    .await;
+                }
+                services.hub.publish_config(crate::config::read_config(path));
+            }
+            true
+        }
         // Install/remove zashiki's Claude Code integration in ~/.claude/settings.json, then broadcast
         // the fresh status to every connection.
         ClientMessage::HooksRegister => apply_hooks_change(socket, services, true).await,

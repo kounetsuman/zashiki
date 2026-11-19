@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 
 use axum::http::StatusCode;
 
-/// Maximum byte size of a single file that read/write handles (2MiB).
-pub const FILE_MAX_BYTES: u64 = 2 * 1024 * 1024;
+/// Maximum byte size of a single file write (2MiB). Reads are capped by the live `fileSizeLimits`.
+pub const FILE_WRITE_MAX_BYTES: u64 = 2 * 1024 * 1024;
 
 // ENOTDIR / ELOOP are not in stable ErrorKind, so pick them up via raw_os_error (same as fs.rs).
 const EISDIR: i32 = 21;
@@ -124,18 +124,28 @@ impl ChunkDecoder {
     }
 }
 
-/// Resolves a text file for a read, refusing it (413) before any of it is read when it is over `max_bytes`.
+/// Why a text file read was refused. `TooLarge` is decided before any of the file is read.
+#[derive(Debug, PartialEq, Eq)]
+pub enum TextReadRefusal {
+    TooLarge { size: u64 },
+    Failed(StatusCode, String),
+}
+
+impl From<(StatusCode, String)> for TextReadRefusal {
+    fn from((status, msg): (StatusCode, String)) -> Self {
+        TextReadRefusal::Failed(status, msg)
+    }
+}
+
+/// Resolves a text file for a read, refusing it when it is over `max_bytes`.
 pub fn text_file_within_repo(
     repo_path: &str,
     file: &str,
     max_bytes: u64,
-) -> Result<(PathBuf, std::fs::Metadata), (StatusCode, String)> {
+) -> Result<(PathBuf, std::fs::Metadata), TextReadRefusal> {
     let (abs, meta) = resolved_file_within_repo(repo_path, file)?;
     if meta.len() > max_bytes {
-        return Err((
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "file too large to open in the editor".to_string(),
-        ));
+        return Err(TextReadRefusal::TooLarge { size: meta.len() });
     }
     Ok((abs, meta))
 }
@@ -176,6 +186,16 @@ pub fn write_within_repo(
 mod tests {
     use super::*;
 
+    const NO_CAP: u64 = u64::MAX;
+
+    /// The status and message of a read refused for a reason other than its size.
+    fn failure(refusal: TextReadRefusal) -> (StatusCode, String) {
+        match refusal {
+            TextReadRefusal::Failed(code, msg) => (code, msg),
+            other => panic!("expected a failure, got {other:?}"),
+        }
+    }
+
     fn repo() -> (tempfile::TempDir, String) {
         let dir = tempfile::tempdir().unwrap();
         let repo = dir.path().join("repo");
@@ -194,7 +214,7 @@ mod tests {
         encoding: TextEncoding,
         chunk: usize,
     ) -> Result<String, (StatusCode, String)> {
-        let (abs, _) = text_file_within_repo(repo, file, max_bytes)?;
+        let (abs, _) = text_file_within_repo(repo, file, max_bytes).map_err(failure)?;
         let bytes = std::fs::read(abs).unwrap();
         let mut decoder = ChunkDecoder::new(encoding);
         let mut out = String::new();
@@ -209,7 +229,7 @@ mod tests {
     fn reads_file_content() {
         let (_d, repo) = repo();
         assert_eq!(
-            read(&repo, "README.md", FILE_MAX_BYTES, TextEncoding::Utf8, 4096).unwrap(),
+            read(&repo, "README.md", NO_CAP, TextEncoding::Utf8, 4096).unwrap(),
             "# hello\n"
         );
     }
@@ -220,7 +240,7 @@ mod tests {
         // "名前,値\n" in Shift_JIS and in EUC-JP.
         std::fs::write(Path::new(&repo).join("sjis.csv"), b"\x96\xbc\x91\x4f,\x92\x6c\n").unwrap();
         std::fs::write(Path::new(&repo).join("euc.csv"), b"\xcc\xbe\xc1\xb0,\xc3\xcd\n").unwrap();
-        let read = |file, encoding, chunk| read(&repo, file, FILE_MAX_BYTES, encoding, chunk).unwrap();
+        let read = |file, encoding, chunk| read(&repo, file, NO_CAP, encoding, chunk).unwrap();
         for chunk in [1, 3, 4096] {
             assert_eq!(read("sjis.csv", TextEncoding::ShiftJis, chunk), "名前,値\n");
             assert_eq!(read("euc.csv", TextEncoding::EucJp, chunk), "名前,値\n");
@@ -235,7 +255,7 @@ mod tests {
         let (_d, repo) = repo();
         std::fs::write(Path::new(&repo).join("cut.csv"), b"a\x96").unwrap();
         assert_eq!(
-            read(&repo, "cut.csv", FILE_MAX_BYTES, TextEncoding::ShiftJis, 1).unwrap(),
+            read(&repo, "cut.csv", NO_CAP, TextEncoding::ShiftJis, 1).unwrap(),
             "a\u{FFFD}"
         );
     }
@@ -243,25 +263,27 @@ mod tests {
     #[test]
     fn missing_file_is_404() {
         let (_d, repo) = repo();
-        let (code, _) = text_file_within_repo(&repo, "nope.txt", FILE_MAX_BYTES).unwrap_err();
+        let (code, _) = failure(text_file_within_repo(&repo, "nope.txt", NO_CAP).unwrap_err());
         assert_eq!(code, StatusCode::NOT_FOUND);
     }
 
     #[test]
     fn directory_is_400_not_a_file() {
         let (_d, repo) = repo();
-        let (code, msg) = text_file_within_repo(&repo, "src", FILE_MAX_BYTES).unwrap_err();
+        let (code, msg) = failure(text_file_within_repo(&repo, "src", NO_CAP).unwrap_err());
         assert_eq!(code, StatusCode::BAD_REQUEST);
         assert_eq!(msg, "not a file");
     }
 
     #[test]
-    fn oversize_file_is_413() {
+    fn oversize_file_is_refused_with_its_size() {
         let (_d, repo) = repo();
         let big = Path::new(&repo).join("big.txt");
         std::fs::write(&big, "x".repeat(100)).unwrap();
-        let (code, _) = text_file_within_repo(&repo, "big.txt", 32).unwrap_err();
-        assert_eq!(code, StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(
+            text_file_within_repo(&repo, "big.txt", 32).unwrap_err(),
+            TextReadRefusal::TooLarge { size: 100 }
+        );
         assert!(text_file_within_repo(&repo, "big.txt", 100).is_ok());
     }
 
@@ -324,7 +346,7 @@ mod tests {
         std::fs::write(dir.path().join("secret.txt"), "TOP SECRET\n").unwrap();
         std::os::unix::fs::symlink(dir.path().join("secret.txt"), repo.join("escape.txt")).unwrap();
         let repo_str = repo.to_string_lossy();
-        let (code, msg) = text_file_within_repo(&repo_str, "escape.txt", FILE_MAX_BYTES).unwrap_err();
+        let (code, msg) = failure(text_file_within_repo(&repo_str, "escape.txt", NO_CAP).unwrap_err());
         assert_eq!(code, StatusCode::BAD_REQUEST);
         assert_eq!(msg, "file resolves outside the repo");
     }
