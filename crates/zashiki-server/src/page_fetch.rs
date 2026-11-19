@@ -5,7 +5,7 @@
 use std::io::{self, Read};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use url::Url;
 
@@ -14,6 +14,8 @@ use crate::public_destination::{is_fetchable_url, public_addrs};
 
 const MAX_REDIRECTS: usize = 3;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+/// A whole fetch, redirects included: no request starts or runs past it.
+pub(crate) const FETCH_LIMIT: Duration = Duration::from_secs(10);
 const PAGE_MAX_BYTES: u64 = 256 * 1024;
 const FAVICON_MAX_BYTES: u64 = 64 * 1024;
 const USER_AGENT: &str = "zashiki";
@@ -42,18 +44,24 @@ pub(crate) struct Response {
     pub cut: bool,
 }
 
-/// Requests `url` and follows up to three redirects, refusing any hop that is not fetchable. The
-/// final URL and response are returned only for a 2xx answer.
+/// Requests `url` and follows up to three redirects, refusing any hop that is not fetchable. Each
+/// request is given the per-request timeout or what is left before `deadline`, whichever is
+/// shorter. The final URL and response are returned only for a 2xx answer.
 pub(crate) fn follow(
     mut url: Url,
-    mut send: impl FnMut(&Url) -> Option<Response>,
+    deadline: Instant,
+    mut send: impl FnMut(&Url, Duration) -> Option<Response>,
 ) -> Option<(Url, Response)> {
     for _ in 0..=MAX_REDIRECTS {
         url.set_fragment(None);
         if !is_fetchable_url(&url) {
             return None;
         }
-        let response = send(&url)?;
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        let response = send(&url, left.min(REQUEST_TIMEOUT))?;
         if !(300..400).contains(&response.status) {
             return (200..300)
                 .contains(&response.status)
@@ -101,14 +109,17 @@ fn agent() -> &'static ureq::Agent {
             .resolver(PublicOnlyResolver)
             .try_proxy_from_env(false)
             .redirects(0)
-            .timeout(REQUEST_TIMEOUT)
             .user_agent(USER_AGENT)
             .build()
     })
 }
 
-fn send(url: &Url, accept: &str, max_bytes: u64) -> Option<Response> {
-    let response = match agent().request_url("GET", url).set("Accept", accept).call() {
+fn send(url: &Url, timeout: Duration, accept: &str, max_bytes: u64) -> Option<Response> {
+    let request = agent()
+        .request_url("GET", url)
+        .timeout(timeout)
+        .set("Accept", accept);
+    let response = match request.call() {
         Ok(response) => response,
         Err(ureq::Error::Status(status, _)) => {
             return Some(Response {
@@ -142,15 +153,24 @@ fn send(url: &Url, accept: &str, max_bytes: u64) -> Option<Response> {
 
 /// Blocking: run it off the async runtime.
 pub(crate) fn fetch_page(url: Url) -> Option<PageDetails> {
-    let (final_url, response) = follow(url, |url| {
-        send(url, "text/html,application/xhtml+xml", PAGE_MAX_BYTES)
+    let deadline = Instant::now() + FETCH_LIMIT;
+    let (final_url, response) = follow(url, deadline, |url, timeout| {
+        send(
+            url,
+            timeout,
+            "text/html,application/xhtml+xml",
+            PAGE_MAX_BYTES,
+        )
     })?;
     Some(page_details(&final_url, &response))
 }
 
 /// Blocking: run it off the async runtime.
 pub(crate) fn fetch_favicon(url: Url) -> Option<Favicon> {
-    let (_, response) = follow(url, |url| send(url, "image/*", FAVICON_MAX_BYTES))?;
+    let deadline = Instant::now() + FETCH_LIMIT;
+    let (_, response) = follow(url, deadline, |url, timeout| {
+        send(url, timeout, "image/*", FAVICON_MAX_BYTES)
+    })?;
     favicon(response)
 }
 
@@ -180,24 +200,67 @@ mod tests {
         }
     }
 
-    /// Answers each request with the next response in turn, recording the URLs asked for.
     type Asked = std::rc::Rc<std::cell::RefCell<Vec<String>>>;
 
-    fn scripted(responses: Vec<Response>) -> (impl FnMut(&Url) -> Option<Response>, Asked) {
+    /// Answers each request with the next response in turn, recording the URLs asked for.
+    fn scripted(
+        responses: Vec<Response>,
+    ) -> (impl FnMut(&Url, Duration) -> Option<Response>, Asked) {
         let asked = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         let log = std::rc::Rc::clone(&asked);
         let mut responses = responses.into_iter();
-        let send = move |u: &Url| {
+        let send = move |u: &Url, _: Duration| {
             log.borrow_mut().push(u.to_string());
             responses.next()
         };
         (send, asked)
     }
 
+    fn far() -> Instant {
+        Instant::now() + Duration::from_secs(60)
+    }
+
+    #[test]
+    fn nothing_is_requested_once_the_deadline_has_passed() {
+        let (send, asked) = scripted(vec![ok("text/html", "")]);
+        assert_eq!(
+            follow(url("https://example.com/"), Instant::now(), send),
+            None
+        );
+        assert!(asked.borrow().is_empty());
+    }
+
+    #[test]
+    fn each_hop_gets_at_most_the_time_left_before_the_deadline() {
+        let timeouts = std::cell::RefCell::new(Vec::new());
+        let deadline = Instant::now() + Duration::from_millis(80);
+        let send = |_: &Url, timeout: Duration| {
+            timeouts.borrow_mut().push(timeout);
+            std::thread::sleep(Duration::from_millis(50));
+            Some(redirect("/next"))
+        };
+        assert_eq!(follow(url("https://example.com/"), deadline, send), None);
+        let timeouts = timeouts.into_inner();
+        assert_eq!(timeouts.len(), 2, "{timeouts:?}");
+        assert!(timeouts[0] <= Duration::from_millis(80));
+        assert!(timeouts[1] <= Duration::from_millis(30));
+    }
+
+    #[test]
+    fn a_hop_never_gets_more_than_the_per_request_timeout() {
+        let mut seen = None;
+        let send = |_: &Url, timeout: Duration| {
+            seen = Some(timeout);
+            Some(ok("text/html", ""))
+        };
+        follow(url("https://example.com/"), far(), send);
+        assert_eq!(seen, Some(REQUEST_TIMEOUT));
+    }
+
     #[test]
     fn a_direct_answer_is_returned_with_its_url() {
         let (send, asked) = scripted(vec![ok("text/html", "x")]);
-        let (final_url, response) = follow(url("https://example.com/a#frag"), send).unwrap();
+        let (final_url, response) = follow(url("https://example.com/a#frag"), far(), send).unwrap();
         assert_eq!(final_url.as_str(), "https://example.com/a");
         assert_eq!(response.body, b"x");
         assert_eq!(*asked.borrow(), vec!["https://example.com/a"]);
@@ -211,7 +274,7 @@ mod tests {
             redirect("d"),
             ok("text/html", ""),
         ]);
-        let (final_url, _) = follow(url("https://example.com/a"), send).unwrap();
+        let (final_url, _) = follow(url("https://example.com/a"), far(), send).unwrap();
         assert_eq!(final_url.as_str(), "https://other.example.org/d");
         assert_eq!(asked.borrow().len(), 4);
     }
@@ -225,7 +288,7 @@ mod tests {
             redirect("/4"),
             ok("text/html", ""),
         ]);
-        assert_eq!(follow(url("https://example.com/"), send), None);
+        assert_eq!(follow(url("https://example.com/"), far(), send), None);
         assert_eq!(asked.borrow().len(), 4);
     }
 
@@ -240,7 +303,11 @@ mod tests {
             "file:///etc/passwd",
         ] {
             let (send, asked) = scripted(vec![redirect(to), ok("text/html", "")]);
-            assert_eq!(follow(url("https://example.com/"), send), None, "{to}");
+            assert_eq!(
+                follow(url("https://example.com/"), far(), send),
+                None,
+                "{to}"
+            );
             assert_eq!(asked.borrow().len(), 1, "{to}");
         }
     }
@@ -248,7 +315,7 @@ mod tests {
     #[test]
     fn a_start_url_that_is_not_allowed_is_never_requested() {
         let (send, asked) = scripted(vec![ok("text/html", "")]);
-        assert_eq!(follow(url("http://10.0.0.1/"), send), None);
+        assert_eq!(follow(url("http://10.0.0.1/"), far(), send), None);
         assert!(asked.borrow().is_empty());
     }
 
@@ -269,7 +336,7 @@ mod tests {
             },
         ] {
             let (send, _) = scripted(vec![response]);
-            assert_eq!(follow(url("https://example.com/"), send), None);
+            assert_eq!(follow(url("https://example.com/"), far(), send), None);
         }
     }
 

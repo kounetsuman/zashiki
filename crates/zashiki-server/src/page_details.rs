@@ -8,14 +8,15 @@ use std::time::{Duration, Instant};
 use url::Url;
 
 use crate::lookup_queue::{Clock, Fetch, Lookup, LookupLimits, LookupQueue};
-use crate::page_fetch::{fetch_favicon, fetch_page};
+use crate::page_fetch::{fetch_favicon, fetch_page, FETCH_LIMIT};
 pub use crate::page_fetch::{Favicon, PageDetails};
 use crate::protocol::{SessionLink, SessionLinkKind};
 use crate::public_destination::is_fetchable_url;
 
 const MAX_CONCURRENT_FETCHES: usize = 4;
-/// A whole lookup, redirects included; each request within it has its own shorter timeout.
-const LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
+/// Longer than a fetch may run, so a lookup the queue gives up on has already stopped fetching; the
+/// margin covers resolving names, which the fetch's own deadline cannot cut short.
+const LOOKUP_TIMEOUT: Duration = FETCH_LIMIT.saturating_add(Duration::from_secs(5));
 const SUCCESS_KEPT: Duration = Duration::from_secs(24 * 60 * 60);
 const FAILURE_RETRY: Duration = Duration::from_secs(5 * 60);
 const PAGE_CAPACITY: usize = 512;
@@ -149,6 +150,11 @@ mod tests {
             checked_at: at(at_ms),
             failed,
         }
+    }
+
+    #[test]
+    fn a_lookup_is_given_at_least_as_long_as_the_fetch_may_take() {
+        assert!(LOOKUP_TIMEOUT > FETCH_LIMIT);
     }
 
     #[test]
