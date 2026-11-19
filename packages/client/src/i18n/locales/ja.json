@@ -575,6 +575,9 @@
     "removeRowFilter": "絞り込みを外す: {{key}}",
     "noEvents": "この絞り込みに合うイベントはありません",
     "compacted": "コンテキスト圧縮 · {{pre}} → {{post}} トークン",
+    "compactedFrom": "コンテキスト圧縮 · {{pre}} トークンから",
+    "compactedTo": "コンテキスト圧縮 · {{post}} トークンへ",
+    "compactedBare": "コンテキスト圧縮",
     "running": "実行中",
     "failed": "失敗",
     "kind": {

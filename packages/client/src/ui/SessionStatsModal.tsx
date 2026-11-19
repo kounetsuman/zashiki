@@ -362,14 +362,7 @@ function Timeline({
 function TimelineRow({ event }: { event: SessionEvent }) {
   const { t } = useTranslation();
   if (event.kind === "compaction") {
-    return (
-      <li className="sst-divider">
-        {t("sessionStats.compacted", {
-          pre: fmtTokens(event.preTokens ?? 0),
-          post: fmtTokens(event.postTokens ?? 0),
-        })}
-      </li>
-    );
+    return <li className="sst-divider">{compactionLabel(event, t)}</li>;
   }
   const classes = ["sst-event", `sst-kind-${event.kind}`];
   if (isHighlighted(event)) classes.push("sst-event-flagged");
@@ -394,4 +387,20 @@ function eventMeta(event: SessionEvent, t: (key: string) => string): string {
   if (event.durationMs !== undefined)
     parts.push(fmtEventDuration(event.durationMs));
   return parts.join(" · ");
+}
+
+function compactionLabel(
+  { preTokens, postTokens }: SessionEvent,
+  t: (key: string, options?: Record<string, string>) => string,
+): string {
+  if (preTokens !== undefined && postTokens !== undefined)
+    return t("sessionStats.compacted", {
+      pre: fmtTokens(preTokens),
+      post: fmtTokens(postTokens),
+    });
+  if (preTokens !== undefined)
+    return t("sessionStats.compactedFrom", { pre: fmtTokens(preTokens) });
+  if (postTokens !== undefined)
+    return t("sessionStats.compactedTo", { post: fmtTokens(postTokens) });
+  return t("sessionStats.compactedBare");
 }

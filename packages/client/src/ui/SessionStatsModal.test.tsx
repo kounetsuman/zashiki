@@ -112,6 +112,24 @@ describe("SessionStatsModal", () => {
     ).toBeTruthy();
   });
 
+  it("leaves out a compaction's missing token count", () => {
+    renderModal([
+      { at: 1, kind: "compaction", text: "auto", preTokens: 162_000 },
+      { at: 2, kind: "compaction", text: "auto", postTokens: 31_000 },
+      { at: 3, kind: "compaction", text: "auto" },
+    ]);
+    fireEvent.click(screen.getByRole("radio", { name: "タイムライン" }));
+    expect(
+      [...document.querySelectorAll(".sst-divider")].map(
+        (el) => el.textContent,
+      ),
+    ).toEqual([
+      "コンテキスト圧縮 · 162.0k トークンから",
+      "コンテキスト圧縮 · 31.0k トークンへ",
+      "コンテキスト圧縮",
+    ]);
+  });
+
   it("highlights failed and denied rows only", () => {
     renderModal();
     fireEvent.click(screen.getByRole("radio", { name: "タイムライン" }));

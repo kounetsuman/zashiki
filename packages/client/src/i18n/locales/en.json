@@ -575,6 +575,9 @@
     "removeRowFilter": "Remove filter: {{key}}",
     "noEvents": "No events match this filter",
     "compacted": "context compacted · {{pre}} → {{post}} tokens",
+    "compactedFrom": "context compacted · from {{pre}} tokens",
+    "compactedTo": "context compacted · to {{post}} tokens",
+    "compactedBare": "context compacted",
     "running": "running",
     "failed": "failed",
     "kind": {
