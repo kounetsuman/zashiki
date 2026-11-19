@@ -48,6 +48,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
+  Reflect.deleteProperty(document, "fonts");
 });
 
 describe("Viewer", () => {
