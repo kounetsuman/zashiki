@@ -37,7 +37,10 @@ const probe = vi.hoisted(() => ({
 }));
 vi.mock("../viewer/mermaid-probe.js", () => probe);
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 describe("Viewer", () => {
   it("shows the shared loading UI while loading", () => {
@@ -384,12 +387,8 @@ describe("Viewer", () => {
     function record(this: HTMLMediaElement) {
       seen.push({ connected: this.isConnected, src: this.getAttribute("src") });
     }
-    const pause = vi
-      .spyOn(HTMLMediaElement.prototype, "pause")
-      .mockImplementation(record);
-    const load = vi
-      .spyOn(HTMLMediaElement.prototype, "load")
-      .mockImplementation(record);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(record);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(record);
     const { unmount } = render(
       <Viewer
         buffer={{
@@ -403,8 +402,6 @@ describe("Viewer", () => {
       />,
     );
     unmount();
-    pause.mockRestore();
-    load.mockRestore();
     expect(seen).toEqual([
       { connected: true, src: "blob:vid-1" },
       { connected: true, src: null },
@@ -412,12 +409,8 @@ describe("Viewer", () => {
   });
 
   it("keeps the video source after StrictMode re-runs the mount", () => {
-    const pause = vi
-      .spyOn(HTMLMediaElement.prototype, "pause")
-      .mockImplementation(noop);
-    const load = vi
-      .spyOn(HTMLMediaElement.prototype, "load")
-      .mockImplementation(noop);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(noop);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(noop);
     const { container } = render(
       <StrictMode>
         <Viewer
@@ -432,8 +425,6 @@ describe("Viewer", () => {
         />
       </StrictMode>,
     );
-    pause.mockRestore();
-    load.mockRestore();
     const video = container.querySelector("video.viewer-media");
     expect(video?.getAttribute("src")).toBe("blob:vid-1");
   });
