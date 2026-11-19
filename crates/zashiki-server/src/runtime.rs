@@ -153,6 +153,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
     };
     // refresh path: control handler → poller. The buffer can be small (each request is processed immediately).
     let (refresh_tx, refresh_rx) = tokio::sync::mpsc::channel(16);
+    let projects = Arc::new(ClaudeProjectsAdapter::new(config.projects_root.clone()));
     let ports = PtyPollerPorts::new(
         sessions.clone(),
         ClaudeProjectsAdapter::new(config.projects_root),
@@ -195,6 +196,7 @@ pub fn spawn_control_runtime(config: ControlRuntimeConfig) -> ControlServices {
         sessions,
         hook_events,
         session_models,
+        projects,
         heartbeat: crate::control::HEARTBEAT_INTERVAL,
         notify_mode: config.notify_mode,
         notify_history: config.notify_history,

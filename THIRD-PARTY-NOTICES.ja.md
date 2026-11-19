@@ -26,6 +26,10 @@ zashiki は多数のオープンソースソフトウェアに依存していま
 
 - `r-efi`（`MIT OR Apache-2.0 OR LGPL-2.1-or-later` → **MIT を選択**。LGPL の義務は発生しない）
 
+### 同梱しているアセット
+
+- セッションリンクのポップオーバーの Pull Request / Issue アイコンは、GitHub の [Octicons](https://github.com/primer/octicons)（`git-pull-request-16` / `issue-opened-16`）のパスデータを流用している。MIT License, Copyright (c) GitHub Inc.
+
 ## 完全な一覧の生成
 
 リリース時には、以下で各依存のライセンス全文を含む完全な notice を生成できます。

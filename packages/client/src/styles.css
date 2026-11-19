@@ -604,6 +604,11 @@ textarea {
 
 /* ---- セッション状態フッタ（issue #74。MAIN AREA が SESSION の時のみ端末下に出す） ---- */
 
+.session-status-dock {
+  position: relative;
+  flex: none;
+}
+
 .session-status {
   flex: none;
   display: flex;
@@ -681,6 +686,37 @@ textarea {
 .ss-toggle:hover .ss-icon,
 .ss-toggle[aria-expanded="true"] .ss-icon {
   color: #d0d3d6;
+}
+
+.ss-links {
+  margin-left: auto;
+}
+
+.ss-before-compaction ~ .ss-links {
+  margin-left: 0;
+}
+
+.ss-links-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: #d0d3d6;
+  font: inherit;
+  cursor: pointer;
+}
+
+.ss-links-button:hover .ss-icon,
+.ss-links-button[aria-expanded="true"] .ss-icon {
+  color: #d0d3d6;
+}
+
+.ss-links-button[aria-expanded="true"] {
+  background: #2a2a2a;
+  border-color: #4a6da7;
 }
 
 .app-tooltip {

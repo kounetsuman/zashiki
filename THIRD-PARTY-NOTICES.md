@@ -28,6 +28,10 @@ project under MPL).
 
 - `r-efi` (`MIT OR Apache-2.0 OR LGPL-2.1-or-later` → **MIT selected**. No LGPL obligation arises.)
 
+### Bundled Assets
+
+- The pull request and issue icons in the session links popover reuse the path data of GitHub's [Octicons](https://github.com/primer/octicons) (`git-pull-request-16`, `issue-opened-16`), MIT License, Copyright (c) GitHub Inc.
+
 ## Generating the Full List
 
 At release time, you can generate a complete notice including the full license text of each dependency with the following.

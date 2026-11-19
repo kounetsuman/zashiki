@@ -22,6 +22,7 @@ import {
   hookEventRequestSchema,
   isClaudeRunning,
   serverMessageSchema,
+  sessionLinksResponseSchema,
   sessionUsageSchema,
   termIdSchema,
 } from "./protocol.js";
@@ -738,5 +739,61 @@ describe("cockpit terminal REST responses", () => {
     expect(
       cockpitTerminalTailResponseSchema.parse({ lines: ["a", ""] }),
     ).toEqual({ lines: ["a", ""] });
+  });
+
+  it("parses the links body the server sends", () => {
+    const body = {
+      links: [
+        {
+          url: "https://github.com/o/r/pull/7",
+          tab: "conversation",
+          kind: "pr",
+          source: "user",
+          github: { owner: "o", repo: "r", number: 7 },
+        },
+        {
+          url: "https://www.rust-lang.org/",
+          tab: "ai_referenced",
+          kind: "other",
+          source: "WebSearch",
+          title: "Rust Lang",
+        },
+      ],
+    };
+    expect(sessionLinksResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it("keeps a link whose fields a newer server added", () => {
+    const parsed = sessionLinksResponseSchema.parse({
+      links: [
+        {
+          url: "https://example.com/",
+          tab: "conversation",
+          kind: "other",
+          source: "assistant",
+          favicon: "data:",
+        },
+      ],
+    });
+    expect(parsed.links).toHaveLength(1);
+  });
+
+  it("rejects a tab or kind the wire does not define", () => {
+    const link = {
+      url: "https://example.com/",
+      tab: "conversation",
+      kind: "other",
+      source: "user",
+    };
+    expect(
+      sessionLinksResponseSchema.safeParse({
+        links: [{ ...link, tab: "aiReferenced" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      sessionLinksResponseSchema.safeParse({
+        links: [{ ...link, kind: "pull_request" }],
+      }).success,
+    ).toBe(false);
   });
 });

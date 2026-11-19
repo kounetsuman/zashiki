@@ -16,6 +16,8 @@ use crate::jsonl::{
     SubagentTokens,
     TitleScan, TranscriptTitle,
 };
+use crate::protocol::SessionLink;
+use crate::session_links::session_links;
 use crate::status_poller::Slices;
 use zashiki_core::session_state::SubagentTranscript;
 
@@ -46,6 +48,55 @@ struct TitleProgress {
 
 type TitleScans = Arc<Mutex<HashMap<PathBuf, TitleProgress>>>;
 
+/// How many transcripts' links are held at once; the least recently read is dropped first.
+const LINK_CACHE_CAPACITY: usize = 32;
+
+/// The links a transcript held at the size and mtime it was read at.
+struct CachedLinks {
+    len: u64,
+    mtime_ms: u64,
+    links: Vec<SessionLink>,
+    last_read: u64,
+}
+
+#[derive(Default)]
+struct LinkCacheEntries {
+    entries: HashMap<PathBuf, CachedLinks>,
+    reads: u64,
+}
+
+impl LinkCacheEntries {
+    fn fresh(&mut self, path: &Path, len: u64, mtime_ms: u64) -> Option<Vec<SessionLink>> {
+        self.reads += 1;
+        let reads = self.reads;
+        let cached = self
+            .entries
+            .get_mut(path)
+            .filter(|c| c.len == len && c.mtime_ms == mtime_ms)?;
+        cached.last_read = reads;
+        Some(cached.links.clone())
+    }
+
+    fn insert(&mut self, path: &Path, len: u64, mtime_ms: u64, links: Vec<SessionLink>) {
+        self.entries.insert(
+            path.to_path_buf(),
+            CachedLinks { len, mtime_ms, links, last_read: self.reads },
+        );
+        if self.entries.len() > LINK_CACHE_CAPACITY {
+            let oldest = self
+                .entries
+                .iter()
+                .min_by_key(|(_, c)| c.last_read)
+                .map(|(p, _)| p.clone());
+            if let Some(oldest) = oldest {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+}
+
+type LinkCache = Arc<Mutex<LinkCacheEntries>>;
+
 /// Adapter for reading jsonl slices plus subagents mtime.
 pub struct ClaudeProjectsAdapter {
     root_dir: PathBuf,
@@ -53,6 +104,7 @@ pub struct ClaudeProjectsAdapter {
     now_ms: NowMs,
     subagent_totals: SubagentTotals,
     title_scans: TitleScans,
+    link_cache: LinkCache,
 }
 
 fn real_now_ms() -> u64 {
@@ -81,6 +133,7 @@ impl ClaudeProjectsAdapter {
             root_dir,
             subagent_totals: SubagentTotals::default(),
             title_scans: TitleScans::default(),
+            link_cache: LinkCache::default(),
             max_slice_bytes: DEFAULT_MAX_SLICE_BYTES,
             now_ms: Box::new(real_now_ms),
         }
@@ -157,6 +210,19 @@ impl ClaudeProjectsAdapter {
         .flatten()
     }
 
+    /// The links in the session transcript (empty when it is missing or unreadable). The whole file
+    /// is read, leniently decoded like `session_usage`, and only again once its size or mtime moves.
+    pub async fn session_links(&self, cwd: &str, sid: &str) -> Vec<SessionLink> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        let cache = Arc::clone(&self.link_cache);
+        tokio::task::spawn_blocking(move || session_links_sync(&path, &cache))
+            .await
+            .unwrap_or_default()
+    }
+
     /// The set of `toolUseResult.backgroundTaskId` in the transcript (empty when the file is missing
     /// or has none). Unlike `read_slices`, this reads the whole file: a still-live background shell
     /// may have been launched far from the tail, so its launch line must not be sliced away.
@@ -172,6 +238,27 @@ impl ClaudeProjectsAdapter {
         .await
         .unwrap_or_default()
     }
+}
+
+fn session_links_sync(path: &Path, cache: &Mutex<LinkCacheEntries>) -> Vec<SessionLink> {
+    let Ok(meta) = fs::metadata(path) else {
+        if let Ok(mut cache) = cache.lock() {
+            cache.entries.remove(path);
+        }
+        return Vec::new();
+    };
+    let (len, mtime) = (meta.len(), mtime_ms(&meta));
+    if let Some(links) = cache.lock().ok().and_then(|mut c| c.fresh(path, len, mtime)) {
+        return links;
+    }
+    let Ok(bytes) = fs::read(path) else {
+        return Vec::new();
+    };
+    let links = session_links(&String::from_utf8_lossy(&bytes));
+    if let Ok(mut cache) = cache.lock() {
+        cache.insert(path, len, mtime, links.clone());
+    }
+    links
 }
 
 /// Core of slice reading (std::fs, synchronous). When size <= max*2, read the whole
@@ -446,6 +533,85 @@ mod tests {
             ids,
             HashSet::from(["bush20ok3".to_string(), "b48tqxha9".to_string()])
         );
+    }
+
+    fn link_line(url: &str) -> String {
+        format!("{{\"type\":\"user\",\"message\":{{\"content\":\"{url}\"}}}}\n")
+    }
+
+    fn link_urls(links: &[crate::protocol::SessionLink]) -> Vec<&str> {
+        links.iter().map(|l| l.url.as_str()).collect()
+    }
+
+    #[tokio::test]
+    async fn session_links_reads_the_main_transcript_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_jsonl(tmp.path(), SID, &link_line("https://example.com/main"), BASE_SEC);
+        write_subagent_content(tmp.path(), SID, "agent-a1.jsonl", &link_line("https://example.com/agent"));
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let links = adapter.session_links(CWD, SID).await;
+        assert_eq!(link_urls(&links), vec!["https://example.com/main"]);
+    }
+
+    #[tokio::test]
+    async fn session_links_of_a_missing_transcript_is_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert!(adapter.session_links(CWD, SID).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn session_links_rereads_only_when_the_size_or_mtime_changed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        write_jsonl(tmp.path(), SID, &link_line("https://example.com/aaaa"), BASE_SEC);
+        adapter.session_links(CWD, SID).await;
+
+        write_jsonl(tmp.path(), SID, &link_line("https://example.com/bbbb"), BASE_SEC);
+        let cached = adapter.session_links(CWD, SID).await;
+        assert_eq!(link_urls(&cached), vec!["https://example.com/aaaa"]);
+
+        write_jsonl(tmp.path(), SID, &link_line("https://example.com/bbbb"), BASE_SEC + 1);
+        let touched = adapter.session_links(CWD, SID).await;
+        assert_eq!(link_urls(&touched), vec!["https://example.com/bbbb"]);
+
+        write_jsonl(tmp.path(), SID, &link_line("https://example.com/ccccc"), BASE_SEC + 1);
+        let grown = adapter.session_links(CWD, SID).await;
+        assert_eq!(link_urls(&grown), vec!["https://example.com/ccccc"]);
+    }
+
+    #[tokio::test]
+    async fn session_links_keeps_only_the_most_recently_read_transcripts() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let sids: Vec<String> = (0..=LINK_CACHE_CAPACITY).map(|i| format!("sid-{i}")).collect();
+        for sid in &sids {
+            write_jsonl(tmp.path(), sid, &link_line("https://example.com/x"), BASE_SEC);
+        }
+        for sid in &sids[..LINK_CACHE_CAPACITY] {
+            adapter.session_links(CWD, sid).await;
+        }
+        adapter.session_links(CWD, &sids[0]).await;
+        adapter.session_links(CWD, &sids[LINK_CACHE_CAPACITY]).await;
+
+        let cache = &adapter.link_cache.lock().unwrap().entries;
+        assert_eq!(cache.len(), LINK_CACHE_CAPACITY);
+        assert!(cache.contains_key(&slices_path(tmp.path(), &sids[0])));
+        assert!(!cache.contains_key(&slices_path(tmp.path(), &sids[1])));
+        assert!(cache.contains_key(&slices_path(tmp.path(), &sids[LINK_CACHE_CAPACITY])));
+    }
+
+    #[tokio::test]
+    async fn session_links_reads_a_transcript_cut_mid_character() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut bytes = link_line("https://example.com/ok").into_bytes();
+        bytes.extend_from_slice(&"あ".as_bytes()[..2]);
+        let dir = tmp.path().join(PROJ_DIR);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(format!("{SID}.jsonl")), bytes).unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let links = adapter.session_links(CWD, SID).await;
+        assert_eq!(link_urls(&links), vec!["https://example.com/ok"]);
     }
 
     #[tokio::test]
@@ -878,6 +1044,7 @@ mod tests {
             root_dir: tmp.path().to_path_buf(),
             subagent_totals: SubagentTotals::default(),
             title_scans: TitleScans::default(),
+            link_cache: LinkCache::default(),
             max_slice_bytes: 64 * 1024,
             now_ms: Box::new(|| (BASE_SEC + 3) * 1000),
         };

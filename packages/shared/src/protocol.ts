@@ -846,6 +846,38 @@ export type CockpitTerminalTailResponse = z.infer<
   typeof cockpitTerminalTailResponseSchema
 >;
 
+/** Which popover tab a session link belongs to: written in the conversation, or handed to a tool. */
+export const sessionLinkTabSchema = z.enum(["conversation", "ai_referenced"]);
+
+export type SessionLinkTab = z.infer<typeof sessionLinkTabSchema>;
+
+export const sessionLinkKindSchema = z.enum(["pr", "issue", "other"]);
+
+export type SessionLinkKind = z.infer<typeof sessionLinkKindSchema>;
+
+/** A GitHub pull request or issue link's `url` is canonical, whatever sub-page was seen. */
+export const sessionLinkSchema = z.object({
+  url: z.string(),
+  tab: sessionLinkTabSchema,
+  kind: sessionLinkKindSchema,
+  /** `user` / `assistant` in the conversation tab; the tool name otherwise. */
+  source: z.string(),
+  /** A title already known from the transcript (a WebSearch result's title). */
+  title: z.string().optional(),
+  github: z
+    .object({ owner: z.string(), repo: z.string(), number: z.number().int() })
+    .optional(),
+});
+
+export type SessionLink = z.infer<typeof sessionLinkSchema>;
+
+/** `GET /api/cockpit-terminals/links?id=`: newest appearance first. */
+export const sessionLinksResponseSchema = z.object({
+  links: z.array(sessionLinkSchema),
+});
+
+export type SessionLinksResponse = z.infer<typeof sessionLinksResponseSchema>;
+
 // ---- REST（save / restore）----
 
 export const sessionsSaveResponseSchema = z.object({

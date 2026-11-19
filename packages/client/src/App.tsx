@@ -128,6 +128,7 @@ import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
+import { useSessionLinks } from "./ui/useSessionLinks.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useUsageLimitWarning } from "./ui/useUsageLimitWarning.js";
 import { useViewer } from "./ui/useViewer.js";
@@ -427,6 +428,7 @@ export function App({
       : undefined;
   const activeSessionUsage = activeSession?.usage ?? null;
   const activeSessionModel = activeSession?.model;
+  const activeSessionLinks = useSessionLinks(cockpitTerminalsApi, activeSess);
   const activeSessionAccent =
     activeSession !== undefined
       ? resolveOrgColor(activeSession.org, orgColors)
@@ -648,26 +650,32 @@ export function App({
     );
   }, [t, openExternalFile, toastUnreadableFile, flashCopyToast]);
 
-  // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
-  const copyDiffPath = useCallback(
-    (repoPath: string, relPath: string): void => {
-      void navigator.clipboard?.writeText(`${repoPath}/${relPath}`).then(
-        () => flashCopyToast(t("toast.pathCopied")),
+  const copyWithToast = useCallback(
+    (text: string, toastKey: "toast.pathCopied" | "toast.linkCopied"): void => {
+      void navigator.clipboard?.writeText(text).then(
+        () => flashCopyToast(t(toastKey)),
         () => undefined,
       );
     },
     [flashCopyToast, t],
   );
 
+  // Copy the absolute path of the file open in the diff (the copy button at the left of the header).
+  const copyDiffPath = useCallback(
+    (repoPath: string, relPath: string): void =>
+      copyWithToast(`${repoPath}/${relPath}`, "toast.pathCopied"),
+    [copyWithToast],
+  );
+
+  const copySessionLink = useCallback(
+    (url: string): void => copyWithToast(url, "toast.linkCopied"),
+    [copyWithToast],
+  );
+
   // Copy arbitrary text (context-menu path copies) with the shared "path copied" toast.
   const copyExplorerText = useCallback(
-    (text: string): void => {
-      void navigator.clipboard?.writeText(text).then(
-        () => flashCopyToast(t("toast.pathCopied")),
-        () => undefined,
-      );
-    },
-    [flashCopyToast, t],
+    (text: string): void => copyWithToast(text, "toast.pathCopied"),
+    [copyWithToast],
   );
 
   const closeViewerTabByBufferKey = useCallback(
@@ -1338,6 +1346,9 @@ export function App({
               thresholds={footerThresholds}
               beforeCompactionOpen={beforeCompactionOpen}
               onToggleBeforeCompaction={toggleBeforeCompaction}
+              links={activeSessionLinks}
+              onCopyLink={copySessionLink}
+              onLinksClosed={store.focusTerminal}
             />
           )}
         </div>

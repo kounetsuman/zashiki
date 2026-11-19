@@ -88,7 +88,8 @@
     "sessionIdCopied": "Copied the session ID",
     "pathCopied": "Copied the path",
     "notificationsDeleted": "Deleted {{count}} notification(s)",
-    "memoSaveFailed": "Couldn't save the Memo — check the connection and try again"
+    "memoSaveFailed": "Couldn't save the Memo — check the connection and try again",
+    "linkCopied": "Link copied"
   },
   "quitSave": {
     "saving": "Saving the Memo before quitting…"
@@ -303,6 +304,24 @@
       "modeRemaining": "remaining",
       "modeElapsed": "elapsed",
       "modeToggleTitle": "Toggle usage time — remaining / elapsed (now: {{mode}})"
+    },
+    "links": {
+      "title": "Links in this session",
+      "close": "Close",
+      "tabConversation": "In the conversation",
+      "tabAiReferenced": "Referenced by AI",
+      "filterAll": "All",
+      "filterPr": "PR",
+      "filterIssue": "Issue",
+      "filterOther": "Other",
+      "groupPr": "Pull Request",
+      "groupIssue": "Issue",
+      "groupOther": "Other",
+      "sourceUser": "You",
+      "sourceAssistant": "Claude",
+      "empty": "No links have come up in this conversation yet",
+      "copy": "Copy link",
+      "open": "Open in browser"
     }
   },
   "update": {

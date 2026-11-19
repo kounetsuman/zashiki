@@ -67,14 +67,16 @@ describe("SessionStatusFooter", () => {
 
     it("offers nothing for a session that was never compacted", () => {
       render(<SessionStatusFooter usage={base} />);
-      expect(screen.queryByRole("button")).toBeNull();
+      expect(screen.queryByRole("button", { name: /compact/ })).toBeNull();
     });
 
     it("keeps them behind a closed toggle by default", () => {
       render(<SessionStatusFooter usage={compacted} />);
-      expect(screen.getByRole("button").getAttribute("aria-expanded")).toBe(
-        "false",
-      );
+      expect(
+        screen
+          .getByRole("button", { name: "compact 前の値を表示" })
+          .getAttribute("aria-expanded"),
+      ).toBe("false");
       expect(screen.queryByText("120.6M")).toBeNull();
     });
 
@@ -90,7 +92,9 @@ describe("SessionStatusFooter", () => {
       expect(screen.getByText("120.6M")).toBeTruthy();
       expect(screen.getByText("84.6M")).toBeTruthy();
       expect(screen.getByText("1m 0s")).toBeTruthy();
-      fireEvent.click(screen.getByRole("button"));
+      fireEvent.click(
+        screen.getByRole("button", { name: "compact 前の値を隠す" }),
+      );
       expect(onToggle).toHaveBeenCalledOnce();
     });
   });

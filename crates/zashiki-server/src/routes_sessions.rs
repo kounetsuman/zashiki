@@ -4,6 +4,7 @@ use serde::Deserialize;
 use crate::app_state::AppState;
 use crate::protocol::{
     CockpitTerminalLastActivity, CockpitTerminalLastActivityResponse, CockpitTerminalTailResponse,
+    SessionLinksResponse,
 };
 use crate::session_persist;
 use crate::wire_support::{json_error, parse_json_body, persist_error_response};
@@ -84,7 +85,7 @@ pub(crate) async fn sessions_restore(
 const TAIL_LINES: usize = 10;
 
 #[derive(Deserialize)]
-pub(crate) struct TailQuery {
+pub(crate) struct CockpitTerminalQuery {
     id: String,
 }
 
@@ -112,7 +113,7 @@ pub(crate) async fn cockpit_terminals_last_activity(State(state): State<AppState
 /// `GET /api/cockpit-terminals/tail?id=`. The last lines of a Cockpit Terminal's visible screen.
 pub(crate) async fn cockpit_terminal_tail(
     State(state): State<AppState>,
-    Query(query): Query<TailQuery>,
+    Query(query): Query<CockpitTerminalQuery>,
 ) -> Response {
     let Some(control) = state.control.as_ref() else {
         return json_error(
@@ -127,6 +128,28 @@ pub(crate) async fn cockpit_terminal_tail(
         .into_response(),
         None => json_error(StatusCode::NOT_FOUND, "no such cockpit terminal"),
     }
+}
+
+/// `GET /api/cockpit-terminals/links?id=`. The links seen by the Claude Session running in a Cockpit
+/// Terminal (empty until one is detected).
+pub(crate) async fn cockpit_terminal_links(
+    State(state): State<AppState>,
+    Query(query): Query<CockpitTerminalQuery>,
+) -> Response {
+    let Some(control) = state.control.as_ref() else {
+        return json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "session services not available",
+        );
+    };
+    if control.sessions.get(&query.id).await.is_none() {
+        return json_error(StatusCode::NOT_FOUND, "no such cockpit terminal");
+    }
+    let links = match control.hub.claude_session_of(&query.id) {
+        Some((cwd, sid)) => control.projects.session_links(&cwd, &sid).await,
+        None => Vec::new(),
+    };
+    Json(SessionLinksResponse { links }).into_response()
 }
 
 // ---- session save/restore REST wiring (owned registry + in-process HTTP) ----
@@ -159,10 +182,18 @@ mod sessions_persist_rest_tests {
     /// Owned services without a poller (the persist handlers only look at sessions and launch_claude,
     /// so the rest can be bogus).
     fn services(sessions: Arc<SessionRegistry>) -> ControlServices {
+        services_seeing(sessions, empty_snapshot(), std::env::temp_dir())
+    }
+
+    fn services_seeing(
+        sessions: Arc<SessionRegistry>,
+        snapshot: StateSnapshot,
+        projects_root: std::path::PathBuf,
+    ) -> ControlServices {
         let (refresh, rx) = tokio::sync::mpsc::channel(8);
         drop(rx);
         ControlServices {
-            hub: ControlHub::new(ConfigView::default(), vec![], empty_snapshot()),
+            hub: ControlHub::new(ConfigView::default(), vec![], snapshot),
             refresh,
             repos: crate::repos::shared_repos(vec![], Default::default(), Default::default()),
             launch_claude: true,
@@ -170,6 +201,7 @@ mod sessions_persist_rest_tests {
             sessions,
             hook_events: Arc::new(crate::hook_event_store::HookEventStore::new()),
             session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
+            projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(projects_root)),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             notify_history: true,
@@ -390,6 +422,119 @@ mod sessions_persist_rest_tests {
             app(dir.path(), sessions),
             "GET",
             "/api/cockpit-terminals/tail?id=missing",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+    }
+
+    const LINKS_CWD: &str = "/Users/test/workspace/org/repo";
+    const LINKS_SID: &str = "0b6cbc45-83a9-4f2e-9c3d-1a2b3c4d5e6f";
+
+    fn snapshot_with_claude(cockpit_terminal_id: &str, sid: Option<&str>) -> StateSnapshot {
+        let info = serde_json::from_value(serde_json::json!({
+            "cockpitTerminalId": cockpit_terminal_id,
+            "name": "repo",
+            "org": "org",
+            "repo": "repo",
+            "cwd": LINKS_CWD,
+            "state": "idle",
+            "title": null,
+            "sid": sid,
+            "active": true,
+        }))
+        .unwrap();
+        StateSnapshot {
+            sessions: vec![info],
+            ..empty_snapshot()
+        }
+    }
+
+    fn links_app(
+        dir: &std::path::Path,
+        sessions: Arc<SessionRegistry>,
+        snapshot: StateSnapshot,
+        projects_root: &std::path::Path,
+    ) -> axum::Router {
+        build_router(ServerConfig {
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
+            control: Some(services_seeing(sessions, snapshot, projects_root.to_path_buf())),
+            saves_dir: Some(dir.to_path_buf()),
+            ..Default::default()
+        })
+    }
+
+    #[tokio::test]
+    async fn links_lists_the_claude_sessions_links_in_wire_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        let project_dir = projects
+            .path()
+            .join(crate::jsonl::claude_project_dir_name(LINKS_CWD));
+        std::fs::create_dir_all(&project_dir).unwrap();
+        std::fs::write(
+            project_dir.join(format!("{LINKS_SID}.jsonl")),
+            r#"{"type":"user","message":{"content":"https://github.com/o/r/pull/7/files"}}"#,
+        )
+        .unwrap();
+        let sessions = sessions_running("sleep 5").await;
+        let (s, b) = send(
+            links_app(
+                dir.path(),
+                sessions.clone(),
+                snapshot_with_claude("t1", Some(LINKS_SID)),
+                projects.path(),
+            ),
+            "GET",
+            "/api/cockpit-terminals/links?id=t1",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"links": [{
+                "url": "https://github.com/o/r/pull/7",
+                "tab": "conversation",
+                "kind": "pr",
+                "source": "user",
+                "github": {"owner": "o", "repo": "r", "number": 7},
+            }]})
+        );
+        sessions.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn links_of_a_terminal_without_a_claude_session_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        let sessions = sessions_running("sleep 5").await;
+        let (s, b) = send(
+            links_app(
+                dir.path(),
+                sessions.clone(),
+                snapshot_with_claude("t1", None),
+                projects.path(),
+            ),
+            "GET",
+            "/api/cockpit-terminals/links?id=t1",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b, r#"{"links":[]}"#);
+        sessions.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn links_of_an_unknown_terminal_is_404() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Arc::new(SessionRegistry::new());
+        let (s, _b) = send(
+            app(dir.path(), sessions),
+            "GET",
+            "/api/cockpit-terminals/links?id=missing",
             "",
         )
         .await;

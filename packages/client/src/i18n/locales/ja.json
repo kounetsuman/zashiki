@@ -88,7 +88,8 @@
     "sessionIdCopied": "セッションIDをコピーしました",
     "pathCopied": "パスをコピーしました",
     "notificationsDeleted": "{{count}} 件の通知を削除しました",
-    "memoSaveFailed": "メモを保存できませんでした。接続を確認して再試行してください"
+    "memoSaveFailed": "メモを保存できませんでした。接続を確認して再試行してください",
+    "linkCopied": "リンクをコピーしました"
   },
   "quitSave": {
     "saving": "終了前にメモを保存しています…"
@@ -303,6 +304,24 @@
       "modeRemaining": "残時間",
       "modeElapsed": "経過時間",
       "modeToggleTitle": "使用時間の残／経過を切替（現在: {{mode}}）"
+    },
+    "links": {
+      "title": "このセッションのリンク",
+      "close": "閉じる",
+      "tabConversation": "会話に出たもの",
+      "tabAiReferenced": "AI が参照したもの",
+      "filterAll": "すべて",
+      "filterPr": "PR",
+      "filterIssue": "Issue",
+      "filterOther": "その他",
+      "groupPr": "Pull Request",
+      "groupIssue": "Issue",
+      "groupOther": "その他",
+      "sourceUser": "あなた",
+      "sourceAssistant": "Claude",
+      "empty": "この会話にはまだリンクが出ていません",
+      "copy": "リンクをコピー",
+      "open": "ブラウザで開く"
     }
   },
   "update": {
