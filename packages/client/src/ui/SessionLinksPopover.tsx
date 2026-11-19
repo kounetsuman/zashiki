@@ -254,21 +254,26 @@ function LinkIcon({
   faviconUrl?: (origin: string) => string;
 }) {
   const { t } = useTranslation();
-  const [faviconFailed, setFaviconFailed] = useState(false);
+  const [failedFavicon, setFailedFavicon] = useState<{
+    link: SessionLink;
+    src: string;
+  } | null>(null);
   if (link.kind === "other") {
-    if (
-      link.faviconOrigin !== undefined &&
-      faviconUrl !== undefined &&
-      !faviconFailed
-    ) {
+    const src =
+      link.faviconOrigin === undefined || faviconUrl === undefined
+        ? undefined
+        : faviconUrl(link.faviconOrigin);
+    // Each poll hands over new link objects, so a failure is retried on the next one.
+    const failed = failedFavicon?.link === link && failedFavicon.src === src;
+    if (src !== undefined && !failed) {
       return (
         <img
           className="sl-row-icon"
-          src={faviconUrl(link.faviconOrigin)}
+          src={src}
           width={16}
           height={16}
           alt=""
-          onError={() => setFaviconFailed(true)}
+          onError={() => setFailedFavicon({ link, src })}
         />
       );
     }

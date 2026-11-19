@@ -304,12 +304,14 @@ describe("SessionLinksPopover", () => {
     faviconOrigin: "https://docs.example.com",
   };
 
+  const faviconUrl = (origin: string) => `/favicon?origin=${origin}`;
+
   function openWithFavicons(links: SessionLink[]) {
     render(
       <SessionStatusFooter
         usage={null}
         links={links}
-        faviconUrl={(origin) => `/favicon?origin=${origin}`}
+        faviconUrl={faviconUrl}
       />,
     );
     fireEvent.click(linkButton());
@@ -343,5 +345,42 @@ describe("SessionLinksPopover", () => {
     ]);
     expect(dialog.querySelector("img")).toBeNull();
     expect(within(dialog).getByText("public")).toBeTruthy();
+  });
+
+  it("tries a failed favicon again when a later poll or a new origin brings it", () => {
+    const { rerender } = render(
+      <SessionStatusFooter
+        usage={null}
+        links={[FAVICON_LINK]}
+        faviconUrl={faviconUrl}
+      />,
+    );
+    fireEvent.click(linkButton());
+    const dialog = popover() as HTMLElement;
+    fireEvent.error(dialog.querySelector("img.sl-row-icon") as HTMLElement);
+    expect(dialog.querySelector("img")).toBeNull();
+
+    rerender(
+      <SessionStatusFooter
+        usage={null}
+        links={[{ ...FAVICON_LINK }]}
+        faviconUrl={faviconUrl}
+      />,
+    );
+    expect(dialog.querySelector("img")).not.toBeNull();
+
+    fireEvent.error(dialog.querySelector("img.sl-row-icon") as HTMLElement);
+    rerender(
+      <SessionStatusFooter
+        usage={null}
+        links={[{ ...FAVICON_LINK, faviconOrigin: "https://example.net" }]}
+        faviconUrl={faviconUrl}
+      />,
+    );
+    expect(
+      (
+        dialog.querySelector("img.sl-row-icon") as HTMLImageElement
+      ).getAttribute("src"),
+    ).toBe("/favicon?origin=https://example.net");
   });
 });
