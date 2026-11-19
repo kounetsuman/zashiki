@@ -106,6 +106,7 @@ import { PoppedOutNotice } from "./ui/PoppedOutNotice.js";
 import { QuickOpen } from "./ui/QuickOpen.js";
 import { QuitSaveOverlay } from "./ui/QuitSaveOverlay.js";
 import { SearchView } from "./ui/SearchView.js";
+import { SessionStatsModal } from "./ui/SessionStatsModal.js";
 import { SessionStatusFooter } from "./ui/SessionStatusFooter.js";
 import { SessionToaster } from "./ui/SessionToaster.js";
 import { SettingsModal } from "./ui/SettingsModal.js";
@@ -134,6 +135,8 @@ import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useSessionLinks } from "./ui/useSessionLinks.js";
+import { useSessionStats } from "./ui/useSessionStats.js";
+import { useSessionStatsOpen } from "./ui/useSessionStatsOpen.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useUsageLimitWarning } from "./ui/useUsageLimitWarning.js";
 import { useViewer } from "./ui/useViewer.js";
@@ -486,6 +489,23 @@ export function App({
     activeSess,
     sessionLinksOpen,
   );
+  const [openLinksNonce, setOpenLinksNonce] = useState(0);
+  const sessionStats = useSessionStatsOpen(
+    activeSession?.cockpitTerminalId ?? null,
+  );
+  const activeSessionStats = useSessionStats(
+    cockpitTerminalsApi,
+    sessionStats.open ? activeSess : null,
+  );
+  const { hide: hideSessionStats } = sessionStats;
+  const closeSessionStats = useCallback(() => {
+    hideSessionStats();
+    store.focusTerminal();
+  }, [hideSessionStats, store]);
+  const openLinksFromStats = useCallback(() => {
+    hideSessionStats();
+    setOpenLinksNonce((n) => n + 1);
+  }, [hideSessionStats]);
   const activeSessionAccent =
     activeSession !== undefined
       ? resolveOrgColor(activeSession.org, orgColors)
@@ -1431,6 +1451,12 @@ export function App({
               faviconUrl={cockpitTerminalsApi?.faviconUrl}
               onLinksClosed={store.focusTerminal}
               onLinksOpenChange={setSessionLinksOpen}
+              openLinksNonce={openLinksNonce}
+              onOpenStats={
+                cockpitTerminalsApi !== undefined
+                  ? sessionStats.show
+                  : undefined
+              }
             />
           )}
         </div>
@@ -1583,6 +1609,18 @@ export function App({
             control.send({ t: "cockpitTerminal.close", cockpitTerminalId: id })
           }
           onClose={idleWarning.dismiss}
+        />
+      )}
+      {sessionStats.open && activeSession !== undefined && (
+        <SessionStatsModal
+          cockpitTerminalId={activeSession.cockpitTerminalId}
+          sessionTitle={resolveTitle(
+            effectiveCustomTitle(conversationTitles, activeSession),
+            activeSession,
+          )}
+          events={activeSessionStats}
+          onOpenLinks={openLinksFromStats}
+          onClose={closeSessionStats}
         />
       )}
       {dashboardFrame !== null && (

@@ -12,6 +12,8 @@ export interface ModalProps {
   onClose(): void;
   /** Extra class on the dialog box for per-modal sizing/variants. */
   className?: string;
+  /** Shown in the header between the title and the close button. */
+  headerContent?: ReactNode;
   children: ReactNode;
 }
 
@@ -26,6 +28,7 @@ export function Modal({
   closeLabel,
   onClose,
   className,
+  headerContent,
   children,
 }: ModalProps) {
   useModalEscape(onClose);
@@ -51,6 +54,7 @@ export function Modal({
       >
         <header className="modal-header">
           <h2 className="modal-title">{title}</h2>
+          {headerContent}
           <button
             type="button"
             className="modal-close"

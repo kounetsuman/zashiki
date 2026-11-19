@@ -5,7 +5,7 @@ import {
   type SessionUsage,
   type UsageBeforeCompaction,
 } from "@zashiki/shared";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { distinctLinkCount } from "../session/session-links.js";
@@ -43,13 +43,18 @@ export interface SessionStatusFooterProps {
   onLinksClosed?: () => void;
   /** Whether the links popover is showing, including closed when the footer itself goes away. */
   onLinksOpenChange?: (open: boolean) => void;
+  /** Each change after mount opens the links popover. */
+  openLinksNonce?: number;
+  /** Opens the Session Stats View; without it the footer offers no stats button. */
+  onOpenStats?: () => void;
 }
 
 const DASH = "–";
 
 /**
  * Status area docked under the terminal for the active session: tokens (this turn / this session /
- * its subagents), elapsed time (this turn / this session), and the button that opens its links.
+ * its subagents), elapsed time (this turn / this session), and the buttons that open its links and
+ * its Session Stats View.
  * Elapsed re-ticks each second off the server-provided epoch anchors.
  */
 export function SessionStatusFooter({
@@ -64,6 +69,8 @@ export function SessionStatusFooter({
   faviconUrl,
   onLinksClosed = () => undefined,
   onLinksOpenChange,
+  openLinksNonce = 0,
+  onOpenStats,
 }: SessionStatusFooterProps) {
   const { t } = useTranslation();
   const now = useNow(1_000);
@@ -73,6 +80,12 @@ export function SessionStatusFooter({
     onLinksOpenChange(true);
     return () => onLinksOpenChange(false);
   }, [linksOpen, onLinksOpenChange]);
+  const seenLinksNonce = useRef(openLinksNonce);
+  useEffect(() => {
+    if (openLinksNonce === seenLinksNonce.current) return;
+    seenLinksNonce.current = openLinksNonce;
+    setLinksOpen(true);
+  }, [openLinksNonce]);
   const closeLinks = () => {
     setLinksOpen(false);
     onLinksClosed();
@@ -201,6 +214,24 @@ export function SessionStatusFooter({
             <span className="ss-val">{distinctLinkCount(links)}</span>
           </button>
         </Tooltip>
+
+        {onOpenStats !== undefined && (
+          <Tooltip className="ss-group" label={t("sessionStats.open")}>
+            <button
+              type="button"
+              className="ss-links-button"
+              aria-label={t("sessionStats.open")}
+              onClick={onOpenStats}
+            >
+              <span
+                className="material-symbols-outlined ss-icon"
+                aria-hidden="true"
+              >
+                query_stats
+              </span>
+            </button>
+          </Tooltip>
+        )}
       </footer>
     </div>
   );

@@ -23,6 +23,7 @@ import {
   isClaudeRunning,
   serverMessageSchema,
   sessionLinksResponseSchema,
+  sessionStatsResponseSchema,
   sessionUsageSchema,
   termIdSchema,
 } from "./protocol.js";
@@ -852,5 +853,60 @@ describe("cockpit terminal REST responses", () => {
         links: [{ ...link, kind: "pull_request" }],
       }).success,
     ).toBe(false);
+  });
+
+  it("parses the stats body the server sends", () => {
+    const body = {
+      events: [
+        { at: 1, kind: "prompt", text: "fix it" },
+        {
+          at: 2,
+          kind: "command",
+          text: "curl https://a.example/",
+          tool: "Bash",
+          target: "curl",
+          domains: ["a.example"],
+          via: ["curl"],
+          outcome: "denied",
+          deniedBy: "classifier",
+          durationMs: 1500,
+        },
+        {
+          at: 3,
+          kind: "command",
+          text: "sleep 99",
+          tool: "Bash",
+          target: "sleep",
+          outcome: "interrupted",
+        },
+        {
+          at: 4,
+          kind: "compaction",
+          text: "auto",
+          preTokens: 162000,
+          postTokens: 31000,
+        },
+      ],
+    };
+    expect(sessionStatsResponseSchema.parse(body)).toEqual(body);
+  });
+
+  it("keeps an event whose fields or values a newer server added", () => {
+    const parsed = sessionStatsResponseSchema.parse({
+      events: [
+        {
+          at: 1,
+          kind: "teleport",
+          text: "x",
+          outcome: "skipped",
+          deniedBy: "admin",
+          extra: true,
+        },
+      ],
+    });
+    expect(parsed.events).toHaveLength(1);
+    expect(parsed.events[0]?.kind).toBe("tool");
+    expect(parsed.events[0]?.outcome).toBeUndefined();
+    expect(parsed.events[0]?.deniedBy).toBeUndefined();
   });
 });

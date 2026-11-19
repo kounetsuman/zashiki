@@ -16,8 +16,9 @@ use crate::jsonl::{
     SubagentTokens,
     TitleScan, TranscriptTitle,
 };
-use crate::protocol::SessionLink;
+use crate::protocol::{SessionEvent, SessionLink};
 use crate::session_links::session_links;
+use crate::session_stats::session_events;
 use crate::status_poller::Slices;
 use zashiki_core::session_state::SubagentTranscript;
 
@@ -48,25 +49,30 @@ struct TitleProgress {
 
 type TitleScans = Arc<Mutex<HashMap<PathBuf, TitleProgress>>>;
 
-/// How many transcripts' links are held at once; the least recently read is dropped first.
-const LINK_CACHE_CAPACITY: usize = 32;
+/// How many transcripts' parses are held at once per cache; the least recently read is dropped first.
+const TRANSCRIPT_CACHE_CAPACITY: usize = 32;
 
-/// The links a transcript held at the size and mtime it was read at.
-struct CachedLinks {
+/// What a whole transcript parsed to at the size and mtime it was read at.
+struct CachedParse<T> {
     len: u64,
     mtime_ms: u64,
-    links: Vec<SessionLink>,
+    value: T,
     last_read: u64,
 }
 
-#[derive(Default)]
-struct LinkCacheEntries {
-    entries: HashMap<PathBuf, CachedLinks>,
+struct TranscriptCacheEntries<T> {
+    entries: HashMap<PathBuf, CachedParse<T>>,
     reads: u64,
 }
 
-impl LinkCacheEntries {
-    fn fresh(&mut self, path: &Path, len: u64, mtime_ms: u64) -> Option<Vec<SessionLink>> {
+impl<T> Default for TranscriptCacheEntries<T> {
+    fn default() -> Self {
+        Self { entries: HashMap::new(), reads: 0 }
+    }
+}
+
+impl<T: Clone> TranscriptCacheEntries<T> {
+    fn fresh(&mut self, path: &Path, len: u64, mtime_ms: u64) -> Option<T> {
         self.reads += 1;
         let reads = self.reads;
         let cached = self
@@ -74,15 +80,15 @@ impl LinkCacheEntries {
             .get_mut(path)
             .filter(|c| c.len == len && c.mtime_ms == mtime_ms)?;
         cached.last_read = reads;
-        Some(cached.links.clone())
+        Some(cached.value.clone())
     }
 
-    fn insert(&mut self, path: &Path, len: u64, mtime_ms: u64, links: Vec<SessionLink>) {
+    fn insert(&mut self, path: &Path, len: u64, mtime_ms: u64, value: T) {
         self.entries.insert(
             path.to_path_buf(),
-            CachedLinks { len, mtime_ms, links, last_read: self.reads },
+            CachedParse { len, mtime_ms, value, last_read: self.reads },
         );
-        if self.entries.len() > LINK_CACHE_CAPACITY {
+        if self.entries.len() > TRANSCRIPT_CACHE_CAPACITY {
             let oldest = self
                 .entries
                 .iter()
@@ -95,7 +101,7 @@ impl LinkCacheEntries {
     }
 }
 
-type LinkCache = Arc<Mutex<LinkCacheEntries>>;
+type TranscriptCache<T> = Arc<Mutex<TranscriptCacheEntries<T>>>;
 
 /// Adapter for reading jsonl slices plus subagents mtime.
 pub struct ClaudeProjectsAdapter {
@@ -104,7 +110,8 @@ pub struct ClaudeProjectsAdapter {
     now_ms: NowMs,
     subagent_totals: SubagentTotals,
     title_scans: TitleScans,
-    link_cache: LinkCache,
+    link_cache: TranscriptCache<Vec<SessionLink>>,
+    stats_cache: TranscriptCache<Vec<SessionEvent>>,
 }
 
 fn real_now_ms() -> u64 {
@@ -133,7 +140,8 @@ impl ClaudeProjectsAdapter {
             root_dir,
             subagent_totals: SubagentTotals::default(),
             title_scans: TitleScans::default(),
-            link_cache: LinkCache::default(),
+            link_cache: TranscriptCache::default(),
+            stats_cache: TranscriptCache::default(),
             max_slice_bytes: DEFAULT_MAX_SLICE_BYTES,
             now_ms: Box::new(real_now_ms),
         }
@@ -218,9 +226,25 @@ impl ClaudeProjectsAdapter {
             .join(claude_project_dir_name(cwd))
             .join(format!("{sid}.jsonl"));
         let cache = Arc::clone(&self.link_cache);
-        tokio::task::spawn_blocking(move || session_links_sync(&path, &cache))
+        tokio::task::spawn_blocking(move || read_cached_sync(&path, &cache, session_links))
             .await
             .unwrap_or_default()
+    }
+
+    /// The events of the session transcript for the Session Stats View (empty when it is missing or
+    /// unreadable), cached like `session_links`.
+    pub async fn session_events(&self, cwd: &str, sid: &str) -> Vec<SessionEvent> {
+        let path = self
+            .root_dir
+            .join(claude_project_dir_name(cwd))
+            .join(format!("{sid}.jsonl"));
+        let cache = Arc::clone(&self.stats_cache);
+        let cwd = cwd.to_string();
+        tokio::task::spawn_blocking(move || {
+            read_cached_sync(&path, &cache, |text| session_events(text, &cwd))
+        })
+        .await
+        .unwrap_or_default()
     }
 
     /// The set of `toolUseResult.backgroundTaskId` in the transcript (empty when the file is missing
@@ -240,25 +264,29 @@ impl ClaudeProjectsAdapter {
     }
 }
 
-fn session_links_sync(path: &Path, cache: &Mutex<LinkCacheEntries>) -> Vec<SessionLink> {
+fn read_cached_sync<T: Clone + Default>(
+    path: &Path,
+    cache: &Mutex<TranscriptCacheEntries<T>>,
+    parse: impl FnOnce(&str) -> T,
+) -> T {
     let Ok(meta) = fs::metadata(path) else {
         if let Ok(mut cache) = cache.lock() {
             cache.entries.remove(path);
         }
-        return Vec::new();
+        return T::default();
     };
     let (len, mtime) = (meta.len(), mtime_ms(&meta));
-    if let Some(links) = cache.lock().ok().and_then(|mut c| c.fresh(path, len, mtime)) {
-        return links;
+    if let Some(value) = cache.lock().ok().and_then(|mut c| c.fresh(path, len, mtime)) {
+        return value;
     }
     let Ok(bytes) = fs::read(path) else {
-        return Vec::new();
+        return T::default();
     };
-    let links = session_links(&String::from_utf8_lossy(&bytes));
+    let value = parse(&String::from_utf8_lossy(&bytes));
     if let Ok(mut cache) = cache.lock() {
-        cache.insert(path, len, mtime, links.clone());
+        cache.insert(path, len, mtime, value.clone());
     }
-    links
+    value
 }
 
 /// Core of slice reading (std::fs, synchronous). When size <= max*2, read the whole
@@ -584,21 +612,21 @@ mod tests {
     async fn session_links_keeps_only_the_most_recently_read_transcripts() {
         let tmp = tempfile::tempdir().unwrap();
         let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
-        let sids: Vec<String> = (0..=LINK_CACHE_CAPACITY).map(|i| format!("sid-{i}")).collect();
+        let sids: Vec<String> = (0..=TRANSCRIPT_CACHE_CAPACITY).map(|i| format!("sid-{i}")).collect();
         for sid in &sids {
             write_jsonl(tmp.path(), sid, &link_line("https://example.com/x"), BASE_SEC);
         }
-        for sid in &sids[..LINK_CACHE_CAPACITY] {
+        for sid in &sids[..TRANSCRIPT_CACHE_CAPACITY] {
             adapter.session_links(CWD, sid).await;
         }
         adapter.session_links(CWD, &sids[0]).await;
-        adapter.session_links(CWD, &sids[LINK_CACHE_CAPACITY]).await;
+        adapter.session_links(CWD, &sids[TRANSCRIPT_CACHE_CAPACITY]).await;
 
         let cache = &adapter.link_cache.lock().unwrap().entries;
-        assert_eq!(cache.len(), LINK_CACHE_CAPACITY);
+        assert_eq!(cache.len(), TRANSCRIPT_CACHE_CAPACITY);
         assert!(cache.contains_key(&slices_path(tmp.path(), &sids[0])));
         assert!(!cache.contains_key(&slices_path(tmp.path(), &sids[1])));
-        assert!(cache.contains_key(&slices_path(tmp.path(), &sids[LINK_CACHE_CAPACITY])));
+        assert!(cache.contains_key(&slices_path(tmp.path(), &sids[TRANSCRIPT_CACHE_CAPACITY])));
     }
 
     #[tokio::test]
@@ -612,6 +640,47 @@ mod tests {
         let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
         let links = adapter.session_links(CWD, SID).await;
         assert_eq!(link_urls(&links), vec!["https://example.com/ok"]);
+    }
+
+    fn read_line(path: &str) -> String {
+        format!(
+            "{{\"type\":\"assistant\",\"message\":{{\"content\":[{{\"type\":\"tool_use\",\"id\":\"t\",\"name\":\"Read\",\"input\":{{\"file_path\":\"{path}\"}}}}]}}}}\n"
+        )
+    }
+
+    fn event_targets(events: &[crate::protocol::SessionEvent]) -> Vec<&str> {
+        events.iter().filter_map(|e| e.target.as_deref()).collect()
+    }
+
+    #[tokio::test]
+    async fn session_events_read_the_main_transcript_relative_to_its_cwd() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_jsonl(tmp.path(), SID, &read_line(&format!("{CWD}/src/main.rs")), BASE_SEC);
+        write_subagent_content(tmp.path(), SID, "agent-a1.jsonl", &read_line("/agent"));
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        let events = adapter.session_events(CWD, SID).await;
+        assert_eq!(event_targets(&events), vec!["src/main.rs"]);
+    }
+
+    #[tokio::test]
+    async fn session_events_of_a_missing_transcript_are_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert!(adapter.session_events(CWD, SID).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn session_events_reread_only_when_the_size_or_mtime_changed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        write_jsonl(tmp.path(), SID, &read_line("/aaaa"), BASE_SEC);
+        adapter.session_events(CWD, SID).await;
+
+        write_jsonl(tmp.path(), SID, &read_line("/bbbb"), BASE_SEC);
+        assert_eq!(event_targets(&adapter.session_events(CWD, SID).await), vec!["/aaaa"]);
+
+        write_jsonl(tmp.path(), SID, &read_line("/bbbb"), BASE_SEC + 1);
+        assert_eq!(event_targets(&adapter.session_events(CWD, SID).await), vec!["/bbbb"]);
     }
 
     #[tokio::test]
@@ -1044,7 +1113,8 @@ mod tests {
             root_dir: tmp.path().to_path_buf(),
             subagent_totals: SubagentTotals::default(),
             title_scans: TitleScans::default(),
-            link_cache: LinkCache::default(),
+            link_cache: TranscriptCache::default(),
+            stats_cache: TranscriptCache::default(),
             max_slice_bytes: 64 * 1024,
             now_ms: Box::new(|| (BASE_SEC + 3) * 1000),
         };

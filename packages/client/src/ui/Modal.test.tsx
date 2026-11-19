@@ -26,6 +26,22 @@ describe("Modal", () => {
     expect(within(dialog).getByText("body content")).toBeTruthy();
   });
 
+  it("shows header content inside the header", () => {
+    const { container } = render(
+      <Modal
+        title="t"
+        closeLabel="close"
+        onClose={noop}
+        headerContent={<span>extra</span>}
+      >
+        <p>body</p>
+      </Modal>,
+    );
+    expect(container.querySelector(".modal-header")?.textContent).toContain(
+      "extra",
+    );
+  });
+
   it("closes on Escape", () => {
     const onClose = vi.fn();
     render(
