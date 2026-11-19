@@ -205,6 +205,29 @@ function CodeMirrorHost({
   return <div className="viewer-cm" ref={hostRef} />;
 }
 
+function unloadVideo(video: HTMLVideoElement): void {
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+}
+
+/** WebKit leaves a paused video's Live Text overlay on screen unless the video is unloaded while still attached. */
+function VideoHost({ url, relPath }: { url: string; relPath: string }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  useLayoutEffect(() => {
+    const video = videoRef.current;
+    if (video === null) return;
+    video.src = url;
+    return () => unloadVideo(video);
+  }, [url]);
+  return (
+    // biome-ignore lint/a11y/useMediaCaption: local media preview has no caption track
+    <video ref={videoRef} className="viewer-media" controls>
+      {relPath}
+    </video>
+  );
+}
+
 function AudioHost({ url, relPath }: { url: string; relPath: string }) {
   const { t } = useTranslation();
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -231,12 +254,7 @@ function MediaHost({
   relPath: string;
 }) {
   if (media.kind === "video") {
-    return (
-      // biome-ignore lint/a11y/useMediaCaption: local media preview has no caption track
-      <video className="viewer-media" src={media.url} controls>
-        {relPath}
-      </video>
-    );
+    return <VideoHost url={media.url} relPath={relPath} />;
   }
   if (media.kind === "audio")
     return <AudioHost url={media.url} relPath={relPath} />;
