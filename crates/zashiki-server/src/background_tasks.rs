@@ -3,7 +3,7 @@
 //! (`packages/shared/src/background-tasks.ts`); this side only reports observable facts.
 //! The reading contract lives in the tests below.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
@@ -55,18 +55,22 @@ static NOTICE_RE: LazyLock<Regex> = LazyLock::new(|| {
 static EXIT_CODE_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"exit code (-?\d+)").expect("static regex is valid"));
 
+/// How many recent Bash calls keep their input for a launch result to join. A command moved to the
+/// background mid-run (Ctrl+B) carries no `run_in_background`, so every Bash call is kept, newest last.
+const PENDING_INPUTS_KEPT: usize = 64;
+
 /// Accumulates background launches and their ends line by line, so a growing transcript can be fed
 /// from where the last read stopped.
 #[derive(Debug, Default)]
 pub struct BackgroundTaskScan {
-    pending_inputs: HashMap<String, (String, String)>,
+    pending_inputs: VecDeque<(String, (String, String))>,
     launches: Vec<TaskLaunch>,
     ends: HashMap<String, TaskEnd>,
 }
 
 impl BackgroundTaskScan {
     pub fn feed(&mut self, line: &str) {
-        let looks_relevant = line.contains("\"run_in_background\"")
+        let looks_relevant = line.contains("\"Bash\"")
             || line.contains("\"backgroundTaskId\"")
             || line.contains("<task-notification>")
             || line.contains("Successfully stopped task");
@@ -76,7 +80,7 @@ impl BackgroundTaskScan {
         let Ok(event) = serde_json::from_str::<Value>(line) else {
             return;
         };
-        self.remember_background_inputs(&event);
+        self.remember_bash_inputs(&event);
         self.record_launch(&event);
         self.record_end(&event);
         self.record_task_stop(&event);
@@ -93,26 +97,28 @@ impl BackgroundTaskScan {
             .collect()
     }
 
-    fn remember_background_inputs(&mut self, event: &Value) {
+    fn remember_bash_inputs(&mut self, event: &Value) {
         let Some(items) = event.pointer("/message/content").and_then(Value::as_array) else {
             return;
         };
         for item in items {
-            let is_background_bash = item.get("type").and_then(Value::as_str) == Some("tool_use")
-                && item.get("name").and_then(Value::as_str) == Some("Bash")
-                && item.pointer("/input/run_in_background").and_then(Value::as_bool) == Some(true);
+            let is_bash = item.get("type").and_then(Value::as_str) == Some("tool_use")
+                && item.get("name").and_then(Value::as_str) == Some("Bash");
             let Some(id) = item.get("id").and_then(Value::as_str) else {
                 continue;
             };
-            if is_background_bash {
+            if is_bash {
                 let text = |key: &str| {
                     item.pointer(&format!("/input/{key}"))
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .to_string()
                 };
+                if self.pending_inputs.len() == PENDING_INPUTS_KEPT {
+                    self.pending_inputs.pop_front();
+                }
                 self.pending_inputs
-                    .insert(id.to_string(), (text("description"), text("command")));
+                    .push_back((id.to_string(), (text("description"), text("command"))));
             }
         }
     }
@@ -133,7 +139,10 @@ impl BackgroundTaskScan {
             .and_then(|items| items.iter().find(|i| i.get("type").and_then(Value::as_str) == Some("tool_result")));
         let (description, command) = result
             .and_then(|r| r.get("tool_use_id").and_then(Value::as_str))
-            .and_then(|id| self.pending_inputs.remove(id))
+            .and_then(|id| {
+                let at = self.pending_inputs.iter().position(|(pending, _)| pending == id)?;
+                self.pending_inputs.remove(at).map(|(_, input)| input)
+            })
             .unwrap_or_default();
         let output_path = result
             .map(tool_result_text)
@@ -409,6 +418,36 @@ mod tests {
                 .to_string(),
         );
         assert_eq!(scan(&lines)[0].end, None);
+    }
+
+    #[test]
+    fn command_moved_to_the_background_keeps_its_description_and_command() {
+        let use_line = json!({"type": "assistant", "message": {"content": [{
+            "type": "tool_use", "id": "tu1", "name": "Bash",
+            "input": {"command": "make ci", "description": "Run CI"}
+        }]}})
+        .to_string();
+        let [_, result_line] = launch_lines("tu1", "b1", "", "");
+        let launch = scan(&[use_line, result_line])[0].launch.clone();
+        assert_eq!((launch.description.as_str(), launch.command.as_str()), ("Run CI", "make ci"));
+    }
+
+    #[test]
+    fn only_recent_bash_inputs_are_kept() {
+        let mut lines: Vec<String> = (0..=PENDING_INPUTS_KEPT)
+            .map(|i| {
+                json!({"type": "assistant", "message": {"content": [{
+                    "type": "tool_use", "id": format!("tu{i}"), "name": "Bash", "input": {"command": format!("c{i}")}
+                }]}})
+                .to_string()
+            })
+            .collect();
+        let [_, oldest] = launch_lines("tu0", "b0", "", "");
+        let [_, newest] = launch_lines(&format!("tu{PENDING_INPUTS_KEPT}"), "b1", "", "");
+        lines.extend([oldest, newest]);
+        let records = scan(&lines);
+        assert_eq!(records[0].launch.command, "");
+        assert_eq!(records[1].launch.command, format!("c{PENDING_INPUTS_KEPT}"));
     }
 
     #[test]
