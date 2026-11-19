@@ -61,8 +61,8 @@ const mermaidFences = (md: Markdown) => {
 };
 
 /**
- * The desktop window refuses to leave the app in place, so a web link has to ask for a new window,
- * which the shell hands to the default browser.
+ * The desktop window refuses to leave the app in place, so a web link has to open a new window,
+ * which the app hands to the default browser.
  */
 const webLinksInNewWindow = (md: Markdown) => {
   const defaultLinkOpen =
