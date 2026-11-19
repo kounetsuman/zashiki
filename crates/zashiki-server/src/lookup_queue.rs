@@ -191,6 +191,12 @@ where
         found
     }
 
+    /// What is cached for `key`, without counting as a read or starting a lookup.
+    pub(crate) fn cached(&self, key: &K) -> Option<V> {
+        let entries = self.entries.lock().ok()?;
+        entries.map.get(key)?.lookup.as_ref()?.details.clone()
+    }
+
     /// A lookup still queued when reads have stopped asking for details is dropped unrun, and the
     /// next read starts it afresh.
     fn spawn_lookup(&self, key: K, request: R) {

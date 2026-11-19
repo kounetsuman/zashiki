@@ -257,6 +257,8 @@ impl Collector {
                 source: source.to_string(),
                 title: None,
                 github,
+                page_title: None,
+                favicon_origin: None,
             },
             last_seen_at: 0,
         });

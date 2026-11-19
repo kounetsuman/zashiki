@@ -1,4 +1,5 @@
 use axum::{extract::Query, extract::State, http::StatusCode, response::IntoResponse, response::Response, Json};
+use axum::http::{header, HeaderValue};
 use serde::Deserialize;
 
 use crate::app_state::AppState;
@@ -138,7 +139,8 @@ pub(crate) struct LinksQuery {
 
 /// `GET /api/cockpit-terminals/links?id=[&details=1]`. The links seen by the Claude Session running in
 /// a Cockpit Terminal (empty until one is detected). `details=1` adds the GitHub titles and states
-/// cached so far and starts looking up the rest, without waiting for them.
+/// and the other sites' page titles and favicons cached so far, and starts looking up the rest,
+/// without waiting for them.
 pub(crate) async fn cockpit_terminal_links(
     State(state): State<AppState>,
     Query(query): Query<LinksQuery>,
@@ -158,8 +160,48 @@ pub(crate) async fn cockpit_terminal_links(
     };
     if query.details.as_deref() == Some("1") {
         control.github_details.annotate(&mut links);
+        control.page_details.annotate(&mut links);
     }
     Json(SessionLinksResponse { links }).into_response()
+}
+
+#[derive(Deserialize)]
+pub(crate) struct FaviconQuery {
+    origin: String,
+}
+
+/// `GET /api/session-links/favicon?origin=` for `<img>`: a favicon the links response has offered,
+/// served only from the cache. The bytes come from another site, so they are never sniffed into
+/// something else and never run as a page of this origin.
+pub(crate) async fn session_link_favicon(
+    State(state): State<AppState>,
+    Query(query): Query<FaviconQuery>,
+) -> Response {
+    let cached = state
+        .control
+        .as_ref()
+        .and_then(|control| control.page_details.favicon(&query.origin))
+        .and_then(|favicon| {
+            let content_type = HeaderValue::from_str(&favicon.content_type).ok()?;
+            Some((content_type, favicon))
+        });
+    let mut res = match cached {
+        Some((content_type, favicon)) => {
+            let mut res = favicon.bytes.clone().into_response();
+            res.headers_mut().insert(header::CONTENT_TYPE, content_type);
+            res.headers_mut().insert(
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static("sandbox"),
+            );
+            res
+        }
+        None => json_error(StatusCode::NOT_FOUND, "no favicon cached"),
+    };
+    res.headers_mut().insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    res
 }
 
 // ---- session save/restore REST wiring (owned registry + in-process HTTP) ----
@@ -168,6 +210,7 @@ pub(crate) async fn cockpit_terminal_links(
 mod sessions_persist_rest_tests {
     use crate::control::{ConfigView, ControlHub, ControlServices};
     use crate::github_details::{GithubDetails, GithubDetailsCache};
+    use crate::page_details::{Favicon, PageDetails, PageDetailsCache};
     use crate::protocol::GithubState;
     use crate::session_launch::{plan_new_session, plan_to_config};
     use crate::session_registry::{SessionMeta, SessionRegistry};
@@ -215,6 +258,7 @@ mod sessions_persist_rest_tests {
             session_models: Arc::new(crate::session_model_store::SessionModelStore::new()),
             projects: Arc::new(crate::claude_projects::ClaudeProjectsAdapter::new(projects_root)),
             github_details: Arc::default(),
+            page_details: Arc::default(),
             heartbeat: crate::control::HEARTBEAT_INTERVAL,
             notify_mode: crate::hooks::NotifyMode::Web,
             notify_history: true,
@@ -472,6 +516,23 @@ mod sessions_persist_rest_tests {
         links_app_looking_up(dir, sessions, snapshot, projects_root, Arc::default())
     }
 
+    fn links_app_fetching_pages(
+        dir: &std::path::Path,
+        sessions: Arc<SessionRegistry>,
+        snapshot: StateSnapshot,
+        projects_root: &std::path::Path,
+        page_details: Arc<PageDetailsCache>,
+    ) -> axum::Router {
+        let mut services = services_seeing(sessions, snapshot, projects_root.to_path_buf());
+        services.page_details = page_details;
+        build_router(ServerConfig {
+            expected_token: Some(secrecy::SecretString::new("t".to_string())),
+            control: Some(services),
+            saves_dir: Some(dir.to_path_buf()),
+            ..Default::default()
+        })
+    }
+
     fn links_app_looking_up(
         dir: &std::path::Path,
         sessions: Arc<SessionRegistry>,
@@ -629,5 +690,103 @@ mod sessions_persist_rest_tests {
         )
         .await;
         assert_eq!(s, StatusCode::NOT_FOUND);
+    }
+
+    fn example_pages() -> Arc<PageDetailsCache> {
+        Arc::new(PageDetailsCache::with_fetch(
+            Arc::new(|_| {
+                Box::pin(async {
+                    Some(PageDetails {
+                        title: Some("Example Domain".into()),
+                        favicon_origin: "https://example.com".into(),
+                        favicon_url: url::Url::parse("https://example.com/favicon.ico").ok(),
+                    })
+                })
+            }),
+            Arc::new(|_| {
+                Box::pin(async {
+                    Some(Arc::new(Favicon {
+                        content_type: "image/png".into(),
+                        bytes: b"PNGBYTES".to_vec(),
+                    }))
+                })
+            }),
+            Arc::new(std::time::Instant::now),
+        ))
+    }
+
+    #[tokio::test]
+    async fn links_carry_a_page_title_and_favicon_once_fetched_and_the_favicon_is_served() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        write_links_transcript(
+            projects.path(),
+            r#"{"type":"user","message":{"content":"see https://example.com/page"}}"#,
+        );
+        let sessions = sessions_running("sleep 5").await;
+        let app = links_app_fetching_pages(
+            dir.path(),
+            sessions.clone(),
+            snapshot_with_claude("t1", Some(LINKS_SID)),
+            projects.path(),
+            example_pages(),
+        );
+        let favicon_uri = "/api/session-links/favicon?origin=https%3A%2F%2Fexample.com";
+        let (before, _) = send(app.clone(), "GET", favicon_uri, "").await;
+        assert_eq!(before, StatusCode::NOT_FOUND);
+
+        let (_, plain) = send(app.clone(), "GET", "/api/cockpit-terminals/links?id=t1", "").await;
+        let plain: serde_json::Value = serde_json::from_str(&plain).unwrap();
+        assert_eq!(plain["links"][0].get("pageTitle"), None);
+
+        let mut link = serde_json::Value::Null;
+        for _ in 0..100 {
+            let detailed_uri = "/api/cockpit-terminals/links?id=t1&details=1";
+            let (_, body) = send(app.clone(), "GET", detailed_uri, "").await;
+            link = serde_json::from_str::<serde_json::Value>(&body).unwrap()["links"][0].clone();
+            if link.get("faviconOrigin").is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert_eq!(link["pageTitle"], "Example Domain");
+        assert_eq!(link["faviconOrigin"], "https://example.com");
+
+        let req = HttpRequest::builder()
+            .uri(format!("{favicon_uri}&token=t"))
+            .header("host", OK_HOST)
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let headers = resp.headers();
+        assert_eq!(headers[axum::http::header::CONTENT_TYPE], "image/png");
+        assert_eq!(headers[axum::http::header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+        assert_eq!(headers[axum::http::header::CONTENT_SECURITY_POLICY], "sandbox");
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        assert_eq!(&bytes[..], b"PNGBYTES");
+
+        let (other_origin, _) = send(
+            app,
+            "GET",
+            "/api/session-links/favicon?origin=https%3A%2F%2Fexample.org",
+            "",
+        )
+        .await;
+        assert_eq!(other_origin, StatusCode::NOT_FOUND);
+        sessions.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn the_favicon_route_needs_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Arc::new(SessionRegistry::new());
+        let req = HttpRequest::builder()
+            .uri("/api/session-links/favicon?origin=https%3A%2F%2Fexample.com")
+            .header("host", OK_HOST)
+            .body(Body::empty())
+            .unwrap();
+        let resp = app(dir.path(), sessions).oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 }

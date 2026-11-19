@@ -327,6 +327,8 @@ mod tests {
                 number,
                 ..Default::default()
             }),
+            page_title: None,
+            favicon_origin: None,
         }
     }
 
