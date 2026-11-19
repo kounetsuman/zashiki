@@ -133,6 +133,7 @@ import { useSeenNotifications } from "./ui/useSeenNotifications.js";
 import { useSelfUpdate } from "./ui/useSelfUpdate.js";
 import { useSessionLinks } from "./ui/useSessionLinks.js";
 import { useSessionStats } from "./ui/useSessionStats.js";
+import { useSessionStatsOpen } from "./ui/useSessionStatsOpen.js";
 import { useTerminalFontSize } from "./ui/useTerminalFontSize.js";
 import { useUsageLimitWarning } from "./ui/useUsageLimitWarning.js";
 import { useViewer } from "./ui/useViewer.js";
@@ -441,19 +442,22 @@ export function App({
     sessionLinksOpen,
   );
   const [openLinksNonce, setOpenLinksNonce] = useState(0);
-  const [sessionStatsOpen, setSessionStatsOpen] = useState(false);
+  const sessionStats = useSessionStatsOpen(
+    activeSession?.cockpitTerminalId ?? null,
+  );
   const activeSessionStats = useSessionStats(
     cockpitTerminalsApi,
-    sessionStatsOpen ? activeSess : null,
+    sessionStats.open ? activeSess : null,
   );
+  const { hide: hideSessionStats } = sessionStats;
   const closeSessionStats = useCallback(() => {
-    setSessionStatsOpen(false);
+    hideSessionStats();
     store.focusTerminal();
-  }, [store]);
+  }, [hideSessionStats, store]);
   const openLinksFromStats = useCallback(() => {
-    setSessionStatsOpen(false);
+    hideSessionStats();
     setOpenLinksNonce((n) => n + 1);
-  }, []);
+  }, [hideSessionStats]);
   const activeSessionAccent =
     activeSession !== undefined
       ? resolveOrgColor(activeSession.org, orgColors)
@@ -1394,7 +1398,7 @@ export function App({
               openLinksNonce={openLinksNonce}
               onOpenStats={
                 cockpitTerminalsApi !== undefined
-                  ? () => setSessionStatsOpen(true)
+                  ? sessionStats.show
                   : undefined
               }
             />
@@ -1550,8 +1554,9 @@ export function App({
           onClose={idleWarning.dismiss}
         />
       )}
-      {sessionStatsOpen && activeSession !== undefined && (
+      {sessionStats.open && activeSession !== undefined && (
         <SessionStatsModal
+          cockpitTerminalId={activeSession.cockpitTerminalId}
           sessionTitle={resolveTitle(
             effectiveCustomTitle(conversationTitles, activeSession),
             activeSession,

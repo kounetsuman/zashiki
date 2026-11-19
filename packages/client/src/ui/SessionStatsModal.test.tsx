@@ -65,6 +65,7 @@ function renderModal(
 ) {
   render(
     <SessionStatsModal
+      cockpitTerminalId="t1"
       sessionTitle="my session"
       events={events}
       onOpenLinks={onOpenLinks}
@@ -169,6 +170,31 @@ describe("SessionStatsModal", () => {
     fireEvent.click(screen.getByRole("radio", { name: "タイムライン" }));
     fireEvent.click(screen.getByRole("button", { name: /^拒否/ }));
     expect(timelineTexts()).toEqual(["git push -f"]);
+  });
+
+  it("starts over on the Summary when another Cockpit Terminal becomes active", () => {
+    const modal = (id: string) => (
+      <SessionStatsModal
+        cockpitTerminalId={id}
+        sessionTitle={id}
+        events={EVENTS}
+        onOpenLinks={() => undefined}
+        onClose={() => undefined}
+      />
+    );
+    const { rerender } = render(modal("t1"));
+    const files = screen.getByRole("region", { name: "ファイル" });
+    fireEvent.click(within(files).getByRole("button", { name: /src\/a\.ts/ }));
+    rerender(modal("t2"));
+    expect(
+      screen
+        .getByRole("radio", { name: "サマリー" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "タイムライン" }));
+    expect(
+      screen.queryByRole("button", { name: "絞り込みを外す: src/a.ts" }),
+    ).toBeNull();
   });
 
   it("the External card links to the links popover", () => {

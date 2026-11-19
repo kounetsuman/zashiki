@@ -20,6 +20,8 @@ import { Modal } from "./Modal.js";
 import "./SessionStatsModal.css";
 
 export interface SessionStatsModalProps {
+  /** Another Cockpit Terminal starts the view over on its Summary. */
+  cockpitTerminalId: string;
   /** The Cockpit Terminal's display title, shown beside the modal title. */
   sessionTitle: string;
   /** `null` until the first answer arrives. */
@@ -44,7 +46,11 @@ const FILTER_LABEL_KEYS: Record<TimelineFilter, string> = {
  * What the current Claude Session did: per-group counts (Summary) and the same activity in time
  * order (Timeline). Picking a Summary row opens the Timeline narrowed to that row.
  */
-export function SessionStatsModal({
+export function SessionStatsModal(props: SessionStatsModalProps) {
+  return <SessionStatsView key={props.cockpitTerminalId} {...props} />;
+}
+
+function SessionStatsView({
   sessionTitle,
   events,
   onOpenLinks,
