@@ -219,6 +219,23 @@ describe("timelineEvents", () => {
   });
 });
 
+describe("filter counts and Summary totals", () => {
+  it("count the same events, so a call without a target is in neither", () => {
+    const events = [
+      read("a.ts"),
+      ev({ kind: "read", tool: "Read" }),
+      ev({ kind: "edit", tool: "Edit" }),
+      ev({ kind: "command", tool: "Bash" }),
+      command("ls", "ls"),
+    ];
+    const summary = summarize(events);
+    const counts = filterCounts(events);
+    expect(counts.files).toBe(summary.files.reads + summary.files.edits);
+    expect(counts.commands).toBe(summary.commands.runs);
+    expect(timelineEvents(events, "files", null)).toEqual([events[0]]);
+  });
+});
+
 describe("isHighlighted", () => {
   it("highlights failed and denied calls only", () => {
     expect(isHighlighted(command("x", "x", "failed"))).toBe(true);

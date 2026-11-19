@@ -86,6 +86,30 @@ export function externalTools(event: SessionEvent): string[] {
   return [event.tool?.split("__").pop() ?? event.kind];
 }
 
+/** The Summary rows of `group` an event counts toward; empty when it is not in the group. */
+function rowKeys(event: SessionEvent, group: StatsGroup): readonly string[] {
+  switch (group) {
+    case "files":
+      return (event.kind === "read" || event.kind === "edit") && event.target
+        ? [event.target]
+        : [];
+    case "commands":
+      return event.kind === "command" && event.target ? [event.target] : [];
+    case "external":
+      return event.domains ?? [];
+    case "denials":
+      return event.outcome === "denied" ? [event.text] : [];
+  }
+}
+
+function inGroup(event: SessionEvent, group: StatsGroup): boolean {
+  return rowKeys(event, group).length > 0;
+}
+
+function inRow(event: SessionEvent, { group, key }: RowFilter): boolean {
+  return rowKeys(event, group).includes(key);
+}
+
 export function summarize(
   events: readonly SessionEvent[],
 ): SessionStatsSummary {
@@ -101,13 +125,8 @@ export function summarize(
   let denialCount = 0;
 
   for (const event of events) {
-    const { target } = event;
-    if ((event.kind === "read" || event.kind === "edit") && target) {
-      const row = rowFor(files, target, () => ({
-        key: target,
-        reads: 0,
-        edits: 0,
-      }));
+    for (const key of rowKeys(event, "files")) {
+      const row = rowFor(files, key, () => ({ key, reads: 0, edits: 0 }));
       if (event.kind === "read") {
         row.reads += 1;
         reads += 1;
@@ -116,12 +135,8 @@ export function summarize(
         edits += 1;
       }
     }
-    if (event.kind === "command" && target) {
-      const row = rowFor(commands, target, () => ({
-        key: target,
-        runs: 0,
-        failures: 0,
-      }));
+    for (const key of rowKeys(event, "commands")) {
+      const row = rowFor(commands, key, () => ({ key, runs: 0, failures: 0 }));
       row.runs += 1;
       runs += 1;
       if (event.outcome === "failed") {
@@ -129,19 +144,15 @@ export function summarize(
         failures += 1;
       }
     }
-    for (const domain of event.domains ?? []) {
-      const row = rowFor(domains, domain, () => ({
-        key: domain,
-        visits: 0,
-        tools: [],
-      }));
+    for (const key of rowKeys(event, "external")) {
+      const row = rowFor(domains, key, () => ({ key, visits: 0, tools: [] }));
       row.visits += 1;
       visits += 1;
       for (const tool of externalTools(event)) addOnce(row.tools, tool);
     }
-    if (event.outcome === "denied") {
-      const row = rowFor(denials, event.text, () => ({
-        key: event.text,
+    for (const key of rowKeys(event, "denials")) {
+      const row = rowFor(denials, key, () => ({
+        key,
         count: 0,
         deniedBy: [],
       }));
@@ -157,32 +168,6 @@ export function summarize(
     external: { rows: ranked(domains, (r) => r.visits), visits },
     denials: { rows: ranked(denials, (r) => r.count), count: denialCount },
   };
-}
-
-function inGroup(event: SessionEvent, group: StatsGroup): boolean {
-  switch (group) {
-    case "files":
-      return event.kind === "read" || event.kind === "edit";
-    case "commands":
-      return event.kind === "command";
-    case "external":
-      return (event.domains?.length ?? 0) > 0;
-    case "denials":
-      return event.outcome === "denied";
-  }
-}
-
-function inRow(event: SessionEvent, { group, key }: RowFilter): boolean {
-  if (!inGroup(event, group)) return false;
-  switch (group) {
-    case "files":
-    case "commands":
-      return event.target === key;
-    case "external":
-      return event.domains?.includes(key) ?? false;
-    case "denials":
-      return event.text === key;
-  }
 }
 
 export function timelineEvents(
