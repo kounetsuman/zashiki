@@ -20,6 +20,7 @@ fn main() {
             "focus_popout",
             "close_popout",
             "list_popouts",
+            "take_opened_files",
         ]),
     ))
     .expect("failed to run tauri-build");

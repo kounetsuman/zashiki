@@ -66,7 +66,11 @@ import {
 import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
-import { openPickedFiles, pickAndReadFiles } from "./lib/open-file-dialog.js";
+import {
+  openPickedFiles,
+  type PickedFile,
+  pickAndReadFiles,
+} from "./lib/open-file-dialog.js";
 import type { PopOutApi, ScreenPoint } from "./lib/pop-out.js";
 import { canOpenDevtools, openDevtools } from "./lib/tauri-devtools.js";
 import { memoDirty } from "./memo/memo-model.js";
@@ -130,6 +134,7 @@ import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
 import { type FileDropError, useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
 import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
+import { useOpenedFiles } from "./ui/useOpenedFiles.js";
 import { usePoppedOut } from "./ui/usePoppedOut.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
 import { useSeenNotifications } from "./ui/useSeenNotifications.js";
@@ -725,14 +730,23 @@ export function App({
     toastUnreadableFile,
   );
 
-  // Cmd+O: pick files via the native dialog and open each read-only in the viewer (external buffer).
+  // Files from Cmd+O and from macOS (open -a, Open With) open read-only in the viewer (external buffer).
+  const openPicked = useCallback(
+    (picked: readonly PickedFile[]): void =>
+      openPickedFiles(picked, openExternalFile, toastUnreadableFile),
+    [openExternalFile, toastUnreadableFile],
+  );
+  const toastOpenFailed = useCallback(
+    (): void => flashCopyToast(t("openFile.failed")),
+    [flashCopyToast, t],
+  );
   const openFileFromDialog = useCallback((): void => {
     void pickAndReadFiles(t("openFile.dialogTitle")).then(
-      (picked) =>
-        openPickedFiles(picked, openExternalFile, toastUnreadableFile),
-      () => flashCopyToast(t("openFile.failed")),
+      openPicked,
+      toastOpenFailed,
     );
-  }, [t, openExternalFile, toastUnreadableFile, flashCopyToast]);
+  }, [t, openPicked, toastOpenFailed]);
+  useOpenedFiles(openPicked, toastOpenFailed);
 
   const copyWithToast = useCallback(
     (text: string, toastKey: "toast.pathCopied" | "toast.linkCopied"): void => {
