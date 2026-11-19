@@ -267,7 +267,10 @@ export function Viewer({
   const { t } = useTranslation();
   const sectionRef = useRef<HTMLElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
-  const alternate = alternateView(buffer.relPath, buffer.content);
+  const alternate = useMemo(
+    () => alternateView(buffer.relPath, buffer.content),
+    [buffer.relPath, buffer.content],
+  );
   const showAlternate = alternate !== null && buffer.preview;
   const showsBinaryMessage = alternate === "binaryText" && !showAlternate;
   const showsCode =
