@@ -59,6 +59,16 @@ describe("StallRulesField", () => {
     expect(onSave).toHaveBeenCalledWith(DEFAULT_STALL_RULES);
   });
 
+  it("drops a blank override row on save so nothing is left unsaved", () => {
+    const onSave = vi.fn();
+    render(<StallRulesField value={DEFAULT_STALL_RULES} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: "コマンドを追加" }));
+    fireEvent.click(saveButton());
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(saveButton()).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
   it("caps a value above the limit instead of letting the save reset it", () => {
     const onSave = vi.fn();
     render(<StallRulesField value={DEFAULT_STALL_RULES} onSave={onSave} />);

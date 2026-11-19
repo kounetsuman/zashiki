@@ -2,7 +2,11 @@ import type { LaunchLimitOverride, StallRules } from "@zashiki/shared";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { MAX_STALL_MINUTES, MAX_STALL_REPEAT } from "../lib/stall-rules.js";
+import {
+  MAX_STALL_MINUTES,
+  MAX_STALL_REPEAT,
+  sanitizeStallRules,
+} from "../lib/stall-rules.js";
 import { useUnsavedField } from "./unsaved-changes.js";
 
 type NumberKey = "launchLimitMin" | "quietLimitMin" | "repeatLimit";
@@ -39,8 +43,12 @@ export function StallRulesField({ value, onSave }: StallRulesFieldProps) {
   useEffect(() => setDraft(value), [persisted]);
 
   const dirty = JSON.stringify(draft) !== persisted;
+  const save = () => {
+    onSave(draft);
+    setDraft(sanitizeStallRules(draft));
+  };
   useUnsavedField("stall-rules", dirty, {
-    save: () => onSave(draft),
+    save,
     discard: () => setDraft(value),
   });
 
@@ -143,7 +151,7 @@ export function StallRulesField({ value, onSave }: StallRulesFieldProps) {
         type="button"
         className="settings-save"
         disabled={!dirty}
-        onClick={() => onSave(draft)}
+        onClick={save}
       >
         {t("settings.save")}
       </button>
