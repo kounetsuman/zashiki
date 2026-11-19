@@ -59,6 +59,22 @@ describe("StallRulesField", () => {
     expect(onSave).toHaveBeenCalledWith(DEFAULT_STALL_RULES);
   });
 
+  it("caps a value above the limit instead of letting the save reset it", () => {
+    const onSave = vi.fn();
+    render(<StallRulesField value={DEFAULT_STALL_RULES} onSave={onSave} />);
+    const [launch, , repeat] = screen.getAllByRole(
+      "spinbutton",
+    ) as HTMLInputElement[];
+    fireEvent.change(launch as HTMLInputElement, { target: { value: "5000" } });
+    fireEvent.change(repeat as HTMLInputElement, { target: { value: "5000" } });
+    fireEvent.click(saveButton());
+    expect(onSave).toHaveBeenCalledWith({
+      ...DEFAULT_STALL_RULES,
+      launchLimitMin: 1440,
+      repeatLimit: 1000,
+    });
+  });
+
   it("keeps its inputs at 16px on touch screens so iOS does not zoom in", () => {
     const css = readFileSync(
       join(import.meta.dirname, "SettingsModal.css"),

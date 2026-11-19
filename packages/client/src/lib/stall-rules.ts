@@ -9,8 +9,8 @@ type StoragePart = Pick<Storage, "getItem" | "setItem">;
 /** localStorage key for the Background Task View's stall rules (JSON; client-only setting). */
 export const STALL_RULES_KEY = "zk.backgroundTasks.stallRules";
 
-const MAX_MINUTES = 24 * 60;
-const MAX_REPEAT = 1000;
+export const MAX_STALL_MINUTES = 24 * 60;
+export const MAX_STALL_REPEAT = 1000;
 
 const wholeIn = (value: unknown, max: number): number | null =>
   typeof value === "number" &&
@@ -25,7 +25,7 @@ function sanitizeOverrides(value: unknown): LaunchLimitOverride[] {
   return value.flatMap((o: unknown) => {
     if (typeof o !== "object" || o === null) return [];
     const { match, launchLimitMin } = o as Record<string, unknown>;
-    const minutes = wholeIn(launchLimitMin, MAX_MINUTES);
+    const minutes = wholeIn(launchLimitMin, MAX_STALL_MINUTES);
     return typeof match === "string" && match.trim() !== "" && minutes !== null
       ? [{ match: match.trim(), launchLimitMin: minutes }]
       : [];
@@ -40,13 +40,14 @@ export function sanitizeStallRules(value: unknown): StallRules {
       : {};
   return {
     launchLimitMin:
-      wholeIn(raw.launchLimitMin, MAX_MINUTES) ??
+      wholeIn(raw.launchLimitMin, MAX_STALL_MINUTES) ??
       DEFAULT_STALL_RULES.launchLimitMin,
     quietLimitMin:
-      wholeIn(raw.quietLimitMin, MAX_MINUTES) ??
+      wholeIn(raw.quietLimitMin, MAX_STALL_MINUTES) ??
       DEFAULT_STALL_RULES.quietLimitMin,
     repeatLimit:
-      wholeIn(raw.repeatLimit, MAX_REPEAT) ?? DEFAULT_STALL_RULES.repeatLimit,
+      wholeIn(raw.repeatLimit, MAX_STALL_REPEAT) ??
+      DEFAULT_STALL_RULES.repeatLimit,
     overrides: sanitizeOverrides(raw.overrides),
   };
 }

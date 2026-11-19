@@ -2,19 +2,24 @@ import type { LaunchLimitOverride, StallRules } from "@zashiki/shared";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { MAX_STALL_MINUTES, MAX_STALL_REPEAT } from "../lib/stall-rules.js";
 import { useUnsavedField } from "./unsaved-changes.js";
 
 type NumberKey = "launchLimitMin" | "quietLimitMin" | "repeatLimit";
 
-const NUMBER_FIELDS: { key: NumberKey; unit: "minutes" | "times" }[] = [
-  { key: "launchLimitMin", unit: "minutes" },
-  { key: "quietLimitMin", unit: "minutes" },
-  { key: "repeatLimit", unit: "times" },
+const NUMBER_FIELDS: {
+  key: NumberKey;
+  unit: "minutes" | "times";
+  max: number;
+}[] = [
+  { key: "launchLimitMin", unit: "minutes", max: MAX_STALL_MINUTES },
+  { key: "quietLimitMin", unit: "minutes", max: MAX_STALL_MINUTES },
+  { key: "repeatLimit", unit: "times", max: MAX_STALL_REPEAT },
 ];
 
-const parseWhole = (text: string): number | null => {
+const parseWhole = (text: string, max: number): number | null => {
   const n = Number.parseInt(text, 10);
-  return Number.isInteger(n) && n >= 1 ? n : null;
+  return Number.isInteger(n) && n >= 1 ? Math.min(n, max) : null;
 };
 
 export interface StallRulesFieldProps {
@@ -51,7 +56,7 @@ export function StallRulesField({ value, onSave }: StallRulesFieldProps) {
     <div className="settings-field settings-field-column stall-rules">
       <span className="settings-label">{t("settings.stallRules.section")}</span>
       <span className="settings-hint">{t("settings.stallRules.hint")}</span>
-      {NUMBER_FIELDS.map(({ key, unit }) => (
+      {NUMBER_FIELDS.map(({ key, unit, max }) => (
         <label key={key} className="stall-rules-row">
           <span className="stall-rules-name">
             {t(`settings.stallRules.${key}`)}
@@ -60,10 +65,11 @@ export function StallRulesField({ value, onSave }: StallRulesFieldProps) {
             type="number"
             className="stall-rules-input"
             min={1}
+            max={max}
             step={1}
             value={draft[key]}
             onChange={(e) => {
-              const n = parseWhole(e.target.value);
+              const n = parseWhole(e.target.value, max);
               if (n !== null) setDraft((d) => ({ ...d, [key]: n }));
             }}
           />
@@ -90,10 +96,11 @@ export function StallRulesField({ value, onSave }: StallRulesFieldProps) {
               className="stall-rules-input"
               aria-label={t("settings.stallRules.launchLimitMin")}
               min={1}
+              max={MAX_STALL_MINUTES}
               step={1}
               value={o.launchLimitMin}
               onChange={(e) => {
-                const n = parseWhole(e.target.value);
+                const n = parseWhole(e.target.value, MAX_STALL_MINUTES);
                 if (n !== null) setOverride(i, { launchLimitMin: n });
               }}
             />
