@@ -1,7 +1,8 @@
-import { FILE_MAX_BYTES, type TextEncoding } from "@zashiki/shared";
+import type { TextEncoding } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "../api/files.js";
 import i18n from "../i18n/index.js";
+import { readPickedFile } from "../lib/open-file-dialog.js";
 import { audioContentType, type MediaKind } from "../viewer/media.js";
 import {
   bufferFailed,
@@ -190,8 +191,6 @@ export function useViewer(
 
   const loadDroppedMediaText = useCallback(
     (key: string, buf: ViewerBuffer): void => {
-      const file = droppedFilesRef.current[key];
-      if (file === undefined) return;
       const settle = (next: (cur: ViewerBuffers) => ViewerBuffers): void =>
         setBuffers((cur) => {
           const b = cur[key];
@@ -199,26 +198,39 @@ export function useViewer(
             ? next(cur)
             : cur;
         });
-      if (file.size > FILE_MAX_BYTES) {
-        const error = i18n.t("viewer.dropTooLarge", { name: buf.relPath });
-        settle((cur) => bufferFailed(cur, key, error));
+      const readFailed = (): void =>
+        settle((cur) =>
+          bufferFailed(
+            cur,
+            key,
+            i18n.t("viewer.dropReadFailed", { name: buf.relPath }),
+          ),
+        );
+      const file = droppedFilesRef.current[key];
+      if (file === undefined) {
+        readFailed();
         return;
       }
-      file.text().then(
-        (content) => settle((cur) => bufferLoaded(cur, key, content)),
-        (e: unknown) =>
-          settle((cur) => bufferFailed(cur, key, readErrorMessage(e))),
-      );
+      void readPickedFile(file).then((picked) => {
+        if ("content" in picked) {
+          settle((cur) => bufferLoaded(cur, key, picked.content));
+        } else if (picked.error === "tooLarge") {
+          const error = i18n.t("viewer.dropTooLarge", { name: buf.relPath });
+          settle((cur) => bufferFailed(cur, key, error));
+        } else {
+          readFailed();
+        }
+      });
     },
     [],
   );
 
   const togglePreview = useCallback(
     (key: string): void => {
-      // Updated ahead of the render so a second toggle before it sees this one.
-      buffersRef.current = bufferTogglePreview(buffersRef.current, key);
+      const toggled = bufferTogglePreview(buffersRef.current, key);
+      buffersRef.current = toggled;
       setBuffers((prev) => bufferTogglePreview(prev, key));
-      const buf = buffersRef.current[key];
+      const buf = toggled[key];
       if (buf?.media === undefined || buf.status !== "loading") return;
       if (buf.external === true) loadDroppedMediaText(key, buf);
       else void loadFile(key, buf.repoPath, buf.relPath, "utf8", false);
