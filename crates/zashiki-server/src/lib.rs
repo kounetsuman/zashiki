@@ -280,10 +280,8 @@ fn cors_layer() -> CorsLayer {
             header::AUTHORIZATION,
             header::CONTENT_TYPE,
             header::HeaderName::from_static("x-zashiki-token"),
-            // `/api/file` re-reads send the version they already have.
             header::IF_NONE_MATCH,
         ])
-        // ...and read the version a `/api/file` read returns.
         .expose_headers([header::ETAG])
 }
 

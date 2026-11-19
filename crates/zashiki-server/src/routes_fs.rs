@@ -80,8 +80,12 @@ pub(crate) async fn file_read(
             return json_error(status, &msg);
         }
     };
-    // The cap also bounds a file that grows while it is being sent.
-    let body = Body::from_stream(decoded_chunks(opened.take(max), encoding));
+    // A file that grows after its version was taken is sent only up to the size that version names.
+    let body = Body::from_stream(file::decoded_chunks(
+        opened.take(meta.len()),
+        encoding,
+        READ_CHUNK_BYTES,
+    ));
     text_response(StatusCode::OK, &tag, body)
 }
 
@@ -94,22 +98,6 @@ fn too_large_response(size: u64) -> Response {
 }
 
 const READ_CHUNK_BYTES: usize = 64 * 1024;
-
-fn decoded_chunks(
-    reader: tokio::io::Take<tokio::fs::File>,
-    encoding: file::TextEncoding,
-) -> impl futures_util::Stream<Item = std::io::Result<String>> {
-    let state = Some((reader, file::ChunkDecoder::new(encoding)));
-    futures_util::stream::unfold(state, |state| async move {
-        let (mut reader, mut decoder) = state?;
-        let mut buf = vec![0u8; READ_CHUNK_BYTES];
-        match reader.read(&mut buf).await {
-            Ok(0) => Some((Ok(decoder.decode(&[], true)), None)),
-            Ok(n) => Some((Ok(decoder.decode(&buf[..n], false)), Some((reader, decoder)))),
-            Err(e) => Some((Err(e), None)),
-        }
-    })
-}
 
 fn client_has_version(headers: &HeaderMap, tag: &str) -> bool {
     headers

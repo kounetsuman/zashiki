@@ -62,7 +62,7 @@ export {
   type ScoredFile,
 } from "./file-list.js";
 export {
-  type FileReadResponse,
+  type DashboardReadResponse,
   type FileWriteRequest,
   type FileWriteResponse,
   fileWriteRequestSchema,

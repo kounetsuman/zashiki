@@ -23,7 +23,8 @@ export const fileWriteRequestSchema = z.object({
 
 export type FileWriteRequest = z.infer<typeof fileWriteRequestSchema>;
 
-export interface FileReadResponse {
+/** `GET /api/dashboard` → the dashboard file's content. */
+export interface DashboardReadResponse {
   content: string;
 }
 

@@ -2,7 +2,7 @@
 //! A file read/write REST endpoint for the editor. Path defense uses the same 3 layers as the
 //! explorer (fs.rs): scanRepos allowlist → is_safe_repo_relative_path → realpath escape detection.
 //! The allowlist check is done by the caller (lib.rs); this module handles file safety + realpath
-//! containment + the size limit + the actual I/O (reads are streamed by the route, chunk by chunk).
+//! containment + the size limit + the actual I/O (reads are decoded chunk by chunk for streaming).
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -124,6 +124,27 @@ impl ChunkDecoder {
     }
 }
 
+/// Reads `reader` `chunk_bytes` at a time as UTF-8 text, flushing a dangling partial character at the end.
+pub fn decoded_chunks<R: tokio::io::AsyncRead + Unpin>(
+    reader: R,
+    encoding: TextEncoding,
+    chunk_bytes: usize,
+) -> impl futures_util::Stream<Item = io::Result<String>> {
+    let state = Some((reader, ChunkDecoder::new(encoding), vec![0u8; chunk_bytes]));
+    futures_util::stream::unfold(state, |state| async move {
+        use tokio::io::AsyncReadExt;
+        let (mut reader, mut decoder, mut buf) = state?;
+        match reader.read(&mut buf).await {
+            Ok(0) => Some((Ok(decoder.decode(&[], true)), None)),
+            Ok(n) => {
+                let text = decoder.decode(&buf[..n], false);
+                Some((Ok(text), Some((reader, decoder, buf))))
+            }
+            Err(e) => Some((Err(e), None)),
+        }
+    })
+}
+
 /// Why a text file read was refused. `TooLarge` is decided before any of the file is read.
 #[derive(Debug, PartialEq, Eq)]
 pub enum TextReadRefusal {
@@ -206,7 +227,7 @@ mod tests {
         (dir, repo_str)
     }
 
-    /// Reads the way the route does: resolve, then decode `chunk`-byte pieces.
+    /// Reads the way the route does: resolve, then stream it in `chunk`-byte pieces.
     fn read(
         repo: &str,
         file: &str,
@@ -214,15 +235,20 @@ mod tests {
         encoding: TextEncoding,
         chunk: usize,
     ) -> Result<String, (StatusCode, String)> {
+        use futures_util::TryStreamExt;
         let (abs, _) = text_file_within_repo(repo, file, max_bytes).map_err(failure)?;
-        let bytes = std::fs::read(abs).unwrap();
-        let mut decoder = ChunkDecoder::new(encoding);
-        let mut out = String::new();
-        for piece in bytes.chunks(chunk) {
-            out.push_str(&decoder.decode(piece, false));
-        }
-        out.push_str(&decoder.decode(&[], true));
-        Ok(out)
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        Ok(runtime.block_on(async {
+            let opened = tokio::fs::File::open(abs).await.unwrap();
+            let pieces: Vec<String> = decoded_chunks(opened, encoding, chunk)
+                .try_collect()
+                .await
+                .unwrap();
+            pieces.concat()
+        }))
     }
 
     #[test]
