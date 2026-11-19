@@ -29,9 +29,10 @@ export function useOpenedFiles(
         () => handlers.current.onFailed(),
       );
     };
-    const subscription = listen("zashiki:files-opened", take).catch(
-      () => undefined,
-    );
+    const subscription = listen("zashiki:files-opened", take).catch(() => {
+      handlers.current.onFailed();
+      return undefined;
+    });
     void subscription.then(take);
     return () => {
       void subscription.then((off) => off?.());

@@ -118,6 +118,13 @@ describe("useOpenedFiles", () => {
     await vi.waitFor(() => expect(onFailed).toHaveBeenCalledTimes(1));
   });
 
+  it("reports a failed subscription, since files handed over later would go unseen", async () => {
+    listen.mockRejectedValueOnce(new Error("not allowed"));
+    const onFailed = vi.fn();
+    render(<Probe onPicked={vi.fn()} onFailed={onFailed} />);
+    await vi.waitFor(() => expect(onFailed).toHaveBeenCalledTimes(1));
+  });
+
   it("unsubscribes on unmount", async () => {
     const { unmount } = render(<Probe onPicked={vi.fn()} />);
     unmount();
