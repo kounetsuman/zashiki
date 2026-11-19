@@ -60,6 +60,7 @@ function apiReturning(
     lastActivity: vi.fn(async () => ({ terminals })),
     tail: vi.fn(async () => []),
     links: vi.fn(async () => []),
+    stats: vi.fn(async () => []),
     faviconUrl: (origin) => origin,
   };
 }

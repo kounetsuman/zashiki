@@ -384,7 +384,7 @@ fn is_human_prompt(event: &Value) -> bool {
 /// Parses Claude's transcript timestamp (`YYYY-MM-DDTHH:MM:SS[.fff]Z`, always UTC) to epoch ms.
 /// Dependency-free (no chrono): fixed-layout digits plus the civil-days formula. Fractional seconds
 /// and a trailing `Z` are optional; any offset other than `Z` is read as the same wall clock in UTC.
-fn parse_iso8601_ms(s: &str) -> Option<u64> {
+pub(crate) fn parse_iso8601_ms(s: &str) -> Option<u64> {
     let b = s.as_bytes();
     if b.len() < 19
         || b[4] != b'-'

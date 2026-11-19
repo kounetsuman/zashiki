@@ -6,7 +6,7 @@ use crate::app_state::AppState;
 use crate::media_type::MEDIA_CSP;
 use crate::protocol::{
     CockpitTerminalLastActivity, CockpitTerminalLastActivityResponse, CockpitTerminalTailResponse,
-    SessionLinksResponse,
+    SessionLinksResponse, SessionStatsResponse,
 };
 use crate::session_persist;
 use crate::wire_support::{json_error, parse_json_body, persist_error_response};
@@ -164,6 +164,28 @@ pub(crate) async fn cockpit_terminal_links(
         control.page_details.annotate(&mut links);
     }
     Json(SessionLinksResponse { links }).into_response()
+}
+
+/// `GET /api/cockpit-terminals/stats?id=`. What the Claude Session running in a Cockpit Terminal did,
+/// as events oldest first (empty until one is detected).
+pub(crate) async fn cockpit_terminal_stats(
+    State(state): State<AppState>,
+    Query(query): Query<CockpitTerminalQuery>,
+) -> Response {
+    let Some(control) = state.control.as_ref() else {
+        return json_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "session services not available",
+        );
+    };
+    if control.sessions.get(&query.id).await.is_none() {
+        return json_error(StatusCode::NOT_FOUND, "no such cockpit terminal");
+    }
+    let events = match control.hub.claude_session_of(&query.id) {
+        Some((cwd, sid)) => control.projects.session_events(&cwd, &sid).await,
+        None => Vec::new(),
+    };
+    Json(SessionStatsResponse { events }).into_response()
 }
 
 #[derive(Deserialize)]
@@ -691,6 +713,94 @@ mod sessions_persist_rest_tests {
         )
         .await;
         assert_eq!(s, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn stats_list_the_claude_sessions_events_in_wire_shape() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        write_links_transcript(
+            projects.path(),
+            &format!(
+                r#"{{"type":"assistant","timestamp":"2000-01-01T00:00:00Z","message":{{"content":[{{"type":"tool_use","id":"t","name":"Read","input":{{"file_path":"{LINKS_CWD}/src/a.rs"}}}}]}}}}"#
+            ),
+        );
+        let sessions = sessions_running("sleep 5").await;
+        let (s, b) = send(
+            links_app(
+                dir.path(),
+                sessions.clone(),
+                snapshot_with_claude("t1", Some(LINKS_SID)),
+                projects.path(),
+            ),
+            "GET",
+            "/api/cockpit-terminals/stats?id=t1",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&b).unwrap(),
+            serde_json::json!({"events": [{
+                "at": 946_684_800_000u64,
+                "kind": "read",
+                "text": "src/a.rs",
+                "tool": "Read",
+                "target": "src/a.rs",
+            }]})
+        );
+        sessions.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn stats_of_a_terminal_without_a_claude_session_are_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        let sessions = sessions_running("sleep 5").await;
+        let (s, b) = send(
+            links_app(
+                dir.path(),
+                sessions.clone(),
+                snapshot_with_claude("t1", None),
+                projects.path(),
+            ),
+            "GET",
+            "/api/cockpit-terminals/stats?id=t1",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(b, r#"{"events":[]}"#);
+        sessions.shutdown_all().await;
+    }
+
+    #[tokio::test]
+    async fn stats_of_an_unknown_terminal_are_404() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions = Arc::new(SessionRegistry::new());
+        let (s, _b) = send(
+            app(dir.path(), sessions),
+            "GET",
+            "/api/cockpit-terminals/stats?id=missing",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn stats_without_session_services_are_503() {
+        let (s, _b) = send(
+            build_router(ServerConfig {
+                expected_token: Some(secrecy::SecretString::new("t".to_string())),
+                ..Default::default()
+            }),
+            "GET",
+            "/api/cockpit-terminals/stats?id=t1",
+            "",
+        )
+        .await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
     }
 
     fn example_pages() -> Arc<PageDetailsCache> {
