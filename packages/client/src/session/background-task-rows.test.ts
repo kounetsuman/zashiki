@@ -8,7 +8,10 @@ import {
   filterRows,
   formatAgo,
   formatElapsed,
+  isFilterSelected,
+  liveNowMs,
   stalledCockpitTerminalIds,
+  toggleFilter,
 } from "./background-task-rows.js";
 
 const MIN = 60_000;
@@ -63,12 +66,41 @@ describe("backgroundTaskRows", () => {
       disconnected: 1,
       all: 5,
     });
-    expect(filterRows(rows, "running").map((r) => r.task.taskId)).toEqual([
-      "new-run",
-      "old-run",
-    ]);
-    expect(filterRows(rows, "all")).toHaveLength(5);
+    expect(
+      filterRows(rows, new Set(["running"])).map((r) => r.task.taskId),
+    ).toEqual(["new-run", "old-run"]);
+    expect(
+      filterRows(rows, new Set(["stalled", "running"])).map(
+        (r) => r.task.taskId,
+      ),
+    ).toEqual(["stuck", "new-run", "old-run"]);
+    expect(filterRows(rows, new Set())).toHaveLength(5);
     expect([...stalledCockpitTerminalIds(rows)]).toEqual(["t2"]);
+  });
+});
+
+describe("toggleFilter", () => {
+  it("toggles one status at a time, and All clears the selection", () => {
+    const stalled = toggleFilter(new Set(), "stalled");
+    expect([...stalled]).toEqual(["stalled"]);
+    const both = toggleFilter(stalled, "running");
+    expect([...both].sort()).toEqual(["running", "stalled"]);
+    expect([...toggleFilter(both, "stalled")]).toEqual(["running"]);
+    expect(toggleFilter(both, "all").size).toBe(0);
+  });
+
+  it("marks All selected only while no single status is", () => {
+    expect(isFilterSelected(new Set(), "all")).toBe(true);
+    expect(isFilterSelected(new Set(), "stalled")).toBe(false);
+    expect(isFilterSelected(new Set(["stalled"]), "all")).toBe(false);
+    expect(isFilterSelected(new Set(["stalled"]), "stalled")).toBe(true);
+  });
+});
+
+describe("liveNowMs", () => {
+  it("follows the tick, up to a minute past the last poll", () => {
+    expect(liveNowMs(NOW + 30_000, NOW)).toBe(NOW + 30_000);
+    expect(liveNowMs(NOW + 10 * MIN, NOW)).toBe(NOW + MIN);
   });
 });
 

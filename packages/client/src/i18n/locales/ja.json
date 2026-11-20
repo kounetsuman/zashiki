@@ -698,6 +698,7 @@
   },
   "backgroundTasks": {
     "empty": "開いている Claude Session にバックグラウンドタスクはありません。",
+    "noneSelected": "選んだ状態のタスクはありません。",
     "rulesSummary": "判定: 起動 {{launch}} 分 / 無出力 {{quiet}} 分 / 同じ行 {{repeat}} 回",
     "filter": {
       "stalled": "止まっていそう",
@@ -721,8 +722,8 @@
     "noNotice": "終了（完了通知なし）",
     "disconnectedNote": "セッション終了で切れた（完了通知なし）",
     "reason": {
-      "launchAge": "起動から {{min}} 分超",
-      "quiet": "出力が {{min}} 分以上更新なし",
+      "launchAge": "起動 {{age}} (>{{min}}m)",
+      "quiet": "無出力 {{age}} (>{{min}}m)",
       "repeat": "末尾の同じ行が {{count}} 回続く: {{line}}"
     }
   }

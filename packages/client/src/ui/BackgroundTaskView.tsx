@@ -1,4 +1,5 @@
 import type {
+  BackgroundTask,
   BackgroundTaskStatus,
   StallReason,
   StallRules,
@@ -8,22 +9,28 @@ import { useTranslation } from "react-i18next";
 
 import {
   BACKGROUND_TASK_FILTERS,
-  type BackgroundTaskFilter,
   type BackgroundTaskRow,
+  backgroundTaskRows,
   commandHead,
   countByFilter,
+  DEFAULT_STATUS_SELECTION,
   filterRows,
   formatAgo,
   formatElapsed,
+  isFilterSelected,
+  liveNowMs,
+  toggleFilter,
 } from "../session/background-task-rows.js";
+import { useNow } from "./useNow.js";
 import { ViewEmpty } from "./ViewEmpty.js";
 import { ViewHeader } from "./ViewHeader.js";
 
 export interface BackgroundTaskViewProps {
-  rows: readonly BackgroundTaskRow[];
-  /** The moment the rows were judged at (epoch ms); ages are measured from here. */
-  nowMs: number;
+  tasks: readonly BackgroundTask[];
+  /** When `tasks` were fetched (epoch ms); the live clock stops a while after this. */
+  fetchedAt: number;
   rules: StallRules;
+  onOpenCockpitTerminal: (cockpitTerminalId: string) => void;
 }
 
 type Tone = "stalled" | "running" | "ok" | "failed" | "muted";
@@ -62,9 +69,15 @@ function useReasonText(): (reason: StallReason) => string {
   return (reason) => {
     switch (reason.kind) {
       case "launch_age":
-        return t("backgroundTasks.reason.launchAge", { min: reason.limitMin });
+        return t("backgroundTasks.reason.launchAge", {
+          age: formatAgo(reason.ageMs),
+          min: reason.limitMin,
+        });
       case "quiet":
-        return t("backgroundTasks.reason.quiet", { min: reason.limitMin });
+        return t("backgroundTasks.reason.quiet", {
+          age: formatAgo(reason.quietMs),
+          min: reason.limitMin,
+        });
       case "repeat":
         return t("backgroundTasks.reason.repeat", {
           count: reason.count,
@@ -74,7 +87,25 @@ function useReasonText(): (reason: StallReason) => string {
   };
 }
 
-function TaskRow({ row, nowMs }: { row: BackgroundTaskRow; nowMs: number }) {
+/** A drag that selected this row's text is a copy, not a request to open the terminal. */
+function hasTextSelectedIn(el: HTMLElement): boolean {
+  const selection = window.getSelection();
+  return (
+    selection !== null &&
+    selection.toString() !== "" &&
+    el.contains(selection.anchorNode)
+  );
+}
+
+function TaskRow({
+  row,
+  nowMs,
+  onOpen,
+}: {
+  row: BackgroundTaskRow;
+  nowMs: number;
+  onOpen: () => void;
+}) {
   const { t } = useTranslation();
   const statusLabel = useStatusLabel();
   const reasonText = useReasonText();
@@ -102,11 +133,17 @@ function TaskRow({ row, nowMs }: { row: BackgroundTaskRow; nowMs: number }) {
     meta.push(t("backgroundTasks.disconnectedNote"));
   }
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the head button is the keyboard path; a click anywhere else on the row is a pointer shortcut to it.
     <li
       className={`background-task-row background-task-${tone}`}
       data-task-id={task.taskId}
+      onClick={(e) => {
+        const byPointer = e.detail > 0;
+        if (byPointer && hasTextSelectedIn(e.currentTarget)) return;
+        onOpen();
+      }}
     >
-      <div className="background-task-head">
+      <button type="button" className="background-task-head">
         <span className="background-task-badge">{statusLabel(status)}</span>
         <span className="background-task-description">
           {task.description !== ""
@@ -118,7 +155,7 @@ function TaskRow({ row, nowMs }: { row: BackgroundTaskRow; nowMs: number }) {
             {formatElapsed(elapsedUntil - task.startedAt)}
           </span>
         )}
-      </div>
+      </button>
       <div className="background-task-command" title={task.command}>
         $ {commandHead(task.command)}
       </div>
@@ -136,33 +173,39 @@ function TaskRow({ row, nowMs }: { row: BackgroundTaskRow; nowMs: number }) {
 
 /**
  * The background Bash tasks of every Cockpit Terminal's most recent Claude Session, one row each,
- * with the stalled ones first and the rules that flagged them.
+ * with the stalled ones first and the rules that flagged them. Re-judged every second so the
+ * elapsed times keep moving between polls.
  */
 export function BackgroundTaskView({
-  rows,
-  nowMs,
+  tasks,
+  fetchedAt,
   rules,
+  onOpenCockpitTerminal,
 }: BackgroundTaskViewProps) {
   const { t } = useTranslation();
-  const [filter, setFilter] = useState<BackgroundTaskFilter>("all");
+  const nowMs = liveNowMs(useNow(1_000), fetchedAt);
+  const [selection, setSelection] = useState(DEFAULT_STATUS_SELECTION);
+  const rows = backgroundTaskRows(tasks, nowMs, rules);
   const counts = countByFilter(rows);
-  const shown = filterRows(rows, filter);
+  const shown = filterRows(rows, selection);
   return (
     <section className="background-task-view" data-view="backgroundTasks">
       <ViewHeader title="BACKGROUND TASKS" />
-      <div className="background-task-filters" role="tablist">
-        {BACKGROUND_TASK_FILTERS.map((f) => (
-          <button
-            key={f}
-            type="button"
-            role="tab"
-            aria-selected={filter === f}
-            className={`background-task-filter background-task-filter-${f}${filter === f ? " is-active" : ""}`}
-            onClick={() => setFilter(f)}
-          >
-            {t(`backgroundTasks.filter.${f}`)} {counts[f]}
-          </button>
-        ))}
+      <div className="background-task-filters">
+        {BACKGROUND_TASK_FILTERS.map((f) => {
+          const selected = isFilterSelected(selection, f);
+          return (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={selected}
+              className={`background-task-filter background-task-filter-${f}${selected ? " is-active" : ""}`}
+              onClick={() => setSelection((s) => toggleFilter(s, f))}
+            >
+              {t(`backgroundTasks.filter.${f}`)} {counts[f]}
+            </button>
+          );
+        })}
       </div>
       <div className="background-task-rules">
         {t("backgroundTasks.rulesSummary", {
@@ -172,7 +215,11 @@ export function BackgroundTaskView({
         })}
       </div>
       {shown.length === 0 ? (
-        <ViewEmpty>{t("backgroundTasks.empty")}</ViewEmpty>
+        <ViewEmpty>
+          {rows.length === 0
+            ? t("backgroundTasks.empty")
+            : t("backgroundTasks.noneSelected")}
+        </ViewEmpty>
       ) : (
         <ul className="background-task-list">
           {shown.map((row) => (
@@ -180,6 +227,7 @@ export function BackgroundTaskView({
               key={`${row.task.sid}/${row.task.taskId}`}
               row={row}
               nowMs={nowMs}
+              onOpen={() => onOpenCockpitTerminal(row.task.cockpitTerminalId)}
             />
           ))}
         </ul>

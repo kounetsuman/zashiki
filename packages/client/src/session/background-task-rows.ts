@@ -47,13 +47,38 @@ export function backgroundTaskRows(
     );
 }
 
+/** The statuses picked in the filter; picking none shows every row. */
+export type StatusSelection = ReadonlySet<BackgroundTaskStatus["kind"]>;
+
+export const DEFAULT_STATUS_SELECTION: StatusSelection = new Set([
+  "stalled",
+  "running",
+]);
+
+export function toggleFilter(
+  selection: StatusSelection,
+  filter: BackgroundTaskFilter,
+): StatusSelection {
+  if (filter === "all") return new Set();
+  const next = new Set(selection);
+  if (!next.delete(filter)) next.add(filter);
+  return next;
+}
+
+export function isFilterSelected(
+  selection: StatusSelection,
+  filter: BackgroundTaskFilter,
+): boolean {
+  return filter === "all" ? selection.size === 0 : selection.has(filter);
+}
+
 export function filterRows(
   rows: readonly BackgroundTaskRow[],
-  filter: BackgroundTaskFilter,
+  selection: StatusSelection,
 ): BackgroundTaskRow[] {
-  return filter === "all"
+  return selection.size === 0
     ? [...rows]
-    : rows.filter((r) => r.status.kind === filter);
+    : rows.filter((r) => selection.has(r.status.kind));
 }
 
 export function countByFilter(
@@ -75,6 +100,17 @@ export function stalledCockpitTerminalIds(
       .filter((r) => r.status.kind === "stalled")
       .map((r) => r.task.cockpitTerminalId),
   );
+}
+
+/** How far the live clock may run past the last successful poll before it waits for fresh tasks. */
+export const LIVE_CLOCK_MAX_AHEAD_MS = 60_000;
+
+/**
+ * The clock the rows are judged at: the ticking wall clock, held back once the snapshot is stale so
+ * a failing poll cannot turn running tasks stalled with no new output to go on.
+ */
+export function liveNowMs(tickMs: number, fetchedAt: number): number {
+  return Math.min(tickMs, fetchedAt + LIVE_CLOCK_MAX_AHEAD_MS);
 }
 
 /** `h:mm:ss` from an hour up, `m:ss` below it. */

@@ -511,6 +511,19 @@ export function App({
       store.focusTerminal();
     }
   }, [store, poppedOut.ids, poppedOut.show]);
+  const openCockpitTerminal = useCallback(
+    (cockpitTerminalId: string): void => {
+      if (
+        !cockpitTerminalsRef.current.some(
+          (s) => s.cockpitTerminalId === cockpitTerminalId,
+        )
+      )
+        return;
+      store.selectCockpitTerminal(cockpitTerminalId);
+      focusSelectedTerminal();
+    },
+    [store, focusSelectedTerminal],
+  );
 
   // Footer inputs for the active session tab (undefined for viewer/empty; usage null before a transcript).
   const activeSession =
@@ -1354,9 +1367,10 @@ export function App({
             )}
             {selectedView === "backgroundTasks" && (
               <BackgroundTaskView
-                rows={backgroundRows}
-                nowMs={backgroundTasks.fetchedAt}
+                tasks={backgroundTasks.tasks}
+                fetchedAt={backgroundTasks.fetchedAt}
                 rules={stallRules}
+                onOpenCockpitTerminal={openCockpitTerminal}
               />
             )}
             {selectedView === "notification" && (
