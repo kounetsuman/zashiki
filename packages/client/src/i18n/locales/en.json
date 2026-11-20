@@ -698,6 +698,7 @@
   },
   "backgroundTasks": {
     "empty": "No background tasks in the open Claude Sessions.",
+    "noneSelected": "No tasks in the selected statuses.",
     "rulesSummary": "Stalled after {{launch}}m · quiet {{quiet}}m · {{repeat}} repeats",
     "filter": {
       "stalled": "Stalled",
@@ -721,8 +722,8 @@
     "noNotice": "ended, no completion notice",
     "disconnectedNote": "the Claude Session ended under it (no completion notice)",
     "reason": {
-      "launchAge": "launched over {{min}} min ago",
-      "quiet": "no output for {{min}} min",
+      "launchAge": "launched {{age}} ago (>{{min}}m)",
+      "quiet": "quiet {{age}} (>{{min}}m)",
       "repeat": "last line repeated {{count}}×: {{line}}"
     }
   }

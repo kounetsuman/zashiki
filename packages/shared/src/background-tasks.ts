@@ -22,8 +22,8 @@ export const DEFAULT_STALL_RULES: StallRules = {
 };
 
 export type StallReason =
-  | { kind: "launch_age"; limitMin: number }
-  | { kind: "quiet"; limitMin: number }
+  | { kind: "launch_age"; limitMin: number; ageMs: number }
+  | { kind: "quiet"; limitMin: number; quietMs: number }
   | { kind: "repeat"; line: string; count: number };
 
 export type BackgroundTaskStatus =
@@ -60,18 +60,16 @@ function stallReasons(
 ): StallReason[] {
   const reasons: StallReason[] = [];
   const launchLimitMin = launchLimitMinFor(task.command, rules);
-  if (
-    task.startedAt !== undefined &&
-    nowMs - task.startedAt > launchLimitMin * MINUTE_MS
-  ) {
-    reasons.push({ kind: "launch_age", limitMin: launchLimitMin });
+  if (task.startedAt !== undefined) {
+    const ageMs = nowMs - task.startedAt;
+    if (ageMs > launchLimitMin * MINUTE_MS)
+      reasons.push({ kind: "launch_age", limitMin: launchLimitMin, ageMs });
   }
   const lastOutputAt = task.outputModifiedAt ?? task.startedAt;
-  if (
-    lastOutputAt !== undefined &&
-    nowMs - lastOutputAt > rules.quietLimitMin * MINUTE_MS
-  ) {
-    reasons.push({ kind: "quiet", limitMin: rules.quietLimitMin });
+  if (lastOutputAt !== undefined) {
+    const quietMs = nowMs - lastOutputAt;
+    if (quietMs > rules.quietLimitMin * MINUTE_MS)
+      reasons.push({ kind: "quiet", limitMin: rules.quietLimitMin, quietMs });
   }
   if (
     task.lastLine !== undefined &&

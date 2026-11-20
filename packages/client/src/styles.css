@@ -3287,7 +3287,15 @@ textarea {
   gap: 3px;
   padding: 8px 12px;
   border-bottom: 1px solid #262626;
+  cursor: pointer;
   --task-tone: #777;
+}
+
+.background-task-row:hover {
+  background-image: linear-gradient(
+    rgb(255 255 255 / 4%),
+    rgb(255 255 255 / 4%)
+  );
 }
 
 .background-task-stalled {
@@ -3308,6 +3316,14 @@ textarea {
 }
 
 .background-task-head {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;

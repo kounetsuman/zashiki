@@ -38,7 +38,7 @@ describe("backgroundTaskStatus", () => {
     );
     expect(status).toEqual({
       kind: "stalled",
-      reasons: [{ kind: "launch_age", limitMin: 20 }],
+      reasons: [{ kind: "launch_age", limitMin: 20, ageMs: 21 * MIN }],
     });
   });
 
@@ -50,7 +50,7 @@ describe("backgroundTaskStatus", () => {
     );
     expect(status).toEqual({
       kind: "stalled",
-      reasons: [{ kind: "quiet", limitMin: 5 }],
+      reasons: [{ kind: "quiet", limitMin: 5, quietMs: 5 * MIN + 1 }],
     });
   });
 
