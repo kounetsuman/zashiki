@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   backgroundTaskRows,
+  backgroundTasksBadge,
   commandHead,
   countByFilter,
   filterRows,
@@ -76,6 +77,13 @@ describe("backgroundTaskRows", () => {
     ).toEqual(["stuck", "new-run", "old-run"]);
     expect(filterRows(rows, new Set())).toHaveLength(5);
     expect([...stalledCockpitTerminalIds(rows)]).toEqual(["t2"]);
+  });
+
+  it("badges the stalled tasks plus the idle terminals", () => {
+    const rows = backgroundTaskRows(tasks, NOW, DEFAULT_STALL_RULES);
+    expect(backgroundTasksBadge(rows, 0)).toBe(1);
+    expect(backgroundTasksBadge(rows, 3)).toBe(4);
+    expect(backgroundTasksBadge([], 2)).toBe(2);
   });
 });
 

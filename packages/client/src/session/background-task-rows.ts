@@ -92,6 +92,14 @@ export function countByFilter(
   return counts;
 }
 
+/** The Navigation Area badge: what needs a look, the stalled tasks plus the idle terminals. */
+export function backgroundTasksBadge(
+  rows: readonly BackgroundTaskRow[],
+  idleCockpitTerminalCount: number,
+): number {
+  return countByFilter(rows).stalled + idleCockpitTerminalCount;
+}
+
 export function stalledCockpitTerminalIds(
   rows: readonly BackgroundTaskRow[],
 ): ReadonlySet<string> {

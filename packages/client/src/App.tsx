@@ -66,7 +66,7 @@ import {
   loadFooterBeforeCompactionOpen,
   saveFooterBeforeCompactionOpen,
 } from "./lib/footer-before-compaction.js";
-import { idleTerminalRows } from "./lib/idle-terminal-warning.js";
+import { idleCockpitTerminalRows } from "./lib/idle-cockpit-terminals.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
 import {
@@ -81,7 +81,7 @@ import { createMemoSaver } from "./memo/memo-saver.js";
 import type { MemoViewState } from "./memo/memo-view-state.js";
 import {
   backgroundTaskRows,
-  countByFilter,
+  backgroundTasksBadge,
   stalledCockpitTerminalIds,
 } from "./session/background-task-rows.js";
 import {
@@ -109,7 +109,6 @@ import { ErrorDialog } from "./ui/ErrorDialog.js";
 import { ExplorerView } from "./ui/ExplorerView.js";
 import { FirstRunSetupWizard } from "./ui/FirstRunSetupWizard.js";
 import { HelpModal } from "./ui/HelpModal.js";
-import { IdleTerminalWarningModal } from "./ui/IdleTerminalWarningModal.js";
 import { LimitIndicator } from "./ui/LimitIndicator.js";
 import { EmptyMainArea, NoTabOpen } from "./ui/MainAreaEmptyState.js";
 import { MemoEditor } from "./ui/MemoEditor.js";
@@ -143,7 +142,7 @@ import { useDiff } from "./ui/useDiff.js";
 import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
 import { type FileDropError, useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
-import { useIdleTerminalWarning } from "./ui/useIdleTerminalWarning.js";
+import { useIdleCockpitTerminals } from "./ui/useIdleCockpitTerminals.js";
 import { useOpenedFiles } from "./ui/useOpenedFiles.js";
 import { usePoppedOut } from "./ui/usePoppedOut.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
@@ -229,7 +228,7 @@ export interface AppProps {
   crashApi?: CrashApi;
   /** Reads a local dashboard file for the launch/wake overlay (omitted in tests that don't exercise it). */
   dashboardApi?: DashboardApi;
-  /** Reads terminal activity and screens for the idle-terminal warning (omitted in tests that don't exercise it). */
+  /** Reads terminal activity and screens for the idle terminals (omitted in tests that don't exercise it). */
   cockpitTerminalsApi?: CockpitTerminalsApi;
   /** Notification service (defaults to the real Web Notification + synthesized sound). */
   notifier?: Notifier;
@@ -374,19 +373,22 @@ export function App({
     [backgroundRows],
   );
 
-  const idleWarning = useIdleTerminalWarning(
+  const idleCockpitTerminals = useIdleCockpitTerminals(
     cockpitTerminalsApi,
-    viewStorage,
     cockpitTerminals,
   );
-  const idleWarningRows = idleTerminalRows(
-    idleWarning.idle,
-    cockpitTerminals,
-    (terminal) =>
-      resolveTitle(
-        effectiveCustomTitle(conversationTitles, terminal),
-        terminal,
+  const idleRows = useMemo(
+    () =>
+      idleCockpitTerminalRows(
+        idleCockpitTerminals,
+        cockpitTerminals,
+        (terminal) =>
+          resolveTitle(
+            effectiveCustomTitle(conversationTitles, terminal),
+            terminal,
+          ),
       ),
+    [idleCockpitTerminals, cockpitTerminals, conversationTitles],
   );
 
   const { seenIds, markRead } = useSeenNotifications(
@@ -433,15 +435,6 @@ export function App({
   });
   const usageWarningShown =
     usageWarning.open && accountLimits?.fiveHour?.resetsAt !== undefined;
-  // Yields to the other unsolicited overlays and comes up once they are gone, rather than stacking.
-  const idleWarningVisible =
-    idleWarningRows.length > 0 &&
-    crashChecked &&
-    crashLog === null &&
-    dashboardFrame === null &&
-    onboardingStep === "done" &&
-    !shouldShowFirstRunWizard(wizardSeen, hooksStatus) &&
-    !usageWarningShown;
 
   const controlStatus = useSyncExternalStore(
     useCallback((cb: () => void) => control.onStatus(() => cb()), [control]),
@@ -1318,7 +1311,10 @@ export function App({
           }}
           badges={{
             activity: activityUnread,
-            backgroundTasks: countByFilter(backgroundRows).stalled,
+            backgroundTasks: backgroundTasksBadge(
+              backgroundRows,
+              idleRows.length,
+            ),
             notification: systemUnread,
           }}
         />
@@ -1371,6 +1367,21 @@ export function App({
                 fetchedAt={backgroundTasks.fetchedAt}
                 rules={stallRules}
                 onOpenCockpitTerminal={openCockpitTerminal}
+                idleCockpitTerminals={
+                  cockpitTerminalsApi === undefined
+                    ? undefined
+                    : {
+                        rows: idleRows,
+                        api: cockpitTerminalsApi,
+                        orgColors,
+                        orgAliases,
+                        onCloseCockpitTerminal: (cockpitTerminalId) =>
+                          control.send({
+                            t: "cockpitTerminal.close",
+                            cockpitTerminalId,
+                          }),
+                      }
+                }
               />
             )}
             {selectedView === "notification" && (
@@ -1686,17 +1697,6 @@ export function App({
         )}
       {crashLog !== null && (
         <CrashReportModal log={crashLog} onClose={dismissCrash} />
-      )}
-      {idleWarningVisible && cockpitTerminalsApi !== undefined && (
-        <IdleTerminalWarningModal
-          rows={idleWarningRows}
-          nowMs={Date.now()}
-          api={cockpitTerminalsApi}
-          onCloseTerminal={(id) =>
-            control.send({ t: "cockpitTerminal.close", cockpitTerminalId: id })
-          }
-          onClose={idleWarning.dismiss}
-        />
       )}
       {sessionStats.open && activeSession !== undefined && (
         <SessionStatsModal

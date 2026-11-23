@@ -552,11 +552,12 @@
     "notify": "{{percent}}% left before lockout · unlocks at {{time}}",
     "close": "Close"
   },
-  "idleWarning": {
-    "title": "Terminals left idle",
-    "lead": "These terminals have had no input or output for a day or more. Each one keeps its process and full history in memory — close the ones you no longer need.",
-    "idleDays_one": "idle {{count}} day",
-    "idleDays_other": "idle {{count}} days",
+  "idleCockpitTerminals": {
+    "title": "Idle terminals",
+    "hint": "No input for a day or more",
+    "days_one": "{{count}} d",
+    "days_other": "{{count}} d",
+    "showTail": "Show the screen of {{name}}",
     "close": "Close {{name}}",
     "closeConfirm": "Close {{name}} (confirm)",
     "tailFailed": "Could not read the screen.",

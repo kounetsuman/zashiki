@@ -552,11 +552,12 @@
     "notify": "利用不可まであと {{percent}}% · {{time}} に解除",
     "close": "閉じる"
   },
-  "idleWarning": {
+  "idleCockpitTerminals": {
     "title": "放置されている端末",
-    "lead": "以下の端末は1日以上、入力も出力もありません。端末ごとにプロセスと全履歴がメモリに残っています。不要なものは閉じてください。",
-    "idleDays_one": "{{count}} 日放置",
-    "idleDays_other": "{{count}} 日放置",
+    "hint": "1日以上、入力のない端末",
+    "days_one": "{{count}} 日",
+    "days_other": "{{count}} 日",
+    "showTail": "{{name}} の画面を表示",
     "close": "{{name}} を閉じる",
     "closeConfirm": "{{name}} を閉じる（確認）",
     "tailFailed": "画面を読み取れませんでした。",
