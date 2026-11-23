@@ -835,7 +835,7 @@ export const focusResponseSchema = z.object({
 
 export type FocusResponse = z.infer<typeof focusResponseSchema>;
 
-/** `GET /api/cockpit-terminals/last-activity`: when each Cockpit Terminal last saw input or output. */
+/** `GET /api/cockpit-terminals/last-activity`: when the user last used each Cockpit Terminal (a typed key or a prompt sent to Claude; output does not count). */
 export const cockpitTerminalLastActivityResponseSchema = z.object({
   terminals: z.array(
     z.object({
