@@ -15,7 +15,7 @@ use crate::background_tasks::{BackgroundTaskScan, TaskRecord};
 use crate::jsonl::{
     background_task_ids, claude_project_dir_name, session_usage, subagent_tokens, SessionUsageData,
     SubagentTokens,
-    TitleScan, TranscriptTitle,
+    TitleScan, user_prompt_ms, TranscriptTitle,
 };
 use crate::protocol::{SessionEvent, SessionLink};
 use crate::session_links::session_links;
@@ -50,14 +50,15 @@ struct TitleProgress {
 
 type TitleScans = Arc<Mutex<HashMap<PathBuf, TitleProgress>>>;
 
-/// How far a transcript has been scanned for background tasks; the next pass resumes at `offset`.
+/// How far a transcript has been scanned, and what its lines added up to; the next pass resumes at
+/// `offset`.
 #[derive(Default)]
-struct TaskScanProgress {
+struct ScanProgress<S> {
     offset: u64,
-    scan: BackgroundTaskScan,
+    scan: S,
 }
 
-type TaskScans = Arc<Mutex<HashMap<PathBuf, TaskScanProgress>>>;
+type LineScans<S> = Arc<Mutex<HashMap<PathBuf, ScanProgress<S>>>>;
 
 /// How many transcripts' parses are held at once per cache; the least recently read is dropped first.
 const TRANSCRIPT_CACHE_CAPACITY: usize = 32;
@@ -120,7 +121,8 @@ pub struct ClaudeProjectsAdapter {
     now_ms: NowMs,
     subagent_totals: SubagentTotals,
     title_scans: TitleScans,
-    task_scans: TaskScans,
+    task_scans: LineScans<BackgroundTaskScan>,
+    prompt_scans: LineScans<Option<u64>>,
     link_cache: TranscriptCache<Vec<SessionLink>>,
     stats_cache: TranscriptCache<Vec<SessionEvent>>,
 }
@@ -151,7 +153,8 @@ impl ClaudeProjectsAdapter {
             root_dir,
             subagent_totals: SubagentTotals::default(),
             title_scans: TitleScans::default(),
-            task_scans: TaskScans::default(),
+            task_scans: LineScans::default(),
+            prompt_scans: LineScans::default(),
             link_cache: TranscriptCache::default(),
             stats_cache: TranscriptCache::default(),
             max_slice_bytes: DEFAULT_MAX_SLICE_BYTES,
@@ -248,18 +251,45 @@ impl ClaudeProjectsAdapter {
     pub async fn background_tasks(&self, cwd: &str, sid: &str) -> Vec<TaskRecord> {
         let path = self.transcript_path(cwd, sid);
         let scans = Arc::clone(&self.task_scans);
-        tokio::task::spawn_blocking(move || background_tasks_sync(&path, &scans))
-            .await
-            .unwrap_or_default()
+        tokio::task::spawn_blocking(move || {
+            scan_appended_lines_sync(&path, &scans, BackgroundTaskScan::feed, BackgroundTaskScan::records)
+        })
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default()
     }
 
-    /// Drops the saved read progress of every transcript but these `(cwd, sid)` pairs.
+    /// Drops the saved background task read progress of every transcript but these `(cwd, sid)` pairs.
     pub fn keep_background_task_scans<'a>(&self, sessions: impl IntoIterator<Item = (&'a str, &'a str)>) {
+        self.keep_scans(&self.task_scans, sessions);
+    }
+
+    /// Epoch ms of the last prompt the user sent in the transcript (None when it is missing or holds
+    /// none). Reads only what was appended since the previous call for the same transcript.
+    pub async fn last_user_prompt_ms(&self, cwd: &str, sid: &str) -> Option<u64> {
+        let path = self.transcript_path(cwd, sid);
+        let scans = Arc::clone(&self.prompt_scans);
+        tokio::task::spawn_blocking(move || {
+            scan_appended_lines_sync(&path, &scans, remember_latest_prompt, |last| *last)
+        })
+        .await
+        .ok()
+        .flatten()
+        .flatten()
+    }
+
+    /// Drops the saved prompt read progress of every transcript but these `(cwd, sid)` pairs.
+    pub fn keep_prompt_scans<'a>(&self, sessions: impl IntoIterator<Item = (&'a str, &'a str)>) {
+        self.keep_scans(&self.prompt_scans, sessions);
+    }
+
+    fn keep_scans<'a, S>(&self, scans: &LineScans<S>, sessions: impl IntoIterator<Item = (&'a str, &'a str)>) {
         let keep: HashSet<PathBuf> = sessions
             .into_iter()
             .map(|(cwd, sid)| self.transcript_path(cwd, sid))
             .collect();
-        if let Ok(mut scans) = self.task_scans.lock() {
+        if let Ok(mut scans) = scans.lock() {
             scans.retain(|path, _| keep.contains(path));
         }
     }
@@ -304,10 +334,21 @@ impl ClaudeProjectsAdapter {
     }
 }
 
-fn background_tasks_sync(path: &Path, scans: &Mutex<HashMap<PathBuf, TaskScanProgress>>) -> Vec<TaskRecord> {
-    let Ok(file) = fs::File::open(path) else {
-        return Vec::new();
-    };
+fn remember_latest_prompt(last: &mut Option<u64>, line: &str) {
+    if let Some(ms) = user_prompt_ms(line) {
+        *last = Some(last.map_or(ms, |l| l.max(ms)));
+    }
+}
+
+/// Feeds `feed` the complete lines appended to `path` since the previous call and returns `result` of
+/// everything fed so far (None when the file cannot be opened).
+fn scan_appended_lines_sync<S: Default, T>(
+    path: &Path,
+    scans: &Mutex<HashMap<PathBuf, ScanProgress<S>>>,
+    feed: impl Fn(&mut S, &str),
+    result: impl FnOnce(&S) -> T,
+) -> Option<T> {
+    let file = fs::File::open(path).ok()?;
     let len = file.metadata().map(|m| m.len()).unwrap_or(0);
     let mut progress = scans
         .lock()
@@ -327,16 +368,14 @@ fn background_tasks_sync(path: &Path, scans: &Mutex<HashMap<PathBuf, TaskScanPro
                 break;
             }
             progress.offset += read as u64;
-            progress
-                .scan
-                .feed(String::from_utf8_lossy(&buf).trim_end_matches(['\r', '\n']));
+            feed(&mut progress.scan, String::from_utf8_lossy(&buf).trim_end_matches(['\r', '\n']));
         }
     }
-    let records = progress.scan.records();
+    let value = result(&progress.scan);
     if let Ok(mut scans) = scans.lock() {
         scans.insert(path.to_path_buf(), progress);
     }
-    records
+    Some(value)
 }
 
 fn read_cached_sync<T: Clone + Default>(
@@ -665,6 +704,57 @@ mod tests {
         adapter.background_tasks(CWD, "other-sid").await;
         adapter.keep_background_task_scans([(CWD, SID)]);
         let kept: Vec<PathBuf> = adapter.task_scans.lock().unwrap().keys().cloned().collect();
+        assert_eq!(kept, vec![adapter.transcript_path(CWD, SID)]);
+    }
+
+    fn prompt_at(ts: &str, text: &str) -> String {
+        format!("{{\"type\":\"user\",\"timestamp\":\"{ts}\",\"message\":{{\"content\":\"{text}\"}}}}\n")
+    }
+
+    #[tokio::test]
+    async fn last_user_prompt_is_the_latest_prompt_and_ignores_tool_results() {
+        let tmp = tempfile::tempdir().unwrap();
+        let tool_result = "{\"type\":\"user\",\"timestamp\":\"2026-11-09T03:00:00Z\",\"message\":{\"content\":[{\"type\":\"tool_result\",\"content\":\"ok\"}]}}\n";
+        let content = format!(
+            "{}{}{tool_result}",
+            prompt_at("2026-11-09T01:00:00Z", "first"),
+            prompt_at("2026-11-09T02:00:00Z", "second"),
+        );
+        write_jsonl(tmp.path(), SID, &content, BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert_eq!(adapter.last_user_prompt_ms(CWD, SID).await, Some(1_794_189_600_000));
+    }
+
+    #[tokio::test]
+    async fn last_user_prompt_resumes_after_appended_lines_and_holds_a_partial_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let first = prompt_at("2026-11-09T01:00:00Z", "first");
+        let second = prompt_at("2026-11-09T02:00:00Z", "second");
+        let path = write_jsonl(tmp.path(), SID, &format!("{first}{}", &second[..30]), BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert_eq!(adapter.last_user_prompt_ms(CWD, SID).await, Some(1_794_186_000_000));
+
+        std::fs::write(&path, format!("{first}{second}")).unwrap();
+        assert_eq!(adapter.last_user_prompt_ms(CWD, SID).await, Some(1_794_189_600_000));
+    }
+
+    #[tokio::test]
+    async fn last_user_prompt_of_a_missing_transcript_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        assert_eq!(adapter.last_user_prompt_ms(CWD, SID).await, None);
+    }
+
+    #[tokio::test]
+    async fn prompt_scans_of_sessions_no_longer_listed_are_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_jsonl(tmp.path(), SID, "", BASE_SEC);
+        write_jsonl(tmp.path(), "other-sid", "", BASE_SEC);
+        let adapter = ClaudeProjectsAdapter::new(tmp.path().to_path_buf());
+        adapter.last_user_prompt_ms(CWD, SID).await;
+        adapter.last_user_prompt_ms(CWD, "other-sid").await;
+        adapter.keep_prompt_scans([(CWD, SID)]);
+        let kept: Vec<PathBuf> = adapter.prompt_scans.lock().unwrap().keys().cloned().collect();
         assert_eq!(kept, vec![adapter.transcript_path(CWD, SID)]);
     }
 
@@ -1218,7 +1308,8 @@ mod tests {
             root_dir: tmp.path().to_path_buf(),
             subagent_totals: SubagentTotals::default(),
             title_scans: TitleScans::default(),
-            task_scans: TaskScans::default(),
+            task_scans: LineScans::default(),
+            prompt_scans: LineScans::default(),
             link_cache: TranscriptCache::default(),
             stats_cache: TranscriptCache::default(),
             max_slice_bytes: 64 * 1024,

@@ -68,6 +68,7 @@ pub mod term_attach_pty;
 pub mod token;
 pub mod term_registry;
 pub mod update_checker;
+pub mod user_activity;
 
 mod app_state;
 mod poller_types;

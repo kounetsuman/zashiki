@@ -618,7 +618,7 @@ pub struct FocusResponse {
 #[serde(rename_all = "camelCase")]
 pub struct CockpitTerminalLastActivity {
     pub cockpit_terminal_id: String,
-    /// Epoch ms of the last input or output.
+    /// Epoch ms of the last user activity: a typed key or a prompt sent to Claude.
     pub last_activity_at: u64,
 }
 

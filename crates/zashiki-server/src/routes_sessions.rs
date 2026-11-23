@@ -12,6 +12,7 @@ use crate::protocol::{
     SessionLinksResponse, SessionStatsResponse,
 };
 use crate::session_persist;
+use crate::user_activity::last_user_activity_ms;
 use crate::wire_support::{json_error, parse_json_body, persist_error_response};
 
 #[derive(Deserialize)]
@@ -94,7 +95,8 @@ pub(crate) struct CockpitTerminalQuery {
     id: String,
 }
 
-/// `GET /api/cockpit-terminals/last-activity`. When each owned Cockpit Terminal last saw input or output.
+/// `GET /api/cockpit-terminals/last-activity`. When the user last used each owned Cockpit Terminal: a
+/// typed key, or a prompt in its Claude Session transcript. PTY output does not count.
 pub(crate) async fn cockpit_terminals_last_activity(State(state): State<AppState>) -> Response {
     let Some(control) = state.control.as_ref() else {
         return json_error(
@@ -102,16 +104,21 @@ pub(crate) async fn cockpit_terminals_last_activity(State(state): State<AppState
             "session services not available",
         );
     };
-    let terminals = control
-        .sessions
-        .entries()
-        .await
-        .into_iter()
-        .map(|(id, session, _)| CockpitTerminalLastActivity {
+    let sources = control.hub.claude_session_sources();
+    control
+        .projects
+        .keep_prompt_scans(sources.iter().map(|s| (s.cwd.as_str(), s.sid.as_str())));
+    let mut terminals = Vec::new();
+    for (id, session, _) in control.sessions.entries().await {
+        let last_prompt_ms = match sources.iter().find(|s| s.cockpit_terminal_id == id) {
+            Some(source) => control.projects.last_user_prompt_ms(&source.cwd, &source.sid).await,
+            None => None,
+        };
+        terminals.push(CockpitTerminalLastActivity {
             cockpit_terminal_id: id,
-            last_activity_at: session.last_activity_ms(),
-        })
-        .collect();
+            last_activity_at: last_user_activity_ms(session.spawned_at_ms(), session.last_keystroke_ms(), last_prompt_ms),
+        });
+    }
     Json(CockpitTerminalLastActivityResponse { terminals }).into_response()
 }
 
@@ -693,6 +700,28 @@ mod sessions_persist_rest_tests {
         let project_dir = projects.join(crate::jsonl::claude_project_dir_name(LINKS_CWD));
         std::fs::create_dir_all(&project_dir).unwrap();
         std::fs::write(project_dir.join(format!("{LINKS_SID}.jsonl")), line).unwrap();
+    }
+
+    #[tokio::test]
+    async fn last_activity_of_a_claude_session_is_its_last_prompt_not_the_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let projects = tempfile::tempdir().unwrap();
+        write_links_transcript(
+            projects.path(),
+            concat!(
+                r#"{"type":"user","timestamp":"2026-11-09T01:00:00Z","message":{"content":"fix it"}}"#,
+                "\n",
+                r#"{"type":"assistant","timestamp":"2026-11-09T01:05:00Z","message":{"content":[{"type":"text","text":"done"}]}}"#,
+                "\n",
+            ),
+        );
+        let sessions = sessions_running("sleep 5").await;
+        let app = links_app(dir.path(), sessions.clone(), snapshot_with_claude("t1", Some(LINKS_SID)), projects.path());
+        let (s, b) = send(app, "GET", "/api/cockpit-terminals/last-activity", "").await;
+        assert_eq!(s, StatusCode::OK);
+        let body: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(body["terminals"][0]["lastActivityAt"], 1_794_186_000_000u64);
+        sessions.shutdown_all().await;
     }
 
     #[tokio::test]

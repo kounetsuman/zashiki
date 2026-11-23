@@ -258,6 +258,31 @@ pub fn transcript_title(jsonl: &str, max_chars: usize) -> Option<TranscriptTitle
     scan.title()
 }
 
+/// The epoch ms of a transcript line that is a prompt the user sent: a user message holding text,
+/// not one Claude Code inserted itself (`isMeta`) and not one carrying only tool results.
+pub fn user_prompt_ms(line: &str) -> Option<u64> {
+    if !line.contains(r#""type":"user""#) {
+        return None;
+    }
+    let event = parse_line(line)?;
+    if event.get("type").and_then(Value::as_str) != Some("user")
+        || event.get("isMeta").and_then(Value::as_bool) == Some(true)
+    {
+        return None;
+    }
+    let holds_text = match content_of(&event)? {
+        Value::String(_) => true,
+        Value::Array(blocks) => blocks
+            .iter()
+            .any(|b| b.get("type").and_then(Value::as_str) == Some("text")),
+        _ => false,
+    };
+    if !holds_text {
+        return None;
+    }
+    parse_iso8601_ms(event.get("timestamp")?.as_str()?)
+}
+
 /// cwd -> the project directory name under ~/.claude/projects (replaces `/` with `-`).
 pub fn claude_project_dir_name(cwd: &str) -> String {
     cwd.replace('/', "-")
@@ -1071,6 +1096,45 @@ mod tests {
         assert_eq!(parse_iso8601_ms("not-a-date"), None);
         assert_eq!(parse_iso8601_ms("2000-13-01T00:00:00Z"), None);
         assert_eq!(parse_iso8601_ms(""), None);
+    }
+
+    // ---- user_prompt_ms ----
+
+    fn prompt_line(extra: Value, content: Value) -> String {
+        let mut event = json!({"type": "user", "timestamp": "2026-11-09T01:00:00.000Z", "message": {"content": content}});
+        event.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        event.to_string()
+    }
+
+    const PROMPT_MS: u64 = 1_794_186_000_000;
+
+    #[test]
+    fn a_typed_prompt_is_a_user_prompt() {
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!("hello"))), Some(PROMPT_MS));
+        assert_eq!(
+            user_prompt_ms(&prompt_line(json!({}), json!([{"type": "text", "text": "hi"}, {"type": "image"}]))),
+            Some(PROMPT_MS)
+        );
+    }
+
+    #[test]
+    fn meta_entries_tool_results_and_other_types_are_not_user_prompts() {
+        assert_eq!(user_prompt_ms(&prompt_line(json!({"isMeta": true}), json!("caveat"))), None);
+        assert_eq!(
+            user_prompt_ms(&prompt_line(json!({}), json!([{"type": "tool_result", "tool_use_id": "t", "content": "ok"}]))),
+            None
+        );
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!([{"type": "image"}]))), None);
+        let assistant = json!({"type": "assistant", "timestamp": "2026-11-09T01:00:00.000Z",
+            "message": {"content": [{"type": "text", "text": "ok"}]}});
+        assert_eq!(user_prompt_ms(&assistant.to_string()), None);
+        assert_eq!(user_prompt_ms("{broken"), None);
+    }
+
+    #[test]
+    fn a_prompt_without_a_readable_timestamp_has_no_time() {
+        let line = json!({"type": "user", "message": {"content": "hello"}}).to_string();
+        assert_eq!(user_prompt_ms(&line), None);
     }
 
     // ---- session_usage ----
