@@ -21,6 +21,10 @@ import {
   liveNowMs,
   toggleFilter,
 } from "../session/background-task-rows.js";
+import {
+  IdleTerminalGroup,
+  type IdleTerminalGroupProps,
+} from "./IdleTerminalGroup.js";
 import { useNow } from "./useNow.js";
 import { ViewEmpty } from "./ViewEmpty.js";
 import { ViewHeader } from "./ViewHeader.js";
@@ -31,6 +35,11 @@ export interface BackgroundTaskViewProps {
   fetchedAt: number;
   rules: StallRules;
   onOpenCockpitTerminal: (cockpitTerminalId: string) => void;
+  /** Shown above the filters while any Cockpit Terminal is idle. */
+  idleTerminals?: Omit<
+    IdleTerminalGroupProps,
+    "nowMs" | "onOpenCockpitTerminal"
+  >;
 }
 
 type Tone = "stalled" | "running" | "ok" | "failed" | "muted";
@@ -181,9 +190,11 @@ export function BackgroundTaskView({
   fetchedAt,
   rules,
   onOpenCockpitTerminal,
+  idleTerminals,
 }: BackgroundTaskViewProps) {
   const { t } = useTranslation();
-  const nowMs = liveNowMs(useNow(1_000), fetchedAt);
+  const tickMs = useNow(1_000);
+  const nowMs = liveNowMs(tickMs, fetchedAt);
   const [selection, setSelection] = useState(DEFAULT_STATUS_SELECTION);
   const rows = backgroundTaskRows(tasks, nowMs, rules);
   const counts = countByFilter(rows);
@@ -191,6 +202,13 @@ export function BackgroundTaskView({
   return (
     <section className="background-task-view" data-view="backgroundTasks">
       <ViewHeader title="BACKGROUND TASKS" />
+      {idleTerminals !== undefined && (
+        <IdleTerminalGroup
+          {...idleTerminals}
+          nowMs={tickMs}
+          onOpenCockpitTerminal={onOpenCockpitTerminal}
+        />
+      )}
       <div className="background-task-filters">
         {BACKGROUND_TASK_FILTERS.map((f) => {
           const selected = isFilterSelected(selection, f);

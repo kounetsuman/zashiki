@@ -3376,6 +3376,148 @@ textarea {
   font-size: 10px;
 }
 
+/* Idle Cockpit Terminals, grouped above the background task filters. */
+.idle-terminal-group {
+  flex: none;
+  border-bottom: 1px solid #262626;
+}
+
+.idle-terminal-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: #ccc;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.idle-terminal-group-header:hover {
+  color: #eee;
+}
+
+.idle-terminal-group-header .material-symbols-outlined,
+.idle-terminal-chevron .material-symbols-outlined {
+  font-size: 16px;
+  color: #8a8a8a;
+}
+
+.idle-terminal-group-count {
+  color: #e5c07b;
+  font-variant-numeric: tabular-nums;
+}
+
+.idle-terminal-list {
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
+}
+
+.idle-terminal-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 8px 0 14px;
+}
+
+.idle-terminal-row:hover {
+  background: rgb(255 255 255 / 4%);
+}
+
+.idle-terminal-chevron,
+.idle-terminal-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.idle-terminal-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.idle-terminal-title:hover {
+  text-decoration: underline;
+}
+
+.idle-terminal-days {
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.idle-terminal-days.is-amber {
+  color: #e5c07b;
+}
+
+.idle-terminal-days.is-red {
+  color: #e06c75;
+}
+
+.idle-terminal-close {
+  color: #666;
+  opacity: 0;
+}
+
+.idle-terminal-row:hover .idle-terminal-close,
+.idle-terminal-close:focus-visible {
+  opacity: 1;
+}
+
+.idle-terminal-close:hover {
+  background: #3a2020;
+  color: #e06c75;
+}
+
+.idle-terminal-close .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.idle-terminal-tail {
+  margin: 2px 8px 4px 14px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border: 1px solid #262626;
+  border-radius: 3px;
+  background: #141414;
+  color: #ccc;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.idle-terminal-note {
+  margin: 2px 8px 4px 14px;
+  font-size: 11px;
+  color: #7d828a;
+}
+
 .notification-view {
   position: relative;
   display: flex;

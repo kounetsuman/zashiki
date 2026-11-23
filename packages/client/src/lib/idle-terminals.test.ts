@@ -2,16 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   IDLE_THRESHOLD_MS,
-  IDLE_WARNING_SHOWN_DAY_KEY,
   idleDays,
   idleTerminalRows,
   idleTerminals,
-  loadIdleWarningShownDay,
-  saveIdleWarningShownDay,
-} from "./idle-terminal-warning.js";
+  idleTone,
+} from "./idle-terminals.js";
 
 const NOW = Date.UTC(2026, 9, 20, 12);
 const HOUR = 60 * 60 * 1000;
+const DAY = 24 * HOUR;
 
 describe("idleTerminals", () => {
   it("keeps only the terminals without activity for the threshold or longer", () => {
@@ -39,30 +38,12 @@ describe("idleDays", () => {
   });
 });
 
-describe("shown day storage", () => {
-  it("round-trips the day", () => {
-    const map = new Map<string, string>();
-    const storage = {
-      getItem: (k: string) => map.get(k) ?? null,
-      setItem: (k: string, v: string) => void map.set(k, v),
-    };
-    expect(loadIdleWarningShownDay(storage)).toBeNull();
-    saveIdleWarningShownDay(storage, "2026-10-20");
-    expect(map.get(IDLE_WARNING_SHOWN_DAY_KEY)).toBe("2026-10-20");
-    expect(loadIdleWarningShownDay(storage)).toBe("2026-10-20");
-  });
-
-  it("treats a throwing storage as never shown", () => {
-    const storage = {
-      getItem: () => {
-        throw new Error("blocked");
-      },
-      setItem: () => {
-        throw new Error("blocked");
-      },
-    };
-    expect(loadIdleWarningShownDay(storage)).toBeNull();
-    expect(() => saveIdleWarningShownDay(storage, "2026-10-20")).not.toThrow();
+describe("idleTone", () => {
+  it("turns red from a week on", () => {
+    expect(idleTone(1)).toBe("amber");
+    expect(idleTone(6)).toBe("amber");
+    expect(idleTone(7)).toBe("red");
+    expect(idleTone(30)).toBe("red");
   });
 });
 
@@ -77,19 +58,21 @@ describe("idleTerminalRows", () => {
     active: false,
   });
   const idle = new Map([
-    ["b", NOW - 30 * HOUR],
-    ["a", NOW - 48 * HOUR],
+    ["b", NOW - 2 * DAY],
+    ["a", NOW - 9 * DAY],
+    ["c", NOW - 2 * DAY],
   ]);
 
-  it("follows the list order and labels each row", () => {
+  it("puts the longest-idle first, keeping list order on a tie, and labels each row", () => {
     const rows = idleTerminalRows(
       idle,
-      [terminal("a"), terminal("x"), terminal("b")],
+      [terminal("c"), terminal("x"), terminal("b"), terminal("a")],
       (t) => `label-${t.name}`,
     );
     expect(rows.map((r) => [r.title, r.lastActivityAt])).toEqual([
-      ["label-a", NOW - 48 * HOUR],
-      ["label-b", NOW - 30 * HOUR],
+      ["label-a", NOW - 9 * DAY],
+      ["label-c", NOW - 2 * DAY],
+      ["label-b", NOW - 2 * DAY],
     ]);
   });
 
@@ -100,9 +83,5 @@ describe("idleTerminalRows", () => {
       ),
     ).toEqual(["b"]);
     expect(idleTerminalRows(idle, [], (t) => t.name)).toEqual([]);
-  });
-
-  it("has no rows while the warning is not up", () => {
-    expect(idleTerminalRows(null, [terminal("a")], (t) => t.name)).toEqual([]);
   });
 });

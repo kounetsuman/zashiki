@@ -10,7 +10,10 @@ import {
 import { type BackgroundTask, DEFAULT_STALL_RULES } from "@zashiki/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { BackgroundTaskView } from "./BackgroundTaskView.js";
+import {
+  BackgroundTaskView,
+  type BackgroundTaskViewProps,
+} from "./BackgroundTaskView.js";
 
 const MIN = 60_000;
 const NOW = 1_800_000_000_000;
@@ -44,6 +47,7 @@ function task(over: Partial<BackgroundTask>): BackgroundTask {
 function renderView(
   tasks: BackgroundTask[],
   onOpenCockpitTerminal: (id: string) => void = () => {},
+  idleTerminals?: BackgroundTaskViewProps["idleTerminals"],
 ) {
   render(
     <BackgroundTaskView
@@ -51,6 +55,7 @@ function renderView(
       fetchedAt={NOW}
       rules={DEFAULT_STALL_RULES}
       onOpenCockpitTerminal={onOpenCockpitTerminal}
+      idleTerminals={idleTerminals}
     />,
   );
 }
@@ -61,6 +66,40 @@ const rowOf = (taskId: string) =>
   document.querySelector(`[data-task-id="${taskId}"]`) as HTMLElement;
 
 describe("BackgroundTaskView", () => {
+  it("puts the idle terminals above the filters, and opens one from its title", () => {
+    const onOpen = vi.fn();
+    renderView([task({})], onOpen, {
+      rows: [
+        {
+          terminal: {
+            cockpitTerminalId: "idle1",
+            name: "idle1",
+            org: "wonder",
+            repo: "wonder-api",
+            state: "idle",
+            title: null,
+            active: false,
+          },
+          title: "放置した作業",
+          lastActivityAt: NOW - 3 * 24 * 60 * MIN,
+        },
+      ],
+      api: { tail: vi.fn(async () => []) },
+      onCloseCockpitTerminal: vi.fn(),
+    });
+    const group = document.querySelector(".idle-terminal-group");
+    const filters = document.querySelector(".background-task-filters");
+    expect(group?.textContent).toContain("3 日");
+    expect(
+      group !== null &&
+        filters !== null &&
+        group.compareDocumentPosition(filters) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "放置した作業" }));
+    expect(onOpen).toHaveBeenCalledWith("idle1");
+  });
+
   it("shows a stalled task with its elapsed time, command, place, and the measured values that fired", () => {
     renderView([
       task({

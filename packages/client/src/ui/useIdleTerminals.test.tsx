@@ -10,13 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CockpitTerminalsApi } from "../api/cockpit-terminals.js";
 import {
   IDLE_THRESHOLD_MS,
-  IDLE_WARNING_SHOWN_DAY_KEY,
   type IdleTerminals,
-} from "../lib/idle-terminal-warning.js";
+} from "../lib/idle-terminals.js";
 import {
   IDLE_CHECK_INTERVAL_MS,
-  useIdleTerminalWarning,
-} from "./useIdleTerminalWarning.js";
+  useIdleTerminals,
+} from "./useIdleTerminals.js";
 
 const { isTauri } = vi.hoisted(() => ({ isTauri: vi.fn(() => true) }));
 const { listen } = vi.hoisted(() => ({
@@ -27,19 +26,7 @@ const { listen } = vi.hoisted(() => ({
 vi.mock("@tauri-apps/api/core", () => ({ isTauri }));
 vi.mock("@tauri-apps/api/event", () => ({ listen }));
 
-function memoryStorage(initial: Record<string, string> = {}) {
-  const map = new Map(Object.entries(initial));
-  return {
-    map,
-    getItem: (k: string) => map.get(k) ?? null,
-    setItem: (k: string, v: string) => {
-      map.set(k, v);
-    },
-  };
-}
-
 const NOW = new Date(2026, 9, 20, 9, 0);
-const TODAY = "2026-10-20";
 const STALE = NOW.getTime() - IDLE_THRESHOLD_MS;
 const FRESH = NOW.getTime() - 60_000;
 
@@ -66,24 +53,10 @@ function apiReturning(
   };
 }
 
-function mount(
-  api: CockpitTerminalsApi,
-  storage: ReturnType<typeof memoryStorage>,
-  terminals: CockpitTerminalInfo[],
-) {
-  const state: { idle: IdleTerminals | null; dismiss(): void } = {
-    idle: null,
-    dismiss: () => undefined,
-  };
+function mount(api: CockpitTerminalsApi, terminals: CockpitTerminalInfo[]) {
+  const state: { idle: IdleTerminals } = { idle: new Map() };
   function Probe(props: { terminals: CockpitTerminalInfo[] }) {
-    const warning = useIdleTerminalWarning(
-      api,
-      storage,
-      props.terminals,
-      () => NOW,
-    );
-    state.idle = warning.idle;
-    state.dismiss = warning.dismiss;
+    state.idle = useIdleTerminals(api, props.terminals, () => NOW);
     return null;
   }
   const { rerender } = render(<Probe terminals={terminals} />);
@@ -110,61 +83,50 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("useIdleTerminalWarning", () => {
-  it("shows the listed terminals idle past the threshold at launch and spends the day", async () => {
-    const storage = memoryStorage();
+describe("useIdleTerminals", () => {
+  it("finds the listed terminals idle past the threshold at launch", async () => {
     const api = apiReturning([
       { cockpitTerminalId: "a", lastActivityAt: STALE },
       { cockpitTerminalId: "b", lastActivityAt: FRESH },
       { cockpitTerminalId: "gone", lastActivityAt: STALE },
     ]);
-    const { state } = mount(api, storage, [terminal("a"), terminal("b")]);
+    const { state } = mount(api, [terminal("a"), terminal("b")]);
     await flush();
-    expect([...(state.idle ?? [])]).toEqual([["a", STALE]]);
-    expect(storage.map.get(IDLE_WARNING_SHOWN_DAY_KEY)).toBe(TODAY);
+    expect([...state.idle]).toEqual([["a", STALE]]);
   });
 
   it("waits for the terminal list before the launch check", async () => {
     const api = apiReturning([
       { cockpitTerminalId: "a", lastActivityAt: STALE },
     ]);
-    const { state, rerender } = mount(api, memoryStorage(), []);
+    const { state, rerender } = mount(api, []);
     await flush();
     expect(api.lastActivity).not.toHaveBeenCalled();
     rerender([terminal("a")]);
     await flush();
-    expect(state.idle?.has("a")).toBe(true);
+    expect(state.idle.has("a")).toBe(true);
   });
 
-  it("does not show again on a day it was already shown", async () => {
-    const api = apiReturning([
-      { cockpitTerminalId: "a", lastActivityAt: STALE },
-    ]);
-    const { state, wake } = mount(
-      api,
-      memoryStorage({ [IDLE_WARNING_SHOWN_DAY_KEY]: TODAY }),
-      [terminal("a")],
-    );
-    await flush();
-    await wake();
-    expect(api.lastActivity).not.toHaveBeenCalled();
-    expect(state.idle).toBeNull();
-  });
-
-  it("keeps the day unspent when nothing is idle, so a later check can still show", async () => {
-    const storage = memoryStorage();
+  it("checks again on every wake and takes each answer, including an empty one", async () => {
     const api = apiReturning([
       { cockpitTerminalId: "a", lastActivityAt: FRESH },
     ]);
-    const { state, wake } = mount(api, storage, [terminal("a")]);
+    const { state, wake } = mount(api, [terminal("a")]);
     await flush();
-    expect(state.idle).toBeNull();
-    expect(storage.map.has(IDLE_WARNING_SHOWN_DAY_KEY)).toBe(false);
+    expect(state.idle.size).toBe(0);
     vi.mocked(api.lastActivity).mockResolvedValue({
       terminals: [{ cockpitTerminalId: "a", lastActivityAt: STALE }],
     });
     await wake();
-    expect(state.idle?.has("a")).toBe(true);
+    expect(state.idle.has("a")).toBe(true);
+    await wake();
+    expect(state.idle.has("a")).toBe(true);
+    vi.mocked(api.lastActivity).mockResolvedValue({
+      terminals: [{ cockpitTerminalId: "a", lastActivityAt: FRESH }],
+    });
+    await wake();
+    expect(state.idle.size).toBe(0);
+    expect(api.lastActivity).toHaveBeenCalledTimes(4);
   });
 
   it("checks hourly while the app stays open", async () => {
@@ -172,22 +134,12 @@ describe("useIdleTerminalWarning", () => {
     const api = apiReturning([
       { cockpitTerminalId: "a", lastActivityAt: FRESH },
     ]);
-    mount(api, memoryStorage(), [terminal("a")]);
+    mount(api, [terminal("a")]);
     await flush();
     expect(api.lastActivity).toHaveBeenCalledTimes(1);
     await act(async () => {
       vi.advanceTimersByTime(IDLE_CHECK_INTERVAL_MS);
     });
     expect(api.lastActivity).toHaveBeenCalledTimes(2);
-  });
-
-  it("dismiss hides the warning", async () => {
-    const api = apiReturning([
-      { cockpitTerminalId: "a", lastActivityAt: STALE },
-    ]);
-    const { state } = mount(api, memoryStorage(), [terminal("a")]);
-    await flush();
-    act(() => state.dismiss());
-    expect(state.idle).toBeNull();
   });
 });
