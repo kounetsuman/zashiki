@@ -2,24 +2,27 @@ import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { CockpitTerminalsApi } from "../api/cockpit-terminals.js";
-import { type IdleTerminals, idleTerminals } from "../lib/idle-terminals.js";
+import {
+  type IdleCockpitTerminals,
+  idleCockpitTerminals,
+} from "../lib/idle-cockpit-terminals.js";
 import { useWakeEvent } from "./useWakeEvent.js";
 
 /** How often a cockpit left open is re-checked, so a terminal can cross the threshold without a relaunch or wake. */
 export const IDLE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
-const NONE: IdleTerminals = new Map();
+const NONE: IdleCockpitTerminals = new Map();
 
 /**
  * The listed Cockpit Terminals idle past the threshold, checked at launch (once the terminal list has
  * arrived), on wake from sleep, and hourly.
  */
-export function useIdleTerminals(
+export function useIdleCockpitTerminals(
   api: CockpitTerminalsApi | undefined,
   cockpitTerminals: CockpitTerminalInfo[],
   now: () => Date = () => new Date(),
-): IdleTerminals {
-  const [idle, setIdle] = useState<IdleTerminals>(NONE);
+): IdleCockpitTerminals {
+  const [idle, setIdle] = useState<IdleCockpitTerminals>(NONE);
   const terminalsRef = useRef(cockpitTerminals);
   terminalsRef.current = cockpitTerminals;
   const nowRef = useRef(now);
@@ -40,9 +43,9 @@ export function useIdleTerminals(
         );
         setIdle(
           new Map(
-            [...idleTerminals(response, nowRef.current().getTime())].filter(
-              ([id]) => listed.has(id),
-            ),
+            [
+              ...idleCockpitTerminals(response, nowRef.current().getTime()),
+            ].filter(([id]) => listed.has(id)),
           ),
         );
       },

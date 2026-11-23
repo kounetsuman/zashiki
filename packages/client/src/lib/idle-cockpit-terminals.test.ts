@@ -2,19 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import {
   IDLE_THRESHOLD_MS,
+  idleCockpitTerminalRows,
+  idleCockpitTerminals,
   idleDays,
-  idleTerminalRows,
-  idleTerminals,
   idleTone,
-} from "./idle-terminals.js";
+} from "./idle-cockpit-terminals.js";
 
 const NOW = Date.UTC(2026, 9, 20, 12);
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
-describe("idleTerminals", () => {
+describe("idleCockpitTerminals", () => {
   it("keeps only the terminals without activity for the threshold or longer", () => {
-    const idle = idleTerminals(
+    const idle = idleCockpitTerminals(
       {
         terminals: [
           { cockpitTerminalId: "a", lastActivityAt: NOW - IDLE_THRESHOLD_MS },
@@ -47,7 +47,7 @@ describe("idleTone", () => {
   });
 });
 
-describe("idleTerminalRows", () => {
+describe("idleCockpitTerminalRows", () => {
   const terminal = (id: string) => ({
     cockpitTerminalId: id,
     name: id,
@@ -64,7 +64,7 @@ describe("idleTerminalRows", () => {
   ]);
 
   it("puts the longest-idle first, keeping list order on a tie, and labels each row", () => {
-    const rows = idleTerminalRows(
+    const rows = idleCockpitTerminalRows(
       idle,
       [terminal("c"), terminal("x"), terminal("b"), terminal("a")],
       (t) => `label-${t.name}`,
@@ -78,10 +78,10 @@ describe("idleTerminalRows", () => {
 
   it("drops a terminal that is no longer listed, down to nothing", () => {
     expect(
-      idleTerminalRows(idle, [terminal("b")], (t) => t.name).map(
+      idleCockpitTerminalRows(idle, [terminal("b")], (t) => t.name).map(
         (r) => r.terminal.cockpitTerminalId,
       ),
     ).toEqual(["b"]);
-    expect(idleTerminalRows(idle, [], (t) => t.name)).toEqual([]);
+    expect(idleCockpitTerminalRows(idle, [], (t) => t.name)).toEqual([]);
   });
 });

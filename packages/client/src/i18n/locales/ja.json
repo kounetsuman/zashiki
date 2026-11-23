@@ -552,7 +552,7 @@
     "notify": "利用不可まであと {{percent}}% · {{time}} に解除",
     "close": "閉じる"
   },
-  "idleTerminals": {
+  "idleCockpitTerminals": {
     "title": "放置されている端末",
     "hint": "1日以上、入力のない端末",
     "days_one": "{{count}} 日",

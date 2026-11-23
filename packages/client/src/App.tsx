@@ -66,7 +66,7 @@ import {
   loadFooterBeforeCompactionOpen,
   saveFooterBeforeCompactionOpen,
 } from "./lib/footer-before-compaction.js";
-import { idleTerminalRows } from "./lib/idle-terminals.js";
+import { idleCockpitTerminalRows } from "./lib/idle-cockpit-terminals.js";
 import { createNotifier, type Notifier } from "./lib/notify.js";
 import { loadOnboardingSeen, saveOnboardingSeen } from "./lib/onboarding.js";
 import {
@@ -142,7 +142,7 @@ import { useDiff } from "./ui/useDiff.js";
 import { useEditMenuHistory } from "./ui/useEditMenuHistory.js";
 import { type FileDropError, useFileDrop } from "./ui/useFileDrop.js";
 import { useGitStatus } from "./ui/useGitStatus.js";
-import { useIdleTerminals } from "./ui/useIdleTerminals.js";
+import { useIdleCockpitTerminals } from "./ui/useIdleCockpitTerminals.js";
 import { useOpenedFiles } from "./ui/useOpenedFiles.js";
 import { usePoppedOut } from "./ui/usePoppedOut.js";
 import { useQuitGuard } from "./ui/useQuitGuard.js";
@@ -373,16 +373,22 @@ export function App({
     [backgroundRows],
   );
 
-  const idleTerminals = useIdleTerminals(cockpitTerminalsApi, cockpitTerminals);
+  const idleCockpitTerminals = useIdleCockpitTerminals(
+    cockpitTerminalsApi,
+    cockpitTerminals,
+  );
   const idleRows = useMemo(
     () =>
-      idleTerminalRows(idleTerminals, cockpitTerminals, (terminal) =>
-        resolveTitle(
-          effectiveCustomTitle(conversationTitles, terminal),
-          terminal,
-        ),
+      idleCockpitTerminalRows(
+        idleCockpitTerminals,
+        cockpitTerminals,
+        (terminal) =>
+          resolveTitle(
+            effectiveCustomTitle(conversationTitles, terminal),
+            terminal,
+          ),
       ),
-    [idleTerminals, cockpitTerminals, conversationTitles],
+    [idleCockpitTerminals, cockpitTerminals, conversationTitles],
   );
 
   const { seenIds, markRead } = useSeenNotifications(
@@ -1361,7 +1367,7 @@ export function App({
                 fetchedAt={backgroundTasks.fetchedAt}
                 rules={stallRules}
                 onOpenCockpitTerminal={openCockpitTerminal}
-                idleTerminals={
+                idleCockpitTerminals={
                   cockpitTerminalsApi === undefined
                     ? undefined
                     : {

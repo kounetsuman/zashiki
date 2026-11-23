@@ -10,12 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CockpitTerminalsApi } from "../api/cockpit-terminals.js";
 import {
   IDLE_THRESHOLD_MS,
-  type IdleTerminals,
-} from "../lib/idle-terminals.js";
+  type IdleCockpitTerminals,
+} from "../lib/idle-cockpit-terminals.js";
 import {
   IDLE_CHECK_INTERVAL_MS,
-  useIdleTerminals,
-} from "./useIdleTerminals.js";
+  useIdleCockpitTerminals,
+} from "./useIdleCockpitTerminals.js";
 
 const { isTauri } = vi.hoisted(() => ({ isTauri: vi.fn(() => true) }));
 const { listen } = vi.hoisted(() => ({
@@ -54,9 +54,9 @@ function apiReturning(
 }
 
 function mount(api: CockpitTerminalsApi, terminals: CockpitTerminalInfo[]) {
-  const state: { idle: IdleTerminals } = { idle: new Map() };
+  const state: { idle: IdleCockpitTerminals } = { idle: new Map() };
   function Probe(props: { terminals: CockpitTerminalInfo[] }) {
-    state.idle = useIdleTerminals(api, props.terminals, () => NOW);
+    state.idle = useIdleCockpitTerminals(api, props.terminals, () => NOW);
     return null;
   }
   const { rerender } = render(<Probe terminals={terminals} />);
@@ -83,7 +83,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("useIdleTerminals", () => {
+describe("useIdleCockpitTerminals", () => {
   it("finds the listed terminals idle past the threshold at launch", async () => {
     const api = apiReturning([
       { cockpitTerminalId: "a", lastActivityAt: STALE },

@@ -47,7 +47,7 @@ function task(over: Partial<BackgroundTask>): BackgroundTask {
 function renderView(
   tasks: BackgroundTask[],
   onOpenCockpitTerminal: (id: string) => void = () => {},
-  idleTerminals?: BackgroundTaskViewProps["idleTerminals"],
+  idleCockpitTerminals?: BackgroundTaskViewProps["idleCockpitTerminals"],
 ) {
   render(
     <BackgroundTaskView
@@ -55,7 +55,7 @@ function renderView(
       fetchedAt={NOW}
       rules={DEFAULT_STALL_RULES}
       onOpenCockpitTerminal={onOpenCockpitTerminal}
-      idleTerminals={idleTerminals}
+      idleCockpitTerminals={idleCockpitTerminals}
     />,
   );
 }
@@ -87,7 +87,7 @@ describe("BackgroundTaskView", () => {
       api: { tail: vi.fn(async () => []) },
       onCloseCockpitTerminal: vi.fn(),
     });
-    const group = document.querySelector(".idle-terminal-group");
+    const group = document.querySelector(".idle-cockpit-terminal-group");
     const filters = document.querySelector(".background-task-filters");
     expect(group?.textContent).toContain("3 日");
     expect(
@@ -121,7 +121,7 @@ describe("BackgroundTaskView", () => {
       onCloseCockpitTerminal: vi.fn(),
     });
     const days = () =>
-      document.querySelector(".idle-terminal-days")?.textContent;
+      document.querySelector(".idle-cockpit-terminal-days")?.textContent;
     expect(days()).toBe("3 日");
     act(() => {
       vi.advanceTimersByTime(24 * 60 * MIN);

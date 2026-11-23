@@ -4,15 +4,15 @@ import { useTranslation } from "react-i18next";
 
 import type { CockpitTerminalsApi } from "../api/cockpit-terminals.js";
 import {
-  type IdleTerminalRow,
+  type IdleCockpitTerminalRow,
   idleDays,
   idleTone,
-} from "../lib/idle-terminals.js";
+} from "../lib/idle-cockpit-terminals.js";
 import { useConfirmClose } from "./useConfirmClose.js";
 import { useNow } from "./useNow.js";
 
-export interface IdleTerminalGroupProps {
-  rows: readonly IdleTerminalRow[];
+export interface IdleCockpitTerminalGroupProps {
+  rows: readonly IdleCockpitTerminalRow[];
   api: Pick<CockpitTerminalsApi, "tail">;
   orgColors?: Record<string, string>;
   orgAliases?: Record<string, string>;
@@ -27,14 +27,14 @@ const IDLE_CLOCK_MS = 60_000;
  * The idle Cockpit Terminals, as a collapsible group. Each row expands to the last lines of its
  * screen and can be closed from here after an inline confirmation.
  */
-export const IdleTerminalGroup = memo(function IdleTerminalGroup({
+export const IdleCockpitTerminalGroup = memo(function IdleCockpitTerminalGroup({
   rows,
   api,
   orgColors = {},
   orgAliases = {},
   onOpenCockpitTerminal,
   onCloseCockpitTerminal,
-}: IdleTerminalGroupProps) {
+}: IdleCockpitTerminalGroupProps) {
   const { t } = useTranslation();
   const nowMs = useNow(IDLE_CLOCK_MS);
   const [open, setOpen] = useState(true);
@@ -67,12 +67,12 @@ export const IdleTerminalGroup = memo(function IdleTerminalGroup({
     });
 
   return (
-    <div className="idle-terminal-group">
+    <div className="idle-cockpit-terminal-group">
       <button
         type="button"
-        className="idle-terminal-group-header"
+        className="idle-cockpit-terminal-group-header"
         aria-expanded={open}
-        title={t("idleTerminals.hint")}
+        title={t("idleCockpitTerminals.hint")}
         onClick={() => {
           if (open) cancelClose();
           setOpen(!open);
@@ -81,11 +81,11 @@ export const IdleTerminalGroup = memo(function IdleTerminalGroup({
         <span className="material-symbols-outlined" aria-hidden="true">
           {open ? "expand_more" : "chevron_right"}
         </span>
-        <span>{t("idleTerminals.title")}</span>{" "}
-        <span className="idle-terminal-group-count">{rows.length}</span>
+        <span>{t("idleCockpitTerminals.title")}</span>{" "}
+        <span className="idle-cockpit-terminal-group-count">{rows.length}</span>
       </button>
       {open && (
-        <ul className="idle-terminal-list scrollbar-persistent">
+        <ul className="idle-cockpit-terminal-list scrollbar-persistent">
           {rows.map(({ terminal, title, lastActivityAt }) => {
             const id = terminal.cockpitTerminalId;
             const tailOpen = expanded.has(id);
@@ -94,15 +94,17 @@ export const IdleTerminalGroup = memo(function IdleTerminalGroup({
             return (
               <li
                 key={id}
-                className="idle-terminal-item"
+                className="idle-cockpit-terminal-item"
                 data-cockpit-terminal-id={id}
               >
-                <div className="idle-terminal-row">
+                <div className="idle-cockpit-terminal-row">
                   <button
                     type="button"
-                    className="idle-terminal-chevron"
+                    className="idle-cockpit-terminal-chevron"
                     aria-expanded={tailOpen}
-                    aria-label={t("idleTerminals.showTail", { name: title })}
+                    aria-label={t("idleCockpitTerminals.showTail", {
+                      name: title,
+                    })}
                     onClick={() => toggle(id)}
                   >
                     <span
@@ -123,21 +125,23 @@ export const IdleTerminalGroup = memo(function IdleTerminalGroup({
                   />
                   <button
                     type="button"
-                    className="idle-terminal-title"
+                    className="idle-cockpit-terminal-title"
                     title={title}
                     onClick={() => onOpenCockpitTerminal(id)}
                   >
                     {title}
                   </button>
-                  <span className={`idle-terminal-days is-${idleTone(days)}`}>
-                    {t("idleTerminals.days", { count: days })}
+                  <span
+                    className={`idle-cockpit-terminal-days is-${idleTone(days)}`}
+                  >
+                    {t("idleCockpitTerminals.days", { count: days })}
                   </span>
                   {confirmingClose === id ? (
                     <span className="session-row-confirm">
                       <button
                         type="button"
                         className="session-confirm-ok"
-                        aria-label={t("idleTerminals.closeConfirm", {
+                        aria-label={t("idleCockpitTerminals.closeConfirm", {
                           name: title,
                         })}
                         onClick={() => confirmClose(id)}
@@ -155,8 +159,10 @@ export const IdleTerminalGroup = memo(function IdleTerminalGroup({
                   ) : (
                     <button
                       type="button"
-                      className="idle-terminal-close"
-                      aria-label={t("idleTerminals.close", { name: title })}
+                      className="idle-cockpit-terminal-close"
+                      aria-label={t("idleCockpitTerminals.close", {
+                        name: title,
+                      })}
                       title={t("common.close")}
                       onClick={() => requestClose(id)}
                     >
@@ -169,7 +175,9 @@ export const IdleTerminalGroup = memo(function IdleTerminalGroup({
                     </button>
                   )}
                 </div>
-                {tailOpen && <TerminalTail api={api} cockpitTerminalId={id} />}
+                {tailOpen && (
+                  <CockpitTerminalTail api={api} cockpitTerminalId={id} />
+                )}
               </li>
             );
           })}
@@ -184,7 +192,7 @@ type TailState =
   | { kind: "lines"; lines: string[] }
   | { kind: "error" };
 
-function TerminalTail({
+function CockpitTerminalTail({
   api,
   cockpitTerminalId,
 }: {
@@ -208,12 +216,20 @@ function TerminalTail({
   }, [api, cockpitTerminalId]);
 
   if (tail.kind === "loading")
-    return <p className="idle-terminal-note">{t("common.loading")}</p>;
+    return <p className="idle-cockpit-terminal-note">{t("common.loading")}</p>;
   if (tail.kind === "error")
     return (
-      <p className="idle-terminal-note">{t("idleTerminals.tailFailed")}</p>
+      <p className="idle-cockpit-terminal-note">
+        {t("idleCockpitTerminals.tailFailed")}
+      </p>
     );
   if (tail.lines.length === 0)
-    return <p className="idle-terminal-note">{t("idleTerminals.tailEmpty")}</p>;
-  return <pre className="idle-terminal-tail">{tail.lines.join("\n")}</pre>;
+    return (
+      <p className="idle-cockpit-terminal-note">
+        {t("idleCockpitTerminals.tailEmpty")}
+      </p>
+    );
+  return (
+    <pre className="idle-cockpit-terminal-tail">{tail.lines.join("\n")}</pre>
+  );
 }

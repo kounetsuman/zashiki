@@ -3377,12 +3377,12 @@ textarea {
 }
 
 /* Idle Cockpit Terminals, grouped above the background task filters. */
-.idle-terminal-group {
+.idle-cockpit-terminal-group {
   flex: none;
   border-bottom: 1px solid #262626;
 }
 
-.idle-terminal-group-header {
+.idle-cockpit-terminal-group-header {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -3398,22 +3398,22 @@ textarea {
   cursor: pointer;
 }
 
-.idle-terminal-group-header:hover {
+.idle-cockpit-terminal-group-header:hover {
   color: #eee;
 }
 
-.idle-terminal-group-header .material-symbols-outlined,
-.idle-terminal-chevron .material-symbols-outlined {
+.idle-cockpit-terminal-group-header .material-symbols-outlined,
+.idle-cockpit-terminal-chevron .material-symbols-outlined {
   font-size: 16px;
   color: #8a8a8a;
 }
 
-.idle-terminal-group-count {
+.idle-cockpit-terminal-group-count {
   color: #e5c07b;
   font-variant-numeric: tabular-nums;
 }
 
-.idle-terminal-list {
+.idle-cockpit-terminal-list {
   max-height: 40vh;
   overflow-y: auto;
   margin: 0;
@@ -3421,7 +3421,7 @@ textarea {
   list-style: none;
 }
 
-.idle-terminal-row {
+.idle-cockpit-terminal-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -3429,12 +3429,12 @@ textarea {
   padding: 0 8px 0 14px;
 }
 
-.idle-terminal-row:hover {
+.idle-cockpit-terminal-row:hover {
   background: rgb(255 255 255 / 4%);
 }
 
-.idle-terminal-chevron,
-.idle-terminal-close {
+.idle-cockpit-terminal-chevron,
+.idle-cockpit-terminal-close {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -3445,7 +3445,7 @@ textarea {
   cursor: pointer;
 }
 
-.idle-terminal-title {
+.idle-cockpit-terminal-title {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -3461,44 +3461,44 @@ textarea {
   cursor: pointer;
 }
 
-.idle-terminal-title:hover {
+.idle-cockpit-terminal-title:hover {
   text-decoration: underline;
 }
 
-.idle-terminal-days {
+.idle-cockpit-terminal-days {
   flex: none;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-.idle-terminal-days.is-amber {
+.idle-cockpit-terminal-days.is-amber {
   color: #e5c07b;
 }
 
-.idle-terminal-days.is-red {
+.idle-cockpit-terminal-days.is-red {
   color: #e06c75;
 }
 
-.idle-terminal-close {
+.idle-cockpit-terminal-close {
   color: #666;
   opacity: 0;
 }
 
-.idle-terminal-row:hover .idle-terminal-close,
-.idle-terminal-close:focus-visible {
+.idle-cockpit-terminal-row:hover .idle-cockpit-terminal-close,
+.idle-cockpit-terminal-close:focus-visible {
   opacity: 1;
 }
 
-.idle-terminal-close:hover {
+.idle-cockpit-terminal-close:hover {
   background: #3a2020;
   color: #e06c75;
 }
 
-.idle-terminal-close .material-symbols-outlined {
+.idle-cockpit-terminal-close .material-symbols-outlined {
   font-size: 16px;
 }
 
-.idle-terminal-tail {
+.idle-cockpit-terminal-tail {
   margin: 2px 8px 4px 14px;
   padding: 6px 8px;
   overflow-x: auto;
@@ -3512,7 +3512,7 @@ textarea {
   white-space: pre;
 }
 
-.idle-terminal-note {
+.idle-cockpit-terminal-note {
   margin: 2px 8px 4px 14px;
   font-size: 11px;
   color: #7d828a;

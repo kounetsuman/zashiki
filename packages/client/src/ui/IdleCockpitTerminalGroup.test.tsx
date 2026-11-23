@@ -10,13 +10,13 @@ import {
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { IdleTerminalRow } from "../lib/idle-terminals.js";
-import { IdleTerminalGroup } from "./IdleTerminalGroup.js";
+import type { IdleCockpitTerminalRow } from "../lib/idle-cockpit-terminals.js";
+import { IdleCockpitTerminalGroup } from "./IdleCockpitTerminalGroup.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.UTC(2026, 9, 20, 12);
 
-const row = (id: string, days: number): IdleTerminalRow => ({
+const row = (id: string, days: number): IdleCockpitTerminalRow => ({
   terminal: {
     cockpitTerminalId: id,
     name: id,
@@ -31,13 +31,13 @@ const row = (id: string, days: number): IdleTerminalRow => ({
 });
 
 function renderGroup(
-  rows: IdleTerminalRow[],
+  rows: IdleCockpitTerminalRow[],
   tail = vi.fn(async (_id: string) => ["first", "last line"]),
 ) {
   const onOpenCockpitTerminal = vi.fn();
   const onCloseCockpitTerminal = vi.fn();
   const utils = render(
-    <IdleTerminalGroup
+    <IdleCockpitTerminalGroup
       rows={rows}
       api={{ tail }}
       orgColors={{ wonder: "#123456" }}
@@ -59,7 +59,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("IdleTerminalGroup", () => {
+describe("IdleCockpitTerminalGroup", () => {
   it("renders nothing while no terminal is idle", () => {
     const { container } = renderGroup([]);
     expect(container.innerHTML).toBe("");
@@ -80,14 +80,14 @@ describe("IdleTerminalGroup", () => {
     const a = rowEl("a");
     expect(a.textContent).toContain("title-a");
     expect(a.textContent).toContain("9 日");
-    expect(a.querySelector(".idle-terminal-days")?.className).toContain(
+    expect(a.querySelector(".idle-cockpit-terminal-days")?.className).toContain(
       "is-red",
     );
     expect(
       (a.querySelector(".org-dot") as HTMLElement).style.backgroundColor,
     ).toBe("rgb(18, 52, 86)");
     expect(
-      rowEl("b").querySelector(".idle-terminal-days")?.className,
+      rowEl("b").querySelector(".idle-cockpit-terminal-days")?.className,
     ).toContain("is-amber");
   });
 

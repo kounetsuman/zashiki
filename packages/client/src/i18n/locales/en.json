@@ -552,7 +552,7 @@
     "notify": "{{percent}}% left before lockout · unlocks at {{time}}",
     "close": "Close"
   },
-  "idleTerminals": {
+  "idleCockpitTerminals": {
     "title": "Idle terminals",
     "hint": "No input for a day or more",
     "days_one": "{{count}} d",

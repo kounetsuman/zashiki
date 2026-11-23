@@ -9,12 +9,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const IDLE_THRESHOLD_MS = DAY_MS;
 
 /** Cockpit Terminal id → epoch ms of its last activity, for the idle terminals. */
-export type IdleTerminals = ReadonlyMap<string, number>;
+export type IdleCockpitTerminals = ReadonlyMap<string, number>;
 
-export function idleTerminals(
+export function idleCockpitTerminals(
   response: CockpitTerminalLastActivityResponse,
   nowMs: number,
-): IdleTerminals {
+): IdleCockpitTerminals {
   return new Map(
     response.terminals
       .filter((t) => nowMs - t.lastActivityAt >= IDLE_THRESHOLD_MS)
@@ -22,7 +22,7 @@ export function idleTerminals(
   );
 }
 
-export interface IdleTerminalRow {
+export interface IdleCockpitTerminalRow {
   terminal: CockpitTerminalInfo;
   /** The label the Cockpit Terminal list shows for it. */
   title: string;
@@ -30,11 +30,11 @@ export interface IdleTerminalRow {
 }
 
 /** Listed idle terminals, longest-idle first; a terminal closed since the check drops out. */
-export function idleTerminalRows(
-  idle: IdleTerminals,
+export function idleCockpitTerminalRows(
+  idle: IdleCockpitTerminals,
   terminals: readonly CockpitTerminalInfo[],
   titleOf: (terminal: CockpitTerminalInfo) => string,
-): IdleTerminalRow[] {
+): IdleCockpitTerminalRow[] {
   return terminals
     .flatMap((terminal) => {
       const lastActivityAt = idle.get(terminal.cockpitTerminalId);
