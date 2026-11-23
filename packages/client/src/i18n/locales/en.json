@@ -554,7 +554,7 @@
   },
   "idleWarning": {
     "title": "Terminals left idle",
-    "lead": "These terminals have had no input or output for a day or more. Each one keeps its process and full history in memory — close the ones you no longer need.",
+    "lead": "These terminals have not been used for a day or more. Each one keeps its process and full history in memory — close the ones you no longer need.",
     "idleDays_one": "idle {{count}} day",
     "idleDays_other": "idle {{count}} days",
     "close": "Close {{name}}",

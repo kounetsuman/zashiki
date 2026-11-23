@@ -19,7 +19,7 @@ export interface IdleTerminalWarningModalProps {
 }
 
 /**
- * Lists the Cockpit Terminals left without input or output for a day or more. Each row expands to
+ * Lists the Cockpit Terminals left unused for a day or more. Each row expands to
  * the last lines of its screen and can be closed from here after an inline confirmation.
  */
 export function IdleTerminalWarningModal({
