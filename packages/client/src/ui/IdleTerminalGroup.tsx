@@ -1,5 +1,5 @@
 import { resolveOrgColor, resolveOrgName } from "@zashiki/shared";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CockpitTerminalsApi } from "../api/cockpit-terminals.js";
@@ -42,14 +42,17 @@ export function IdleTerminalGroup({
       onCloseCockpitTerminal,
     );
 
+  const cancelCloseRef = useRef(cancelClose);
+  cancelCloseRef.current = cancelClose;
+  const confirming = confirmingClose !== null;
   useEffect(() => {
-    if (confirmingClose === null) return;
+    if (!confirming) return;
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") cancelClose();
+      if (e.key === "Escape" && !e.defaultPrevented) cancelCloseRef.current();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [confirmingClose, cancelClose]);
+  }, [confirming]);
 
   if (rows.length === 0) return null;
 
@@ -67,7 +70,10 @@ export function IdleTerminalGroup({
         className="idle-terminal-group-header"
         aria-expanded={open}
         title={t("idleTerminals.hint")}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (open) cancelClose();
+          setOpen(!open);
+        }}
       >
         <span className="material-symbols-outlined" aria-hidden="true">
           {open ? "expand_more" : "chevron_right"}

@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -147,5 +153,36 @@ describe("IdleTerminalGroup", () => {
     expect(
       screen.getByRole("button", { name: "title-a を閉じる" }),
     ).toBeTruthy();
+  });
+
+  it("ignores an Escape something else already handled", () => {
+    renderGroup([row("a", 1)]);
+    fireEvent.click(screen.getByRole("button", { name: "title-a を閉じる" }));
+    const handled = new KeyboardEvent("keydown", {
+      key: "Escape",
+      cancelable: true,
+    });
+    handled.preventDefault();
+    act(() => {
+      window.dispatchEvent(handled);
+    });
+    expect(
+      screen.getByRole("button", { name: "title-a を閉じる（確認）" }),
+    ).toBeTruthy();
+  });
+
+  it("collapsing the group cancels a pending close", () => {
+    const { onCloseCockpitTerminal } = renderGroup([row("a", 1)]);
+    fireEvent.click(screen.getByRole("button", { name: "title-a を閉じる" }));
+    const header = screen.getByRole("button", { name: "放置されている端末 1" });
+    fireEvent.click(header);
+    fireEvent.click(header);
+    expect(onCloseCockpitTerminal).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: "title-a を閉じる" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "title-a を閉じる（確認）" }),
+    ).toBeNull();
   });
 });
