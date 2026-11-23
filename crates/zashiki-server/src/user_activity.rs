@@ -38,17 +38,21 @@ fn automatic_csi_len(data: &[u8]) -> Option<usize> {
     let (params, final_byte) = (&body[..final_at], body[final_at]);
     let automatic = match final_byte {
         b'I' | b'O' => params.is_empty(),
-        b'R' => is_row_col(params),
+        b'R' => is_cursor_position(params),
         b'c' => matches!(params.first(), Some(b'?' | b'>')),
         _ => false,
     };
     automatic.then_some(2 + final_at + 1)
 }
 
-fn is_row_col(params: &[u8]) -> bool {
-    let mut parts = params.split(|b| *b == b';');
-    let is_number = |p: &[u8]| !p.is_empty() && p.iter().all(u8::is_ascii_digit);
-    matches!((parts.next(), parts.next(), parts.next()), (Some(r), Some(c), None) if is_number(r) && is_number(c))
+/// `row;col`, or the DEC-private `?row;col` with an optional `;page`.
+fn is_cursor_position(params: &[u8]) -> bool {
+    let (numbers, max_count) = match params.strip_prefix(b"?") {
+        Some(rest) => (rest, 3),
+        None => (params, 2),
+    };
+    let parts: Vec<&[u8]> = numbers.split(|b| *b == b';').collect();
+    (2..=max_count).contains(&parts.len()) && parts.iter().all(|p| !p.is_empty() && p.iter().all(u8::is_ascii_digit))
 }
 
 /// The end of an OSC (`bel_ends` true) or DCS string: past its `ESC \`, or past its BEL for an OSC.
@@ -94,6 +98,8 @@ mod tests {
     fn cursor_position_reports_do_not_count() {
         assert!(!is_user_keystroke(b"\x1b[12;80R"));
         assert!(!is_user_keystroke(b"\x1b[1;1R"));
+        assert!(!is_user_keystroke(b"\x1b[?12;80R"));
+        assert!(!is_user_keystroke(b"\x1b[?12;80;1R"));
     }
 
     #[test]
