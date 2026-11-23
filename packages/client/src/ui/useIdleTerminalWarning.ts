@@ -23,7 +23,7 @@ export interface IdleTerminalWarning {
 }
 
 /**
- * Warns at most once per local day about Cockpit Terminals left unused, checking at
+ * Warns at most once per local day about Cockpit Terminals left without input or output, checking at
  * launch (once the terminal list has arrived), on wake from sleep, and hourly. The day is spent only
  * when there is something to show; the caller holds the warning back while another overlay is up.
  */

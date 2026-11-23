@@ -10,7 +10,7 @@ export const IDLE_WARNING_SHOWN_DAY_KEY = "zk.idleTerminalWarning.shownDay";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** How long a Cockpit Terminal has to go unused (no typed key or Claude prompt) to count as left behind. */
+/** How long a Cockpit Terminal has to go without input or output to count as left behind. */
 export const IDLE_THRESHOLD_MS = DAY_MS;
 
 /** Cockpit Terminal id → epoch ms of its last activity, for the terminals left behind. */
