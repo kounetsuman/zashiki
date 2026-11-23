@@ -374,14 +374,15 @@ export function App({
   );
 
   const idleTerminals = useIdleTerminals(cockpitTerminalsApi, cockpitTerminals);
-  const idleRows = idleTerminalRows(
-    idleTerminals,
-    cockpitTerminals,
-    (terminal) =>
-      resolveTitle(
-        effectiveCustomTitle(conversationTitles, terminal),
-        terminal,
+  const idleRows = useMemo(
+    () =>
+      idleTerminalRows(idleTerminals, cockpitTerminals, (terminal) =>
+        resolveTitle(
+          effectiveCustomTitle(conversationTitles, terminal),
+          terminal,
+        ),
       ),
+    [idleTerminals, cockpitTerminals, conversationTitles],
   );
 
   const { seenIds, markRead } = useSeenNotifications(

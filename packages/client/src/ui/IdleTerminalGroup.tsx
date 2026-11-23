@@ -1,5 +1,5 @@
 import { resolveOrgColor, resolveOrgName } from "@zashiki/shared";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { CockpitTerminalsApi } from "../api/cockpit-terminals.js";
@@ -9,10 +9,10 @@ import {
   idleTone,
 } from "../lib/idle-terminals.js";
 import { useConfirmClose } from "./useConfirmClose.js";
+import { useNow } from "./useNow.js";
 
 export interface IdleTerminalGroupProps {
   rows: readonly IdleTerminalRow[];
-  nowMs: number;
   api: Pick<CockpitTerminalsApi, "tail">;
   orgColors?: Record<string, string>;
   orgAliases?: Record<string, string>;
@@ -20,13 +20,15 @@ export interface IdleTerminalGroupProps {
   onCloseCockpitTerminal(cockpitTerminalId: string): void;
 }
 
+/** Idle days move once a day, so a minute is fine enough. */
+const IDLE_CLOCK_MS = 60_000;
+
 /**
  * The idle Cockpit Terminals, as a collapsible group. Each row expands to the last lines of its
  * screen and can be closed from here after an inline confirmation.
  */
-export function IdleTerminalGroup({
+export const IdleTerminalGroup = memo(function IdleTerminalGroup({
   rows,
-  nowMs,
   api,
   orgColors = {},
   orgAliases = {},
@@ -34,6 +36,7 @@ export function IdleTerminalGroup({
   onCloseCockpitTerminal,
 }: IdleTerminalGroupProps) {
   const { t } = useTranslation();
+  const nowMs = useNow(IDLE_CLOCK_MS);
   const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const { confirmingClose, requestClose, confirmClose, cancelClose } =
@@ -174,7 +177,7 @@ export function IdleTerminalGroup({
       )}
     </div>
   );
-}
+});
 
 type TailState =
   | { kind: "loading" }

@@ -36,10 +36,7 @@ export interface BackgroundTaskViewProps {
   rules: StallRules;
   onOpenCockpitTerminal: (cockpitTerminalId: string) => void;
   /** Shown above the filters while any Cockpit Terminal is idle. */
-  idleTerminals?: Omit<
-    IdleTerminalGroupProps,
-    "nowMs" | "onOpenCockpitTerminal"
-  >;
+  idleTerminals?: Omit<IdleTerminalGroupProps, "onOpenCockpitTerminal">;
 }
 
 type Tone = "stalled" | "running" | "ok" | "failed" | "muted";
@@ -193,8 +190,7 @@ export function BackgroundTaskView({
   idleTerminals,
 }: BackgroundTaskViewProps) {
   const { t } = useTranslation();
-  const tickMs = useNow(1_000);
-  const nowMs = liveNowMs(tickMs, fetchedAt);
+  const nowMs = liveNowMs(useNow(1_000), fetchedAt);
   const [selection, setSelection] = useState(DEFAULT_STATUS_SELECTION);
   const rows = backgroundTaskRows(tasks, nowMs, rules);
   const counts = countByFilter(rows);
@@ -205,7 +201,6 @@ export function BackgroundTaskView({
       {idleTerminals !== undefined && (
         <IdleTerminalGroup
           {...idleTerminals}
-          nowMs={tickMs}
           onOpenCockpitTerminal={onOpenCockpitTerminal}
         />
       )}

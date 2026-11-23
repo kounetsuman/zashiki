@@ -100,6 +100,35 @@ describe("BackgroundTaskView", () => {
     expect(onOpen).toHaveBeenCalledWith("idle1");
   });
 
+  it("moves the idle days on with its own clock", () => {
+    renderView([], () => {}, {
+      rows: [
+        {
+          terminal: {
+            cockpitTerminalId: "idle1",
+            name: "idle1",
+            org: "wonder",
+            repo: "wonder-api",
+            state: "idle",
+            title: null,
+            active: false,
+          },
+          title: "放置した作業",
+          lastActivityAt: NOW - 3 * 24 * 60 * MIN,
+        },
+      ],
+      api: { tail: vi.fn(async () => []) },
+      onCloseCockpitTerminal: vi.fn(),
+    });
+    const days = () =>
+      document.querySelector(".idle-terminal-days")?.textContent;
+    expect(days()).toBe("3 日");
+    act(() => {
+      vi.advanceTimersByTime(24 * 60 * MIN);
+    });
+    expect(days()).toBe("4 日");
+  });
+
   it("shows a stalled task with its elapsed time, command, place, and the measured values that fired", () => {
     renderView([
       task({

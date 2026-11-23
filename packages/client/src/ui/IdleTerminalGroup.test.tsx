@@ -8,7 +8,7 @@ import {
   screen,
 } from "@testing-library/react";
 import type { CockpitTerminalInfo } from "@zashiki/shared";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { IdleTerminalRow } from "../lib/idle-terminals.js";
 import { IdleTerminalGroup } from "./IdleTerminalGroup.js";
@@ -39,7 +39,6 @@ function renderGroup(
   const utils = render(
     <IdleTerminalGroup
       rows={rows}
-      nowMs={NOW}
       api={{ tail }}
       orgColors={{ wonder: "#123456" }}
       onOpenCockpitTerminal={onOpenCockpitTerminal}
@@ -52,7 +51,13 @@ function renderGroup(
 const rowEl = (id: string) =>
   document.querySelector(`[data-cockpit-terminal-id="${id}"]`) as HTMLElement;
 
-afterEach(cleanup);
+beforeEach(() => {
+  vi.useFakeTimers({ now: NOW, toFake: ["Date"] });
+});
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("IdleTerminalGroup", () => {
   it("renders nothing while no terminal is idle", () => {
