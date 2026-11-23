@@ -120,9 +120,10 @@ pub struct PtySession {
     /// When the child was launched, which separates a claude that is still coming up from one that is
     /// not coming at all.
     started_at: Instant,
-    /// Wall-clock epoch ms of the last input written or output read, starting at the spawn. Kept off
-    /// the `inner` lock so a keystroke never waits behind output parsing.
-    last_activity_ms: Arc<AtomicU64>,
+    /// Wall-clock epoch ms of the spawn.
+    spawned_at_ms: u64,
+    /// Wall-clock epoch ms of the last input the user typed, 0 until then.
+    last_keystroke_ms: AtomicU64,
 }
 
 #[cfg(unix)]
@@ -223,12 +224,9 @@ impl PtySession {
             reader_done: false,
             retain: true,
         }));
-        let last_activity_ms = Arc::new(AtomicU64::new(now_ms()));
-
         let handle = {
             let inner = inner.clone();
-            let last_activity_ms = last_activity_ms.clone();
-            thread::spawn(move || reader_loop(reader, inner, last_activity_ms))
+            thread::spawn(move || reader_loop(reader, inner))
         };
 
         Ok(Self {
@@ -242,7 +240,8 @@ impl PtySession {
             child_reaped: AtomicBool::new(false),
             reader_handle: Mutex::new(Some(handle)),
             started_at: Instant::now(),
-            last_activity_ms,
+            spawned_at_ms: now_ms(),
+            last_keystroke_ms: AtomicU64::new(0),
         })
     }
 
@@ -274,14 +273,22 @@ impl PtySession {
         lock_recover(&self.inner).scrollback.len()
     }
 
-    /// Epoch ms of the last input or output, which is how long the terminal has been left alone.
-    pub fn last_activity_ms(&self) -> u64 {
-        self.last_activity_ms.load(Ordering::Relaxed)
+    /// Epoch ms of the spawn.
+    pub fn spawned_at_ms(&self) -> u64 {
+        self.spawned_at_ms
+    }
+
+    /// Epoch ms of the last user keystroke; PTY output and replies the terminal sends on its own do
+    /// not count.
+    pub fn last_keystroke_ms(&self) -> Option<u64> {
+        Some(self.last_keystroke_ms.load(Ordering::Relaxed)).filter(|ms| *ms != 0)
     }
 
     /// Aggregates input from all views and writes to the PTY (the sole writer owner).
     pub fn write_input(&self, data: &[u8]) -> std::io::Result<()> {
-        self.last_activity_ms.store(now_ms(), Ordering::Relaxed);
+        if crate::user_activity::is_user_keystroke(data) {
+            self.last_keystroke_ms.store(now_ms(), Ordering::Relaxed);
+        }
         let mut writer = lock_recover(&self.writer);
         writer.write_all(data)?;
         writer.flush()
@@ -572,11 +579,7 @@ fn lock_recover<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// Reads PTY output and performs the ring append, vt100 feed, and broadcast together under the lock.
 /// When read returns 0 (EOF) or Err (= child process exit), it breaks out of the loop.
-fn reader_loop(
-    mut reader: Box<dyn Read + Send>,
-    inner: Arc<Mutex<Inner>>,
-    last_activity_ms: Arc<AtomicU64>,
-) {
+fn reader_loop(mut reader: Box<dyn Read + Send>, inner: Arc<Mutex<Inner>>) {
     /// Marks the reader finished however the thread leaves — including a panic, which would otherwise
     /// leave the stream unclosable and every attached bridge waiting on output that can never come.
     struct MarkDone(Arc<Mutex<Inner>>);
@@ -599,7 +602,6 @@ fn reader_loop(
             // Torn down: whatever still holds the pty open is no longer this terminal's history.
             continue;
         }
-        last_activity_ms.store(now_ms(), Ordering::Relaxed);
         guard.scrollback.push(chunk.as_ref());
         guard.parser.process(chunk.as_ref());
         // Err if there are no subscribers. Dropped output is handled on the subscriber side via
@@ -1156,25 +1158,31 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn output_advances_the_last_activity() {
+    async fn output_does_not_advance_the_last_keystroke() {
         let session = PtySession::spawn(sh("sleep 0.3; echo LATE-OUTPUT; sleep 5")).unwrap();
-        let spawned = session.last_activity_ms();
         let mut sub = session.subscribe();
         let seen = drain_until(&mut sub, "LATE-OUTPUT", 3000).await;
         assert!(seen.contains("LATE-OUTPUT"));
-        assert!(session.last_activity_ms() >= spawned + 200);
+        assert_eq!(session.last_keystroke_ms(), None);
         session.shutdown();
     }
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn input_advances_the_last_activity() {
+    async fn a_typed_key_advances_the_last_keystroke() {
         let session = PtySession::spawn(sh("stty -echo; sleep 5")).unwrap();
-        tokio::time::sleep(Duration::from_millis(300)).await;
-        let before = session.last_activity_ms();
         tokio::time::sleep(Duration::from_millis(50)).await;
         session.write_input(b"x").unwrap();
-        assert!(session.last_activity_ms() >= before + 50);
+        assert!(session.last_keystroke_ms().unwrap() >= session.spawned_at_ms() + 50);
+        session.shutdown();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_automatic_terminal_reply_does_not_advance_the_last_keystroke() {
+        let session = PtySession::spawn(sh("stty -echo; sleep 5")).unwrap();
+        session.write_input(b"\x1b[I\x1b[12;80R").unwrap();
+        assert_eq!(session.last_keystroke_ms(), None);
         session.shutdown();
     }
 }

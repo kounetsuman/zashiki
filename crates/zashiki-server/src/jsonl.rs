@@ -227,14 +227,14 @@ fn ai_line_title(line: &str) -> Option<String> {
     (!title.is_empty()).then_some(title)
 }
 
-/// The title of a prompt the user sent, with whether it was a bare slash command. Records Claude Code
-/// inserts on its own (`isMeta`, tool results) and ones that strip to nothing are not prompts.
+/// The title of a prompt the user sent, with whether it was a bare slash command. Prompts that strip
+/// to nothing have no title.
 fn prompt_line_title(line: &str, max_chars: usize) -> Option<(String, bool)> {
     if !line.contains(r#""type":"user""#) {
         return None;
     }
     let event = parse_line(line)?;
-    if !is_human_prompt(&event) || event.get("isMeta").and_then(Value::as_bool) == Some(true) {
+    if !is_user_sent_prompt(&event) {
         return None;
     }
     let raw = content_of(&event).map(text_of_content).unwrap_or_default();
@@ -256,6 +256,18 @@ pub fn transcript_title(jsonl: &str, max_chars: usize) -> Option<TranscriptTitle
     let mut scan = TitleScan::new(max_chars);
     jsonl.split('\n').for_each(|line| scan.feed(line));
     scan.title()
+}
+
+/// The epoch ms of a transcript line that is a prompt the user sent.
+pub fn user_prompt_ms(line: &str) -> Option<u64> {
+    if !line.contains(r#""type":"user""#) {
+        return None;
+    }
+    let event = parse_line(line)?;
+    if !is_user_sent_prompt(&event) {
+        return None;
+    }
+    parse_iso8601_ms(event.get("timestamp")?.as_str()?)
 }
 
 /// cwd -> the project directory name under ~/.claude/projects (replaces `/` with `-`).
@@ -379,6 +391,48 @@ fn is_human_prompt(event: &Value) -> bool {
             .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result")),
         _ => true,
     }
+}
+
+/// Whether a user event is a prompt the user sent, not a record Claude Code wrote on its own: a meta
+/// entry, tool results, the compaction summary, a background task notice, a non-human origin, or the
+/// output of a `!` shell or slash command.
+fn is_user_sent_prompt(event: &Value) -> bool {
+    let flagged = |key: &str| event.get(key).and_then(Value::as_bool) == Some(true);
+    let human_origin = event
+        .pointer("/origin/kind")
+        .and_then(Value::as_str)
+        .is_none_or(|kind| kind == "human");
+    is_human_prompt(event)
+        && human_origin
+        && !flagged("isMeta")
+        && !flagged("isCompactSummary")
+        && content_of(event).is_some_and(holds_user_writing)
+}
+
+/// Whether content carries an image or text outside command output blocks and task notices.
+fn holds_user_writing(content: &Value) -> bool {
+    static NOT_WRITTEN_BY_USER: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?s)<(?:local-command|bash)-(?:caveat|stdout|stderr)>.*?</(?:local-command|bash)-(?:caveat|stdout|stderr)>|<task-notification>.*?</task-notification>")
+            .unwrap()
+    });
+    let has_image = content.as_array().is_some_and(|blocks| {
+        blocks
+            .iter()
+            .any(|b| b.get("type").and_then(Value::as_str) == Some("image"))
+    });
+    has_image
+        || !NOT_WRITTEN_BY_USER
+            .replace_all(&text_of_content(content), "")
+            .trim()
+            .is_empty()
+}
+
+/// The text of a user message that is a background task notice (how older Claude Code delivers it).
+pub(crate) fn task_notification_message(event: &Value) -> Option<&str> {
+    let text = content_of(event)?.as_str()?;
+    (event.get("type").and_then(Value::as_str) == Some("user")
+        && text.trim_start().starts_with("<task-notification>"))
+    .then_some(text)
 }
 
 /// Parses Claude's transcript timestamp (`YYYY-MM-DDTHH:MM:SS[.fff]Z`, always UTC) to epoch ms.
@@ -965,6 +1019,22 @@ mod tests {
     }
 
     #[test]
+    fn title_skips_background_task_notices_and_the_compaction_summary() {
+        let content = [
+            user_line(json!("<task-notification><task-id>b1</task-id></task-notification>")),
+            json!({"type": "user", "origin": {"kind": "task-notification"}, "message": {"content": "done"}}).to_string(),
+            json!({"type": "user", "isCompactSummary": true, "message": {"content": "This session is being continued"}})
+                .to_string(),
+            user_line(json!("fix the build")),
+        ]
+        .join("\n");
+        assert_eq!(
+            transcript_title(&content, 30),
+            Some(TranscriptTitle::TypedPrompt("fix the build".to_string()))
+        );
+    }
+
+    #[test]
     fn interrupt_markers_and_shell_blocks_are_not_prompts() {
         let content = [
             user_line(json!("<command-name>/review</command-name> <command-message>review</command-message>")),
@@ -1071,6 +1141,82 @@ mod tests {
         assert_eq!(parse_iso8601_ms("not-a-date"), None);
         assert_eq!(parse_iso8601_ms("2000-13-01T00:00:00Z"), None);
         assert_eq!(parse_iso8601_ms(""), None);
+    }
+
+    // ---- user_prompt_ms ----
+
+    fn prompt_line(extra: Value, content: Value) -> String {
+        let mut event = json!({"type": "user", "timestamp": "2026-11-09T01:00:00.000Z", "message": {"content": content}});
+        event.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        event.to_string()
+    }
+
+    const PROMPT_MS: u64 = 1_794_186_000_000;
+
+    #[test]
+    fn a_typed_prompt_is_a_user_prompt() {
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!("hello"))), Some(PROMPT_MS));
+        assert_eq!(
+            user_prompt_ms(&prompt_line(json!({}), json!([{"type": "text", "text": "hi"}, {"type": "image"}]))),
+            Some(PROMPT_MS)
+        );
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!([{"type": "image"}]))), Some(PROMPT_MS));
+    }
+
+    #[test]
+    fn meta_entries_tool_results_and_other_types_are_not_user_prompts() {
+        assert_eq!(user_prompt_ms(&prompt_line(json!({"isMeta": true}), json!("caveat"))), None);
+        assert_eq!(
+            user_prompt_ms(&prompt_line(json!({}), json!([{"type": "tool_result", "tool_use_id": "t", "content": "ok"}]))),
+            None
+        );
+        let assistant = json!({"type": "assistant", "timestamp": "2026-11-09T01:00:00.000Z",
+            "message": {"content": [{"type": "text", "text": "ok"}]}});
+        assert_eq!(user_prompt_ms(&assistant.to_string()), None);
+        assert_eq!(user_prompt_ms("{broken"), None);
+    }
+
+    #[test]
+    fn background_task_notices_and_the_compaction_summary_are_not_user_prompts() {
+        let notice = "<task-notification><task-id>b1</task-id><status>completed</status></task-notification>";
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!(notice))), None);
+        assert_eq!(user_prompt_ms(&prompt_line(json!({"origin": {"kind": "task-notification"}}), json!("done"))), None);
+        let summary = "This session is being continued from a previous conversation that ran out of context.";
+        assert_eq!(user_prompt_ms(&prompt_line(json!({"isCompactSummary": true}), json!(summary))), None);
+        assert_eq!(user_prompt_ms(&prompt_line(json!({"origin": {"kind": "human"}}), json!("hi"))), Some(PROMPT_MS));
+    }
+
+    #[test]
+    fn command_output_records_are_not_user_prompts() {
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!("<bash-stdout>ok</bash-stdout><bash-stderr></bash-stderr>"))), None);
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!("<local-command-stdout>Set model</local-command-stdout>"))), None);
+        assert_eq!(
+            user_prompt_ms(&prompt_line(json!({}), json!([{"type": "text", "text": "<bash-stderr>boom</bash-stderr>"}]))),
+            None
+        );
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!("<bash-input>pnpm test</bash-input>"))), Some(PROMPT_MS));
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!("<command-name>/model</command-name>"))), Some(PROMPT_MS));
+    }
+
+    #[test]
+    fn records_with_nothing_the_user_wrote_are_not_user_prompts() {
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!([]))), None);
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), json!("  "))), None);
+        let no_content = json!({"type": "user", "timestamp": "2026-11-09T01:00:00.000Z", "message": {}}).to_string();
+        assert_eq!(user_prompt_ms(&no_content), None);
+    }
+
+    #[test]
+    fn only_a_human_origin_is_a_user_prompt() {
+        assert_eq!(user_prompt_ms(&prompt_line(json!({"origin": {"kind": "peer"}}), json!("hi"))), None);
+        let notice = json!([{"type": "text", "text": "<task-notification><status>completed</status></task-notification>"}]);
+        assert_eq!(user_prompt_ms(&prompt_line(json!({}), notice)), None);
+    }
+
+    #[test]
+    fn a_prompt_without_a_readable_timestamp_has_no_time() {
+        let line = json!({"type": "user", "message": {"content": "hello"}}).to_string();
+        assert_eq!(user_prompt_ms(&line), None);
     }
 
     // ---- session_usage ----

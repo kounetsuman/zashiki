@@ -240,10 +240,7 @@ fn task_notification_text(event: &Value) -> Option<&str> {
     if attachment.and_then(|a| a.get("commandMode")).and_then(Value::as_str) == Some("task-notification") {
         return attachment.and_then(|a| a.get("prompt")).and_then(Value::as_str);
     }
-    let text = event.pointer("/message/content").and_then(Value::as_str)?;
-    (event.get("type").and_then(Value::as_str) == Some("user")
-        && text.trim_start().starts_with("<task-notification>"))
-    .then_some(text)
+    crate::jsonl::task_notification_message(event)
 }
 
 /// The last non-blank line of an output tail and how many lines in a row at the end repeat it.
