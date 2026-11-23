@@ -108,17 +108,22 @@ pub(crate) async fn cockpit_terminals_last_activity(State(state): State<AppState
     control
         .projects
         .keep_prompt_scans(sources.iter().map(|s| (s.cwd.as_str(), s.sid.as_str())));
-    let mut terminals = Vec::new();
-    for (id, session, _) in control.sessions.entries().await {
-        let last_prompt_ms = match sources.iter().find(|s| s.cockpit_terminal_id == id) {
-            Some(source) => control.projects.last_user_prompt_ms(&source.cwd, &source.sid).await,
-            None => None,
-        };
-        terminals.push(CockpitTerminalLastActivity {
-            cockpit_terminal_id: id,
-            last_activity_at: last_user_activity_ms(session.spawned_at_ms(), session.last_keystroke_ms(), last_prompt_ms),
-        });
-    }
+    let terminals = futures_util::future::join_all(control.sessions.entries().await.into_iter().map(
+        |(id, session, _)| {
+            let source = sources.iter().find(|s| s.cockpit_terminal_id == id);
+            async move {
+                let last_prompt_ms = match source {
+                    Some(source) => control.projects.last_user_prompt_ms(&source.cwd, &source.sid).await,
+                    None => None,
+                };
+                CockpitTerminalLastActivity {
+                    cockpit_terminal_id: id,
+                    last_activity_at: last_user_activity_ms(session.spawned_at_ms(), session.last_keystroke_ms(), last_prompt_ms),
+                }
+            }
+        },
+    ))
+    .await;
     Json(CockpitTerminalLastActivityResponse { terminals }).into_response()
 }
 
