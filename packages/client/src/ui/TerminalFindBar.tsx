@@ -16,9 +16,9 @@ export interface TerminalFindBarProps {
 }
 
 /**
- * Browser-style find bar overlaid at the top of the session terminal (issue #35). Presentational:
- * the SearchAddon wiring, highlighting and centering live in TerminalView. Enter / Shift+Enter move
- * between matches, Escape and the find shortcut close.
+ * Browser-style find bar overlaid at the top of the session terminal and the Markdown preview.
+ * Presentational: searching, highlighting and centering live with the caller (TerminalView,
+ * usePreviewFind). Enter / Shift+Enter move between matches, Escape and the find shortcut close.
  */
 export function TerminalFindBar({
   query,
