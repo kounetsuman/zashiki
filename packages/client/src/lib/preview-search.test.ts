@@ -27,6 +27,22 @@ describe("locateMatches", () => {
     expect(locateMatches(["(x)"], "(x")).toHaveLength(1);
   });
 
+  it("lets a space in the query match a line break the preview shows as a space", () => {
+    expect(locateMatches(["alpha\n  beta"], "alpha beta")).toEqual([
+      { start: { segment: 0, offset: 0 }, end: { segment: 0, offset: 12 } },
+    ]);
+  });
+
+  it("maps many matches across many segments", () => {
+    const segments = Array.from({ length: 50 }, () => "ab");
+    const matches = locateMatches(segments, "b");
+    expect(matches).toHaveLength(50);
+    expect(matches[49]).toEqual({
+      start: { segment: 49, offset: 1 },
+      end: { segment: 49, offset: 2 },
+    });
+  });
+
   it("finds nothing for an empty query", () => {
     expect(locateMatches(["anything"], "")).toEqual([]);
   });

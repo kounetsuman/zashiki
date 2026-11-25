@@ -19,29 +19,37 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Case-insensitive, literal, non-overlapping matches of `query` across the joined segments. */
+/**
+ * Case-insensitive, literal, non-overlapping matches of `query` across the joined segments. Each
+ * whitespace run in the query matches any whitespace run, since the preview shows a source line
+ * break as a space.
+ */
 export function locateMatches(
   segments: readonly string[],
   query: string,
 ): SegmentMatch[] {
-  if (query === "") return [];
+  const words = query
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w !== "");
+  if (words.length === 0) return [];
   const starts: number[] = [];
   let joined = "";
   for (const segment of segments) {
     starts.push(joined.length);
     joined += segment;
   }
+  // Matches arrive in ascending order, so one forward-only cursor maps every position.
+  let segment = 0;
   const positionAt = (index: number, isEnd: boolean): SegmentPosition => {
     // An end on a boundary belongs to the segment before it, so a match never ends at offset 0.
-    let segment = 0;
-    for (let i = 0; i < starts.length; i += 1) {
-      const begin = starts[i] ?? 0;
-      if (isEnd ? begin < index : begin <= index) segment = i;
-      else break;
-    }
+    const startsAfter = (i: number) =>
+      isEnd ? (starts[i] ?? 0) < index : (starts[i] ?? 0) <= index;
+    while (segment + 1 < starts.length && startsAfter(segment + 1))
+      segment += 1;
     return { segment, offset: index - (starts[segment] ?? 0) };
   };
-  const pattern = new RegExp(escapeRegExp(query), "giu");
+  const pattern = new RegExp(words.map(escapeRegExp).join("\\s+"), "giu");
   return Array.from(joined.matchAll(pattern), (m) => ({
     start: positionAt(m.index, false),
     end: positionAt(m.index + m[0].length, true),
