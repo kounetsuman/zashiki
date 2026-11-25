@@ -27,7 +27,7 @@ export interface SessionStatsModalProps {
   /** `null` until the first answer arrives. */
   events: readonly SessionEvent[] | null;
   onOpenLinks(): void;
-  /** Copies a row's full text (its key on the Summary, its text on the Timeline). */
+  /** Copies a row's whole text: its key on the Summary, its untruncated text on the Timeline. */
   onCopy(text: string): void;
   onClose(): void;
 }
@@ -431,7 +431,7 @@ function TimelineRow({
         {event.text}
       </span>
       <span className="sst-meta">{eventMeta(event, t)}</span>
-      <CopyButton text={event.text} onCopy={onCopy} />
+      <CopyButton text={event.fullText ?? event.text} onCopy={onCopy} />
     </li>
   );
 }

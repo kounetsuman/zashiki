@@ -92,6 +92,25 @@ describe("SessionStatsModal", () => {
     expect(onCopy).toHaveBeenCalledExactlyOnceWith("https://docs.rs/");
   });
 
+  it("copies the whole text of a Timeline row that shows only its first line", () => {
+    const { onCopy } = renderModal([
+      {
+        at: 1,
+        kind: "command",
+        tool: "Bash",
+        text: "cat <<'EOF'",
+        fullText: "cat <<'EOF'\nhello\nEOF",
+        target: "cat",
+        outcome: "ok",
+      },
+    ]);
+    fireEvent.click(screen.getByRole("radio", { name: "タイムライン" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^コピー: cat <<'EOF'/ }),
+    );
+    expect(onCopy).toHaveBeenCalledExactlyOnceWith("cat <<'EOF'\nhello\nEOF");
+  });
+
   it("copies a Summary row's key without narrowing the Timeline", () => {
     const { onCopy } = renderModal();
     const commands = screen.getByRole("region", { name: "コマンド" });
