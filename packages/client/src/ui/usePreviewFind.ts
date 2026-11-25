@@ -1,4 +1,10 @@
-import { type RefObject, useCallback, useEffect, useState } from "react";
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { locateMatches, stepMatchIndex } from "../lib/preview-search.js";
 import type { SearchResults } from "../lib/terminal-search.js";
@@ -16,11 +22,11 @@ export interface PreviewFind {
   step(direction: "next" | "previous"): void;
 }
 
-/** Text the reader can see: skips the `<style>` Mermaid puts inside its SVG. */
-function visibleTextNodes(root: HTMLElement): Text[] {
+/** Text the reader can read: icon glyph names (`image`, `account_tree`) are drawn, not read. */
+function readableTextNodes(root: HTMLElement): Text[] {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) =>
-      node.parentElement?.closest("style, script") ||
+      node.parentElement?.closest('[aria-hidden="true"]') ||
       (node.nodeValue ?? "") === ""
         ? NodeFilter.FILTER_REJECT
         : NodeFilter.FILTER_ACCEPT,
@@ -32,7 +38,7 @@ function visibleTextNodes(root: HTMLElement): Text[] {
 }
 
 function findRanges(root: HTMLElement, query: string): Range[] {
-  const nodes = visibleTextNodes(root);
+  const nodes = readableTextNodes(root);
   return locateMatches(
     nodes.map((n) => n.nodeValue ?? ""),
     query,
@@ -50,9 +56,19 @@ function findRanges(root: HTMLElement, query: string): Range[] {
 /** The WebView paints matches through the CSS Custom Highlight API; it is absent under jsdom. */
 function paintHighlights(ranges: Range[], active: Range | undefined): void {
   if (typeof CSS === "undefined" || !("highlights" in CSS)) return;
-  CSS.highlights.set(MATCH_HIGHLIGHT, new Highlight(...ranges));
+  // Added one by one: spreading tens of thousands of ranges overflows the argument limit.
+  const matches = new Highlight();
+  for (const range of ranges) matches.add(range);
+  CSS.highlights.set(MATCH_HIGHLIGHT, matches);
   if (active) CSS.highlights.set(ACTIVE_HIGHLIGHT, new Highlight(active));
   else CSS.highlights.delete(ACTIVE_HIGHLIGHT);
+}
+
+/** Centers the match itself (not its element, which may be a code block taller than the pane). */
+function scrollToCenter(host: HTMLElement, range: Range): void {
+  const match = range.getBoundingClientRect();
+  const pane = host.getBoundingClientRect();
+  host.scrollTop += match.top + match.height / 2 - (pane.top + pane.height / 2);
 }
 
 function clearHighlights(): void {
@@ -75,6 +91,8 @@ export function usePreviewFind(
   const [query, setQuery] = useState("");
   const [ranges, setRanges] = useState<Range[]>([]);
   const [index, setIndex] = useState(-1);
+  // Only the reader's own moves scroll; re-located matches after a re-read leave the scroll alone.
+  const scrollPending = useRef(false);
   const active = open && enabled;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: hostKey is a re-run trigger for a remounted host, not read in the body.
@@ -105,11 +123,13 @@ export function usePreviewFind(
   useEffect(() => {
     if (!active) return;
     paintHighlights(ranges, activeRange);
-    activeRange?.startContainer.parentElement?.scrollIntoView?.({
-      block: "center",
-    });
+    const host = hostRef.current;
+    if (scrollPending.current && activeRange && host) {
+      scrollPending.current = false;
+      scrollToCenter(host, activeRange);
+    }
     return clearHighlights;
-  }, [active, ranges, activeRange]);
+  }, [active, ranges, activeRange, hostRef]);
 
   useEffect(() => {
     if (!enabled) setOpen(false);
@@ -128,11 +148,14 @@ export function usePreviewFind(
   const onQueryChange = useCallback((next: string) => {
     setQuery(next);
     setIndex(-1);
+    scrollPending.current = true;
   }, []);
 
   const step = useCallback(
-    (direction: "next" | "previous") =>
-      setIndex((prev) => stepMatchIndex(prev, ranges.length, direction)),
+    (direction: "next" | "previous") => {
+      scrollPending.current = true;
+      setIndex((prev) => stepMatchIndex(prev, ranges.length, direction));
+    },
     [ranges.length],
   );
 

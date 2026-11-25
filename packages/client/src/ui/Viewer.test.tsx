@@ -1115,6 +1115,58 @@ describe("Viewer", () => {
       expect(screen.getByText("3 / 3")).toBeTruthy();
     });
 
+    it("does not count icon glyph names as matches", () => {
+      const { container } = render(
+        <Viewer
+          buffer={{
+            ...mdPreview,
+            content: "![pic](https://img.example/a.png)\n",
+          }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      pressFind(container.querySelector(".viewer-preview") as Element);
+      fireEvent.change(screen.getByRole("textbox", { name: "検索" }), {
+        target: { value: "image" },
+      });
+      expect(screen.getByText("一致なし")).toBeTruthy();
+    });
+
+    it("does not scroll back to the active match when the file is re-read", async () => {
+      const rangeProto = Range.prototype as Range;
+      const original = rangeProto.getBoundingClientRect;
+      rangeProto.getBoundingClientRect = () => new DOMRect(0, 500, 10, 10);
+      try {
+        const { container, rerender } = render(
+          <Viewer
+            buffer={mdPreview}
+            onTogglePreview={noop}
+            onCopyPath={noop}
+          />,
+        );
+        const preview = container.querySelector(
+          ".viewer-preview",
+        ) as HTMLElement;
+        pressFind(preview);
+        fireEvent.change(screen.getByRole("textbox", { name: "検索" }), {
+          target: { value: "alpha" },
+        });
+        preview.scrollTop = 123;
+        rerender(
+          <Viewer
+            buffer={{ ...mdPreview, content: `${mdPreview.content}alpha\n` }}
+            onTogglePreview={noop}
+            onCopyPath={noop}
+          />,
+        );
+        await vi.waitFor(() => expect(screen.getByText("1 / 4")).toBeTruthy());
+        expect(preview.scrollTop).toBe(123);
+      } finally {
+        rangeProto.getBoundingClientRect = original;
+      }
+    });
+
     it("matches text split by inline markup", () => {
       const { container } = render(
         <Viewer buffer={mdPreview} onTogglePreview={noop} onCopyPath={noop} />,
