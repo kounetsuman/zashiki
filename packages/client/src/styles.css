@@ -3938,3 +3938,14 @@ textarea {
   color: #ddd;
   font-size: 13px;
 }
+
+/* Markdown preview find (issue #545): painted through the CSS Custom Highlight API, so the
+ * rendered DOM is never rewritten. Colors mirror the terminal find bar's matches. */
+::highlight(viewer-find-match) {
+  background-color: #4d4423;
+}
+
+::highlight(viewer-find-active) {
+  background-color: #d7a100;
+  color: #1e1e1e;
+}

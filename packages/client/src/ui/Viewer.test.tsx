@@ -1086,4 +1086,105 @@ describe("Viewer", () => {
       ).toBeNull();
     });
   });
+  describe("Markdown preview find", () => {
+    const mdPreview: ViewerBuffer = {
+      ...base,
+      relPath: "README.md",
+      content: "# Alpha\n\nalpha **beta** and ALPHA again\n",
+      preview: true,
+    };
+
+    function pressFind(target: Element) {
+      fireEvent.keyDown(target, { key: "f", metaKey: true });
+    }
+
+    it("opens a find bar on Cmd+F, counts matches, and steps through them", () => {
+      const { container } = render(
+        <Viewer buffer={mdPreview} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const preview = container.querySelector(".viewer-preview");
+      if (preview === null) throw new Error("preview not rendered");
+      pressFind(preview);
+      const input = screen.getByRole("textbox", { name: "検索" });
+      fireEvent.change(input, { target: { value: "alpha" } });
+      expect(screen.getByText("1 / 3")).toBeTruthy();
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(screen.getByText("2 / 3")).toBeTruthy();
+      fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+      fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+      expect(screen.getByText("3 / 3")).toBeTruthy();
+    });
+
+    it("matches text split by inline markup", () => {
+      const { container } = render(
+        <Viewer buffer={mdPreview} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      pressFind(container.querySelector(".viewer-preview") as Element);
+      fireEvent.change(screen.getByRole("textbox", { name: "検索" }), {
+        target: { value: "alpha beta" },
+      });
+      expect(screen.getByText("1 / 1")).toBeTruthy();
+    });
+
+    it("keeps the rendered preview DOM when the viewer re-renders with the same file", () => {
+      const { container, rerender } = render(
+        <Viewer buffer={mdPreview} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const heading = container.querySelector(".viewer-preview h1");
+      rerender(
+        <Viewer
+          buffer={{ ...mdPreview }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+          focusNonce={1}
+        />,
+      );
+      expect(container.querySelector(".viewer-preview h1")).toBe(heading);
+    });
+
+    it("re-counts when the previewed file changes", () => {
+      const { container, rerender } = render(
+        <Viewer buffer={mdPreview} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      pressFind(container.querySelector(".viewer-preview") as Element);
+      fireEvent.change(screen.getByRole("textbox", { name: "検索" }), {
+        target: { value: "alpha" },
+      });
+      rerender(
+        <Viewer
+          buffer={{ ...mdPreview, content: "alpha only\n" }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      return vi.waitFor(() => expect(screen.getByText("1 / 1")).toBeTruthy());
+    });
+
+    it("closes on Escape and on Cmd+F again", () => {
+      const { container } = render(
+        <Viewer buffer={mdPreview} onTogglePreview={noop} onCopyPath={noop} />,
+      );
+      const preview = container.querySelector(".viewer-preview") as Element;
+      pressFind(preview);
+      fireEvent.keyDown(screen.getByRole("textbox", { name: "検索" }), {
+        key: "Escape",
+      });
+      expect(screen.queryByRole("textbox", { name: "検索" })).toBeNull();
+      pressFind(preview);
+      pressFind(screen.getByRole("textbox", { name: "検索" }));
+      expect(screen.queryByRole("textbox", { name: "検索" })).toBeNull();
+    });
+
+    it("does not open over the code view", () => {
+      const { container } = render(
+        <Viewer
+          buffer={{ ...mdPreview, preview: false }}
+          onTogglePreview={noop}
+          onCopyPath={noop}
+        />,
+      );
+      pressFind(container.querySelector(".viewer-view") as Element);
+      expect(container.querySelector(".terminal-find")).toBeNull();
+    });
+  });
 });

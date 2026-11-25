@@ -11,6 +11,8 @@ export interface TerminalFindBarProps {
   onNext(): void;
   onPrevious(): void;
   onClose(): void;
+  /** Which translation group labels the bar; the terminal's own wording says "in session". */
+  labelScope?: "terminal.find" | "find";
 }
 
 /**
@@ -25,6 +27,7 @@ export function TerminalFindBar({
   onNext,
   onPrevious,
   onClose,
+  labelScope = "terminal.find",
 }: TerminalFindBarProps): React.JSX.Element {
   const { t } = useTranslation();
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -41,7 +44,7 @@ export function TerminalFindBar({
     counter === null
       ? ""
       : noMatches
-        ? t("terminal.find.noMatches")
+        ? t(`${labelScope}.noMatches` as const)
         : `${counter.current} / ${counter.total}`;
 
   return (
@@ -60,8 +63,8 @@ export function TerminalFindBar({
         ref={inputRef}
         type="text"
         className="terminal-find-input"
-        placeholder={t("terminal.find.placeholder")}
-        aria-label={t("terminal.find.placeholder")}
+        placeholder={t(`${labelScope}.placeholder` as const)}
+        aria-label={t(`${labelScope}.placeholder` as const)}
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
         onKeyDown={(e) => {
@@ -80,8 +83,8 @@ export function TerminalFindBar({
       <button
         type="button"
         className="terminal-find-btn"
-        title={t("terminal.find.previous")}
-        aria-label={t("terminal.find.previous")}
+        title={t(`${labelScope}.previous` as const)}
+        aria-label={t(`${labelScope}.previous` as const)}
         onClick={onPrevious}
       >
         <span className="material-symbols-outlined" aria-hidden="true">
@@ -91,8 +94,8 @@ export function TerminalFindBar({
       <button
         type="button"
         className="terminal-find-btn"
-        title={t("terminal.find.next")}
-        aria-label={t("terminal.find.next")}
+        title={t(`${labelScope}.next` as const)}
+        aria-label={t(`${labelScope}.next` as const)}
         onClick={onNext}
       >
         <span className="material-symbols-outlined" aria-hidden="true">
@@ -102,8 +105,8 @@ export function TerminalFindBar({
       <button
         type="button"
         className="terminal-find-btn"
-        title={t("terminal.find.close")}
-        aria-label={t("terminal.find.close")}
+        title={t(`${labelScope}.close` as const)}
+        aria-label={t(`${labelScope}.close` as const)}
         onClick={onClose}
       >
         <span className="material-symbols-outlined" aria-hidden="true">

@@ -32,6 +32,9 @@ import {
 import { DelimitedTable } from "./DelimitedTable.js";
 import { HtmlFrame } from "./HtmlFrame.js";
 import { Loading } from "./Loading.js";
+import { TerminalFindBar } from "./TerminalFindBar.js";
+import { isFindShortcut } from "./terminal-key-handler.js";
+import { usePreviewFind } from "./usePreviewFind.js";
 import { viewerEditorExtensions } from "./viewer-editor.js";
 
 /**
@@ -465,6 +468,18 @@ export function Viewer({
     [showAlternate, alternate, buffer.content, loadedRemoteImages, t],
   );
 
+  // A fresh object would make React re-set innerHTML on every render, wiping drawn diagrams and
+  // the find bar's matches.
+  const previewMarkup = useMemo(() => ({ __html: previewHtml }), [previewHtml]);
+
+  const previewFind = usePreviewFind(
+    previewRef,
+    fileKey,
+    buffer.status === "ready" &&
+      showAlternate &&
+      alternate === "markdownPreview",
+  );
+
   const refocusPreviewOnRender = useRef(false);
   const loadClickedRemoteContent = useCallback((event: MouseEvent) => {
     const diagram = clickedRemoteDiagram(event);
@@ -547,12 +562,13 @@ export function Viewer({
         // biome-ignore lint/a11y/useKeyWithClickEvents: delegates clicks from the rendered load buttons, which handle the keyboard themselves
         // biome-ignore lint/a11y/noStaticElementInteractions: same delegation; the div itself is not interactive
         <div
+          key={fileKey}
           ref={previewRef}
           tabIndex={-1}
           className="viewer-preview markdown-body"
           onClick={loadClickedRemoteContent}
           // biome-ignore lint/security/noDangerouslySetInnerHtml: rendering already sanitized by markdown-it(html:false)
-          dangerouslySetInnerHTML={{ __html: previewHtml }}
+          dangerouslySetInnerHTML={previewMarkup}
         />
       );
     if (showAlternate && alternate === "htmlPreview")
@@ -591,6 +607,13 @@ export function Viewer({
       tabIndex={-1}
       className="viewer-view"
       aria-label={t("viewer.viewerLabel", { path: buffer.relPath })}
+      onKeyDown={(e) => {
+        // The code view's CodeMirror claims Cmd+F itself; the find bar claims it to close.
+        if (e.defaultPrevented || !isFindShortcut(e)) return;
+        if (!previewFind.open && previewRef.current === null) return;
+        e.preventDefault();
+        previewFind.toggleFind();
+      }}
     >
       <div className="viewer-toolbar">
         {buffer.external !== true && (
@@ -665,6 +688,17 @@ export function Viewer({
           />
         )}
         {buffer.status === "ready" && readyContent()}
+        {previewFind.open && (
+          <TerminalFindBar
+            labelScope="find"
+            query={previewFind.query}
+            results={previewFind.results}
+            onQueryChange={previewFind.onQueryChange}
+            onNext={() => previewFind.step("next")}
+            onPrevious={() => previewFind.step("previous")}
+            onClose={previewFind.closeFind}
+          />
+        )}
       </div>
     </section>
   );
