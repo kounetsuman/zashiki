@@ -788,7 +788,10 @@ export function App({
   useOpenedFiles(openPicked, toastOpenFailed, fileSizeLimits.maxBytes);
 
   const copyWithToast = useCallback(
-    (text: string, toastKey: "toast.pathCopied" | "toast.linkCopied"): void => {
+    (
+      text: string,
+      toastKey: "toast.pathCopied" | "toast.linkCopied" | "toast.copied",
+    ): void => {
       void navigator.clipboard?.writeText(text).then(
         () => flashCopyToast(t(toastKey)),
         () => undefined,
@@ -806,6 +809,11 @@ export function App({
 
   const copySessionLink = useCallback(
     (url: string): void => copyWithToast(url, "toast.linkCopied"),
+    [copyWithToast],
+  );
+
+  const copyStatsRow = useCallback(
+    (text: string): void => copyWithToast(text, "toast.copied"),
     [copyWithToast],
   );
 
@@ -1707,6 +1715,7 @@ export function App({
           )}
           events={activeSessionStats}
           onOpenLinks={openLinksFromStats}
+          onCopy={copyStatsRow}
           onClose={closeSessionStats}
         />
       )}

@@ -89,7 +89,8 @@
     "pathCopied": "パスをコピーしました",
     "notificationsDeleted": "{{count}} 件の通知を削除しました",
     "memoSaveFailed": "メモを保存できませんでした。接続を確認して再試行してください",
-    "linkCopied": "リンクをコピーしました"
+    "linkCopied": "リンクをコピーしました",
+    "copied": "コピーしました"
   },
   "quitSave": {
     "saving": "終了前にメモを保存しています…"
@@ -564,6 +565,8 @@
     "tailEmpty": "画面は空です。"
   },
   "sessionStats": {
+    "copy": "コピー",
+    "copyRow": "コピー: {{text}}",
     "title": "セッションの統計",
     "open": "セッションの統計",
     "modes": "表示",

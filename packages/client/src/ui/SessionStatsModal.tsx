@@ -27,6 +27,8 @@ export interface SessionStatsModalProps {
   /** `null` until the first answer arrives. */
   events: readonly SessionEvent[] | null;
   onOpenLinks(): void;
+  /** Copies a row's full text (its key on the Summary, its text on the Timeline). */
+  onCopy(text: string): void;
   onClose(): void;
 }
 
@@ -54,6 +56,7 @@ function SessionStatsView({
   sessionTitle,
   events,
   onOpenLinks,
+  onCopy,
   onClose,
 }: SessionStatsModalProps) {
   const { t } = useTranslation();
@@ -114,7 +117,12 @@ function SessionStatsView({
         ) : events.length === 0 ? (
           <p className="sst-empty">{t("sessionStats.empty")}</p>
         ) : mode === "summary" ? (
-          <Summary events={events} onPick={showRow} onOpenLinks={onOpenLinks} />
+          <Summary
+            events={events}
+            onPick={showRow}
+            onCopy={onCopy}
+            onOpenLinks={onOpenLinks}
+          />
         ) : (
           <Timeline
             events={events}
@@ -122,6 +130,7 @@ function SessionStatsView({
             row={row}
             onFilter={pickFilter}
             onClearRow={() => setRow(null)}
+            onCopy={onCopy}
           />
         )}
       </div>
@@ -140,6 +149,7 @@ function SummaryCard({
   totals,
   rows,
   onPick,
+  onCopy,
   footer,
 }: {
   group: StatsGroup;
@@ -147,6 +157,7 @@ function SummaryCard({
   totals: string[];
   rows: CardRow[];
   onPick(row: RowFilter): void;
+  onCopy(text: string): void;
   footer?: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -161,7 +172,7 @@ function SummaryCard({
       ) : (
         <ul className="sst-rows">
           {rows.map(({ key, counters }) => (
-            <li key={key}>
+            <li key={key} className="sst-row-item">
               <button
                 type="button"
                 className="sst-row"
@@ -172,12 +183,36 @@ function SummaryCard({
                 </span>
                 <span className="sst-row-counters">{counters}</span>
               </button>
+              <CopyButton text={key} onCopy={onCopy} />
             </li>
           ))}
         </ul>
       )}
       {footer}
     </section>
+  );
+}
+
+function CopyButton({
+  text,
+  onCopy,
+}: {
+  text: string;
+  onCopy(text: string): void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      className="sst-copy"
+      aria-label={t("sessionStats.copyRow", { text })}
+      title={t("sessionStats.copy")}
+      onClick={() => onCopy(text)}
+    >
+      <span className="material-symbols-outlined" aria-hidden="true">
+        content_copy
+      </span>
+    </button>
   );
 }
 
@@ -192,10 +227,12 @@ function Counter({ text, bad = false }: { text: string; bad?: boolean }) {
 function Summary({
   events,
   onPick,
+  onCopy,
   onOpenLinks,
 }: {
   events: readonly SessionEvent[];
   onPick(row: RowFilter): void;
+  onCopy(text: string): void;
   onOpenLinks(): void;
 }) {
   const { t } = useTranslation();
@@ -223,6 +260,7 @@ function Summary({
           ),
         }))}
         onPick={onPick}
+        onCopy={onCopy}
       />
       <SummaryCard
         group="commands"
@@ -247,6 +285,7 @@ function Summary({
           ),
         }))}
         onPick={onPick}
+        onCopy={onCopy}
       />
       <SummaryCard
         group="external"
@@ -265,6 +304,7 @@ function Summary({
           ),
         }))}
         onPick={onPick}
+        onCopy={onCopy}
         footer={
           <button type="button" className="sst-card-link" onClick={onOpenLinks}>
             {t("sessionStats.allLinks")}
@@ -290,6 +330,7 @@ function Summary({
           ),
         }))}
         onPick={onPick}
+        onCopy={onCopy}
       />
     </div>
   );
@@ -301,12 +342,14 @@ function Timeline({
   row,
   onFilter,
   onClearRow,
+  onCopy,
 }: {
   events: readonly SessionEvent[];
   filter: TimelineFilter;
   row: RowFilter | null;
   onFilter(filter: TimelineFilter): void;
   onClearRow(): void;
+  onCopy(text: string): void;
 }) {
   const { t } = useTranslation();
   const counts = useMemo(() => filterCounts(events), [events]);
@@ -357,6 +400,7 @@ function Timeline({
               // biome-ignore lint/suspicious/noArrayIndexKey: events carry no id; the transcript only grows
               key={`${event.at}-${index}`}
               event={event}
+              onCopy={onCopy}
             />
           ))}
         </ol>
@@ -365,7 +409,13 @@ function Timeline({
   );
 }
 
-function TimelineRow({ event }: { event: SessionEvent }) {
+function TimelineRow({
+  event,
+  onCopy,
+}: {
+  event: SessionEvent;
+  onCopy(text: string): void;
+}) {
   const { t } = useTranslation();
   if (event.kind === "compaction") {
     return <li className="sst-divider">{compactionLabel(event, t)}</li>;
@@ -381,6 +431,7 @@ function TimelineRow({ event }: { event: SessionEvent }) {
         {event.text}
       </span>
       <span className="sst-meta">{eventMeta(event, t)}</span>
+      <CopyButton text={event.text} onCopy={onCopy} />
     </li>
   );
 }
