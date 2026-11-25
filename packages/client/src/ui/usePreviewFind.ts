@@ -89,20 +89,29 @@ export function usePreviewFind(
 ): PreviewFind {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [ranges, setRanges] = useState<Range[]>([]);
+  const [found, setFound] = useState<{ query: string; ranges: Range[] }>({
+    query: "",
+    ranges: [],
+  });
   const [index, setIndex] = useState(-1);
-  // Only the reader's own moves scroll; re-located matches after a re-read leave the scroll alone.
-  const scrollPending = useRef(false);
+  // Bumped by the reader's own moves only, so re-located matches after a re-read leave the scroll
+  // alone; a request is settled once the matches for the current query are in.
+  const [scrollRequest, setScrollRequest] = useState(0);
+  const settledScrollRequest = useRef(0);
   const active = open && enabled;
+  const ranges = found.ranges;
+  const activeIndex =
+    ranges.length === 0 ? -1 : Math.min(Math.max(index, 0), ranges.length - 1);
+  const activeRange = ranges[activeIndex];
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: hostKey is a re-run trigger for a remounted host, not read in the body.
   useEffect(() => {
     const host = hostRef.current;
     if (!active || host === null || query === "") {
-      setRanges([]);
+      setFound({ query, ranges: [] });
       return;
     }
-    const relocate = () => setRanges(findRanges(host, query));
+    const relocate = () => setFound({ query, ranges: findRanges(host, query) });
     relocate();
     const observer = new MutationObserver(relocate);
     observer.observe(host, {
@@ -114,22 +123,18 @@ export function usePreviewFind(
   }, [active, query, hostRef, hostKey]);
 
   useEffect(() => {
-    setIndex((prev) =>
-      ranges.length === 0 ? -1 : Math.min(Math.max(prev, 0), ranges.length - 1),
-    );
-  }, [ranges]);
-
-  const activeRange = index >= 0 ? ranges[index] : undefined;
-  useEffect(() => {
     if (!active) return;
     paintHighlights(ranges, activeRange);
-    const host = hostRef.current;
-    if (scrollPending.current && activeRange && host) {
-      scrollPending.current = false;
-      scrollToCenter(host, activeRange);
-    }
     return clearHighlights;
-  }, [active, ranges, activeRange, hostRef]);
+  }, [active, ranges, activeRange]);
+
+  useEffect(() => {
+    if (settledScrollRequest.current === scrollRequest) return;
+    if (found.query !== query) return;
+    settledScrollRequest.current = scrollRequest;
+    const host = hostRef.current;
+    if (activeRange && host) scrollToCenter(host, activeRange);
+  }, [scrollRequest, found, query, activeRange, hostRef]);
 
   useEffect(() => {
     if (!enabled) setOpen(false);
@@ -148,21 +153,21 @@ export function usePreviewFind(
   const onQueryChange = useCallback((next: string) => {
     setQuery(next);
     setIndex(-1);
-    scrollPending.current = true;
+    setScrollRequest((n) => n + 1);
   }, []);
 
   const step = useCallback(
     (direction: "next" | "previous") => {
-      scrollPending.current = true;
-      setIndex((prev) => stepMatchIndex(prev, ranges.length, direction));
+      setIndex(stepMatchIndex(activeIndex, ranges.length, direction));
+      setScrollRequest((n) => n + 1);
     },
-    [ranges.length],
+    [activeIndex, ranges.length],
   );
 
   return {
     open: active,
     query,
-    results: { resultIndex: index, resultCount: ranges.length },
+    results: { resultIndex: activeIndex, resultCount: ranges.length },
     toggleFind,
     closeFind,
     onQueryChange,

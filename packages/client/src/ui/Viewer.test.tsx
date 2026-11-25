@@ -1167,6 +1167,64 @@ describe("Viewer", () => {
       }
     });
 
+    function withMatchesBelowThePane(run: () => Promise<void>) {
+      const rangeProto = Range.prototype as Range;
+      const original = rangeProto.getBoundingClientRect;
+      rangeProto.getBoundingClientRect = () => new DOMRect(0, 500, 10, 10);
+      return run().finally(() => {
+        rangeProto.getBoundingClientRect = original;
+      });
+    }
+
+    it("scrolls back to the only match when Enter is pressed", () =>
+      withMatchesBelowThePane(async () => {
+        const { container } = render(
+          <Viewer
+            buffer={mdPreview}
+            onTogglePreview={noop}
+            onCopyPath={noop}
+          />,
+        );
+        const preview = container.querySelector(
+          ".viewer-preview",
+        ) as HTMLElement;
+        pressFind(preview);
+        const input = screen.getByRole("textbox", { name: "検索" });
+        fireEvent.change(input, { target: { value: "again" } });
+        expect(screen.getByText("1 / 1")).toBeTruthy();
+        preview.scrollTop = 0;
+        fireEvent.keyDown(input, { key: "Enter" });
+        expect(preview.scrollTop).toBeGreaterThan(0);
+      }));
+
+    it("does not scroll when a query with no matches later gains one on a re-read", () =>
+      withMatchesBelowThePane(async () => {
+        const { container, rerender } = render(
+          <Viewer
+            buffer={mdPreview}
+            onTogglePreview={noop}
+            onCopyPath={noop}
+          />,
+        );
+        const preview = container.querySelector(
+          ".viewer-preview",
+        ) as HTMLElement;
+        pressFind(preview);
+        fireEvent.change(screen.getByRole("textbox", { name: "検索" }), {
+          target: { value: "zzz" },
+        });
+        preview.scrollTop = 42;
+        rerender(
+          <Viewer
+            buffer={{ ...mdPreview, content: "zzz\n" }}
+            onTogglePreview={noop}
+            onCopyPath={noop}
+          />,
+        );
+        await vi.waitFor(() => expect(screen.getByText("1 / 1")).toBeTruthy());
+        expect(preview.scrollTop).toBe(42);
+      }));
+
     it("matches text split by inline markup", () => {
       const { container } = render(
         <Viewer buffer={mdPreview} onTogglePreview={noop} onCopyPath={noop} />,
