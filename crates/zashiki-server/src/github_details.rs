@@ -329,6 +329,7 @@ mod tests {
             }),
             page_title: None,
             favicon_origin: None,
+            denied_by: None,
         }
     }
 

@@ -237,6 +237,44 @@ describe("SessionLinksPopover", () => {
     expect(screen.queryByRole("button", { name: /^PR/ })).toBeNull();
   });
 
+  it("lists the pages the AI could not read with the tool and the reason", () => {
+    open([
+      ...LINKS,
+      {
+        url: "https://blocked.example/",
+        tab: "failed",
+        kind: "other",
+        source: "WebFetch",
+        deniedBy: "hook",
+      },
+      {
+        url: "https://down.example/",
+        tab: "failed",
+        kind: "other",
+        source: "mcp__playwright__browser_navigate",
+      },
+    ]);
+    const failedTab = screen.getByRole("tab", { name: /失敗したもの/ });
+    expect(failedTab.textContent).toBe("失敗したもの2");
+    fireEvent.click(failedTab);
+    const dialog = popover() as HTMLElement;
+    expect(
+      within(dialog).getByText("WebFetch · フックがブロック"),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText("mcp__playwright__browser_navigate · 失敗"),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText("Rust Lang")).toBeNull();
+  });
+
+  it("says no page failed when the failed tab is empty", () => {
+    open();
+    fireEvent.click(screen.getByRole("tab", { name: /失敗したもの/ }));
+    expect(
+      screen.getByText("アクセスできなかったリンクはありません"),
+    ).toBeTruthy();
+  });
+
   it("says so when the tab has no links", () => {
     open(LINKS.filter((l) => l.tab === "conversation"));
     fireEvent.click(screen.getByRole("tab", { name: /AI が参照したもの/ }));

@@ -50,7 +50,11 @@ describe("linksInTab / tabCounts", () => {
     expect(linksInTab(links, "ai_referenced")).toEqual([
       other("https://a.example/", "ai_referenced"),
     ]);
-    expect(tabCounts(links)).toEqual({ conversation: 2, ai_referenced: 1 });
+    expect(tabCounts(links)).toEqual({
+      conversation: 2,
+      ai_referenced: 1,
+      failed: 0,
+    });
   });
 });
 

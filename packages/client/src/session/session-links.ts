@@ -35,6 +35,7 @@ export function tabCounts(
   return {
     conversation: linksInTab(links, "conversation").length,
     ai_referenced: linksInTab(links, "ai_referenced").length,
+    failed: linksInTab(links, "failed").length,
   };
 }
 

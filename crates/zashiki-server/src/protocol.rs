@@ -634,12 +634,15 @@ pub struct CockpitTerminalTailResponse {
     pub lines: Vec<String>,
 }
 
-/// Which popover tab a session link belongs to: written in the conversation, or handed to a tool.
+/// Which popover tab a session link belongs to: written in the conversation, handed to a tool, or a
+/// page a tool could not read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionLinkTab {
     Conversation,
     AiReferenced,
+    /// A page a tool could not read: its fetch or navigation failed or was denied.
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -693,6 +696,9 @@ pub struct SessionLink {
     /// Present once the page's favicon is cached: the `origin` to ask `/api/session-links/favicon` for.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub favicon_origin: Option<String>,
+    /// In the failed tab, who denied the access; absent when it was tried and failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub denied_by: Option<SessionEventDeniedBy>,
 }
 
 /// Where a background task stands, from what can be observed: its completion notice and its process.

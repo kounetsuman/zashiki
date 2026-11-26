@@ -7,7 +7,10 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde_json::Value;
 
-use crate::protocol::{GithubLinkRef, SessionLink, SessionLinkKind, SessionLinkTab};
+use crate::protocol::{
+    GithubLinkRef, SessionEventOutcome, SessionLink, SessionLinkKind, SessionLinkTab,
+};
+use crate::session_stats::{outcome_of, reads_a_page};
 
 const USER_SOURCE: &str = "user";
 const ASSISTANT_SOURCE: &str = "assistant";
@@ -18,6 +21,7 @@ const WEB_SEARCH_TOOL: &str = "WebSearch";
 pub fn session_links(jsonl: &str) -> Vec<SessionLink> {
     let mut collector = Collector::default();
     let mut tool_names: HashMap<String, String> = HashMap::new();
+    let mut page_urls: HashMap<String, String> = HashMap::new();
     for line in jsonl.lines() {
         let Ok(entry) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -32,9 +36,12 @@ pub fn session_links(jsonl: &str) -> Vec<SessionLink> {
             Some("user") => {
                 collect_user_text(&mut collector, content);
                 collect_web_search_results(&mut collector, &entry, content, &tool_names);
+                if !is_flagged(&entry, "isSidechain") {
+                    collect_failed_page_reads(&mut collector, &entry, content, &tool_names, &page_urls);
+                }
             }
             Some("assistant") => {
-                collect_assistant(&mut collector, content, &mut tool_names);
+                collect_assistant(&mut collector, content, &mut tool_names, &mut page_urls);
             }
             _ => {}
         }
@@ -67,6 +74,7 @@ fn collect_assistant(
     collector: &mut Collector,
     content: &Value,
     tool_names: &mut HashMap<String, String>,
+    page_urls: &mut HashMap<String, String>,
 ) {
     let Value::Array(items) = content else {
         return;
@@ -82,6 +90,10 @@ fn collect_assistant(
                 let name = item.get("name").and_then(Value::as_str).unwrap_or("");
                 if let Some(id) = item.get("id").and_then(Value::as_str) {
                     tool_names.insert(id.to_string(), name.to_string());
+                    let url = item.get("input").and_then(|i| i.get("url")).and_then(Value::as_str);
+                    if let Some(url) = url.filter(|_| reads_a_page(name)) {
+                        page_urls.insert(id.to_string(), url.to_string());
+                    }
                 }
                 let mut strings = Vec::new();
                 if let Some(input) = item.get("input") {
@@ -135,6 +147,40 @@ fn collect_web_search_results(
         let title = hit.get("title").and_then(Value::as_str);
         for url in urls_in(url).into_iter().take(1) {
             collector.add(SessionLinkTab::AiReferenced, url, WEB_SEARCH_TOOL, title);
+        }
+    }
+}
+
+/// A page read that failed or was denied lands in the failed tab under its latest tool and reason; a
+/// later read of the same page that succeeds takes it out again.
+fn collect_failed_page_reads(
+    collector: &mut Collector,
+    entry: &Value,
+    content: &Value,
+    tool_names: &HashMap<String, String>,
+    page_urls: &HashMap<String, String>,
+) {
+    let Value::Array(items) = content else {
+        return;
+    };
+    for result in items {
+        let Some(id) = result.get("tool_use_id").and_then(Value::as_str) else {
+            continue;
+        };
+        let (Some(tool), Some(raw_url)) = (tool_names.get(id), page_urls.get(id)) else {
+            continue;
+        };
+        let Some(url) = urls_in(raw_url).into_iter().next() else {
+            continue;
+        };
+        match outcome_of(entry, result) {
+            (SessionEventOutcome::Ok, _) => collector.remove(SessionLinkTab::Failed, url),
+            (SessionEventOutcome::Failed | SessionEventOutcome::Denied, denied_by) => {
+                let link = collector.add(SessionLinkTab::Failed, url, tool, None);
+                link.source = tool.clone();
+                link.denied_by = denied_by;
+            }
+            _ => {}
         }
     }
 }
@@ -246,7 +292,13 @@ struct Collector {
 }
 
 impl Collector {
-    fn add(&mut self, tab: SessionLinkTab, raw_url: &str, source: &str, title: Option<&str>) {
+    fn add(
+        &mut self,
+        tab: SessionLinkTab,
+        raw_url: &str,
+        source: &str,
+        title: Option<&str>,
+    ) -> &mut SessionLink {
         self.appearances += 1;
         let (url, kind, github) = classify(raw_url);
         let seen = self.seen.entry((tab, url.clone())).or_insert_with(|| Seen {
@@ -259,6 +311,7 @@ impl Collector {
                 github,
                 page_title: None,
                 favicon_origin: None,
+                denied_by: None,
             },
             last_seen_at: 0,
         });
@@ -266,6 +319,11 @@ impl Collector {
         if seen.link.title.is_none() {
             seen.link.title = title.map(str::to_string);
         }
+        &mut seen.link
+    }
+
+    fn remove(&mut self, tab: SessionLinkTab, raw_url: &str) {
+        self.seen.remove(&(tab, classify(raw_url).0));
     }
 
     fn into_links(self) -> Vec<SessionLink> {
@@ -278,7 +336,7 @@ impl Collector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{GithubLinkRef, SessionLinkKind, SessionLinkTab};
+    use crate::protocol::{GithubLinkRef, SessionEventDeniedBy, SessionLinkKind, SessionLinkTab};
     use serde_json::{json, Value};
 
     fn jsonl(lines: &[Value]) -> String {
@@ -388,6 +446,91 @@ mod tests {
             ),
             vec!["https://github.com/o/r/pull/5"]
         );
+    }
+
+    fn page_read(id: &str, tool: &str, url: &str) -> Value {
+        assistant(json!([{"type": "tool_use", "id": id, "name": tool, "input": {"url": url}}]))
+    }
+
+    fn result(id: &str, content: &str, is_error: bool) -> Value {
+        user(json!([{"type": "tool_result", "tool_use_id": id, "content": content, "is_error": is_error}]))
+    }
+
+    fn failed(links: &[SessionLink]) -> Vec<(&str, &str, Option<SessionEventDeniedBy>)> {
+        links
+            .iter()
+            .filter(|l| l.tab == SessionLinkTab::Failed)
+            .map(|l| (l.url.as_str(), l.source.as_str(), l.denied_by))
+            .collect()
+    }
+
+    #[test]
+    fn pages_a_tool_could_not_read_land_in_the_failed_tab_with_the_reason() {
+        let links = session_links(&jsonl(&[
+            page_read("t1", "WebFetch", "https://a.example/"),
+            result("t1", "Request failed with status code 403", true),
+            page_read("t2", "mcp__playwright__browser_navigate", "https://b.example/"),
+            result("t2", "PreToolUse:mcp__playwright__browser_navigate hook error: blocked", true),
+            page_read("t3", "WebFetch", "https://c.example/"),
+            result("t3", "fine", false),
+        ]));
+        assert_eq!(
+            failed(&links),
+            vec![
+                (
+                    "https://b.example/",
+                    "mcp__playwright__browser_navigate",
+                    Some(SessionEventDeniedBy::Hook)
+                ),
+                ("https://a.example/", "WebFetch", None),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_page_read_again_successfully_leaves_the_failed_tab() {
+        let links = session_links(&jsonl(&[
+            page_read("t1", "WebFetch", "https://a.example/"),
+            result("t1", "Request failed with status code 500", true),
+            page_read("t2", "mcp__playwright__browser_navigate", "https://a.example/"),
+            result("t2", "ok", false),
+        ]));
+        assert!(failed(&links).is_empty());
+    }
+
+    #[test]
+    fn a_page_that_failed_more_than_once_shows_its_latest_tool_and_reason() {
+        let links = session_links(&jsonl(&[
+            page_read("t1", "WebFetch", "https://a.example/"),
+            result("t1", "PreToolUse:WebFetch hook error: blocked", true),
+            page_read("t2", "mcp__playwright__browser_navigate", "https://a.example/"),
+            result("t2", "net::ERR_NAME_NOT_RESOLVED", true),
+        ]));
+        assert_eq!(
+            failed(&links),
+            vec![("https://a.example/", "mcp__playwright__browser_navigate", None)]
+        );
+    }
+
+    #[test]
+    fn a_subagent_page_read_is_left_to_the_subagent() {
+        let mut failure = result("t1", "Request failed with status code 403", true);
+        failure["isSidechain"] = json!(true);
+        let links = session_links(&jsonl(&[
+            page_read("t1", "WebFetch", "https://a.example/"),
+            failure,
+        ]));
+        assert!(failed(&links).is_empty());
+    }
+
+    #[test]
+    fn a_failed_command_that_mentions_a_url_is_not_a_failed_page() {
+        let links = session_links(&jsonl(&[
+            assistant(json!([{"type": "tool_use", "id": "t1", "name": "Bash",
+                "input": {"command": "curl https://a.example/"}}])),
+            result("t1", "exit 7", true),
+        ]));
+        assert!(failed(&links).is_empty());
     }
 
     #[test]
