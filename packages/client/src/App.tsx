@@ -463,6 +463,7 @@ export function App({
     cockpitTerminals,
     selectedCockpitTerminalId,
     memoEnabled,
+    viewStorage,
   );
 
   const cockpitTerminalsRef = useRef(cockpitTerminals);
