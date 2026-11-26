@@ -62,6 +62,7 @@ const EVENTS: SessionEvent[] = [
 function renderModal(
   events: SessionEvent[] | null = EVENTS,
   onOpenLinks = vi.fn(),
+  onCopy = vi.fn(),
 ) {
   render(
     <SessionStatsModal
@@ -69,10 +70,11 @@ function renderModal(
       sessionTitle="my session"
       events={events}
       onOpenLinks={onOpenLinks}
+      onCopy={onCopy}
       onClose={() => undefined}
     />,
   );
-  return { onOpenLinks };
+  return { onOpenLinks, onCopy };
 }
 
 const timelineTexts = () =>
@@ -81,6 +83,48 @@ const timelineTexts = () =>
   );
 
 describe("SessionStatsModal", () => {
+  it("copies a Timeline row's full text without opening anything else", () => {
+    const { onCopy } = renderModal();
+    fireEvent.click(screen.getByRole("radio", { name: "タイムライン" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "コピー: https://docs.rs/" }),
+    );
+    expect(onCopy).toHaveBeenCalledExactlyOnceWith("https://docs.rs/");
+  });
+
+  it("copies the whole text of a Timeline row that shows only its first line", () => {
+    const { onCopy } = renderModal([
+      {
+        at: 1,
+        kind: "command",
+        tool: "Bash",
+        text: "cat <<'EOF'",
+        fullText: "cat <<'EOF'\nhello\nEOF",
+        target: "cat",
+        outcome: "ok",
+      },
+    ]);
+    fireEvent.click(screen.getByRole("radio", { name: "タイムライン" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^コピー: cat <<'EOF'/ }),
+    );
+    expect(onCopy).toHaveBeenCalledExactlyOnceWith("cat <<'EOF'\nhello\nEOF");
+  });
+
+  it("copies a Summary row's key without narrowing the Timeline", () => {
+    const { onCopy } = renderModal();
+    const commands = screen.getByRole("region", { name: "コマンド" });
+    fireEvent.click(
+      within(commands).getByRole("button", { name: "コピー: pnpm test" }),
+    );
+    expect(onCopy).toHaveBeenCalledExactlyOnceWith("pnpm test");
+    expect(
+      screen
+        .getByRole("radio", { name: "サマリー" })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
   it("opens on the Summary with the four groups", () => {
     renderModal();
     expect(screen.getByText("my session")).toBeTruthy();
@@ -161,7 +205,7 @@ describe("SessionStatsModal", () => {
   it("a Summary row opens the Timeline narrowed to it, and its chip clears the narrowing", () => {
     renderModal();
     const files = screen.getByRole("region", { name: "ファイル" });
-    fireEvent.click(within(files).getByRole("button", { name: /src\/a\.ts/ }));
+    fireEvent.click(within(files).getByRole("button", { name: /^src\/a\.ts/ }));
     expect(
       screen
         .getByRole("radio", { name: "タイムライン" })
@@ -197,12 +241,13 @@ describe("SessionStatsModal", () => {
         sessionTitle={id}
         events={EVENTS}
         onOpenLinks={() => undefined}
+        onCopy={() => undefined}
         onClose={() => undefined}
       />
     );
     const { rerender } = render(modal("t1"));
     const files = screen.getByRole("region", { name: "ファイル" });
-    fireEvent.click(within(files).getByRole("button", { name: /src\/a\.ts/ }));
+    fireEvent.click(within(files).getByRole("button", { name: /^src\/a\.ts/ }));
     rerender(modal("t2"));
     expect(
       screen

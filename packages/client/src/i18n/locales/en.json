@@ -89,7 +89,8 @@
     "pathCopied": "Copied the path",
     "notificationsDeleted": "Deleted {{count}} notification(s)",
     "memoSaveFailed": "Couldn't save the Memo — check the connection and try again",
-    "linkCopied": "Link copied"
+    "linkCopied": "Link copied",
+    "copied": "Copied"
   },
   "quitSave": {
     "saving": "Saving the Memo before quitting…"
@@ -564,6 +565,8 @@
     "tailEmpty": "The screen is empty."
   },
   "sessionStats": {
+    "copy": "Copy",
+    "copyRow": "Copy: {{text}}",
     "title": "Session stats",
     "open": "Session stats",
     "modes": "View",

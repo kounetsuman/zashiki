@@ -76,6 +76,7 @@ fn event(at: u64, kind: SessionEventKind, text: String) -> SessionEvent {
         at,
         kind,
         text,
+        full_text: None,
         tool: None,
         target: None,
         domains: Vec::new(),
@@ -119,15 +120,15 @@ fn read_user(
     }
     let text = text_of(content);
     if text.trim_start().starts_with(INTERRUPT_PREFIX) {
-        events.push(event(at, SessionEventKind::Interrupt, one_line(&text)));
+        events.push(shortened(at, SessionEventKind::Interrupt, &text));
         return;
     }
     if !is_typed_by_a_human(entry, &text) {
         return;
     }
-    let prompt = one_line(&strip_injected_blocks(&text));
-    if !prompt.is_empty() {
-        events.push(event(at, SessionEventKind::Prompt, prompt));
+    let prompt = shortened(at, SessionEventKind::Prompt, &strip_injected_blocks(&text));
+    if !prompt.text.is_empty() {
+        events.push(prompt);
     }
 }
 
@@ -150,6 +151,16 @@ fn text_of(content: &Value) -> String {
             .join("\n"),
         _ => String::new(),
     }
+}
+
+/// An event whose text is shown as one line; the whole text rides along only when that line is shorter.
+fn shortened(at: u64, kind: SessionEventKind, text: &str) -> SessionEvent {
+    let mut shown = event(at, kind, one_line(text));
+    let whole = text.trim();
+    if shown.text != whole {
+        shown.full_text = Some(whole.to_string());
+    }
+    shown
 }
 
 fn one_line(text: &str) -> String {
@@ -237,25 +248,17 @@ fn tool_call(item: &Value, at: u64, cwd: &str) -> SessionEvent {
         ),
         "Bash" => {
             let command = first(&["command"]);
-            let mut call = event(at, SessionEventKind::Command, one_line(command));
+            let mut call = shortened(at, SessionEventKind::Command, command);
             call.target = Some(command_group(command));
             (call.domains, call.via) = command_domains(command);
             call
         }
         "WebFetch" => web_call(at, first(&["url"])),
         _ if name.ends_with("browser_navigate") => web_call(at, first(&["url"])),
-        "Grep" | "Glob" => event(
-            at,
-            SessionEventKind::Search,
-            one_line(first(&["pattern", "query"])),
-        ),
-        "WebSearch" => event(at, SessionEventKind::Search, one_line(first(&["query"]))),
-        "Agent" | "Task" => event(
-            at,
-            SessionEventKind::Subagent,
-            one_line(first(&["description"])),
-        ),
-        "Skill" => event(at, SessionEventKind::Skill, one_line(first(&["skill"]))),
+        "Grep" | "Glob" => shortened(at, SessionEventKind::Search, first(&["pattern", "query"])),
+        "WebSearch" => shortened(at, SessionEventKind::Search, first(&["query"])),
+        "Agent" | "Task" => shortened(at, SessionEventKind::Subagent, first(&["description"])),
+        "Skill" => shortened(at, SessionEventKind::Skill, first(&["skill"])),
         _ => event(at, SessionEventKind::Tool, name.to_string()),
     };
     call.tool = Some(name.to_string());
@@ -264,7 +267,7 @@ fn tool_call(item: &Value, at: u64, cwd: &str) -> SessionEvent {
 
 fn file_call(at: u64, kind: SessionEventKind, path: &str, cwd: &str) -> SessionEvent {
     let path = relative_to(path, cwd);
-    let mut call = event(at, kind, one_line(path));
+    let mut call = shortened(at, kind, path);
     call.target = Some(path.to_string());
     call
 }
@@ -277,7 +280,7 @@ fn relative_to<'a>(path: &'a str, cwd: &str) -> &'a str {
 }
 
 fn web_call(at: u64, url: &str) -> SessionEvent {
-    let mut call = event(at, SessionEventKind::Web, one_line(url));
+    let mut call = shortened(at, SessionEventKind::Web, url);
     call.domains = domains_of(urls_in(url));
     call
 }
@@ -466,6 +469,20 @@ mod tests {
     fn a_prompt_is_cut_to_one_line_of_at_most_200_characters() {
         let event = one(&[human(json!("あ".repeat(300)))]);
         assert_eq!(event.text.chars().count(), 200);
+        assert_eq!(event.full_text, Some("あ".repeat(300)));
+    }
+
+    #[test]
+    fn a_multi_line_command_keeps_its_whole_text_for_copying() {
+        let event = call("Bash", json!({"command": "\ncat <<'EOF'\nhello\nEOF\n"}));
+        assert_eq!(event.text, "cat <<'EOF'");
+        assert_eq!(event.full_text.as_deref(), Some("cat <<'EOF'\nhello\nEOF"));
+    }
+
+    #[test]
+    fn a_text_shown_whole_carries_no_second_copy() {
+        assert_eq!(call("Bash", json!({"command": "pnpm test"})).full_text, None);
+        assert_eq!(one(&[human(json!("fix the build"))]).full_text, None);
     }
 
     #[test]
