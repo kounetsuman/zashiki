@@ -4,7 +4,7 @@ import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppStore } from "../state/app-store.js";
-import { PINNED_SESSIONS_KEY } from "../tabs/pinned-sessions.js";
+import { PINNED_COCKPIT_TERMINALS_KEY } from "../tabs/pinned-cockpit-terminals.js";
 import { MEMO_TAB_KEY } from "../tabs/tab-model.js";
 import { useAppTabs } from "./useAppTabs.js";
 
@@ -94,13 +94,13 @@ describe("useAppTabs pinned terminals", () => {
   function memoryStorage(pinned?: string[]) {
     const data = new Map<string, string>();
     if (pinned !== undefined)
-      data.set(PINNED_SESSIONS_KEY, JSON.stringify(pinned));
+      data.set(PINNED_COCKPIT_TERMINALS_KEY, JSON.stringify(pinned));
     return {
       getItem: (k: string) => data.get(k) ?? null,
       setItem: (k: string, v: string) => {
         data.set(k, v);
       },
-      pinned: () => JSON.parse(data.get(PINNED_SESSIONS_KEY) ?? "[]"),
+      pinned: () => JSON.parse(data.get(PINNED_COCKPIT_TERMINALS_KEY) ?? "[]"),
     };
   }
 

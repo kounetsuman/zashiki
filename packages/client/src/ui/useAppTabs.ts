@@ -2,15 +2,15 @@ import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppStore } from "../state/app-store.js";
 import {
-  forgetEndedSessions,
-  forgetPinnedSession,
-  loadPinnedSessions,
-  orderPinnedSessions,
-  rememberPinnedSession,
-  restorePinnedSessions,
-  savePinnedSessions,
-  sessionIdOfKey,
-} from "../tabs/pinned-sessions.js";
+  cockpitTerminalIdOfKey,
+  forgetEndedCockpitTerminals,
+  forgetPinnedCockpitTerminal,
+  loadPinnedCockpitTerminals,
+  orderPinnedCockpitTerminals,
+  rememberPinnedCockpitTerminal,
+  restorePinnedCockpitTerminals,
+  savePinnedCockpitTerminals,
+} from "../tabs/pinned-cockpit-terminals.js";
 import {
   activateTab,
   activeSessionId,
@@ -62,8 +62,8 @@ export function useAppTabs(
   storage: Pick<Storage, "getItem" | "setItem"> | null = null,
 ): AppTabs {
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
-  const [pinnedSessions, setPinnedSessions] = useState(() =>
-    loadPinnedSessions(storage),
+  const [pinnedCockpitTerminals, setPinnedCockpitTerminals] = useState(() =>
+    loadPinnedCockpitTerminals(storage),
   );
   const activeSess = activeSessionId(tabsState);
   const active = activeTab(tabsState);
@@ -110,21 +110,30 @@ export function useAppTabs(
     const liveIds = new Set(cockpitTerminals.map((s) => s.cockpitTerminalId));
     if (!pinsReconciledRef.current) {
       pinsReconciledRef.current = true;
-      setPinnedSessions((prev) => forgetEndedSessions(prev, liveIds));
+      setPinnedCockpitTerminals((prev) =>
+        forgetEndedCockpitTerminals(prev, liveIds),
+      );
     }
     const activate = bootstrappedRef.current;
     setTabsState((prev) =>
-      restorePinnedSessions(prev, pinnedSessions, liveIds, activate),
+      restorePinnedCockpitTerminals(
+        prev,
+        pinnedCockpitTerminals,
+        liveIds,
+        activate,
+      ),
     );
-  }, [cockpitTerminals, pinnedSessions]);
+  }, [cockpitTerminals, pinnedCockpitTerminals]);
 
   useEffect(() => {
-    setPinnedSessions((prev) => orderPinnedSessions(prev, tabsState));
+    setPinnedCockpitTerminals((prev) =>
+      orderPinnedCockpitTerminals(prev, tabsState),
+    );
   }, [tabsState]);
 
   useEffect(() => {
-    savePinnedSessions(storage, pinnedSessions);
-  }, [storage, pinnedSessions]);
+    savePinnedCockpitTerminals(storage, pinnedCockpitTerminals);
+  }, [storage, pinnedCockpitTerminals]);
 
   useEffect(() => {
     if (bootstrappedRef.current) return;
@@ -169,15 +178,20 @@ export function useAppTabs(
 
   const pinTabByKey = useCallback((key: string): void => {
     setTabsState((prev) => pinTab(prev, key));
-    const id = sessionIdOfKey(key);
+    const id = cockpitTerminalIdOfKey(key);
     if (id !== null)
-      setPinnedSessions((prev) => rememberPinnedSession(prev, id));
+      setPinnedCockpitTerminals((prev) =>
+        rememberPinnedCockpitTerminal(prev, id),
+      );
   }, []);
 
   const unpinTabByKey = useCallback((key: string): void => {
     setTabsState((prev) => unpinTab(prev, key));
-    const id = sessionIdOfKey(key);
-    if (id !== null) setPinnedSessions((prev) => forgetPinnedSession(prev, id));
+    const id = cockpitTerminalIdOfKey(key);
+    if (id !== null)
+      setPinnedCockpitTerminals((prev) =>
+        forgetPinnedCockpitTerminal(prev, id),
+      );
   }, []);
 
   const openViewerTab = useCallback((key: string): void => {

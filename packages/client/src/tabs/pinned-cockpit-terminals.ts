@@ -3,22 +3,22 @@ import { isPinned, keyFor, type TabsState, tabKey } from "./tab-model.js";
 type StoragePart = Pick<Storage, "getItem" | "setItem">;
 
 /** localStorage key for the cockpitTerminalIds of pinned Cockpit Terminal tabs (JSON array, pin order). */
-export const PINNED_SESSIONS_KEY = "zk.tabs.pinnedSessions";
+export const PINNED_COCKPIT_TERMINALS_KEY = "zk.tabs.pinnedCockpitTerminals";
 
-const SESSION_KEY_PREFIX = keyFor("session", "");
+const COCKPIT_TERMINAL_KEY_PREFIX = keyFor("session", "");
 
 /** The cockpitTerminalId of a session tab key, or null for any other kind. */
-export function sessionIdOfKey(key: string): string | null {
-  return key.startsWith(SESSION_KEY_PREFIX)
-    ? key.slice(SESSION_KEY_PREFIX.length)
+export function cockpitTerminalIdOfKey(key: string): string | null {
+  return key.startsWith(COCKPIT_TERMINAL_KEY_PREFIX)
+    ? key.slice(COCKPIT_TERMINAL_KEY_PREFIX.length)
     : null;
 }
 
-export function loadPinnedSessions(
+export function loadPinnedCockpitTerminals(
   storage: StoragePart | null,
 ): readonly string[] {
   try {
-    const raw = storage?.getItem(PINNED_SESSIONS_KEY);
+    const raw = storage?.getItem(PINNED_COCKPIT_TERMINALS_KEY);
     if (raw === null || raw === undefined) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -32,25 +32,25 @@ export function loadPinnedSessions(
   }
 }
 
-export function savePinnedSessions(
+export function savePinnedCockpitTerminals(
   storage: StoragePart | null,
   ids: readonly string[],
 ): void {
   try {
-    storage?.setItem(PINNED_SESSIONS_KEY, JSON.stringify(ids));
+    storage?.setItem(PINNED_COCKPIT_TERMINALS_KEY, JSON.stringify(ids));
   } catch {
     // ignore (private mode / quota); the pins still hold for this run.
   }
 }
 
-export function rememberPinnedSession(
+export function rememberPinnedCockpitTerminal(
   ids: readonly string[],
   id: string,
 ): readonly string[] {
   return ids.includes(id) ? ids : [...ids, id];
 }
 
-export function forgetPinnedSession(
+export function forgetPinnedCockpitTerminal(
   ids: readonly string[],
   id: string,
 ): readonly string[] {
@@ -58,7 +58,7 @@ export function forgetPinnedSession(
 }
 
 /** Keeps only the ids of live terminals; returns the same array when all are live. */
-export function forgetEndedSessions(
+export function forgetEndedCockpitTerminals(
   ids: readonly string[],
   liveIds: ReadonlySet<string>,
 ): readonly string[] {
@@ -70,7 +70,7 @@ export function forgetEndedSessions(
  * Follows the order the user arranged the open pinned terminal tabs in, while a terminal without an
  * open tab keeps its slot so it returns to the same place. Returns the same array when unchanged.
  */
-export function orderPinnedSessions(
+export function orderPinnedCockpitTerminals(
   ids: readonly string[],
   state: TabsState,
 ): readonly string[] {
@@ -96,7 +96,7 @@ export function orderPinnedSessions(
  * group in remembered order, and an open but unpinned one is pinned. A reopened tab becomes active
  * only when `activate` is set and nothing is active. Returns the same state when nothing changes.
  */
-export function restorePinnedSessions(
+export function restorePinnedCockpitTerminals(
   state: TabsState,
   ids: readonly string[],
   liveIds: ReadonlySet<string>,
