@@ -596,7 +596,7 @@ export function App({
       relPath: string,
       line?: number | null,
       encoding?: TextEncoding,
-    ): void => {
+    ): string => {
       const kind = mediaKind(relPath);
       const key =
         kind !== null
@@ -612,6 +612,7 @@ export function App({
           nonce: (prev?.nonce ?? 0) + 1,
         }));
       }
+      return key;
     },
     [openViewerTab, ensureBuffer, ensureMediaBuffer, showViewerText],
   );
@@ -843,10 +844,14 @@ export function App({
       if (affected.length === 0) return;
       const previousActiveKey = tabsState.activeKey;
       const activeAffected = affected.find((a) => a.key === activeViewerKey);
+      const viewerTabKey = (id: string): string =>
+        tabKey({ kind: "viewer", id });
       const reopen = (a: RenamedViewer): void => {
         const old = viewerBuffers[a.key];
         const encoding = old === undefined ? undefined : encodingOf(old);
-        openViewer(repoPath, a.newRelPath, null, encoding);
+        const wasPinned = isPinned(tabsState, viewerTabKey(a.key));
+        const key = openViewer(repoPath, a.newRelPath, null, encoding);
+        if (wasPinned) pinTabByKey(viewerTabKey(key));
       };
       for (const a of affected) closeViewerTabByBufferKey(a.key);
       for (const a of affected) {
@@ -860,11 +865,12 @@ export function App({
     },
     [
       viewerBuffers,
-      tabsState.activeKey,
+      tabsState,
       activeViewerKey,
       closeViewerTabByBufferKey,
       openViewer,
       activateTabByKey,
+      pinTabByKey,
     ],
   );
 
