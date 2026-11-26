@@ -900,6 +900,7 @@ describe("cockpit terminal REST responses", () => {
           at: 3,
           kind: "command",
           text: "sleep 99",
+          fullText: "sleep 99 &&\n  echo done",
           tool: "Bash",
           target: "sleep",
           outcome: "interrupted",

@@ -802,6 +802,9 @@ pub struct SessionEvent {
     pub kind: SessionEventKind,
     /// One line: the prompt, path, command, URL, query, description, skill or tool name.
     pub text: String,
+    /// The whole text, sent only when `text` had to be cut to one line.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub full_text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool: Option<String>,
     /// The key a Summary row groups by: the file path for read/edit, the command group for a command.

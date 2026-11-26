@@ -999,6 +999,8 @@ export const sessionEventSchema = z.object({
   at: z.number(),
   kind: sessionEventKindSchema.catch("tool"),
   text: z.string(),
+  /** The whole text, sent only when `text` had to be cut to one line. */
+  fullText: z.string().optional(),
   tool: z.string().optional(),
   /** The Summary row key: the file path for read/edit, the command group for a command. */
   target: z.string().optional(),
