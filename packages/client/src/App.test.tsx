@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import {
@@ -2170,5 +2171,68 @@ describe("App pop-out windows", () => {
     const before = [...selected];
     closeWindow("@7");
     expect(selected).toEqual(before);
+  });
+});
+
+describe("App pinned viewer tab across a rename", () => {
+  const REPO = "/ws/org1/repo-a";
+
+  function explorerRow(name: string): HTMLElement {
+    const row = screen
+      .getAllByText(name)
+      .find((el) => el.closest('[role="tab"]') === null);
+    if (row === undefined) throw new Error(`no explorer row ${name}`);
+    return row;
+  }
+
+  it("keeps the tab pinned after its file is renamed from the explorer", async () => {
+    const control = createFakeAppControl();
+    const { session } = fakeAppSession();
+    const fsApi: FsApi = {
+      ...fakeFsApi,
+      repos: () =>
+        Promise.resolve({
+          repos: [{ org: "org1", repo: "repo-a", path: REPO }],
+        }),
+      list: () =>
+        Promise.resolve({
+          entries: [{ name: "app.ts", kind: "file" }],
+          truncated: false,
+        }),
+    };
+    render(
+      <App
+        control={control}
+        session={session}
+        gitApi={fakeGitApi}
+        fsApi={fsApi}
+        searchApi={fakeSearchApi}
+        filesApi={fakeFilesApi}
+        filesListApi={fakeFilesListApi}
+        reposApi={fakeReposApi}
+      />,
+    );
+    await waitFor(() => screen.getByText("repo-a"));
+    await act(async () => fireEvent.click(screen.getByText("repo-a")));
+    await waitFor(() => screen.getByText("app.ts"));
+    await act(async () => fireEvent.click(explorerRow("app.ts")));
+
+    fireEvent.contextMenu(screen.getByRole("tab", { name: /app\.ts/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "ピン留め" }));
+
+    await act(async () => fireEvent.contextMenu(explorerRow("app.ts")));
+    await act(async () =>
+      fireEvent.click(screen.getByRole("menuitem", { name: "名前を変更" })),
+    );
+    const input = screen.getByLabelText("名前を変更") as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "main.ts" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    const renamed = await waitFor(() =>
+      screen.getByRole("tab", { name: /main\.ts/ }),
+    );
+    expect(renamed.closest(".tab-strip-pinned")).not.toBeNull();
   });
 });

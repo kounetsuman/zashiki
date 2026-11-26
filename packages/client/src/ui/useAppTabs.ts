@@ -2,6 +2,16 @@ import type { CockpitTerminalInfo } from "@zashiki/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppStore } from "../state/app-store.js";
 import {
+  cockpitTerminalIdOfKey,
+  forgetEndedCockpitTerminals,
+  forgetPinnedCockpitTerminal,
+  loadPinnedCockpitTerminals,
+  orderPinnedCockpitTerminals,
+  rememberPinnedCockpitTerminal,
+  restorePinnedCockpitTerminals,
+  savePinnedCockpitTerminals,
+} from "../tabs/pinned-cockpit-terminals.js";
+import {
   activateTab,
   activeSessionId,
   activeTab,
@@ -49,8 +59,12 @@ export function useAppTabs(
   cockpitTerminals: readonly CockpitTerminalInfo[],
   selectedCockpitTerminalId: string | null,
   memoEnabled: boolean,
+  storage: Pick<Storage, "getItem" | "setItem"> | null = null,
 ): AppTabs {
   const [tabsState, setTabsState] = useState(EMPTY_TABS);
+  const [pinnedCockpitTerminals, setPinnedCockpitTerminals] = useState(() =>
+    loadPinnedCockpitTerminals(storage),
+  );
   const activeSess = activeSessionId(tabsState);
   const active = activeTab(tabsState);
   const activeViewerKey = active?.kind === "viewer" ? active.id : null;
@@ -89,6 +103,38 @@ export function useAppTabs(
   }, [cockpitTerminals]);
 
   const bootstrappedRef = useRef(false);
+  const pinsReconciledRef = useRef(false);
+  // Runs before the bootstrap below so that at startup the bootstrap still picks the active tab.
+  useEffect(() => {
+    if (cockpitTerminals.length === 0) return;
+    const liveIds = new Set(cockpitTerminals.map((s) => s.cockpitTerminalId));
+    if (!pinsReconciledRef.current) {
+      pinsReconciledRef.current = true;
+      setPinnedCockpitTerminals((prev) =>
+        forgetEndedCockpitTerminals(prev, liveIds),
+      );
+    }
+    const activate = bootstrappedRef.current;
+    setTabsState((prev) =>
+      restorePinnedCockpitTerminals(
+        prev,
+        pinnedCockpitTerminals,
+        liveIds,
+        activate,
+      ),
+    );
+  }, [cockpitTerminals, pinnedCockpitTerminals]);
+
+  useEffect(() => {
+    setPinnedCockpitTerminals((prev) =>
+      orderPinnedCockpitTerminals(prev, tabsState),
+    );
+  }, [tabsState]);
+
+  useEffect(() => {
+    savePinnedCockpitTerminals(storage, pinnedCockpitTerminals);
+  }, [storage, pinnedCockpitTerminals]);
+
   useEffect(() => {
     if (bootstrappedRef.current) return;
     // A file handed over at launch can open before the terminal list arrives; it keeps the front.
@@ -132,10 +178,20 @@ export function useAppTabs(
 
   const pinTabByKey = useCallback((key: string): void => {
     setTabsState((prev) => pinTab(prev, key));
+    const id = cockpitTerminalIdOfKey(key);
+    if (id !== null)
+      setPinnedCockpitTerminals((prev) =>
+        rememberPinnedCockpitTerminal(prev, id),
+      );
   }, []);
 
   const unpinTabByKey = useCallback((key: string): void => {
     setTabsState((prev) => unpinTab(prev, key));
+    const id = cockpitTerminalIdOfKey(key);
+    if (id !== null)
+      setPinnedCockpitTerminals((prev) =>
+        forgetPinnedCockpitTerminal(prev, id),
+      );
   }, []);
 
   const openViewerTab = useCallback((key: string): void => {
