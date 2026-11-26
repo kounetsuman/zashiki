@@ -11,9 +11,12 @@ mod opened_files;
 mod pages;
 mod popout;
 mod quit_log;
+mod quit_source;
 #[cfg(target_os = "macos")]
 mod share;
 mod sidecar;
+#[cfg(target_os = "macos")]
+mod terminate_guard;
 #[cfg(target_os = "macos")]
 mod wake;
 
@@ -312,6 +315,8 @@ fn main() {
     // The quit sequence runs off the main thread and its trace is the only record of why a quit did
     // not happen; a panic there must not end that trace in silence.
     quit_log::install_panic_logger();
+    // Paired with the clean-exit line: a start with no clean exit before it means the last run crashed.
+    quit_log::log(&format!("started (pid {})", std::process::id()));
     let cfg = Config::from_env();
     let base = base_url(&cfg);
     // The Child of the spawned server (None when riding along with an existing one).
@@ -330,6 +335,12 @@ fn main() {
     let win_quitting = Arc::clone(&quitting);
     let win_deciding = Arc::clone(&deciding);
     let win_token = quit_token_path.clone();
+    #[cfg(target_os = "macos")]
+    let (term_quitting, term_deciding, term_token) = (
+        Arc::clone(&quitting),
+        Arc::clone(&deciding),
+        quit_token_path.clone(),
+    );
 
     let owned_in_setup = Arc::clone(&owned_server);
     let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
@@ -378,7 +389,7 @@ fn main() {
                     Arc::clone(&win_deciding),
                     quit_port,
                     win_token.clone(),
-                    "window close button",
+                    "window close button".to_string(),
                 );
             }
         })
@@ -427,7 +438,9 @@ fn main() {
                 Err(e) => {
                     // In an environment where the window itself can't be created, there's no surface to show the user.
                     // Log to stderr and exit gracefully (child cleanup happens via the Exit event).
-                    eprintln!("zashiki: ウィンドウの生成に失敗しました: {e}");
+                    quit_log::log(&format!(
+                        "exiting: the main window could not be created: {e}"
+                    ));
                     app.handle().exit(1);
                     return Ok(());
                 }
@@ -435,6 +448,14 @@ fn main() {
 
             #[cfg(target_os = "macos")]
             wake::forward_system_wake(app.handle().clone());
+            #[cfg(target_os = "macos")]
+            guard_system_quits(
+                app.handle().clone(),
+                term_quitting,
+                term_deciding,
+                quit_port,
+                term_token,
+            );
 
             // setup is FnOnce, so cfg/base can be moved in directly.
             // The real bundle version lives in the shell (tauri.conf.json, injected at release), not the
@@ -490,9 +511,16 @@ fn main() {
         let handle = app.handle().clone();
         std::thread::spawn(move || {
             use signal_hook::consts::{SIGINT, SIGTERM};
-            if let Ok(mut signals) = signal_hook::iterator::Signals::new([SIGINT, SIGTERM]) {
-                if signals.forever().next().is_some() {
-                    eprintln!("zashiki: シグナル受信 → sidecar を掃除して終了します");
+            use signal_hook::iterator::{exfiltrator::WithOrigin, SignalsInfo};
+            if let Ok(mut signals) = SignalsInfo::<WithOrigin>::new([SIGINT, SIGTERM]) {
+                if let Some(origin) = signals.forever().next() {
+                    quit_log::log(&format!(
+                        "exiting on {}",
+                        quit_source::describe_signal(
+                            signal_name(origin.signal),
+                            origin.process.map(signal_sender).as_ref()
+                        )
+                    ));
                     shutdown_owned(&owned_on_signal);
                     handle.exit(0);
                 }
@@ -505,11 +533,15 @@ fn main() {
     let run_deciding = Arc::clone(&deciding);
     let run_token = quit_token_path.clone();
     app.run(move |app_handle, event| match event {
-        // User quit gestures (Cmd+Q / menu / `osascript ... to quit`) arrive with code=None;
-        // programmatic exits carry Some(code) and pass straight through. `quitting` guards against
-        // re-entering on our own exit. The window close button is handled by on_window_event.
+        // On macOS ⌘Q, the menu, Dock and Apple Event quits are taken by `terminate_guard` and the
+        // close button by on_window_event; what reaches here is Tauri's own request, without a code
+        // when no window is left and with one for a programmatic exit, which passes straight through.
         tauri::RunEvent::ExitRequested { api, code, .. } => {
-            if code.is_some() || run_quitting.load(Ordering::SeqCst) {
+            if run_quitting.load(Ordering::SeqCst) {
+                return;
+            }
+            if let Some(code) = code {
+                quit_log::log(&format!("exiting: exit requested with code {code}"));
                 return;
             }
             api.prevent_exit();
@@ -519,10 +551,13 @@ fn main() {
                 Arc::clone(&run_deciding),
                 quit_port,
                 run_token.clone(),
-                "app quit",
+                "Tauri exit request with no exit code".to_string(),
             );
         }
-        tauri::RunEvent::Exit => shutdown_owned(&owned_on_exit),
+        tauri::RunEvent::Exit => {
+            shutdown_owned(&owned_on_exit);
+            quit_log::log("exited cleanly");
+        }
         #[cfg(target_os = "macos")]
         tauri::RunEvent::Opened { urls } => receive_opened_files(app_handle, &urls),
         _ => {}
@@ -560,17 +595,79 @@ fn grant_app_commands(app: &tauri::App, base: &str) {
     }
 }
 
-/// What to do about a quit request, given the server's activity (`None` = server unreachable / token
-/// unreadable). Pure so the branch matrix is unit-testable without Tauri.
-enum QuitDecision {
-    Proceed,
-    Confirm(String),
+/// The confirmation every quit asks for, worded by the server's activity (`None` = server
+/// unreachable / token unreadable).
+#[derive(Debug, PartialEq, Eq)]
+struct QuitPrompt {
+    message: String,
+    confirm_label: &'static str,
 }
 
-fn quit_decision(activity: Option<sidecar::Activity>) -> QuitDecision {
+fn quit_prompt(activity: Option<sidecar::Activity>) -> QuitPrompt {
     match activity {
-        Some(a) if a.is_busy() => QuitDecision::Confirm(a.summary()),
-        _ => QuitDecision::Proceed,
+        Some(a) if a.is_busy() => QuitPrompt {
+            message: format!("{}.\n\nQuitting will stop them.", a.summary()),
+            confirm_label: "Quit anyway",
+        },
+        _ => QuitPrompt {
+            message: "Every Cockpit Terminal will close.".to_string(),
+            confirm_label: "Quit",
+        },
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn guard_system_quits(
+    app: tauri::AppHandle,
+    quitting: Arc<AtomicBool>,
+    deciding: Arc<AtomicBool>,
+    port: u16,
+    token_path: PathBuf,
+) {
+    let Some(mtm) = objc2::MainThreadMarker::new() else {
+        quit_log::log("not on the main thread; ⌘Q and system quits stay unguarded");
+        return;
+    };
+    let installed = terminate_guard::install(
+        mtm,
+        Box::new(move |source| {
+            if quitting.load(Ordering::SeqCst) {
+                return true;
+            }
+            request_guarded_quit(
+                app.clone(),
+                Arc::clone(&quitting),
+                Arc::clone(&deciding),
+                port,
+                token_path.clone(),
+                source,
+            );
+            false
+        }),
+    );
+    if let Err(e) = installed {
+        quit_log::log(&format!("⌘Q and system quits stay unguarded: {e}"));
+    }
+}
+
+#[cfg(unix)]
+fn signal_name(signal: i32) -> &'static str {
+    match signal {
+        signal_hook::consts::SIGTERM => "SIGTERM",
+        signal_hook::consts::SIGINT => "SIGINT",
+        _ => "a signal",
+    }
+}
+
+#[cfg(unix)]
+fn signal_sender(process: signal_hook::low_level::siginfo::Process) -> quit_source::Sender {
+    #[cfg(target_os = "macos")]
+    let name = terminate_guard::process_name(process.pid);
+    #[cfg(not(target_os = "macos"))]
+    let name = None;
+    quit_source::Sender {
+        pid: process.pid,
+        name,
     }
 }
 
@@ -587,7 +684,7 @@ fn request_guarded_quit(
     deciding: Arc<AtomicBool>,
     port: u16,
     token_path: PathBuf,
-    source: &'static str,
+    source: String,
 ) {
     if deciding.swap(true, Ordering::SeqCst) {
         quit_log::log(&format!(
@@ -622,19 +719,18 @@ fn request_guarded_quit(
         let activity = sidecar::read_token(&token_path)
             .ok()
             .and_then(|token| sidecar::fetch_activity(port, &token));
-        let proceed = match quit_decision(activity) {
-            QuitDecision::Proceed => true,
-            QuitDecision::Confirm(summary) => {
-                quit_log::log(&format!("still busy: {summary}; asking to confirm"));
-                confirm_quit(&app, &summary)
+        match &activity {
+            Some(a) if a.is_busy() => {
+                quit_log::log(&format!("still busy: {}; asking to confirm", a.summary()))
             }
-        };
-        if proceed {
-            quit_log::log("quitting");
+            _ => quit_log::log("asking to confirm"),
+        }
+        if confirm_quit(&app, &quit_prompt(activity)) {
+            quit_log::log(&format!("quitting ({source})"));
             quitting.store(true, Ordering::SeqCst);
             app.exit(0);
         } else {
-            quit_log::log("quit cancelled at the still-running dialog");
+            quit_log::log("quit cancelled at the quit dialog");
         }
     });
 }
@@ -886,14 +982,14 @@ impl Drop for ClearOnDrop {
     }
 }
 
-fn confirm_quit(app: &tauri::AppHandle, summary: &str) -> bool {
+fn confirm_quit(app: &tauri::AppHandle, prompt: &QuitPrompt) -> bool {
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
     app.dialog()
-        .message(format!("{summary}.\n\nQuitting will stop them."))
+        .message(prompt.message.clone())
         .title("Quit Zashiki?")
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom(
-            "Quit anyway".to_string(),
+            prompt.confirm_label.to_string(),
             "Cancel".to_string(),
         ))
         .blocking_show()
@@ -906,34 +1002,44 @@ mod tests {
     use super::*;
     use sidecar::Activity;
 
-    #[test]
-    fn quit_decision_proceeds_when_server_unreachable() {
-        assert!(matches!(quit_decision(None), QuitDecision::Proceed));
+    fn generic_prompt() -> QuitPrompt {
+        QuitPrompt {
+            message: "Every Cockpit Terminal will close.".to_string(),
+            confirm_label: "Quit",
+        }
     }
 
     #[test]
-    fn quit_decision_proceeds_when_nothing_running() {
+    fn quit_prompt_still_asks_when_server_unreachable() {
+        assert_eq!(quit_prompt(None), generic_prompt());
+    }
+
+    #[test]
+    fn quit_prompt_still_asks_when_nothing_running() {
         let idle = Activity {
             active_sessions: 0,
             running_subagents: 0,
             background_shells: 0,
         };
-        assert!(matches!(quit_decision(Some(idle)), QuitDecision::Proceed));
+        assert_eq!(quit_prompt(Some(idle)), generic_prompt());
     }
 
     #[test]
-    fn quit_decision_confirms_with_summary_when_busy() {
+    fn quit_prompt_names_what_is_running_when_busy() {
         let busy = Activity {
             active_sessions: 2,
             running_subagents: 0,
             background_shells: 1,
         };
-        match quit_decision(Some(busy)) {
-            QuitDecision::Confirm(summary) => {
-                assert_eq!(summary, "2 sessions, 1 background shell still running");
+        assert_eq!(
+            quit_prompt(Some(busy)),
+            QuitPrompt {
+                message:
+                    "2 sessions, 1 background shell still running.\n\nQuitting will stop them."
+                        .to_string(),
+                confirm_label: "Quit anyway",
             }
-            QuitDecision::Proceed => panic!("busy activity should confirm"),
-        }
+        );
     }
 
     #[test]
