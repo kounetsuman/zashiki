@@ -67,8 +67,8 @@ export function forgetEndedSessions(
 }
 
 /**
- * Follows the order the user arranged the open pinned terminal tabs in; terminals without an open
- * tab keep their place after them. Returns the same array when the order is unchanged.
+ * Follows the order the user arranged the open pinned terminal tabs in, while a terminal without an
+ * open tab keeps its slot so it returns to the same place. Returns the same array when unchanged.
  */
 export function orderPinnedSessions(
   ids: readonly string[],
@@ -84,7 +84,10 @@ export function orderPinnedSessions(
     )
     .map((t) => t.id);
   const openSet = new Set(open);
-  const next = [...open, ...ids.filter((id) => !openSet.has(id))];
+  let nextOpen = 0;
+  const next = ids.map((id) =>
+    openSet.has(id) ? (open[nextOpen++] as string) : id,
+  );
   return next.every((id, i) => id === ids[i]) ? ids : next;
 }
 

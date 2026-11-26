@@ -183,6 +183,26 @@ describe("useAppTabs pinned terminals", () => {
     expect(storage.pinned()).toEqual(["b"]);
   });
 
+  it("returns a dropped terminal to its place among several pinned ones", () => {
+    const storage = memoryStorage(["a", "b", "c"]);
+    const { result, rerender } = mount(storage);
+    const all = [terminal("a", true), terminal("b"), terminal("c")];
+    act(() => rerender({ terminals: all, selected: "a" }));
+    act(() =>
+      rerender({
+        terminals: [terminal("a", true), terminal("c")],
+        selected: "a",
+      }),
+    );
+    expect(storage.pinned()).toEqual(["a", "b", "c"]);
+    act(() => rerender({ terminals: all, selected: "a" }));
+    expect(result.current.tabsState.tabs.map((t) => t.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
   it("persists the order of dragged pinned terminal tabs", () => {
     const storage = memoryStorage();
     const { result, rerender } = mount(storage);

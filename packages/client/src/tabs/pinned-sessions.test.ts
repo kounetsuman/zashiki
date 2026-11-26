@@ -102,12 +102,20 @@ describe("remember / forget", () => {
 });
 
 describe("orderPinnedSessions", () => {
-  it("follows the order of the open pinned tabs and keeps closed ones after them", () => {
+  it("follows the order of the open pinned tabs", () => {
     const st = state([s("c"), s("a"), s("x")], null, [
       "session:c",
       "session:a",
     ]);
-    expect(orderPinnedSessions(["a", "b", "c"], st)).toEqual(["c", "a", "b"]);
+    expect(orderPinnedSessions(["a", "c"], st)).toEqual(["c", "a"]);
+  });
+
+  it("keeps the slot of a terminal whose tab is not open", () => {
+    const ids = ["a", "b", "c"];
+    const st = state([s("a"), s("c")], null, ["session:a", "session:c"]);
+    expect(orderPinnedSessions(ids, st)).toBe(ids);
+    const swapped = state([s("c"), s("a")], null, ["session:c", "session:a"]);
+    expect(orderPinnedSessions(ids, swapped)).toEqual(["c", "b", "a"]);
   });
 
   it("returns the same array when the order already matches", () => {
