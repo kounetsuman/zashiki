@@ -96,12 +96,20 @@ installs no menu, and the shell adds none, so nothing intercepts the keystroke i
 
 ## Quit log (`shell.log`)
 
-Quitting is guarded: the shell asks the window whether the Memo has unsaved edits and, if
-so, offers Save / Don't Save / Cancel, then asks again if any session is still running.
-None of that appears in the UI when it goes wrong — a quit that refuses to happen just
-looks like a dead close button — so every branch of the sequence, panics included, appends
-to `~/Library/Logs/zashiki/shell.log`. It sits beside the server's `server.log` and uses
-the same UTC timestamps, so the two can be read side by side. `ZK_SHELL_LOG` redirects it.
+Quitting is guarded: every quit — ⌘Q, the Quit menu item, Dock "Quit", a quit Apple Event
+(including log out / restart / shut down) and the window close button — first asks the window
+whether the Memo has unsaved edits and, if so, offers Save / Don't Save / Cancel, then always
+asks "Quit Zashiki?", naming whatever is still running. Only a confirmed quit, a SIGTERM /
+SIGINT, or a crash ends the app.
+
+None of that appears in the UI when it goes wrong — a quit that refuses to happen just looks
+like a dead close button — so every branch of the sequence, panics included, appends to
+`~/Library/Logs/zashiki/shell.log`, together with how each quit was requested (keyboard,
+mouse, the Apple Event's sender and reason, the close button, or the signal and its sender).
+Each run logs `started (pid …)` and, when it ends normally, `exited cleanly`; a `started`
+line with no `exited cleanly` before it means the previous run crashed or was killed. The
+log sits beside the server's `server.log` and uses the same UTC timestamps, so the two can be
+read side by side. `ZK_SHELL_LOG` redirects it.
 
 The shell's other progress output goes to stderr, which is visible under `tauri dev` but
 discarded when the `.app` is launched from Finder. The canonical spec is the `quit_log` and
