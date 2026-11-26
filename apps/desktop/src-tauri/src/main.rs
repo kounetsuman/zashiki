@@ -11,6 +11,7 @@ mod opened_files;
 mod pages;
 mod popout;
 mod quit_log;
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod quit_source;
 #[cfg(target_os = "macos")]
 mod share;
@@ -497,7 +498,7 @@ fn main() {
         Ok(app) => app,
         Err(e) => {
             shutdown_owned(&owned_server);
-            eprintln!("zashiki シェルの起動に失敗: {e}");
+            quit_log::log(&format!("exiting: the shell could not be built: {e}"));
             std::process::exit(1);
         }
     };
@@ -508,6 +509,7 @@ fn main() {
     #[cfg(unix)]
     {
         let owned_on_signal = Arc::clone(&owned_server);
+        let signal_quitting = Arc::clone(&quitting);
         let handle = app.handle().clone();
         std::thread::spawn(move || {
             use signal_hook::consts::{SIGINT, SIGTERM};
@@ -521,6 +523,7 @@ fn main() {
                             origin.process.map(signal_sender).as_ref()
                         )
                     ));
+                    signal_quitting.store(true, Ordering::SeqCst);
                     shutdown_owned(&owned_on_signal);
                     handle.exit(0);
                 }
@@ -537,11 +540,7 @@ fn main() {
         // close button by on_window_event; what reaches here is Tauri's own request, without a code
         // when no window is left and with one for a programmatic exit, which passes straight through.
         tauri::RunEvent::ExitRequested { api, code, .. } => {
-            if run_quitting.load(Ordering::SeqCst) {
-                return;
-            }
-            if let Some(code) = code {
-                quit_log::log(&format!("exiting: exit requested with code {code}"));
+            if code.is_some() || run_quitting.load(Ordering::SeqCst) {
                 return;
             }
             api.prevent_exit();
@@ -719,13 +718,12 @@ fn request_guarded_quit(
         let activity = sidecar::read_token(&token_path)
             .ok()
             .and_then(|token| sidecar::fetch_activity(port, &token));
-        match &activity {
-            Some(a) if a.is_busy() => {
-                quit_log::log(&format!("still busy: {}; asking to confirm", a.summary()))
-            }
-            _ => quit_log::log("asking to confirm"),
-        }
-        if confirm_quit(&app, &quit_prompt(activity)) {
+        let prompt = quit_prompt(activity);
+        quit_log::log(&format!(
+            "asking to confirm: {}",
+            prompt.message.replace("\n\n", " ")
+        ));
+        if confirm_quit(&app, &prompt) {
             quit_log::log(&format!("quitting ({source})"));
             quitting.store(true, Ordering::SeqCst);
             app.exit(0);

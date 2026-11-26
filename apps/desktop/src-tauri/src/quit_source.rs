@@ -43,8 +43,8 @@ pub fn describe_terminate(apple_event: Option<&AppleEventQuit>, input: Input) ->
         };
     }
     match input {
-        Input::KeyDown => "keyboard shortcut for the Quit menu item (⌘Q)".to_string(),
-        Input::MouseClick => "Quit menu item clicked".to_string(),
+        Input::KeyDown => "Quit menu item chosen with the keyboard (⌘Q unless the menu was opened from the keyboard)".to_string(),
+        Input::MouseClick => "Quit menu item chosen with the mouse".to_string(),
         Input::Other(kind) => format!("terminate request during input event type {kind}"),
         Input::Unknown => "terminate request with no input or Apple Event".to_string(),
     }
@@ -89,11 +89,11 @@ mod tests {
     fn keyboard_and_mouse_quits_name_the_menu_item() {
         assert_eq!(
             describe_terminate(None, Input::KeyDown),
-            "keyboard shortcut for the Quit menu item (⌘Q)"
+            "Quit menu item chosen with the keyboard (⌘Q unless the menu was opened from the keyboard)"
         );
         assert_eq!(
             describe_terminate(None, Input::MouseClick),
-            "Quit menu item clicked"
+            "Quit menu item chosen with the mouse"
         );
     }
 
