@@ -859,8 +859,24 @@ export type CockpitTerminalTailResponse = z.infer<
   typeof cockpitTerminalTailResponseSchema
 >;
 
-/** Which popover tab a session link belongs to: written in the conversation, or handed to a tool. */
-export const sessionLinkTabSchema = z.enum(["conversation", "ai_referenced"]);
+export const sessionEventDeniedBySchema = z.enum([
+  "user",
+  "hook",
+  "classifier",
+  "rule",
+]);
+
+export type SessionEventDeniedBy = z.infer<typeof sessionEventDeniedBySchema>;
+
+/**
+ * Which popover tab a session link belongs to: written in the conversation, handed to a tool, or a
+ * page a tool could not read.
+ */
+export const sessionLinkTabSchema = z.enum([
+  "conversation",
+  "ai_referenced",
+  "failed",
+]);
 
 export type SessionLinkTab = z.infer<typeof sessionLinkTabSchema>;
 
@@ -897,6 +913,8 @@ export const sessionLinkSchema = z.object({
   pageTitle: z.string().optional(),
   /** Present once the page's favicon is cached: the `origin` for `/api/session-links/favicon`. */
   faviconOrigin: z.string().optional(),
+  /** In the failed tab, who denied the access; absent when it was tried and failed. */
+  deniedBy: sessionEventDeniedBySchema.optional().catch(undefined),
 });
 
 export type SessionLink = z.infer<typeof sessionLinkSchema>;
@@ -972,15 +990,6 @@ export const sessionEventOutcomeSchema = z.enum([
 ]);
 
 export type SessionEventOutcome = z.infer<typeof sessionEventOutcomeSchema>;
-
-export const sessionEventDeniedBySchema = z.enum([
-  "user",
-  "hook",
-  "classifier",
-  "rule",
-]);
-
-export type SessionEventDeniedBy = z.infer<typeof sessionEventDeniedBySchema>;
 
 /**
  * One thing a Claude Session did. A kind this client does not know is shown as a plain tool call,

@@ -777,6 +777,13 @@ describe("cockpit terminal REST responses", () => {
           source: "WebSearch",
           title: "Rust Lang",
         },
+        {
+          url: "https://blocked.example/",
+          tab: "failed",
+          kind: "other",
+          source: "WebFetch",
+          deniedBy: "hook",
+        },
       ],
     };
     expect(sessionLinksResponseSchema.parse(body)).toEqual(body);

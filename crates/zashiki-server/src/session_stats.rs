@@ -162,7 +162,7 @@ fn one_line(text: &str) -> String {
         .collect()
 }
 
-fn outcome_of(
+pub(crate) fn outcome_of(
     entry: &Value,
     result: &Value,
 ) -> (SessionEventOutcome, Option<SessionEventDeniedBy>) {
@@ -242,8 +242,7 @@ fn tool_call(item: &Value, at: u64, cwd: &str) -> SessionEvent {
             (call.domains, call.via) = command_domains(command);
             call
         }
-        "WebFetch" => web_call(at, first(&["url"])),
-        _ if name.ends_with("browser_navigate") => web_call(at, first(&["url"])),
+        _ if reads_a_page(name) => web_call(at, first(&["url"])),
         "Grep" | "Glob" => event(
             at,
             SessionEventKind::Search,
@@ -274,6 +273,11 @@ fn relative_to<'a>(path: &'a str, cwd: &str) -> &'a str {
         .and_then(|rest| rest.strip_prefix('/'))
         .filter(|rest| !rest.is_empty())
         .unwrap_or(path)
+}
+
+/// The tools that fetch or open the page at their `url` input.
+pub(crate) fn reads_a_page(tool: &str) -> bool {
+    tool == "WebFetch" || tool.ends_with("browser_navigate")
 }
 
 fn web_call(at: u64, url: &str) -> SessionEvent {

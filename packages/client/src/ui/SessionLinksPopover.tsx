@@ -15,11 +15,16 @@ import {
 
 import "./SessionLinksPopover.css";
 
-const TABS: readonly SessionLinkTab[] = ["conversation", "ai_referenced"];
+const TABS: readonly SessionLinkTab[] = [
+  "conversation",
+  "ai_referenced",
+  "failed",
+];
 
 const TAB_LABEL_KEYS = {
   conversation: "footer.links.tabConversation",
   ai_referenced: "footer.links.tabAiReferenced",
+  failed: "footer.links.tabFailed",
 } as const;
 
 const FILTER_LABEL_KEYS = {
@@ -140,7 +145,13 @@ export function SessionLinksPopover({
       </div>
 
       {tabLinks.length === 0 ? (
-        <p className="sl-empty">{t("footer.links.empty")}</p>
+        <p className="sl-empty">
+          {t(
+            tab === "failed"
+              ? "footer.links.emptyFailed"
+              : "footer.links.empty",
+          )}
+        </p>
       ) : (
         <>
           <div className="sl-chips">
@@ -241,6 +252,13 @@ function LinkRow({
 
 function sourceLabel(link: SessionLink, t: (key: string) => string): string {
   if (link.tab === "ai_referenced") return link.source;
+  if (link.tab === "failed") {
+    const reason =
+      link.deniedBy === undefined
+        ? t("footer.links.failed")
+        : t(`sessionStats.deniedBy.${link.deniedBy}`);
+    return `${link.source} · ${reason}`;
+  }
   return link.source === "user"
     ? t("footer.links.sourceUser")
     : t("footer.links.sourceAssistant");
