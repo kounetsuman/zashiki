@@ -771,11 +771,16 @@ export function App({
     fileSizeLimits.maxBytes,
   );
 
-  // Files from Cmd+O and from macOS (open -a, Open With) open read-only in the viewer (external buffer).
+  // Files from Cmd+O and from macOS (open -a, Open With) open read-only in the viewer, media as media.
   const openPicked = useCallback(
     (picked: readonly PickedFile[]): void =>
-      openPickedFiles(picked, openExternalFile, toastUnreadableFile),
-    [openExternalFile, toastUnreadableFile],
+      openPickedFiles(
+        picked,
+        openExternalFile,
+        openExternalMediaFile,
+        toastUnreadableFile,
+      ),
+    [openExternalFile, openExternalMediaFile, toastUnreadableFile],
   );
   const toastOpenFailed = useCallback(
     (): void => flashCopyToast(t("openFile.failed")),

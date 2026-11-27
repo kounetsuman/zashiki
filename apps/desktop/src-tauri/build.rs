@@ -21,6 +21,7 @@ fn main() {
             "close_popout",
             "list_popouts",
             "take_opened_files",
+            "read_picked_media",
         ]),
     ))
     .expect("failed to run tauri-build");

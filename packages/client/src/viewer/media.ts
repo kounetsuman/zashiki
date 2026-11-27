@@ -31,6 +31,15 @@ const AUDIO_CONTENT_TYPES = new Map([
 
 const FONT_EXTENSIONS = new Set(["ttf", "otf", "woff", "woff2"]);
 
+/** Every extension {@link mediaKind} renders as media, for the desktop shell to hold such files as bytes. */
+export const MEDIA_EXTENSIONS: readonly string[] = [
+  ...IMAGE_EXTENSIONS,
+  ...VIDEO_EXTENSIONS,
+  ...AUDIO_CONTENT_TYPES.keys(),
+  ...FONT_EXTENSIONS,
+  "pdf",
+];
+
 function extensionOf(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot < 0 ? "" : name.slice(dot + 1).toLowerCase();

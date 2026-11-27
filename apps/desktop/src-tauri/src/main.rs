@@ -9,6 +9,7 @@ mod navigation;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod opened_files;
 mod pages;
+mod picked_media;
 mod popout;
 mod quit_log;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -172,16 +173,36 @@ fn list_popouts(app: tauri::AppHandle) -> Vec<String> {
     popout::open_ids(&app)
 }
 
-/// One file chosen via the native open dialog: its text, or the stable code ("tooLarge" /
-/// "readFailed") saying why it could not be read, so the UI can name it in a specific message.
+/// One file chosen via the native open dialog: its text, the id to fetch a media file's bytes by
+/// (`read_picked_media`), or the stable code ("tooLarge" / "readFailed") saying why it could not be
+/// read, so the UI can name it in a specific message.
 #[derive(serde::Serialize, Debug, PartialEq)]
 #[serde(untagged)]
 enum PickedFile {
-    Read { name: String, content: String },
-    Failed { name: String, error: &'static str },
+    Read {
+        name: String,
+        content: String,
+    },
+    Media {
+        name: String,
+        #[serde(rename = "mediaId")]
+        media_id: u64,
+    },
+    Failed {
+        name: String,
+        error: &'static str,
+    },
 }
 
-fn read_picked_file(path: &std::path::Path, max_bytes: u64) -> PickedFile {
+/// What a pick or an Open With reads with: the text size cap and the extensions held as media
+/// instead (media has no cap, like a dropped file).
+struct PickReader<'a> {
+    max_bytes: u64,
+    media_extensions: &'a [String],
+    media: &'a picked_media::PickedMedia,
+}
+
+fn read_picked_file(path: &std::path::Path, reader: &PickReader) -> PickedFile {
     let name = path
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
@@ -190,8 +211,14 @@ fn read_picked_file(path: &std::path::Path, max_bytes: u64) -> PickedFile {
         name: name.clone(),
         error,
     };
+    if picked_media::is_media(path, reader.media_extensions) {
+        return PickedFile::Media {
+            name: name.clone(),
+            media_id: reader.media.hold(path),
+        };
+    }
     match std::fs::metadata(path) {
-        Ok(meta) if meta.len() > max_bytes => return failed("tooLarge"),
+        Ok(meta) if meta.len() > reader.max_bytes => return failed("tooLarge"),
         Ok(_) => {}
         Err(_) => return failed("readFailed"),
     }
@@ -214,9 +241,15 @@ async fn pick_and_read_files(
     app: tauri::AppHandle,
     title: String,
     max_bytes: u64,
+    media_extensions: Vec<String>,
 ) -> Result<Vec<PickedFile>, String> {
     use tauri_plugin_dialog::DialogExt;
     tauri::async_runtime::spawn_blocking(move || {
+        let reader = PickReader {
+            max_bytes,
+            media_extensions: &media_extensions,
+            media: &app.state::<picked_media::PickedMedia>(),
+        };
         app.dialog()
             .file()
             .set_title(&title)
@@ -226,7 +259,7 @@ async fn pick_and_read_files(
             .map(|file_path| {
                 let shown = file_path.to_string();
                 match file_path.into_path() {
-                    Ok(path) => read_picked_file(&path, max_bytes),
+                    Ok(path) => read_picked_file(&path, &reader),
                     Err(_) => PickedFile::Failed {
                         name: shown,
                         error: "readFailed",
@@ -239,22 +272,45 @@ async fn pick_and_read_files(
     .map_err(|_| "readFailed".to_string())
 }
 
-/// Reads the files macOS handed to the app since the last call (see `opened_files`), with the same
-/// size cap and failure codes as Cmd+O.
+/// Reads the files macOS handed to the app since the last call (see `opened_files`), the same way
+/// as Cmd+O.
 #[tauri::command]
 async fn take_opened_files(
     app: tauri::AppHandle,
     max_bytes: u64,
+    media_extensions: Vec<String>,
 ) -> Result<Vec<PickedFile>, String> {
     let paths = app.state::<opened_files::OpenedFiles>().take();
     tauri::async_runtime::spawn_blocking(move || {
+        let reader = PickReader {
+            max_bytes,
+            media_extensions: &media_extensions,
+            media: &app.state::<picked_media::PickedMedia>(),
+        };
         paths
             .iter()
-            .map(|path| read_picked_file(path, max_bytes))
+            .map(|path| read_picked_file(path, &reader))
             .collect()
     })
     .await
     .map_err(|_| "readFailed".to_string())
+}
+
+/// The bytes of a media file a pick or an Open With returned the id of, sent as a raw binary
+/// response (an ArrayBuffer on the page). Each id reads once.
+#[tauri::command]
+async fn read_picked_media(
+    app: tauri::AppHandle,
+    media_id: u64,
+) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<picked_media::PickedMedia>().read(media_id)
+    })
+    .await
+    .ok()
+    .flatten()
+    .map(tauri::ipc::Response::new)
+    .ok_or_else(|| "readFailed".to_string())
 }
 
 /// Reply channels the quit thread hands to the WebView. The quit gesture runs off the main thread
@@ -353,6 +409,7 @@ fn main() {
         .manage(QuitBridge::default())
         .manage(DashboardOrigin::default())
         .manage(opened_files::OpenedFiles::default())
+        .manage(picked_media::PickedMedia::default())
         .invoke_handler(tauri::generate_handler![
             open_devtools,
             open_in_browser,
@@ -365,7 +422,8 @@ fn main() {
             focus_popout,
             close_popout,
             list_popouts,
-            take_opened_files
+            take_opened_files,
+            read_picked_media
         ])
         .on_window_event(move |window, event| {
             // Closing a pop-out only puts its terminal back; the quit guard is the main window's.
@@ -1060,13 +1118,44 @@ mod tests {
         assert!(matches!(memo_quit_action(&R::No), MemoQuitAction::DontSave));
     }
 
+    fn read_as_text_up_to(path: &std::path::Path, max_bytes: u64) -> PickedFile {
+        let media = picked_media::PickedMedia::default();
+        let reader = PickReader {
+            max_bytes,
+            media_extensions: &["png".to_string()],
+            media: &media,
+        };
+        read_picked_file(path, &reader)
+    }
+
+    #[test]
+    fn picked_media_is_held_for_its_bytes_even_past_the_text_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shot.png");
+        std::fs::write(&path, [0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]).unwrap();
+        let media = picked_media::PickedMedia::default();
+        let reader = PickReader {
+            max_bytes: 1,
+            media_extensions: &["png".to_string()],
+            media: &media,
+        };
+        let PickedFile::Media { name, media_id } = read_picked_file(&path, &reader) else {
+            panic!("a png is held as media");
+        };
+        assert_eq!(name, "shot.png");
+        assert_eq!(
+            media.read(media_id),
+            Some(vec![0x89, 0x50, 0x4e, 0x47, 0x00, 0xff])
+        );
+    }
+
     #[test]
     fn picked_file_within_the_limit_is_read() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("a.md");
         std::fs::write(&path, "hello").unwrap();
         assert_eq!(
-            read_picked_file(&path, 5),
+            read_as_text_up_to(&path, 5),
             PickedFile::Read {
                 name: "a.md".to_string(),
                 content: "hello".to_string()
@@ -1080,7 +1169,7 @@ mod tests {
         let path = dir.path().join("big.md");
         std::fs::write(&path, "hello!").unwrap();
         assert_eq!(
-            read_picked_file(&path, 5),
+            read_as_text_up_to(&path, 5),
             PickedFile::Failed {
                 name: "big.md".to_string(),
                 error: "tooLarge"
@@ -1096,7 +1185,7 @@ mod tests {
         let missing = dir.path().join("gone.md");
         for (path, name) in [(binary, "bin.dat"), (missing, "gone.md")] {
             assert_eq!(
-                read_picked_file(&path, 100),
+                read_as_text_up_to(&path, 100),
                 PickedFile::Failed {
                     name: name.to_string(),
                     error: "readFailed"
@@ -1111,13 +1200,17 @@ mod tests {
             name: "a.md".to_string(),
             content: "x".to_string(),
         };
+        let media = PickedFile::Media {
+            name: "c.png".to_string(),
+            media_id: 7,
+        };
         let failed = PickedFile::Failed {
             name: "b.md".to_string(),
             error: "tooLarge",
         };
         assert_eq!(
-            serde_json::to_string(&[read, failed]).unwrap(),
-            r#"[{"name":"a.md","content":"x"},{"name":"b.md","error":"tooLarge"}]"#
+            serde_json::to_string(&[read, media, failed]).unwrap(),
+            r#"[{"name":"a.md","content":"x"},{"name":"c.png","mediaId":7},{"name":"b.md","error":"tooLarge"}]"#
         );
     }
 
