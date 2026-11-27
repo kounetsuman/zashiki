@@ -29,10 +29,12 @@ impl PickedMedia {
 }
 
 /// Whether the file's extension is one the page renders as media (it passes the list, so the page
-/// stays the one place that decides).
+/// stays the one place that decides). The extension is what follows the name's last dot, so `.png`
+/// counts as a png as it does on the page (`Path::extension` would see none).
 pub fn is_media(path: &Path, media_extensions: &[String]) -> bool {
-    path.extension()
-        .map(|ext| ext.to_string_lossy().to_lowercase())
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_lowercase())
+        .and_then(|name| Some(name.rsplit_once('.')?.1.to_string()))
         .is_some_and(|ext| media_extensions.contains(&ext))
 }
 
@@ -76,5 +78,6 @@ mod tests {
         assert!(is_media(Path::new("/x/doc.pdf"), &exts));
         assert!(!is_media(Path::new("/x/note.md"), &exts));
         assert!(!is_media(Path::new("/x/png"), &exts));
+        assert!(is_media(Path::new("/x/.png"), &exts));
     }
 }

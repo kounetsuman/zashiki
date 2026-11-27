@@ -183,15 +183,25 @@ enum PickedFile {
         name: String,
         content: String,
     },
+    #[serde(rename_all = "camelCase")]
     Media {
         name: String,
-        #[serde(rename = "mediaId")]
         media_id: u64,
+        /// Milliseconds since the epoch, like `File.lastModified`, so reopening the file reuses its tab.
+        last_modified: u64,
     },
     Failed {
         name: String,
         error: &'static str,
     },
+}
+
+fn modified_millis(path: &std::path::Path) -> u64 {
+    std::fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |since| since.as_millis() as u64)
 }
 
 /// What a pick or an Open With reads with: the text size cap and the extensions held as media
@@ -215,6 +225,7 @@ fn read_picked_file(path: &std::path::Path, reader: &PickReader) -> PickedFile {
         return PickedFile::Media {
             name: name.clone(),
             media_id: reader.media.hold(path),
+            last_modified: modified_millis(path),
         };
     }
     match std::fs::metadata(path) {
@@ -1139,10 +1150,17 @@ mod tests {
             media_extensions: &["png".to_string()],
             media: &media,
         };
-        let PickedFile::Media { name, media_id } = read_picked_file(&path, &reader) else {
+        let PickedFile::Media {
+            name,
+            media_id,
+            last_modified,
+        } = read_picked_file(&path, &reader)
+        else {
             panic!("a png is held as media");
         };
         assert_eq!(name, "shot.png");
+        assert_eq!(last_modified, modified_millis(&path));
+        assert!(last_modified > 0);
         assert_eq!(
             media.read(media_id),
             Some(vec![0x89, 0x50, 0x4e, 0x47, 0x00, 0xff])
@@ -1203,6 +1221,7 @@ mod tests {
         let media = PickedFile::Media {
             name: "c.png".to_string(),
             media_id: 7,
+            last_modified: 1000,
         };
         let failed = PickedFile::Failed {
             name: "b.md".to_string(),
@@ -1210,7 +1229,7 @@ mod tests {
         };
         assert_eq!(
             serde_json::to_string(&[read, media, failed]).unwrap(),
-            r#"[{"name":"a.md","content":"x"},{"name":"c.png","mediaId":7},{"name":"b.md","error":"tooLarge"}]"#
+            r#"[{"name":"a.md","content":"x"},{"name":"c.png","mediaId":7,"lastModified":1000},{"name":"b.md","error":"tooLarge"}]"#
         );
     }
 

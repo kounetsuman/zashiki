@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { audioContentType, mediaKind } from "./media.js";
+import {
+  audioContentType,
+  MEDIA_EXTENSIONS,
+  mediaContentType,
+  mediaKind,
+} from "./media.js";
 
 describe("mediaKind", () => {
   it("maps image extensions to image (case-insensitive)", () => {
@@ -66,5 +71,25 @@ describe("audioContentType", () => {
 
   it("returns undefined for a non-audio name", () => {
     expect(audioContentType("clip.mp4")).toBeUndefined();
+  });
+});
+
+describe("mediaContentType", () => {
+  it("types every media extension the way the webview needs to render it", () => {
+    expect(mediaContentType("logo.SVG")).toBe("image/svg+xml");
+    expect(mediaContentType("clip.mov")).toBe("video/quicktime");
+    expect(mediaContentType("doc.pdf")).toBe("application/pdf");
+    expect(mediaContentType("note.md")).toBeUndefined();
+  });
+});
+
+describe("MEDIA_EXTENSIONS", () => {
+  it("lists exactly the extensions mediaKind renders as media, each with a content type", () => {
+    for (const ext of MEDIA_EXTENSIONS) {
+      expect(mediaKind(`f.${ext}`)).not.toBeNull();
+      expect(mediaContentType(`f.${ext}`)).toBeDefined();
+    }
+    expect(MEDIA_EXTENSIONS).toContain("png");
+    expect(MEDIA_EXTENSIONS).not.toContain("md");
   });
 });

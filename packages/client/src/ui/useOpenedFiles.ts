@@ -6,7 +6,7 @@ import { type PickedFile, takeOpenedFiles } from "../lib/open-file-dialog.js";
 
 /**
  * Calls `onPicked` with the files macOS hands to the app (`open -a`, Finder's "Open With", the
- * default app), read the same way as a Cmd+O pick (up to `maxBytes`). The shell queues them, so files
+ * default app), read the same way as a Cmd+O pick (text up to `maxBytes`, media as media). The shell queues them, so files
  * that arrive while the page is still loading are taken once it starts listening. No-op outside Tauri.
  */
 export function useOpenedFiles(

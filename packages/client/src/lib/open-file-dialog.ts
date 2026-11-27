@@ -4,6 +4,7 @@ import type { FileDropError } from "../ui/useFileDrop.js";
 import {
   MEDIA_EXTENSIONS,
   type MediaKind,
+  mediaContentType,
   mediaKind,
 } from "../viewer/media.js";
 
@@ -18,7 +19,9 @@ export type PickedFile =
   | { name: string; media: File; kind: MediaKind };
 
 /** What the desktop shell returns per file: a media file comes back as an id to fetch its bytes by. */
-type ShellPickedFile = PickedText | { name: string; mediaId: number };
+type ShellPickedFile =
+  | PickedText
+  | { name: string; mediaId: number; lastModified: number };
 
 /** Size-checks a picked File against `maxBytes` and reads it as text (shared by the browser fallback and tests). */
 export async function readPickedFile(
@@ -82,28 +85,37 @@ function pickViaInput(maxBytes: number): Promise<PickedFile[]> {
   });
 }
 
+/** Fetches a held media file's bytes as a File typed and stamped like a dropped one (so reopening it reuses its tab). */
 async function fetchShellMedia(
   name: string,
   mediaId: number,
+  lastModified: number,
 ): Promise<PickedFile> {
-  const kind = mediaKind(name);
-  if (kind === null) return { name, error: "readFailed" };
+  let bytes: ArrayBuffer;
   try {
-    const bytes = await invoke<ArrayBuffer>("read_picked_media", { mediaId });
-    return { name, media: new File([bytes], name), kind };
+    bytes = await invoke<ArrayBuffer>("read_picked_media", { mediaId });
   } catch {
     return { name, error: "readFailed" };
   }
+  const kind = mediaKind(name);
+  if (kind === null) return { name, error: "readFailed" };
+  const type = mediaContentType(name);
+  return { name, media: new File([bytes], name, { type, lastModified }), kind };
 }
 
-function fromShell(picked: readonly ShellPickedFile[]): Promise<PickedFile[]> {
-  return Promise.all(
-    picked.map((file) =>
+/** Resolves the shell's results in order, fetching one media file at a time to keep only one in memory. */
+async function fromShell(
+  picked: readonly ShellPickedFile[],
+): Promise<PickedFile[]> {
+  const resolved: PickedFile[] = [];
+  for (const file of picked) {
+    resolved.push(
       "mediaId" in file
-        ? fetchShellMedia(file.name, file.mediaId)
-        : Promise.resolve(file),
-    ),
-  );
+        ? await fetchShellMedia(file.name, file.mediaId, file.lastModified)
+        : file,
+    );
+  }
+  return resolved;
 }
 
 /**

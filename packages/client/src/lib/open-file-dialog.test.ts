@@ -81,7 +81,7 @@ describe("the Tauri open dialog and Open With", () => {
           ? png
           : [
               { name: "a.md", content: "A" },
-              { name: "shot.png", mediaId: 3 },
+              { name: "shot.png", mediaId: 3, lastModified: 1234 },
               { name: "big.log", error: "tooLarge" },
             ],
       ),
@@ -99,6 +99,8 @@ describe("the Tauri open dialog and Open With", () => {
       }
       expect(media.kind).toBe("image");
       expect(media.media.name).toBe("shot.png");
+      expect(media.media.type).toBe("image/png");
+      expect(media.media.lastModified).toBe(1234);
       expect(new Uint8Array(await media.media.arrayBuffer())).toEqual(
         new Uint8Array(png),
       );
@@ -110,11 +112,50 @@ describe("the Tauri open dialog and Open With", () => {
     invoke.mockImplementation((cmd: string) =>
       cmd === "read_picked_media"
         ? Promise.reject(new Error("readFailed"))
-        : Promise.resolve([{ name: "shot.png", mediaId: 1 }]),
+        : Promise.resolve([{ name: "shot.png", mediaId: 1, lastModified: 0 }]),
     );
     expect(await pickAndReadFiles("Open", MAX)).toEqual([
       { name: "shot.png", error: "readFailed" },
     ]);
+  });
+});
+
+describe("media held by the shell", () => {
+  beforeEach(() => invoke.mockReset());
+
+  it("is fetched one file at a time, in pick order", async () => {
+    const events: string[] = [];
+    invoke.mockImplementation((cmd: string, args: unknown) => {
+      if (cmd !== "read_picked_media") {
+        return Promise.resolve([
+          { name: "a.mp4", mediaId: 1, lastModified: 0 },
+          { name: "b.mp4", mediaId: 2, lastModified: 0 },
+        ]);
+      }
+      const { mediaId } = args as { mediaId: number };
+      events.push(`start ${mediaId}`);
+      return Promise.resolve().then(() => {
+        events.push(`end ${mediaId}`);
+        return new ArrayBuffer(1);
+      });
+    });
+    const picked = await pickAndReadFiles("Open", MAX);
+    expect(picked.map((p) => p.name)).toEqual(["a.mp4", "b.mp4"]);
+    expect(events).toEqual(["start 1", "end 1", "start 2", "end 2"]);
+  });
+
+  it("is still fetched, releasing its id, when the page does not render the name as media", async () => {
+    invoke.mockImplementation((cmd: string) =>
+      Promise.resolve(
+        cmd === "read_picked_media"
+          ? new ArrayBuffer(1)
+          : [{ name: "odd.bin", mediaId: 5, lastModified: 0 }],
+      ),
+    );
+    expect(await pickAndReadFiles("Open", MAX)).toEqual([
+      { name: "odd.bin", error: "readFailed" },
+    ]);
+    expect(invoke).toHaveBeenCalledWith("read_picked_media", { mediaId: 5 });
   });
 });
 
