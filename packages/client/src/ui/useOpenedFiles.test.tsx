@@ -3,6 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PickedFile } from "../lib/open-file-dialog.js";
+import { MEDIA_EXTENSIONS } from "../viewer/media.js";
 import { useOpenedFiles } from "./useOpenedFiles.js";
 
 const { isTauri, invoke } = vi.hoisted(() => ({
@@ -69,7 +70,7 @@ describe("useOpenedFiles", () => {
     );
     expect(order).toEqual([
       "listen zashiki:files-opened",
-      `invoke take_opened_files {"maxBytes":${MAX}}`,
+      `invoke take_opened_files ${JSON.stringify({ maxBytes: MAX, mediaExtensions: MEDIA_EXTENSIONS })}`,
     ]);
   });
 
